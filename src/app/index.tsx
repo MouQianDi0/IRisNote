@@ -56,6 +56,13 @@ export default function HomeScreen() {
         </ThemedView>
 
         {Platform.OS === 'web' && <WebBadge />}
+
+        {/* NativeWind test */}
+        <ThemedView className="bg-red-200 p-4 rounded-lg">
+          <ThemedText className="text-red-800 font-bold text-lg">
+            NativeWind Test: 红色背景 + 加粗大字
+          </ThemedText>
+        </ThemedView>
       </SafeAreaView>
     </ThemedView>
   );
