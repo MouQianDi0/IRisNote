@@ -1,56 +1,87 @@
-# Welcome to your Expo app 👋
+# IRISNote（NextNote）
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+基于 Expo SDK 56 + React Native 的跨平台笔记应用，集笔记、待办、剪贴板摘录与个人中心于一体。
 
-## Get started
+## 功能特性
 
-1. Install dependencies
+- **笔记** — 创建、编辑和保存笔记，支持标题与正文
+- **待办清单** — 快速创建待办事项
+- **剪贴板摘录** — 收集和整理摘录内容
+- **个人中心** — 用户信息与设置管理
+- **悬浮导航菜单** — 右下角动画悬浮菜单，支持上下滑动手势切换页面
+- **图标动画** — 切换标签页时图标渐入弹出效果，创建按钮间歇颤抖动画
 
-   ```bash
-   npm install
-   ```
+## 技术栈
 
-2. Start the app
+| 类别 | 技术 |
+|------|------|
+| 框架 | Expo SDK 56 / React Native 0.85 |
+| 路由 | expo-router（文件系统路由 + 类型化路由） |
+| 样式 | NativeWind（Tailwind CSS for RN） |
+| 动画 | react-native-reanimated 4（CSS Keyframes） |
+| 图标 | lucide-react-native |
+| 手势 | react-native-gesture-handler |
+| 语言 | TypeScript |
 
-   ```bash
-   npx expo start
-   ```
+## 项目结构
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/
+├── app/                     # Expo Router 文件路由
+│   ├── _layout.tsx          # 根布局（Stack）
+│   ├── index.tsx            # 入口重定向
+│   ├── about.tsx            # 关于页
+│   ├── contact.tsx          # 联系我们
+│   └── (tabs)/              # Tab 路由组
+│       ├── _layout.tsx      # Tab 布局（隐藏 tabBar）
+│       ├── note/            # 笔记
+│       │   ├── _layout.tsx  # Stack 子路由
+│       │   ├── index.tsx    # 笔记首页
+│       │   └── create.tsx   # 新建笔记
+│       ├── todo/            # 待办
+│       │   ├── _layout.tsx
+│       │   ├── index.tsx
+│       │   └── create.tsx
+│       ├── excerpt/         # 剪贴板摘录
+│       │   ├── _layout.tsx
+│       │   ├── index.tsx
+│       │   └── create.tsx
+│       └── user/            # 个人中心
+│           ├── _layout.tsx
+│           ├── index.tsx
+│           └── settings.tsx
+└── components/              # 公共组件
+    └── FloatingMenu.tsx     # 悬浮导航菜单
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 快速开始
 
-### Other setup steps
+```bash
+# 安装依赖
+npm install
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+# 启动开发服务器
+npx expo start
+```
 
-## Learn more
+运行后在终端选择：
+- `w` — 打开 Web 版
+- `a` — 打开 Android 模拟器
+- `i` — 打开 iOS 模拟器
+- 扫码 — 在 Expo Go 中打开
 
-To learn more about developing your project with Expo, look at the following resources:
+### 脚本
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+| 命令 | 说明 |
+|------|------|
+| `npm start` | 启动 Expo 开发服务器 |
+| `npm run web` | 启动 Web 版 |
+| `npm run android` | 编译并运行 Android |
+| `npm run ios` | 编译并运行 iOS |
+| `npm run lint` | 执行 ESLint 检查 |
 
-## Join the community
+## 环境要求
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Node.js 18+
+- Expo CLI
+- Android Studio / Xcode（如需本地编译）
