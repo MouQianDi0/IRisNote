@@ -1,4 +1,4 @@
-# IRISNote（NextNote）
+# IRISNote
 
 基于 Expo SDK 56 + React Native 的跨平台笔记应用，集笔记、待办、剪贴板摘录与个人中心于一体。
 
