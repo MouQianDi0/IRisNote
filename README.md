@@ -20,8 +20,8 @@
 |------|------|
 | 框架 | [Expo SDK 56](https://docs.expo.dev/tutorial/create-your-first-app/) / [React Native 0.85](https://reactnative.cn/docs/getting-started) |
 | 路由 | expo-router（文件系统路由 + 类型化路由） |
-| 样式 | [NativeWind](https://www.nativewind.dev/docs)（Tailwind CSS for RN） |
-| 动画 | [react-native-reanimated 4](https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/getting-started/)（CSS Keyframes） |
+| 样式 | [NativeWind](https://www.nativewind.dev/docs) |
+| 动画 | [react-native-reanimated 4](https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/getting-started/) |
 | 图标 | [lucide-react-native](https://lucide.dev/guide/packages/lucide-react-native) |
 | 手势 | [react-native-gesture-handler](https://docs.swmansion.com/react-native-gesture-handler/docs/fundamentals/introduction/) |
 | 语言 | TypeScript |
