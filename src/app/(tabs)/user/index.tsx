@@ -10,7 +10,7 @@ import { StyleSheet, Text, View } from "react-native";
 // ============================================
 // 导入悬浮菜单组件
 // ============================================
-import FloatingMenu from "../FloatingMenu";
+import FloatingMenu from "../../../components/FloatingMenu";
 
 // ============================================
 // 定义用户页面组件

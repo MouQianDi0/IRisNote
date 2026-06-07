@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { Button, StyleSheet, Text, View } from "react-native";
-import FloatingMenu from "../FloatingMenu";
+import FloatingMenu from "../../../components/FloatingMenu";
 
 export default function Index() {
     return (
