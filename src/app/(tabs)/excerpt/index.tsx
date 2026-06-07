@@ -5,21 +5,23 @@
 // ============================================
 // 导入 React Native 组件
 // ============================================
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
+import Animated, { useSharedValue } from "react-native-reanimated";
 
 // ============================================
 // 导入悬浮菜单组件
 // ============================================
-import FloatingMenu from "../FloatingMenu";
+import FloatingMenu from "../../../components/FloatingMenu";
 
 // ============================================
 // 定义待办页面组件
 // ============================================
 export default function copyExcerpt() {
+    const isMenuOpen = useSharedValue(false);
     // 返回 JSX 结构
     return (
         // 最外层容器（居中显示）
-        <View style={styles.container}>
+        <Animated.View style={styles.container}>
             {/* 标题 */}
             <Text style={styles.title}>剪贴板摘录</Text>
 
@@ -31,7 +33,7 @@ export default function copyExcerpt() {
 
             {/* 悬浮菜单 */}
             <FloatingMenu />
-        </View>
+        </Animated.View>
     );
 }
 

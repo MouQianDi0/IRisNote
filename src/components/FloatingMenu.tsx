@@ -8,7 +8,30 @@ import {
     Sticker,
 } from "lucide-react-native";
 import { useRef } from "react";
-import { PanResponder, Pressable, StyleSheet, View } from "react-native";
+import { PanResponder, Pressable, Text, View } from "react-native";
+import Animated, { CSSAnimationKeyframes } from "react-native-reanimated";
+import "../../global.css";
+
+const pulse: CSSAnimationKeyframes = {
+    from: {
+        opacity: 0.5,
+        transform: [{ scale: 0.6 }],
+    },
+    to: {
+        opacity: 1,
+        transform: [{ scale: 1 }],
+    },
+};
+
+const shake: CSSAnimationKeyframes = {
+    "0%": { transform: [{ rotate: "0deg" }] },
+    "85%": { transform: [{ rotate: "0deg" }] },
+    "87%": { transform: [{ rotate: "-9deg" }] },
+    "91%": { transform: [{ rotate: "9deg" }] },
+    "95%": { transform: [{ rotate: "-5deg" }] },
+    "98%": { transform: [{ rotate: "5deg" }] },
+    "100%": { transform: [{ rotate: "0deg" }] },
+};
 
 type TabKey = "note" | "todo" | "excerpt" | "user";
 
@@ -63,7 +86,7 @@ const menuItems = [
         icon: SquareCheckBig,
     },
     {
-        name: "剪贴板摘录",
+        name: "剪贴",
         key: "excerpt" as const,
         route: "/(tabs)/excerpt" as const,
         icon: ClipboardPenLine,
@@ -146,92 +169,66 @@ export default function FloatingMenu() {
     const { icon: ActionIcon, route: actionRoute } = getAction(pathname);
 
     return (
-        <View style={styles.outerContainer} {...panResponder.panHandlers}>
-            <View style={styles.menuContainer}>
+        <View
+            className="absolute bottom-[50] right-5 items-end"
+            {...panResponder.panHandlers}
+        >
+            <Animated.View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
-                        style={({ pressed }) => [
-                            styles.menuItem,
-                            getActiveTabKey(pathname) === item.key &&
-                                styles.activeItem,
-                            pressed && styles.pressedItem,
-                        ]}
-                        onPress={() => router.push(item.route as Href)}
+                        className={`my-[5] size-[50] items-center justify-center rounded-full ${
+                            getActiveTabKey(pathname) === item.key
+                                ? "opacity-100"
+                                : "opacity-70"
+                        }`}
+                        style={({ pressed }) =>
+                            pressed ? { opacity: 0.7 } : undefined
+                        }
+                        onPress={() => {
+                            if (getActiveTabKey(pathname) === item.key) return;
+                            router.push(item.route as Href);
+                        }}
                     >
-                        <item.icon
-                            size={24}
-                            color={
-                                getActiveTabKey(pathname) === item.key
-                                    ? "#37a5ffff"
-                                    : "#666"
-                            }
-                        />
+                        {getActiveTabKey(pathname) === item.key ? (
+                            <Animated.View
+                                style={{
+                                    animationName: pulse,
+                                    animationDuration: "0.5s",
+                                    animationTimingFunction: "ease-out",
+                                }}
+                            >
+                                <item.icon size={24} color="#37a5ffff" />
+                            </Animated.View>
+                        ) : (
+                            <item.icon size={24} color="#666" />
+                        )}
+                        <Text className="top-[3] text-center text-xs text-[#666] opacity-100">
+                            {item.name}
+                        </Text>
                     </Pressable>
                 ))}
-            </View>
+            </Animated.View>
             <Pressable
-                style={({ pressed }) => [
-                    styles.addButton,
-                    pressed && styles.addButtonPressed,
-                ]}
+                className="size-[66] items-center justify-center rounded-[18] bg-[#0037ebff] shadow-lg"
+                style={({ pressed }) =>
+                    pressed
+                        ? { backgroundColor: "#001692ff", opacity: 0.7 }
+                        : undefined
+                }
                 onPress={() => router.push(actionRoute as Href)}
             >
-                <ActionIcon size={24} color="#ffffffff" />
+                <Animated.View
+                    style={{
+                        animationName: shake,
+                        animationDuration: "2s",
+                        animationIterationCount: "infinite",
+                        animationTimingFunction: "ease-in-out",
+                    }}
+                >
+                    <ActionIcon size={35} color="#ffffffff" />
+                </Animated.View>
             </Pressable>
         </View>
     );
 }
-const styles = StyleSheet.create({
-    outerContainer: {
-        position: "absolute",
-        bottom: 50,
-        right: 20,
-        alignItems: "flex-end",
-    },
-    menuContainer: {
-        backgroundColor: "#ffffff", // 白色背景
-        borderRadius: 18, // 圆角
-        paddingVertical: 10, // 垂直内边距 10px
-        paddingHorizontal: 8, // 水平内边距 8px
-        marginBottom: 15, // 与"+"按钮的间距
-        shadowColor: "#000", // 阴影颜色
-        shadowOffset: { width: 0, height: 2 }, // 阴影偏移
-        shadowOpacity: 0.25, // 阴影透明度
-        shadowRadius: 3.84, // 阴影模糊半径
-        elevation: 5, // Android 阴影
-    },
-    menuItem: {
-        width: 50, // 宽度 50px
-        height: 50, // 高度 50px
-        justifyContent: "center", // 垂直居中
-        alignItems: "center", // 水平居中
-        marginVertical: 5, // 上下间距 5px
-        borderRadius: 25, // 圆形（宽高的一半）
-    },
-    pressedItem: {
-        backgroundColor: "transparent",
-        opacity: 0.7,
-    },
-    addButton: {
-        width: 66, // 宽度 60px
-        height: 66, // 高度 60px
-        borderRadius: 18, // 圆角
-        backgroundColor: "#0037ebff", // 蓝色背景
-        justifyContent: "center", // 垂直居中
-        alignItems: "center", // 水平居中
-        shadowColor: "#000", // 阴影颜色
-        shadowOffset: { width: 0, height: 2 }, // 阴影偏移
-        shadowOpacity: 0.3, // 阴影透明度
-        shadowRadius: 4, // 阴影模糊半径
-        elevation: 8, // Android 阴影
-    },
-    addButtonPressed: {
-        backgroundColor: "#001692ff",
-        opacity: 0.7,
-    },
-    activeItem: {
-        backgroundColor: "transparent",
-        opacity: 0.7,
-    },
-});
