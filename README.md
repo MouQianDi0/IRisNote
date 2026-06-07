@@ -12,7 +12,8 @@
 - **图标动画** — 切换标签页时图标渐入弹出效果，创建按钮间歇颤抖动画
 
 ## 开发笔记
-[语雀](https://www.yuque.com/g/miaoshuishui-ookut/rs6k2t/collaborator/join?token=MopqlDrYAC7UHe4c# )
+编写或了解开发未来规划，访问[语雀](https://www.yuque.com/g/miaoshuishui-ookut/rs6k2t/collaborator/join?token=MopqlDrYAC7UHe4c# )开发笔记
+
 
 ## 技术栈
 
