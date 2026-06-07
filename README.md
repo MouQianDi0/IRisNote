@@ -1,4 +1,4 @@
-# IRISNote（NextNote）
+# IRISNote
 
 基于 Expo SDK 56 + React Native 的跨平台笔记应用，集笔记、待办、剪贴板摘录与个人中心于一体。
 
@@ -11,16 +11,20 @@
 - **悬浮导航菜单** — 右下角动画悬浮菜单，支持上下滑动手势切换页面
 - **图标动画** — 切换标签页时图标渐入弹出效果，创建按钮间歇颤抖动画
 
+## 开发笔记
+编写或了解开发未来规划，访问[语雀](https://www.yuque.com/g/miaoshuishui-ookut/rs6k2t/collaborator/join?token=MopqlDrYAC7UHe4c# )开发笔记
+
+
 ## 技术栈
 
 | 类别 | 技术 |
 |------|------|
-| 框架 | Expo SDK 56 / React Native 0.85 |
+| 框架 | [Expo SDK 56](https://docs.expo.dev/tutorial/create-your-first-app/) / [React Native 0.85](https://reactnative.cn/docs/getting-started) |
 | 路由 | expo-router（文件系统路由 + 类型化路由） |
-| 样式 | NativeWind（Tailwind CSS for RN） |
-| 动画 | react-native-reanimated 4（CSS Keyframes） |
-| 图标 | lucide-react-native |
-| 手势 | react-native-gesture-handler |
+| 样式 | [NativeWind](https://www.nativewind.dev/docs) |
+| 动画 | [react-native-reanimated 4](https://docs.swmansion.com/react-native-reanimated/docs/fundamentals/getting-started/) |
+| 图标 | [lucide-react-native](https://lucide.dev/guide/packages/lucide-react-native) |
+| 手势 | [react-native-gesture-handler](https://docs.swmansion.com/react-native-gesture-handler/docs/fundamentals/introduction/) |
 | 语言 | TypeScript |
 
 ## 项目结构
