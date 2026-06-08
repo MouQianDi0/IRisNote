@@ -120,12 +120,12 @@ const getAction = (
 ): {
     icon:
 
-        | typeof PencilLine
-        | typeof SquareCheckBig
-        | typeof ClipboardPenLine
-        | typeof Bolt;
+    | typeof PencilLine
+    | typeof SquareCheckBig
+    | typeof ClipboardPenLine
+    | typeof Bolt;
 
-    route: Href;
+    route: string;
 } => {
     switch (getActiveTabKey(path)) {
         case "note":
@@ -182,11 +182,10 @@ export default function FloatingMenu() {
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
-                        className={`my-[5] size-[50] items-center justify-center rounded-full ${
-                            getActiveTabKey(pathname) === item.key
-                                ? "opacity-100"
-                                : "opacity-70"
-                        }`}
+                        className={`my-[5] size-[50] items-center justify-center rounded-full ${getActiveTabKey(pathname) === item.key
+                            ? "opacity-100"
+                            : "opacity-70"
+                            }`}
                         style={({ pressed }) =>
                             pressed ? { opacity: 0.7 } : undefined
                         }
@@ -233,48 +232,9 @@ export default function FloatingMenu() {
                 >
                     <ActionIcon size={35} color="#ffffffff" />
                 </Animated.View>
-=======
-        <View style={styles.outerContainer} {...panResponder.panHandlers}>
-            <View style={styles.menuContainer}>
-                {menuItems.map((item, index) => (
-                    <Pressable
-                        key={index}
-                        style={({ pressed }) => [
-                            styles.menuItem,
-                            getActiveTabKey(pathname) === item.key &&
-                            styles.activeItem,
-                            pressed && styles.pressedItem,
-                        ]}
-
-                        onPress={() => {
-                            if (getActiveTabKey(pathname) == item.key) return;
-
-                            router.push(item.route as Href)
-                        }
-                        }
-                    >
-                        <item.icon
-                            size={24}
-                            color={
-                                getActiveTabKey(pathname) === item.key
-                                    ? "#37a5ffff"
-                                    : "#666"
-                            }
-                        />
-                    </Pressable>
-                ))}
-            </View>
-            <Pressable
-                style={({ pressed }) => [
-                    styles.addButton,
-                    pressed && styles.addButtonPressed,
-                ]}
-                onPress={() => router.push(actionRoute as Href)}
-            >
-                <ActionIcon size={24} color="#ffffffff" />
-
             </Pressable>
         </View>
     );
 }
+
 
