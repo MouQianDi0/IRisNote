@@ -233,7 +233,6 @@ export default function FloatingMenu() {
                 >
                     <ActionIcon size={35} color="#ffffffff" />
                 </Animated.View>
-=======
         <View style={styles.outerContainer} {...panResponder.panHandlers}>
             <View style={styles.menuContainer}>
                 {menuItems.map((item, index) => (
