@@ -13,6 +13,7 @@ export function useLongPressButton(actionRoute: Href) {
     const pathname = usePathname();
     const scale = useSharedValue(1);
     const didNavigate = useSharedValue(false);
+    const didStart = useSharedValue(false);
 
     const animatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: scale.value }],
@@ -22,6 +23,7 @@ export function useLongPressButton(actionRoute: Href) {
         .activateAfterLongPress(400)
         .onStart(() => {
             "worklet";
+            didStart.value = true;
             didNavigate.value = false;
             scale.value = withTiming(
                 0.85,
@@ -43,7 +45,11 @@ export function useLongPressButton(actionRoute: Href) {
         })
         .onFinalize(() => {
             "worklet";
-            if (!didNavigate.value && actionRoute !== pathname) {
+            if (
+                didStart.value &&
+                !didNavigate.value &&
+                actionRoute !== pathname
+            ) {
                 didNavigate.value = true;
                 runOnJS(router.push)(actionRoute);
             }
