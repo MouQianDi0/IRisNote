@@ -8,6 +8,7 @@ import {
     Sticker,
 } from "lucide-react-native";
 import { useRef } from "react";
+
 import { PanResponder, Pressable, Text, View } from "react-native";
 import Animated, { CSSAnimationKeyframes } from "react-native-reanimated";
 import "../../global.css";
@@ -32,6 +33,7 @@ const shake: CSSAnimationKeyframes = {
     "98%": { transform: [{ rotate: "5deg" }] },
     "100%": { transform: [{ rotate: "0deg" }] },
 };
+
 
 type TabKey = "note" | "todo" | "excerpt" | "user";
 
@@ -117,10 +119,12 @@ const getAction = (
     path: string,
 ): {
     icon:
+
         | typeof PencilLine
         | typeof SquareCheckBig
         | typeof ClipboardPenLine
         | typeof Bolt;
+
     route: Href;
 } => {
     switch (getActiveTabKey(path)) {
@@ -169,6 +173,7 @@ export default function FloatingMenu() {
     const { icon: ActionIcon, route: actionRoute } = getAction(pathname);
 
     return (
+
         <View
             className="absolute bottom-[50] right-5 items-end"
             {...panResponder.panHandlers}
@@ -228,7 +233,48 @@ export default function FloatingMenu() {
                 >
                     <ActionIcon size={35} color="#ffffffff" />
                 </Animated.View>
+=======
+        <View style={styles.outerContainer} {...panResponder.panHandlers}>
+            <View style={styles.menuContainer}>
+                {menuItems.map((item, index) => (
+                    <Pressable
+                        key={index}
+                        style={({ pressed }) => [
+                            styles.menuItem,
+                            getActiveTabKey(pathname) === item.key &&
+                            styles.activeItem,
+                            pressed && styles.pressedItem,
+                        ]}
+
+                        onPress={() => {
+                            if (getActiveTabKey(pathname) == item.key) return;
+
+                            router.push(item.route as Href)
+                        }
+                        }
+                    >
+                        <item.icon
+                            size={24}
+                            color={
+                                getActiveTabKey(pathname) === item.key
+                                    ? "#37a5ffff"
+                                    : "#666"
+                            }
+                        />
+                    </Pressable>
+                ))}
+            </View>
+            <Pressable
+                style={({ pressed }) => [
+                    styles.addButton,
+                    pressed && styles.addButtonPressed,
+                ]}
+                onPress={() => router.push(actionRoute as Href)}
+            >
+                <ActionIcon size={24} color="#ffffffff" />
+
             </Pressable>
         </View>
     );
 }
+
