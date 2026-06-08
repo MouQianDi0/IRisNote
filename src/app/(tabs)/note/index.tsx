@@ -3,15 +3,39 @@ import FloatingMenu from "@/components/FloatingMenu";
 import { useState } from "react";
 import { FlatList, Text, View } from "react-native";
 
-
 const allNotes = [
-    { id: "1", title: "会议记录", category: "work", content: "讨论了项目进度..." },
-    { id: "2", title: "React 学习笔记", category: "study", content: "学习了 Hook 用法..." },
+    {
+        id: "1",
+        title: "会议记录",
+        category: "work",
+        content: "讨论了项目进度...",
+    },
+    {
+        id: "2",
+        title: "React 学习笔记",
+        category: "study",
+        content: "学习了 Hook 用法...",
+    },
     { id: "3", title: "周末计划", category: "life", content: "去公园跑步..." },
-    { id: "4", title: "产品想法", category: "idea", content: "做一个笔记App..." },
+    {
+        id: "4",
+        title: "产品想法",
+        category: "idea",
+        content: "做一个笔记App...",
+    },
     { id: "5", title: "周报", category: "work", content: "本周完成了..." },
-    { id: "6", title: "TypeScript 笔记", category: "study", content: "泛型的用法..." },
-    { id: "7", title: "读书清单", category: "life", content: "《原子习惯》..." },
+    {
+        id: "6",
+        title: "TypeScript 笔记",
+        category: "study",
+        content: "泛型的用法...",
+    },
+    {
+        id: "7",
+        title: "读书清单",
+        category: "life",
+        content: "《原子习惯》...",
+    },
     { id: "8", title: "设计灵感", category: "idea", content: "渐变色背景..." },
 ];
 export default function Index() {
@@ -27,15 +51,22 @@ export default function Index() {
             <View className="flex-1 ml-[60px] mr-[0px] mt-[10px] mb-[0px]">
                 <View className="flex-1 bg-white  rounded-tl-[30px] p-4 shadow-sm  ">
                     <FlatList
+                        className="rounded-[18px]"
                         data={filteredNotes}
                         keyExtractor={(item) => item.id}
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={{ paddingBottom: 10 }}
                         ListHeaderComponent={
-                            <View className="bg-blue-50 h-[200px] rounded-[18px] mb-6 " style={{ width: '100%', maxWidth: 400 }}></View>
+                            <View
+                                className="bg-blue-50 h-[200px] rounded-[18px] mb-6 "
+                                style={{ width: "100%", maxWidth: 400 }}
+                            ></View>
                         }
                         renderItem={({ item }) => (
-                            <View className="bg-[#f4e2f4] rounded-[14px] p-5 mb-4 " style={{ width: '100%', maxWidth: 400 }}>
+                            <View
+                                className="bg-[#f4e2f4] rounded-[14px] p-5 mb-4 "
+                                style={{ width: "100%", maxWidth: 400 }}
+                            >
                                 <Text className="text-base font-semibold text-gray-800">
                                     {item.title}
                                 </Text>
@@ -53,7 +84,9 @@ export default function Index() {
                         )}
                         ListEmptyComponent={
                             <View className="items-center py-8">
-                                <Text className="text-gray-400 text-base">暂无笔记</Text>
+                                <Text className="text-gray-400 text-base">
+                                    暂无笔记
+                                </Text>
                             </View>
                         }
                     />

@@ -6,36 +6,16 @@ import {
     PencilLine,
     SquareCheckBig,
     Sticker,
-} from "lucide-react-native";
+} from "lucide-react-native"; // 引入图标组件
 import { useRef } from "react";
+import { Pressable, Text, View } from "react-native";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import { pulse, shake } from "../gestures/animations";
+import { useLongPressButton } from "../gestures/useLongPressButton";
+import { useSwipeTab } from "../gestures/useSwipeTab";
 
-import { PanResponder, Pressable, Text, View } from "react-native";
-import Animated, { CSSAnimationKeyframes } from "react-native-reanimated";
-import "../../global.css";
-
-const pulse: CSSAnimationKeyframes = {
-    from: {
-        opacity: 0.5,
-        transform: [{ scale: 0.6 }],
-    },
-    to: {
-        opacity: 1,
-        transform: [{ scale: 1 }],
-    },
-};
-
-const shake: CSSAnimationKeyframes = {
-    "0%": { transform: [{ rotate: "0deg" }] },
-    "85%": { transform: [{ rotate: "0deg" }] },
-    "87%": { transform: [{ rotate: "-9deg" }] },
-    "91%": { transform: [{ rotate: "9deg" }] },
-    "95%": { transform: [{ rotate: "-5deg" }] },
-    "98%": { transform: [{ rotate: "5deg" }] },
-    "100%": { transform: [{ rotate: "0deg" }] },
-};
-
-
-type TabKey = "note" | "todo" | "excerpt" | "user";
+type TabKey = "note" | "todo" | "excerpt" | "user"; // 选项卡键
 
 const getActiveTabKey = (path: string): TabKey => {
     if (
@@ -101,29 +81,14 @@ const menuItems = [
     },
 ];
 
-const tabPaths = [
-    "/(tabs)/user",
-    "/(tabs)/excerpt",
-    "/(tabs)/todo",
-    "/(tabs)/note",
-] as const;
-
-const pathToIndex: Record<TabKey, number> = {
-    user: 0,
-    excerpt: 1,
-    todo: 2,
-    note: 3,
-};
-
 const getAction = (
     path: string,
 ): {
     icon:
-
-    | typeof PencilLine
-    | typeof SquareCheckBig
-    | typeof ClipboardPenLine
-    | typeof Bolt;
+        | typeof PencilLine
+        | typeof SquareCheckBig
+        | typeof ClipboardPenLine
+        | typeof Bolt;
 
     route: string;
 } => {
@@ -144,48 +109,29 @@ const getAction = (
 export default function FloatingMenu() {
     const router = useRouter();
     const pathname = usePathname();
-    const pathRef = useRef(pathname);
-    pathRef.current = pathname;
+    const panHandlers = useSwipeTab(pathname);
+    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lockRef = useRef(false);
 
-    const panResponder = PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) => {
-            return (
-                Math.abs(gesture.dy) > 20 &&
-                Math.abs(gesture.dy) > Math.abs(gesture.dx)
-            );
-        },
-        onPanResponderRelease: (_, gesture) => {
-            if (Math.abs(gesture.dy) < 30) return;
-
-            const currentIndex = pathToIndex[getActiveTabKey(pathRef.current)];
-            const total = tabPaths.length;
-
-            if (gesture.dy < -30) {
-                const prevIndex = (currentIndex - 1 + total) % total;
-                router.push(tabPaths[prevIndex] as Href);
-            } else if (gesture.dy > 30) {
-                const nextIndex = (currentIndex + 1) % total;
-                router.push(tabPaths[nextIndex] as Href);
-            }
-        },
-    });
-
-    const { icon: ActionIcon, route: actionRoute } = getAction(pathname);
+    const { icon: ActionIcon } = getAction(pathname);
+    const { gesture: longPress, animatedStyle } = useLongPressButton(
+        getAction(pathname).route as Href,
+    );
 
     return (
-
         <View
             className="absolute bottom-[50] right-5 items-end"
-            {...panResponder.panHandlers}
+            {...panHandlers}
         >
             <Animated.View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
-                        className={`my-[5] size-[50] items-center justify-center rounded-full ${getActiveTabKey(pathname) === item.key
-                            ? "opacity-100"
-                            : "opacity-70"
-                            }`}
+                        className={`my-[5] size-[50] items-center justify-center rounded-full ${
+                            getActiveTabKey(pathname) === item.key
+                                ? "opacity-100"
+                                : "opacity-70"
+                        }`}
                         style={({ pressed }) =>
                             pressed ? { opacity: 0.7 } : undefined
                         }
@@ -213,28 +159,45 @@ export default function FloatingMenu() {
                     </Pressable>
                 ))}
             </Animated.View>
-            <Pressable
-                className="size-[66] items-center justify-center rounded-[18] bg-[#0037ebff] shadow-lg"
-                style={({ pressed }) =>
-                    pressed
-                        ? { backgroundColor: "#001692ff", opacity: 0.7 }
-                        : undefined
-                }
-                onPress={() => router.push(actionRoute as Href)}
-            >
-                <Animated.View
-                    style={{
-                        animationName: shake,
-                        animationDuration: "2s",
-                        animationIterationCount: "infinite",
-                        animationTimingFunction: "ease-in-out",
-                    }}
-                >
-                    <ActionIcon size={35} color="#ffffffff" />
-                </Animated.View>
-            </Pressable>
+            <Animated.View style={animatedStyle}>
+                <GestureDetector gesture={longPress}>
+                    <Pressable
+                        className="size-[66] items-center justify-center rounded-[18] bg-[#0037ebff] shadow-lg"
+                        style={({ pressed }) =>
+                            pressed
+                                ? { backgroundColor: "#001692ff", opacity: 0.7 }
+                                : undefined
+                        }
+                        onPress={() => {
+                            if (lockRef.current) return;
+                            if (debounceTimer.current) {
+                                clearTimeout(debounceTimer.current);
+                            }
+                            debounceTimer.current = setTimeout(() => {
+                                debounceTimer.current = null;
+                                if (pathname === getAction(pathname).route)
+                                    return;
+                                lockRef.current = true;
+                                router.push(getAction(pathname).route as Href);
+                                setTimeout(() => {
+                                    lockRef.current = false;
+                                }, 300);
+                            }, 100);
+                        }}
+                    >
+                        <Animated.View
+                            style={{
+                                animationName: shake,
+                                animationDuration: "2s",
+                                animationIterationCount: "infinite",
+                                animationTimingFunction: "ease-in-out",
+                            }}
+                        >
+                            <ActionIcon size={35} color="#ffffffff" />
+                        </Animated.View>
+                    </Pressable>
+                </GestureDetector>
+            </Animated.View>
         </View>
     );
 }
-
-

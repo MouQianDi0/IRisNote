@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { noteCategories } from '../data/categories';
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import { noteCategories } from "../data/categories";
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
@@ -13,7 +13,8 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         onCategoryPress(id);
     };
     return (
-        <View className="
+        <View
+            className="
                         bg-[rgb(236,237,239)]
                         h-[100%]
                         absolute 
@@ -36,14 +37,18 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         ${isActive ? ` bg-[#b9daf4]` : `bg-[rgb(236,237,239)]`}`}
                         onPress={() => handlePress(item.id)}
                     >
-                        <Icon size={24}
-                            color={isActive ? `#37a5ffff` : `#666`} />
-                        <Text className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}>{item.name}</Text>
+                        <Icon
+                            size={24}
+                            color={isActive ? `#37a5ffff` : `#666`}
+                        />
+                        <Text
+                            className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}
+                        >
+                            {item.name}
+                        </Text>
                     </Pressable>
-                )
-            }
-            )};
+                );
+            })}
         </View>
     );
-};
-
+}

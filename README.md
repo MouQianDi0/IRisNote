@@ -31,31 +31,40 @@
 
 ```
 src/
-├── app/                     # Expo Router 文件路由
-│   ├── _layout.tsx          # 根布局（Stack）
-│   ├── index.tsx            # 入口重定向
-│   ├── about.tsx            # 关于页
-│   ├── contact.tsx          # 联系我们
-│   └── (tabs)/              # Tab 路由组
-│       ├── _layout.tsx      # Tab 布局（隐藏 tabBar）
-│       ├── note/            # 笔记
-│       │   ├── _layout.tsx  # Stack 子路由
-│       │   ├── index.tsx    # 笔记首页
-│       │   └── create.tsx   # 新建笔记
-│       ├── todo/            # 待办
+├── app/                        # Expo Router 文件路由
+│   ├── _layout.tsx             # 根布局（Stack + GestureHandlerRootView）
+│   ├── index.tsx               # 入口重定向
+│   ├── about.tsx               # 关于页
+│   ├── contact.tsx             # 联系我们
+│   └── (tabs)/                 # Tab 路由组
+│       ├── _layout.tsx         # Tab 布局（隐藏 tabBar）
+│       ├── note/               # 笔记
+│       │   ├── _layout.tsx     # Stack 子路由
+│       │   ├── index.tsx       # 笔记首页（含 FloatingBar + FloatingMenu）
+│       │   └── create.tsx      # 新建笔记
+│       ├── todo/               # 待办
 │       │   ├── _layout.tsx
-│       │   ├── index.tsx
-│       │   └── create.tsx
-│       ├── excerpt/         # 剪贴板摘录
+│       │   ├── index.tsx       # 待办首页
+│       │   └── create.tsx      # 新建待办
+│       ├── excerpt/            # 剪贴板摘录
 │       │   ├── _layout.tsx
-│       │   ├── index.tsx
-│       │   └── create.tsx
-│       └── user/            # 个人中心
+│       │   ├── index.tsx       # 摘录首页
+│       │   └── create.tsx      # 新建摘录
+│       └── user/               # 个人中心
 │           ├── _layout.tsx
-│           ├── index.tsx
-│           └── settings.tsx
-└── components/              # 公共组件
-    └── FloatingMenu.tsx     # 悬浮导航菜单
+│           ├── index.tsx       # 用户首页
+│           └── settings.tsx    # 设置页
+├── components/                 # 公共组件
+│   ├── FloatingBar.tsx         # 悬浮分类筛选栏
+│   └── FloatingMenu.tsx        # 悬浮导航菜单
+├── gestures/                   # 手势交互
+│   ├── animations.ts           # 共享动画配置（pulse / shake / easing）
+│   ├── useLongPressButton.ts   # 长按导航 hook
+│   └── useSwipeTab.ts          # 滑动切换 tab hook（PanResponder）
+└── data/                       # 数据层
+    ├── categories.ts           # 分类数据
+    └── notedata/
+        └── notedata.ts         # 笔记数据
 ```
 
 ## 快速开始
