@@ -94,10 +94,10 @@ const getAction = (
     path: string,
 ): {
     icon:
-        | typeof PencilLine
-        | typeof SquareCheckBig
-        | typeof ClipboardPenLine
-        | typeof Bolt;
+    | typeof PencilLine
+    | typeof SquareCheckBig
+    | typeof ClipboardPenLine
+    | typeof Bolt;
     route: Href;
 } => {
     switch (getActiveTabKey(path)) {
@@ -154,10 +154,16 @@ export default function FloatingMenu() {
                         style={({ pressed }) => [
                             styles.menuItem,
                             getActiveTabKey(pathname) === item.key &&
-                                styles.activeItem,
+                            styles.activeItem,
                             pressed && styles.pressedItem,
                         ]}
-                        onPress={() => router.push(item.route as Href)}
+
+                        onPress={() => {
+                            if (getActiveTabKey(pathname) == item.key) return;
+
+                            router.push(item.route as Href)
+                        }
+                        }
                     >
                         <item.icon
                             size={24}
