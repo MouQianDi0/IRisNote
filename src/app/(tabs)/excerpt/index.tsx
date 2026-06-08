@@ -7,6 +7,7 @@
 // ============================================
 import { StyleSheet, Text } from "react-native";
 import Animated, { useSharedValue } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 // ============================================
 // 导入悬浮菜单组件
@@ -20,20 +21,22 @@ export default function copyExcerpt() {
     const isMenuOpen = useSharedValue(false);
     // 返回 JSX 结构
     return (
+        <SafeAreaView style={{ flex: 1 }}>
         // 最外层容器（居中显示）
-        <Animated.View style={styles.container}>
-            {/* 标题 */}
-            <Text style={styles.title}>剪贴板摘录</Text>
+            <Animated.View style={styles.container}>
+                {/* 标题 */}
+                <Text style={styles.title}>剪贴板摘录</Text>
 
-            {/* 提示文字 */}
-            <Text style={styles.subtitle}>这里是你的剪贴板摘录</Text>
+                {/* 提示文字 */}
+                <Text style={styles.subtitle}>这里是你的剪贴板摘录</Text>
 
-            {/* 提示用户可以添加待办 */}
-            <Text style={styles.hint}>点击 + 按钮添加新摘录内容</Text>
+                {/* 提示用户可以添加待办 */}
+                <Text style={styles.hint}>点击 + 按钮添加新摘录内容</Text>
 
-            {/* 悬浮菜单 */}
-            <FloatingMenu />
-        </Animated.View>
+                {/* 悬浮菜单 */}
+                <FloatingMenu />
+            </Animated.View>
+        </SafeAreaView>
     );
 }
 
