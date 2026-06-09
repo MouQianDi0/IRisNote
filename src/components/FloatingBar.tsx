@@ -1,9 +1,12 @@
-import { router } from 'expo-router';
-import { NotebookPen } from 'lucide-react-native';
-import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
-import { noteCategories } from '../data/categories';
-import AddNoteClass from './addNoteClass';
+import { NotebookPen } from "lucide-react-native";
+import { useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import { noteCategories } from "../data/categories";
+import { useDebounceNavigation } from "../gestures/useDebounceNavigation"; // 引入防抖导航函数
+import { useLongPressButton } from "../gestures/useLongPressButton";
+import AddNoteClass from "./addNoteClass";
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
@@ -11,72 +14,75 @@ type FloatingBarProps = {
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState("all");
     const [NoteClassMenu, setNoteClassMenu] = useState(false);
+    const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
     const handlePress = (id: string) => {
         if (id === selectedId) return;
         setSelectedId(id);
         onCategoryPress(id);
     };
+    const onNavigate = useDebounceNavigation(); // 引入防抖导航函数
     return (
-        <>
-        <View className="
-                        bg-[rgb(242, 242, 242)]
-                        h-auto
-                        absolute
-                        top-[0px] left-[0px]
-                        rounded-[18px]
-                        items-center py-[20px] px-[5px] gap-[6px]"
-        >
-            <Pressable
-                className="w-[50px] h-[50px] mb-[10px]"
-                onPress={() => router.push("/user")}
-            >
-                <Image source={require('../data/profilephoto.png')}
-                    className="w-[50px] h-[50px] rounded-[12px]  border-[2px] border-[#36A5FF] "
-                />
+        <View className="flex-col justify-center">
+            <View className="w-[50px]">
+                <Animated.View style={animatedStyle}>
+                    <GestureDetector gesture={longPress}>
+                        <Pressable
+                            className="w-[50px] h-[50px] mb-[10px]"
+                            onPress={() => onNavigate("/user")}
+                        >
+                            <Image
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    borderRadius: 12,
+                                }}
+                                className="border-[2px] border-[#36A5FF] "
+                                source={require("../data/profilephoto.png")}
+                            />
+                        </Pressable>
+                    </GestureDetector>
+                </Animated.View>
                 <View className="h-[2px] bg-gray-300 my-[7px] w-[40px] mx-[auto]"></View>
-            </Pressable>
-            {noteCategories.map((item) => {
-                const isActive = selectedId === item.id;
-                const Icon = item.icon;
-                return (
-                    <Pressable
-                        key={item.id}
-                        className={`
+                {noteCategories.map((item) => {
+                    const isActive = selectedId === item.id;
+                    const Icon = item.icon;
+                    return (
+                        <Pressable
+                            key={item.id}
+                            className={`
                         w-[50px] h-[50px]
                         rounded-[12px]
                         justify-center
                         items-center
                         padding-[4px]
                         ${isActive ? ` bg-[#f2f2f2]` : `bg-[#f2f2f2]`}`}
-                        onPress={() => handlePress(item.id)}
-                    >
-                        <Icon
-                            size={24}
-                            color={isActive ? `#37a5ffff` : `#666`}
-                        />
-                        <Text
-                            className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}
+                            onPress={() => handlePress(item.id)}
                         >
-                            {item.name}
-                        </Text>
-                    </Pressable>
+                            <Icon
+                                size={24}
+                                color={isActive ? `#37a5ffff` : `#666`}
+                            />
+                            <Text
+                                className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}
+                            >
+                                {item.name}
+                            </Text>
+                        </Pressable>
+                    );
+                })}
 
-                )
-            },
-            )};
-            <Pressable
-                className="w-[48px] h-[48px] justify-center items-center bg-[rgb(220,220,220)] rounded-full"
-                onPress={() => setNoteClassMenu(true)}
-            >
-                <NotebookPen size={22} color="#0000006e" />
-            </Pressable>
-            <View className="h-[2px] bg-gray-300 my-[2px] w-[40px] mx-[auto]"></View>
+                <Pressable
+                    className="w-[48px] h-[48px] justify-center items-center bg-[rgb(220,220,220)] rounded-full m-[2px]"
+                    onPress={() => setNoteClassMenu(true)}
+                >
+                    <NotebookPen size={22} color="#0000006e" />
+                </Pressable>
+                <AddNoteClass
+                    visible={NoteClassMenu}
+                    onClose={() => setNoteClassMenu(false)}
+                />
+                <View className="h-[2px] bg-gray-300 my-[2px] w-[40px] mx-[auto]"></View>
+            </View>
         </View>
-
-        <AddNoteClass
-            visible={NoteClassMenu}
-            onClose={() => setNoteClassMenu(false)}
-        />
-        </>
     );
 }

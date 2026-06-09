@@ -22,7 +22,7 @@ export default function copyExcerpt() {
     // 返回 JSX 结构
     return (
         <SafeAreaView style={{ flex: 1 }}>
-        // 最外层容器（居中显示）
+            {/*  最外层容器（居中显示） */}
             <Animated.View style={styles.container}>
                 {/* 标题 */}
                 <Text style={styles.title}>剪贴板摘录</Text>

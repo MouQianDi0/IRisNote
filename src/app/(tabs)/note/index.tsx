@@ -47,9 +47,22 @@ export default function Index() {
 
     return (
         <View className="flex-1 bp-[rgb(236,237,239) ">
-            <FloatingBar onCategoryPress={setCurrentCategory} />
-            <View className="flex-1 ml-[60px] mr-[0px] mt-[20px] mb-[0px]">
-                <View className="flex-1 bg-white  rounded-tl-[30px] p-4 shadow-sm  ">
+            <View
+                className="bg-[rgb(242, 242, 242)]
+                        w-[60px]
+                        h-auto
+                        absolute
+                        top-[0px] left-[0px]
+                        rounded-[18px]
+                        py-[20px]  gap-[6px]
+                        items-center
+                        "
+            >
+                <FloatingBar onCategoryPress={setCurrentCategory} />
+            </View>
+
+            <View className=" ml-[60px] mr-[0px] mt-[20px] mb-[0px]">
+                <View className=" bg-white  rounded-tl-[30px] p-4   ">
                     <FlatList
                         className="rounded-[14px]"
                         data={filteredNotes}
@@ -57,7 +70,10 @@ export default function Index() {
                         showsVerticalScrollIndicator={false}
                         contentContainerStyle={{ paddingBottom: 10 }}
                         ListHeaderComponent={
-                            <View className="bg-blue-50 h-[200px] rounded-[14px] mb-6 " style={{ width: '100%', maxWidth: 400 }}></View>
+                            <View
+                                className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
+                                style={{ width: "100%", maxWidth: 400 }}
+                            ></View>
                         }
                         renderItem={({ item }) => (
                             <View

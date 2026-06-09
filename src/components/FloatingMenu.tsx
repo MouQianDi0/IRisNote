@@ -7,11 +7,11 @@ import {
     SquareCheckBig,
     Sticker,
 } from "lucide-react-native"; // 引入图标组件
-import { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { pulse, shake } from "../gestures/animations";
+import { useDebounceNavigation } from "../gestures/useDebounceNavigation"; // 引入防抖导航函数
 import { useLongPressButton } from "../gestures/useLongPressButton";
 import { useSwipeTab } from "../gestures/useSwipeTab";
 
@@ -110,8 +110,7 @@ export default function FloatingMenu() {
     const router = useRouter();
     const pathname = usePathname();
     const panHandlers = useSwipeTab(pathname);
-    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lockRef = useRef(false);
+    const onNavigate = useDebounceNavigation();
 
     const { icon: ActionIcon } = getAction(pathname);
     const { gesture: longPress, animatedStyle } = useLongPressButton(
@@ -168,22 +167,9 @@ export default function FloatingMenu() {
                                 ? { backgroundColor: "#001692ff", opacity: 0.7 }
                                 : undefined
                         }
-                        onPress={() => {
-                            if (lockRef.current) return;
-                            if (debounceTimer.current) {
-                                clearTimeout(debounceTimer.current);
-                            }
-                            debounceTimer.current = setTimeout(() => {
-                                debounceTimer.current = null;
-                                if (pathname === getAction(pathname).route)
-                                    return;
-                                lockRef.current = true;
-                                router.push(getAction(pathname).route as Href);
-                                setTimeout(() => {
-                                    lockRef.current = false;
-                                }, 300);
-                            }, 100);
-                        }}
+                        onPress={() =>
+                            onNavigate(getAction(pathname).route as Href)
+                        }
                     >
                         <Animated.View
                             style={{
