@@ -1,9 +1,12 @@
-import { router } from 'expo-router';
-import { NotebookPen } from 'lucide-react-native';
-import { useState } from 'react';
-import { Image, Pressable, Text, View } from 'react-native';
-import { noteCategories } from '../data/categories';
-import AddNoteClass from './addNoteClass';
+import { NotebookPen } from "lucide-react-native";
+import { useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
+import { GestureDetector } from "react-native-gesture-handler";
+import Animated from "react-native-reanimated";
+import { noteCategories } from "../data/categories";
+import { useDebounceNavigation } from "../gestures/useDebounceNavigation"; // 引入防抖导航函数
+import { useLongPressButton } from "../gestures/useLongPressButton";
+import AddNoteClass from "./addNoteClass";
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
@@ -11,24 +14,35 @@ type FloatingBarProps = {
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState("all");
     const [NoteClassMenu, setNoteClassMenu] = useState(false);
+    const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
     const handlePress = (id: string) => {
         if (id === selectedId) return;
         setSelectedId(id);
         onCategoryPress(id);
     };
+    const onNavigate = useDebounceNavigation(); // 引入防抖导航函数
     return (
-        <>
-            <View>
-                <Pressable
-                    className="w-[50px] h-[50px] mb-[10px]"
-                    onPress={() => router.push("/user")}
-                >
-                    <Image source={require('../data/profilephoto.png')}
-                        style={{ width: 50, height: 50 }}
-                        className="border-[2px] border-[#36A5FF] rounded-[12px]"
-                    />
-                </Pressable>
-                <View className="h-[2px] bg-gray-300 my-[0px] w-[40px] mx-[auto]"></View>
+        <View className="flex-col justify-center">
+            <View className="w-[50px]">
+                <Animated.View style={animatedStyle}>
+                    <GestureDetector gesture={longPress}>
+                        <Pressable
+                            className="w-[50px] h-[50px] mb-[10px]"
+                            onPress={() => onNavigate("/user")}
+                        >
+                            <Image
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    borderRadius: 12,
+                                }}
+                                className="border-[2px] border-[#36A5FF] "
+                                source={require("../data/profilephoto.png")}
+                            />
+                        </Pressable>
+                    </GestureDetector>
+                </Animated.View>
+                <View className="h-[2px] bg-gray-300 my-[7px] w-[40px] mx-[auto]"></View>
                 {noteCategories.map((item) => {
                     const isActive = selectedId === item.id;
                     const Icon = item.icon;
@@ -54,12 +68,11 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                 {item.name}
                             </Text>
                         </Pressable>
+                    );
+                })}
 
-                    )
-                },
-                )}
                 <Pressable
-                    className="w-[50px] h-[50px] justify-center items-center "
+                    className="w-[48px] h-[48px] justify-center items-center bg-[rgb(220,220,220)] rounded-full m-[2px]"
                     onPress={() => setNoteClassMenu(true)}
                 >
                     <NotebookPen size={22} color="#0000006e" />
@@ -70,6 +83,6 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 />
                 <View className="h-[2px] bg-gray-300 my-[2px] w-[40px] mx-[auto]"></View>
             </View>
-        </>
+        </View>
     );
 }
