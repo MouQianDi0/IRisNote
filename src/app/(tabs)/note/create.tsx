@@ -7,13 +7,13 @@ import { useState } from 'react';
 // 导入 React Native 组件
 // ============================================
 import {
-    Alert // 弹窗提示
-    , // 可点击组件
-    StyleSheet, // 容器组件
-    Text, // 文字组件
-    TextInput, // 输入框组件
-    TouchableOpacity,
-    View
+  Alert // 弹窗提示
+  , // 可点击组件
+  StyleSheet, // 容器组件
+  Text, // 文字组件
+  TextInput, // 输入框组件
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 // ============================================
@@ -124,8 +124,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',  // 水平排列
     justifyContent: 'space-between',  // 两端对齐
     alignItems: 'center',  // 垂直居中
-    paddingHorizontal: 15,  // 水平内边距
-    paddingTop: 50,  // 上边距（避开状态栏）
+    paddingHorizontal: 15,  // 水平内边距  // 上边距（避开状态栏）
     paddingBottom: 15,  // 下边距
     borderBottomWidth: 1,  // 底部边框
     borderBottomColor: '#eee',  // 边框颜色
