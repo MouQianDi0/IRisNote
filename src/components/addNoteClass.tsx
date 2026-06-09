@@ -1,7 +1,7 @@
 // src/components/addNoteClass.tsx
 // 添加笔记分类弹窗组件 ,但是现在还没有实际设计 只是示范用
 
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from "react-native";
 
 type ActionSheetProps = {
     visible: boolean;
@@ -20,7 +20,9 @@ export default function ActionSheet({ visible, onClose }: ActionSheetProps) {
 
             <View className="h-[1px] bg-gray-100 mx-3" />
             <Pressable className="py-3 px-4 rounded-[12px]" onPress={onClose}>
-                <Text className="text-[14px] text-red-400 text-center">取消</Text>
+                <Text className="text-[14px] text-red-400 text-center">
+                    取消
+                </Text>
             </Pressable>
         </View>
     );
