@@ -50,9 +50,15 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         ${isActive ? ` bg-[#f2f2f2]` : `bg-[#f2f2f2]`}`}
                         onPress={() => handlePress(item.id)}
                     >
-                        <Icon size={24}
-                            color={isActive ? `#37a5ffff` : `#666`} />
-                        <Text className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}>{item.name}</Text>
+                        <Icon
+                            size={24}
+                            color={isActive ? `#37a5ffff` : `#666`}
+                        />
+                        <Text
+                            className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}
+                        >
+                            {item.name}
+                        </Text>
                     </Pressable>
 
                 )
@@ -73,5 +79,4 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         />
         </>
     );
-};
-
+}
