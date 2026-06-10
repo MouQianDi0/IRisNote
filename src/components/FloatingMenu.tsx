@@ -1,58 +1,16 @@
 import { type Href, usePathname, useRouter } from "expo-router";
 import {
-    Bolt,
     ClipboardPenLine,
     Notebook,
-    PencilLine,
     SquareCheckBig,
     Sticker,
-} from "lucide-react-native"; // 引入图标组件
+} from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
-import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { pulse, shake } from "../gestures/animations";
-import { useDebounceNavigation } from "../gestures/useDebounceNavigation"; // 引入防抖导航函数
-import { useLongPressButton } from "../gestures/useLongPressButton";
-import { useSwipeTab } from "../gestures/useSwipeTab";
-
-type TabKey = "note" | "todo" | "excerpt" | "user"; // 选项卡键
-
-const getActiveTabKey = (path: string): TabKey => {
-    if (
-        path === "/" ||
-        path === "/note" ||
-        path.startsWith("/note/") ||
-        path === "/(tabs)/note" ||
-        path.startsWith("/(tabs)/note/")
-    ) {
-        return "note";
-    }
-    if (
-        path === "/todo" ||
-        path.startsWith("/todo/") ||
-        path === "/(tabs)/todo" ||
-        path.startsWith("/(tabs)/todo/")
-    ) {
-        return "todo";
-    }
-    if (
-        path === "/excerpt" ||
-        path.startsWith("/excerpt/") ||
-        path === "/(tabs)/excerpt" ||
-        path.startsWith("/(tabs)/excerpt/")
-    ) {
-        return "excerpt";
-    }
-    if (
-        path === "/user" ||
-        path.startsWith("/user/") ||
-        path === "/(tabs)/user" ||
-        path.startsWith("/(tabs)/user/")
-    ) {
-        return "user";
-    }
-    return "note";
-};
+import { getActiveTabKey } from "../data/actions";
+import { pulse } from "../hooks/animations";
+import { useSwipeTab } from "../hooks/useSwipeTab";
+import ActionButton from "./ActionButton";
 
 const menuItems = [
     {
@@ -81,48 +39,17 @@ const menuItems = [
     },
 ];
 
-const getAction = (
-    path: string,
-): {
-    icon:
-        | typeof PencilLine
-        | typeof SquareCheckBig
-        | typeof ClipboardPenLine
-        | typeof Bolt;
-
-    route: string;
-} => {
-    switch (getActiveTabKey(path)) {
-        case "note":
-            return { icon: PencilLine, route: "/(tabs)/note/create" };
-        case "todo":
-            return { icon: SquareCheckBig, route: "/(tabs)/todo/create" };
-        case "excerpt":
-            return { icon: ClipboardPenLine, route: "/(tabs)/excerpt/create" };
-        case "user":
-            return { icon: Bolt, route: "/(tabs)/user/settings" };
-        default:
-            return { icon: PencilLine, route: "/(tabs)/note/create" };
-    }
-};
-
 export default function FloatingMenu() {
     const router = useRouter();
     const pathname = usePathname();
     const panHandlers = useSwipeTab(pathname);
-    const onNavigate = useDebounceNavigation();
-
-    const { icon: ActionIcon } = getAction(pathname);
-    const { gesture: longPress, animatedStyle } = useLongPressButton(
-        getAction(pathname).route as Href,
-    );
 
     return (
         <View
             className="absolute bottom-[50] right-5 items-end"
             {...panHandlers}
         >
-            <Animated.View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">
+            <View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
@@ -157,33 +84,8 @@ export default function FloatingMenu() {
                         </Text>
                     </Pressable>
                 ))}
-            </Animated.View>
-            <Animated.View style={animatedStyle}>
-                <GestureDetector gesture={longPress}>
-                    <Pressable
-                        className="size-[66] items-center justify-center rounded-[18] bg-[#0037ebff] shadow-lg"
-                        style={({ pressed }) =>
-                            pressed
-                                ? { backgroundColor: "#001692ff", opacity: 0.7 }
-                                : undefined
-                        }
-                        onPress={() =>
-                            onNavigate(getAction(pathname).route as Href)
-                        }
-                    >
-                        <Animated.View
-                            style={{
-                                animationName: shake,
-                                animationDuration: "2s",
-                                animationIterationCount: "infinite",
-                                animationTimingFunction: "ease-in-out",
-                            }}
-                        >
-                            <ActionIcon size={35} color="#ffffffff" />
-                        </Animated.View>
-                    </Pressable>
-                </GestureDetector>
-            </Animated.View>
+            </View>
+            <ActionButton />
         </View>
     );
 }

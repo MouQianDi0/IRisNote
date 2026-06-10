@@ -48,17 +48,18 @@ export default function Index() {
     return (
         <View className="flex-1 bp-[rgb(236,237,239) ">
             <View className="mt-[10px] flex-row ">
-                <View className="
+                <View
+                    className="
                                     w-[75px]
                                     bg-[rgb(242, 242, 242)]
-                                    h-auto  
-                                                                      
+                                    h-auto                           
                                     rounded-[18px]
-                                    items-center gap-[6px]">
+                                    items-center gap-[6px]"
+                >
                     <FloatingBar onCategoryPress={setCurrentCategory} />
                 </View>
                 <View className="relative flex-1">
-                    <View className="bg-white rounded-tl-[30px] p-4 shadow-sm  ">
+                    <View className="bg-white rounded-tl-[30px] p-4 h-[100%]  ">
                         <FlatList
                             className="rounded-[14px]"
                             data={filteredNotes}
@@ -66,7 +67,10 @@ export default function Index() {
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={{ paddingBottom: 10 }}
                             ListHeaderComponent={
-                                <View className="bg-blue-50 h-[200px] rounded-[14px] mb-6 " style={{ width: '100%', maxWidth: 400 }}></View>
+                                <View
+                                    className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
+                                    style={{ width: "100%", maxWidth: 400 }}
+                                ></View>
                             }
                             renderItem={({ item }) => (
                                 <View
