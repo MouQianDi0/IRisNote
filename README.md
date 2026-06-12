@@ -79,7 +79,7 @@ npx expo start
 
 运行后在终端选择：
 - `w` — 打开 Web 版
-- `a` — 打开 Android 模拟器
+- `a` — 打开 Android 模拟器（目前主要开发）
 - `i` — 打开 iOS 模拟器
 - 扫码 — 在 Expo Go 中打开
 
