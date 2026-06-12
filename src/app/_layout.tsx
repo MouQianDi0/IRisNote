@@ -7,6 +7,10 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
             <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="pages/note/create" options={{ headerShown: false }} />
+                <Stack.Screen name="pages/todo/create" options={{ headerShown: false }} />
+                <Stack.Screen name="pages/excerpt/create" options={{ headerShown: false }} />
+                <Stack.Screen name="pages/user/settings" options={{ headerShown: false }} />
             </Stack>
         </GestureHandlerRootView>
     );

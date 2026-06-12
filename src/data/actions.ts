@@ -56,14 +56,14 @@ export const getAction = (
 } => {
     switch (getActiveTabKey(path)) {
         case "note":
-            return { icon: PencilLine, route: "/(tabs)/note/create" };
+            return { icon: PencilLine, route: "/pages/note/create" };
         case "todo":
-            return { icon: SquareCheckBig, route: "/(tabs)/todo/create" };
+            return { icon: SquareCheckBig, route: "/pages/todo/create" };
         case "excerpt":
-            return { icon: ClipboardPenLine, route: "/(tabs)/excerpt/create" };
+            return { icon: ClipboardPenLine, route: "/pages/excerpt/create" };
         case "user":
-            return { icon: Bolt, route: "/(tabs)/user/settings" };
+            return { icon: Bolt, route: "/pages/user/settings" };
         default:
-            return { icon: PencilLine, route: "/(tabs)/note/create" };
+            return { icon: PencilLine, route: "/pages/note/create" };
     }
 };
