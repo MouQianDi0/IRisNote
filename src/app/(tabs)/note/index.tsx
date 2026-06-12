@@ -1,49 +1,35 @@
+import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
 import FloatingMenu from "@/components/FloatingMenu";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 
-const allNotes = [
-    {
-        id: "1",
-        title: "会议记录",
-        category: "work",
-        content: "讨论了项目进度...",
-    },
-    {
-        id: "2",
-        title: "React 学习笔记",
-        category: "study",
-        content: "学习了 Hook 用法...",
-    },
-    { id: "3", title: "周末计划", category: "life", content: "去公园跑步..." },
-    {
-        id: "4",
-        title: "产品想法",
-        category: "idea",
-        content: "做一个笔记App...",
-    },
-    { id: "5", title: "周报", category: "work", content: "本周完成了..." },
-    {
-        id: "6",
-        title: "TypeScript 笔记",
-        category: "study",
-        content: "泛型的用法...",
-    },
-    {
-        id: "7",
-        title: "读书清单",
-        category: "life",
-        content: "《原子习惯》...",
-    },
-    { id: "8", title: "设计灵感", category: "idea", content: "渐变色背景..." },
-];
+type Note = {
+    id: number;
+    title: string;
+    content: string | null;
+    category: string | null;
+    created_at: string;
+};
+
 export default function Index() {
+    const [notes, setNotes] = useState<Note[]>([]);
+    const [loading, setLoading] = useState(true);
     const [currentCategory, setCurrentCategory] = useState("all");
+
+    useEffect(() => {
+        api.get<Note[]>("/notes")
+            .then(({ data }) => {
+                console.log("笔记数据:", JSON.stringify(data));
+                setNotes(data);
+            })
+            .catch((err) => console.error("获取笔记失败:", err.message))
+            .finally(() => setLoading(false));
+    }, []);
     const filteredNotes =
         currentCategory === "all"
-            ? allNotes
-            : allNotes.filter((note) => note.category === currentCategory);
+            ? notes
+            : notes.filter((note) => note.category === currentCategory); // 过滤分类为当前分类的笔记
 
     return (
         <View className="flex-1 bp-[rgb(236,237,239) ">
@@ -63,7 +49,7 @@ export default function Index() {
                         <FlatList
                             className="rounded-[14px]"
                             data={filteredNotes}
-                            keyExtractor={(item) => item.id}
+                            keyExtractor={(item) => String(item.id)}
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={{ paddingBottom: 10 }}
                             ListHeaderComponent={
@@ -86,7 +72,7 @@ export default function Index() {
                                     <View className="flex-row items-center mt-2">
                                         <View className="bg-blue-50 rounded-full px-2 py-0.5">
                                             <Text className="text-xs text-blue-500">
-                                                {item.category}
+                                                {item.category ?? "默认"}
                                             </Text>
                                         </View>
                                     </View>
