@@ -8,7 +8,7 @@ const getBaseURL = () => {
         const host = debuggerHost?.split(":")[0] ?? "localhost";
         return `http://${host}:3000/api`;
     }
-    return "http://1.14.177.177:3000/api"; // 生产环境服务器地址
+    return "http://tech-mou.top:3000/api"; // 生产环境服务器地址
 };
 
 const api = axios.create({
