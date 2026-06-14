@@ -7,8 +7,11 @@ export type Category = {
     icon: string;
 };
 
+// 图标组件类型
+type IconComponent = typeof Folder;
+
 // 图标映射：字符串 → 组件
-export const iconMap = {
+export const iconMap: Record<string, IconComponent> = {
     Folder,
     FolderOpen,
     Tag,
