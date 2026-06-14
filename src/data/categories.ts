@@ -4,14 +4,27 @@ import { Bookmark, Folder, FolderOpen, Lightbulb, Tag } from "lucide-react-nativ
 export type Category = {
     id: string;
     name: string;
-    icon: typeof Folder;
+    icon: string;
 };
 
+// 图标组件类型
+type IconComponent = typeof Folder;
+
+// 图标映射：字符串 → 组件
+export const iconMap: Record<string, IconComponent> = {
+    Folder,
+    FolderOpen,
+    Tag,
+    Bookmark,
+    Lightbulb,
+} as const;
+
+// 分类列表（icon 存储字符串，通过 iconMap 获取组件）
 export const noteCategories: Category[] = [
-    { id: "all", name: "全部", icon: Folder },
-    { id: "work", name: "工作", icon: FolderOpen },
-    { id: "study", name: "学习", icon: Tag },
-    { id: "life", name: "生活", icon: Bookmark },
-    { id: "idea", name: "灵感", icon: Lightbulb },
+    { id: "all", name: "全部", icon: "Folder" },
+    { id: "work", name: "工作", icon: "FolderOpen" },
+    { id: "study", name: "学习", icon: "Tag" },
+    { id: "life", name: "生活", icon: "Bookmark" },
+    { id: "idea", name: "灵感", icon: "Lightbulb" },
 ];
 
