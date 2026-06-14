@@ -1,14 +1,14 @@
-import { NotebookPen } from "lucide-react-native";
+import { Folder, NotebookPen } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { noteCategories } from "../data/categories";
+import { Category, iconMap, noteCategories } from "../data/categories";
 import { pulse } from "../hooks/animations";
 import { useDebounceNavigation } from "../hooks/useDebounceNavigation"; // 引入防抖导航函数
 import { useLongPressButton } from "../hooks/useLongPressButton";
-
 import AddNoteClass from "./addNoteClass";
+
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
@@ -23,6 +23,15 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         onCategoryPress(id);
     };
     const onNavigate = useDebounceNavigation(); // 引入防抖导航函数
+    const [categories, setCategories] = useState(noteCategories);
+    const handleAddCategory = (newCategory: Category) => {
+        console.log("收到新分类:", newCategory);
+        setCategories((prev) => {
+            console.log("更新前数量:", prev.length);
+            return [...prev, newCategory];
+        });
+    };
+
     return (
         <View className="flex-col justify-center">
             <View className="w-[50px]">
@@ -45,10 +54,13 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                     </GestureDetector>
                 </Animated.View>
                 <View className="h-[2px] bg-gray-300 my-[7px] w-[40px] mx-[auto]"></View>
-                <ScrollView className="h-[300px]">
-                    {noteCategories.map((item) => {
+                <ScrollView
+                    style={{ maxHeight: 560 }}
+                    showsVerticalScrollIndicator={true}
+                >
+                    {categories.map((item) => {
                         const isActive = selectedId === item.id;
-                        const Icon = item.icon;
+                        const IconComponent = iconMap[item.icon as keyof typeof iconMap] || Folder;
                         return (
                             <Pressable
                                 key={item.id}
@@ -69,10 +81,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                             animationTimingFunction: "ease-out",
                                         }}
                                     >
-                                        <Icon size={30} color="#37a5ffff" />
+                                        <IconComponent size={30} color="#37a5ffff" />
                                     </Animated.View>
                                 ) : (
-                                    <Icon size={30} color="#666" />
+                                    <IconComponent size={30} color="#666" />
                                 )}
                                 <Text
                                     className={`text-[10px] ${isActive ? "text-blue-500 font-semibold" : "text-gray-400"}`}
@@ -90,11 +102,13 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 >
                     <NotebookPen size={22} color="#0000006e" />
                 </Pressable>
+
                 <AddNoteClass
                     visible={NoteClassMenu}
                     onClose={() => setNoteClassMenu(false)}
+                    onAdd={handleAddCategory}
                 />
-                <View className="h-[2px] bg-gray-300 my-[2px] w-[40px] mx-[auto]"></View>
+                <View className="h-[2px] bg-gray-300  w-[40px] mx-[auto]"></View>
             </View>
         </View>
     );
