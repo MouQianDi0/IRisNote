@@ -1,8 +1,11 @@
+import api from "@/api/client";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
@@ -18,11 +21,17 @@ export default function Register() {
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [nickname, setNickname] = useState("");
     const emailCheck = useEmailValidation(email);
 
-    const handleRegister = () => {
+    const handleRegister = async () => {
         if (!emailCheck.isValid) {
             Alert.alert("提示", emailCheck.error || "请输入有效邮箱");
+            return;
+        }
+        if (!nickname.trim()) {
+            Alert.alert("提示", "请输入用户名");
             return;
         }
         if (!password.trim() || !confirmPassword.trim()) {
@@ -37,8 +46,28 @@ export default function Register() {
             Alert.alert("提示", "密码至少6位");
             return;
         }
-        // TODO: 调用后端注册 API
-        Alert.alert("提示", "注册功能开发中");
+
+        setLoading(true);
+        try {
+            const { data } = await api.post("/auth/register", {
+                email: email.trim(),
+                password,
+                nickname: nickname.trim(),
+            }); // 注册
+
+            // 保存 token 和用户信息
+            await AsyncStorage.setItem("token", data.token);
+            await AsyncStorage.setItem("user", JSON.stringify(data.user));
+
+            Alert.alert("成功", "注册成功", [
+                { text: "确定", onPress: () => router.replace("/(tabs)/user") },
+            ]);
+        } catch (err: any) {
+            const message = err.response?.data?.error || "注册失败，请稍后再试";
+            Alert.alert("提示", message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -59,6 +88,19 @@ export default function Register() {
 
             {/* 表单区域 */}
             <View className="flex-1 px-6 pt-8">
+                <Text className="text-sm text-gray-500 mb-2 ml-1">用户名</Text>
+                <TextInput
+                    className={
+                        "border rounded-xl px-4 py-3.5 text-base mb-1 bg-gray-50 border-gray-200"
+                    }
+                    placeholder="请输入用户名"
+                    placeholderTextColor="#999"
+                    value={nickname}
+                    onChangeText={setNickname}
+                    keyboardType="default"
+                    autoCapitalize="none"
+                />
+
                 {/* 邮箱 */}
                 <Text className="text-sm text-gray-500 mb-2 ml-1">邮箱</Text>
                 <TextInput
@@ -132,23 +174,31 @@ export default function Register() {
 
                 {/* 注册按钮 */}
                 <Pressable
-                    className={`rounded-xl py-3.5 mt-6 ${
+                    className={`rounded-xl py-3.5 mt-6 flex-row justify-center items-center ${
+                        nickname.trim() &&
                         emailCheck.isValid &&
                         password.trim() &&
-                        confirmPassword.trim()
+                        confirmPassword.trim() &&
+                        !loading
                             ? "bg-[#007AFF]"
                             : "bg-gray-300"
                     }`}
                     onPress={handleRegister}
                     disabled={
                         !emailCheck.isValid ||
+                        !nickname.trim() ||
                         !password.trim() ||
-                        !confirmPassword.trim()
+                        !confirmPassword.trim() ||
+                        loading
                     }
                 >
-                    <Text className="text-white text-center text-base font-semibold">
-                        注册
-                    </Text>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text className="text-white text-center text-base font-semibold">
+                            注册
+                        </Text>
+                    )}
                 </Pressable>
 
                 {/* 跳转登录 */}

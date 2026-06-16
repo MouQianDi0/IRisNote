@@ -1,18 +1,24 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
-import Constants from "expo-constants";
 
-// 开发模式下自动获取电脑局域网 IP，部署时改为服务器地址
 const getBaseURL = () => {
-    if (__DEV__) {
-        const debuggerHost = Constants.expoConfig?.hostUri;
-        const host = debuggerHost?.split(":")[0] ?? "localhost";
-        return `http://${host}:3000/api`;
-    }
-    return "http://tech-mou.top:3000/api"; // 生产环境服务器地址
+    return "https://tech-mou.top/api";
 };
 
+const baseURL = getBaseURL();
+console.log("[API] 请求地址:", baseURL, "__DEV__:", __DEV__);
+
 const api = axios.create({
-    baseURL: getBaseURL(),
+    baseURL,
+});
+
+// 请求拦截器：自动附加 token
+api.interceptors.request.use(async (config) => {
+    const token = await AsyncStorage.getItem("token");
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
 });
 
 export default api;
