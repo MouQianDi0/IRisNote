@@ -5,7 +5,8 @@
 // ============================================
 // 导入 React Native 组件
 // ============================================
-import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 // ============================================
 // 导入悬浮菜单组件
@@ -32,8 +33,16 @@ export default function User() {
             </View>
 
             {/* 用户信息占位 */}
-            <Text style={styles.username}>用户名</Text>
-            <Text style={styles.email}>user@example.com</Text>
+            <Text style={styles.username}>未登录</Text>
+            <Text style={styles.email}>登录后同步数据</Text>
+
+            {/* 登录按钮 */}
+            <Pressable
+                style={styles.loginButton}
+                onPress={() => router.push("/auth/login")}
+            >
+                <Text style={styles.loginButtonText}>登录 / 注册</Text>
+            </Pressable>
 
             {/* 悬浮菜单 */}
             <FloatingMenu />
@@ -94,5 +103,21 @@ const styles = StyleSheet.create({
     email: {
         fontSize: 14, // 字体大小
         color: "#666", // 灰色文字
+        marginBottom: 24, // 下边距
+    },
+
+    // 登录按钮
+    loginButton: {
+        backgroundColor: "#007AFF",
+        paddingHorizontal: 40,
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+
+    // 登录按钮文字
+    loginButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "600",
     },
 });

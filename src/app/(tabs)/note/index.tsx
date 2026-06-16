@@ -32,8 +32,8 @@ export default function Index() {
             : notes.filter((note) => note.category === currentCategory); // 过滤分类为当前分类的笔记
 
     return (
-        <View className="flex-1 bp-[rgb(236,237,239) ">
-            <View className="mt-[10px] flex-row ">
+        <View className="flex-1 bp-[#ecedefff] ">
+            <View className="flex-row ">
                 <View
                     className="
                                     w-[75px]

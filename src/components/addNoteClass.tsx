@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Modal, Pressable, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
+import {
+    Modal,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
+} from "react-native";
 import { Category, noteCategories } from "../data/categories";
 
 type ActionSheetProps = {
@@ -16,23 +23,29 @@ const categoryToIcon: Record<string, string> = {
     idea: "Lightbulb",
 };
 
-export default function AddNoteClass({ visible, onClose, onAdd }: ActionSheetProps) {
+export default function AddNoteClass({
+    visible,
+    onClose,
+    onAdd,
+}: ActionSheetProps) {
     const [ClassName, setClassName] = useState("");
     const [CategoryType, setCategoryType] = useState("work");
 
     const handleSubmit = () => {
-        if (!ClassName) { return; }
+        if (!ClassName) {
+            return;
+        }
         const categoryName = ClassName.trim();
         const newCategory: Category = {
             id: `${Date.now()}`,
             name: categoryName,
             icon: categoryToIcon[CategoryType],
-        }
+        };
         onAdd(newCategory);
         setClassName("");
         setCategoryType("work");
         onClose();
-    }
+    };
 
     return (
         <Modal
@@ -66,17 +79,21 @@ export default function AddNoteClass({ visible, onClose, onAdd }: ActionSheetPro
                                 {noteCategories.slice(1).map((category) => (
                                     <Pressable
                                         key={category.id}
-                                        className={`px-3 py-2 rounded-[12px] ${CategoryType === category.id
-                                            ? "bg-[#007AFF]"
-                                            : "bg-[#F5F5F5]"
-                                            }`}
-                                        onPress={() => setCategoryType(category.id)}
+                                        className={`px-3 py-2 rounded-[12px] ${
+                                            CategoryType === category.id
+                                                ? "bg-[#007AFF]"
+                                                : "bg-[#F5F5F5]"
+                                        }`}
+                                        onPress={() =>
+                                            setCategoryType(category.id)
+                                        }
                                     >
                                         <Text
-                                            className={`text-[14px] ${CategoryType === category.id
-                                                ? "text-white"
-                                                : "text-[#333]"
-                                                }`}
+                                            className={`text-[14px] ${
+                                                CategoryType === category.id
+                                                    ? "text-white"
+                                                    : "text-[#333]"
+                                            }`}
                                         >
                                             {category.name}
                                         </Text>
@@ -93,17 +110,21 @@ export default function AddNoteClass({ visible, onClose, onAdd }: ActionSheetPro
                                     </Text>
                                 </Pressable>
                                 <Pressable
-                                    className={`flex-1 py-3 rounded-[12px] ${ClassName.trim()
-                                        ? "bg-[#007AFF]"
-                                        : "bg-gray-300"
-                                        }`}
+                                    className={`flex-1 py-3 rounded-[12px] ${
+                                        ClassName.trim()
+                                            ? "bg-[#007AFF]"
+                                            : "bg-gray-300"
+                                    }`}
                                     onPress={handleSubmit}
                                     disabled={!ClassName.trim()}
                                 >
-                                    <Text className={`text-[14px] text-center ${ClassName.trim()
-                                        ? "text-white"
-                                        : "text-gray-400"
-                                        }`}>
+                                    <Text
+                                        className={`text-[14px] text-center ${
+                                            ClassName.trim()
+                                                ? "text-white"
+                                                : "text-gray-400"
+                                        }`}
+                                    >
                                         确定
                                     </Text>
                                 </Pressable>
