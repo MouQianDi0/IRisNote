@@ -1,8 +1,11 @@
+import api from "@/api/client";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
     Platform,
@@ -16,9 +19,10 @@ export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
     const emailCheck = useEmailValidation(email);
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
         if (!emailCheck.isValid) {
             Alert.alert("提示", emailCheck.error || "请输入有效邮箱");
             return;
@@ -27,8 +31,27 @@ export default function Login() {
             Alert.alert("提示", "请输入密码");
             return;
         }
-        // TODO: 调用后端登录 API
-        Alert.alert("提示", "登录功能开发中");
+
+        setLoading(true);
+        try {
+            const { data } = await api.post("/auth/login", {
+                email: email.trim(),
+                password,
+            });
+
+            // 保存 token 和用户信息
+            await AsyncStorage.setItem("token", data.token);
+            await AsyncStorage.setItem("user", JSON.stringify(data.user));
+
+            Alert.alert("成功", "登录成功", [
+                { text: "确定", onPress: () => router.replace("/(tabs)/user") },
+            ]);
+        } catch (err: any) {
+            const message = err.response?.data?.error || "登录失败，请稍后再试";
+            Alert.alert("提示", message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -97,17 +120,23 @@ export default function Login() {
 
                 {/* 登录按钮 */}
                 <Pressable
-                    className={`rounded-xl py-3.5 mt-6 ${
-                        emailCheck.isValid && password.trim()
+                    className={`rounded-xl py-3.5 mt-6 flex-row justify-center items-center ${
+                        emailCheck.isValid && password.trim() && !loading
                             ? "bg-[#007AFF]"
                             : "bg-gray-300"
                     }`}
                     onPress={handleLogin}
-                    disabled={!emailCheck.isValid || !password.trim()}
+                    disabled={
+                        !emailCheck.isValid || !password.trim() || loading
+                    }
                 >
-                    <Text className="text-white text-center text-base font-semibold">
-                        登录
-                    </Text>
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text className="text-white text-center text-base font-semibold">
+                            登录
+                        </Text>
+                    )}
                 </Pressable>
 
                 {/* 跳转注册 */}
