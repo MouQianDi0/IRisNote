@@ -31,6 +31,8 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
             return [...prev, newCategory];
         });
     };
+    const [longPressVisible, setLongPressVisible] = useState<Category | null>(null);
+    const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
     return (
         <View className="flex-col justify-center">
@@ -64,6 +66,11 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         return (
                             <Pressable
                                 key={item.id}
+                                onLongPress={() => {
+                                    setLongPressVisible(item);
+                                    setCategoryModalVisible(true);
+                                }}
+                                delayLongPress={400}
                                 className={`
                         w-[50px] h-[60px]
                         rounded-[12px]
