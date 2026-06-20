@@ -1,4 +1,5 @@
 import { type Href, usePathname, useRouter } from "expo-router";
+import type { BottomTabBarProps } from "expo-router/tabs";
 import {
     ClipboardPenLine,
     Notebook,
@@ -7,7 +8,6 @@ import {
 } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { getActiveTabKey } from "../data/actions";
 import { pulse } from "../hooks/animations";
 import { useSwipeTab } from "../hooks/useSwipeTab";
 import ActionButton from "./ActionButton";
@@ -39,9 +39,10 @@ const menuItems = [
     },
 ];
 
-export default function FloatingMenu() {
+export default function FloatingMenu({ state }: BottomTabBarProps) {
     const router = useRouter();
     const pathname = usePathname();
+    const activeTab = state.routes[state.index]?.name ?? "note";
     const panHandlers = useSwipeTab(pathname);
 
     return (
@@ -54,7 +55,7 @@ export default function FloatingMenu() {
                     <Pressable
                         key={index}
                         className={`my-[5] size-[50] items-center justify-center rounded-full ${
-                            getActiveTabKey(pathname) === item.key
+                            activeTab === item.key
                                 ? "opacity-100"
                                 : "opacity-70"
                         }`}
@@ -62,11 +63,11 @@ export default function FloatingMenu() {
                             pressed ? { opacity: 0.7 } : undefined
                         }
                         onPress={() => {
-                            if (getActiveTabKey(pathname) === item.key) return;
-                            router.push(item.route as Href);
+                            if (activeTab === item.key) return;
+                            router.replace(item.route as Href);
                         }}
                     >
-                        {getActiveTabKey(pathname) === item.key ? (
+                        {activeTab === item.key ? (
                             <Animated.View
                                 style={{
                                     animationName: pulse,

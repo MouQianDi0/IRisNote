@@ -1,8 +1,8 @@
 import { type Href, useRouter } from "expo-router";
 import { useRef } from "react";
 import { PanResponder } from "react-native";
-
-type TabKey = "note" | "todo" | "excerpt" | "user";
+import type { TabKey } from "../data/actions";
+import { getActiveTabKey } from "../data/actions";
 
 const tabPaths = [
     "/(tabs)/user",
@@ -16,43 +16,6 @@ const pathToIndex: Record<TabKey, number> = {
     excerpt: 1,
     todo: 2,
     note: 3,
-};
-
-const getActiveTabKey = (path: string): TabKey => {
-    if (
-        path === "/" ||
-        path === "/note" ||
-        path.startsWith("/note/") ||
-        path === "/(tabs)/note" ||
-        path.startsWith("/(tabs)/note/")
-    ) {
-        return "note";
-    }
-    if (
-        path === "/todo" ||
-        path.startsWith("/todo/") ||
-        path === "/(tabs)/todo" ||
-        path.startsWith("/(tabs)/todo/")
-    ) {
-        return "todo";
-    }
-    if (
-        path === "/excerpt" ||
-        path.startsWith("/excerpt/") ||
-        path === "/(tabs)/excerpt" ||
-        path.startsWith("/(tabs)/excerpt/")
-    ) {
-        return "excerpt";
-    }
-    if (
-        path === "/user" ||
-        path.startsWith("/user/") ||
-        path === "/(tabs)/user" ||
-        path.startsWith("/(tabs)/user/")
-    ) {
-        return "user";
-    }
-    return "note";
 };
 
 export function useSwipeTab(pathname: string) {

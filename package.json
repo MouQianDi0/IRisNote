@@ -5,6 +5,8 @@
   "dependencies": {
     "@expo/ui": "~56.0.17",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-navigation/native": "^7.3.3",
+    "@react-navigation/native-stack": "^7.17.5",
     "axios": "^1.17.0",
     "expo": "~56.0.11",
     "expo-constants": "~56.0.16",
@@ -35,14 +37,13 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "4.25.2",
     "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.8.3",
-    "tailwindcss": "^3.4"
+    "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
+    "@tailwindcss/postcss": "^4.3.1",
     "@types/react": "~19.2.2",
     "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.0",
+    "tailwindcss": "^4.3.1",
     "typescript": "~6.0.3"
   },
   "scripts": {

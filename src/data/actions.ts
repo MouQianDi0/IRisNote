@@ -7,6 +7,8 @@ import {
 
 type TabKey = "note" | "todo" | "excerpt" | "user";
 
+export type { TabKey };
+
 export const getActiveTabKey = (path: string): TabKey => {
     if (
         path === "/" ||

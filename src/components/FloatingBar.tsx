@@ -9,7 +9,6 @@ import { useDebounceNavigation } from "../hooks/useDebounceNavigation"; // å¼•å…
 import { useLongPressButton } from "../hooks/useLongPressButton";
 import AddNoteClass from "./addNoteClass";
 
-
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
 };
@@ -60,7 +59,9 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 >
                     {categories.map((item) => {
                         const isActive = selectedId === item.id;
-                        const IconComponent = iconMap[item.icon as keyof typeof iconMap] || Folder;
+                        const IconComponent =
+                            iconMap[item.icon as keyof typeof iconMap] ||
+                            Folder;
                         return (
                             <Pressable
                                 key={item.id}
@@ -81,7 +82,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                             animationTimingFunction: "ease-out",
                                         }}
                                     >
-                                        <IconComponent size={30} color="#37a5ffff" />
+                                        <IconComponent
+                                            size={30}
+                                            color="#37a5ffff"
+                                        />
                                     </Animated.View>
                                 ) : (
                                     <IconComponent size={30} color="#666" />
