@@ -1,5 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router, useFocusEffect } from "expo-router";
+import { useAuth } from "@/hooks/useAuth";
+import { router } from "expo-router";
 import {
     ChevronRight,
     LogOut,
@@ -8,16 +8,7 @@ import {
     Shield,
     User as UserIcon,
 } from "lucide-react-native";
-import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import FloatingMenu from "../../../components/FloatingMenu";
-
-type UserInfo = {
-    id: number;
-    email: string;
-    nickname?: string;
-    created_at: string;
-};
 
 const MENU_ITEMS = [
     { icon: Moon, label: "深色模式", color: "#7B61FF" },
@@ -26,36 +17,12 @@ const MENU_ITEMS = [
 ];
 
 export default function User() {
-    const [user, setUser] = useState<UserInfo | null>(null);
-    const [token, setToken] = useState<string | null>(null);
-
-    useFocusEffect(
-        useCallback(() => {
-            const loadUser = async () => {
-                const storedToken = await AsyncStorage.getItem("token"); // 从 AsyncStorage 中获取 token
-                const storedUser = await AsyncStorage.getItem("user"); // 从 AsyncStorage 中获取 user
-                setToken(storedToken);
-                if (storedUser) {
-                    setUser(JSON.parse(storedUser));
-                }
-            };
-            loadUser();
-        }, []),
-    );
-
-    const handleLogout = async () => {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("user");
-        setUser(null);
-        setToken(null);
-    };
-
-    const isLoggedIn = !!token && !!user; // 检查 token 和 user 是否都存在
+    const { user, isLoggedIn, logout } = useAuth();
 
     return (
         <View className="flex-1 bg-[#f5f5f5]">
             {/* 头部背景 */}
-            <View className="bg-[#007AFF] pt-12 pb-8 px-6 rounded-b-[32px]">
+            <View className="bg-[#007AFF] pt-12 pb-8 px-4 rounded-[32px]">
                 {isLoggedIn ? (
                     <View className="items-center">
                         {/* 头像 */}
@@ -63,15 +30,17 @@ export default function User() {
                             <UserIcon size={36} color="#fff" />
                         </View>
                         <Text className="text-white text-xl font-bold">
-                            {user.nickname || user.email.split("@")[0]}
+                            {user?.nickname || user?.email?.split("@")[0]}
                         </Text>
                         <Text className="text-white/70 text-sm mt-1">
-                            {user.email}
+                            {user?.email}
                         </Text>
                         <Text className="text-white/50 text-xs mt-2">
-                            {new Date(user.created_at).toLocaleDateString(
-                                "zh-CN",
-                            )}{" "}
+                            {user
+                                ? new Date(user.created_at).toLocaleDateString(
+                                      "zh-CN",
+                                  )
+                                : ""}{" "}
                             加入
                         </Text>
                     </View>
@@ -125,7 +94,7 @@ export default function User() {
                 {isLoggedIn && (
                     <Pressable
                         className="flex-row items-center justify-center bg-white rounded-2xl py-[14px] mb-4"
-                        onPress={handleLogout}
+                        onPress={logout}
                     >
                         <LogOut size={18} color="#FF3B30" />
                         <Text className="text-[#FF3B30] text-base ml-2">
@@ -137,8 +106,6 @@ export default function User() {
                 {/* 底部留白 */}
                 <View className="h-20" />
             </ScrollView>
-
-            <FloatingMenu />
         </View>
     );
 }

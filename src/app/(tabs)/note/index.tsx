@@ -1,6 +1,5 @@
 import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
-import FloatingMenu from "@/components/FloatingMenu";
 import { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 
@@ -23,7 +22,7 @@ export default function Index() {
                 console.log("笔记数据:", JSON.stringify(data));
                 setNotes(data);
             })
-            .catch((err) => console.error("获取笔记失败:", err.message))
+            .catch((err) => alert("获取笔记失败: " + err.message))
             .finally(() => setLoading(false));
     }, []);
     const filteredNotes =
@@ -32,7 +31,7 @@ export default function Index() {
             : notes.filter((note) => note.category === currentCategory); // 过滤分类为当前分类的笔记
 
     return (
-        <View className="flex-1 bp-[#ecedefff] ">
+        <View className="mt-10 bp-[#ecedefff] ">
             <View className="flex-row ">
                 <View
                     className="
@@ -89,8 +88,6 @@ export default function Index() {
                     </View>
                 </View>
             </View>
-
-            <FloatingMenu />
         </View>
     );
 }

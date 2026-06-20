@@ -1,8 +1,9 @@
 import api from "@/api/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "lucide-react-native";
 import { useState } from "react";
 import {
     ActivityIndicator,
@@ -16,6 +17,7 @@ import {
 } from "react-native";
 
 export default function Register() {
+    const { refresh } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -58,6 +60,7 @@ export default function Register() {
             // 保存 token 和用户信息
             await AsyncStorage.setItem("token", data.token);
             await AsyncStorage.setItem("user", JSON.stringify(data.user));
+            await refresh();
 
             Alert.alert("成功", "注册成功", [
                 { text: "确定", onPress: () => router.replace("/(tabs)/user") },
@@ -75,17 +78,6 @@ export default function Register() {
             className="flex-1 bg-white"
             behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-            {/* 顶部返回 */}
-            <View className="flex-row items-center pt-3 pb-4 px-4">
-                <Pressable
-                    onPress={() => router.back()}
-                    className="w-10 h-10 justify-center items-center"
-                >
-                    <ArrowLeft size={24} color="#333" />
-                </Pressable>
-                <Text className="text-lg font-semibold ml-2">注册</Text>
-            </View>
-
             {/* 表单区域 */}
             <View className="flex-1 px-6 pt-8">
                 <Text className="text-sm text-gray-500 mb-2 ml-1">用户名</Text>
