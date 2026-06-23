@@ -4,7 +4,7 @@ import { useEmailValidation } from "@/hooks/useEmailValidation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Eye, EyeOff } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -25,7 +25,49 @@ export default function Register() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [loading, setLoading] = useState(false);
     const [nickname, setNickname] = useState("");
+    const [code, setCode] = useState("");
+    const [sendingCode, setSendingCode] = useState(false);
+    const [countdown, setCountdown] = useState(0);
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const emailCheck = useEmailValidation(email);
+
+    // 倒计时清理
+    useEffect(() => {
+        return () => {
+            if (countdownRef.current) clearInterval(countdownRef.current);
+        };
+    }, []);
+
+    const handleSendCode = async () => {
+        if (!emailCheck.isValid) {
+            Alert.alert("提示", "请先输入有效的邮箱地址");
+            return;
+        }
+        setSendingCode(true);
+        try {
+            await api.post("/verify/send", {
+                email: email.trim(),
+                type: "register",
+            });
+            Alert.alert("提示", "验证码已发送，请查收邮件");
+            setCountdown(60);
+            countdownRef.current = setInterval(() => {
+                setCountdown((prev) => {
+                    if (prev <= 1) {
+                        if (countdownRef.current)
+                            clearInterval(countdownRef.current);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        } catch (err: any) {
+            const message = err.response?.data?.error || "发送失败，请稍后再试";
+            Alert.alert("提示", message);
+        } finally {
+            setSendingCode(false);
+        }
+    };
 
     const handleRegister = async () => {
         if (!emailCheck.isValid) {
@@ -48,6 +90,10 @@ export default function Register() {
             Alert.alert("提示", "密码至少6位");
             return;
         }
+        if (!code.trim()) {
+            Alert.alert("提示", "请输入邮箱验证码");
+            return;
+        }
 
         setLoading(true);
         try {
@@ -55,7 +101,8 @@ export default function Register() {
                 email: email.trim(),
                 password,
                 nickname: nickname.trim(),
-            }); // 注册
+                code: code.trim(),
+            });
 
             // 保存 token 和用户信息
             await AsyncStorage.setItem("token", data.token);
@@ -109,12 +156,47 @@ export default function Register() {
                     autoCapitalize="none"
                 />
                 {emailCheck.error && email ? (
-                    <Text className="text-xs text-red-500 mb-4 ml-1">
+                    <Text className="text-xs text-red-500 mb-1 ml-1">
                         {emailCheck.error}
                     </Text>
-                ) : (
-                    <View className="mb-5" />
-                )}
+                ) : null}
+
+                {/* 验证码 */}
+                <Text className="text-sm text-gray-500 mb-2 ml-1">
+                    邮箱验证码
+                </Text>
+                <View className="flex-row items-center mb-5">
+                    <TextInput
+                        className="flex-1 border border-gray-200 rounded-xl px-4 py-3.5 text-base bg-gray-50"
+                        placeholder="请输入验证码"
+                        placeholderTextColor="#999"
+                        value={code}
+                        onChangeText={setCode}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                    />
+                    <Pressable
+                        className={`ml-3 rounded-xl px-4 py-3.5 ${
+                            emailCheck.isValid &&
+                            countdown === 0 &&
+                            !sendingCode
+                                ? "bg-[#007AFF]"
+                                : "bg-gray-300"
+                        }`}
+                        onPress={handleSendCode}
+                        disabled={
+                            !emailCheck.isValid || countdown > 0 || sendingCode
+                        }
+                    >
+                        {sendingCode ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                            <Text className="text-white text-sm font-semibold whitespace-nowrap">
+                                {countdown > 0 ? `${countdown}s` : "发送验证码"}
+                            </Text>
+                        )}
+                    </Pressable>
+                </View>
 
                 {/* 密码 */}
                 <Text className="text-sm text-gray-500 mb-2 ml-1">密码</Text>
@@ -171,6 +253,7 @@ export default function Register() {
                         emailCheck.isValid &&
                         password.trim() &&
                         confirmPassword.trim() &&
+                        code.trim() &&
                         !loading
                             ? "bg-[#007AFF]"
                             : "bg-gray-300"
@@ -181,6 +264,7 @@ export default function Register() {
                         !nickname.trim() ||
                         !password.trim() ||
                         !confirmPassword.trim() ||
+                        !code.trim() ||
                         loading
                     }
                 >
