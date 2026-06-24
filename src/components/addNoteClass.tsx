@@ -55,6 +55,7 @@ export default function AddNoteClass({
             onRequestClose={onClose}
         >
             <TouchableWithoutFeedback onPress={onClose}>
+                //
                 <View className="flex-1 bg-[rgba(0,0,0,0.4)] justify-center items-center">
                     <TouchableWithoutFeedback>
                         <View className="bg-white rounded-[16px] p-5 w-[320px] shadow-lg">
