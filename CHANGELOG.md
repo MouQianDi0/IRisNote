@@ -4,6 +4,12 @@
 
 ### 修复问题
 
+- **修复 Git pre-commit 钩子报错导致提交失败**
+  - 日期：2026-06-25
+  - 修改文件：`.git/hooks/pre-commit`（删除）
+  - 问题描述：pre-commit 钩子尝试执行 `./node_modules/pre-commit/hook`，但 `pre-commit` 包未安装且在 `package.json` 中无声明，导致每次提交都失败。
+  - 修复方案：删除无效的 pre-commit 钩子文件。
+
 - **修复 lucide-react-native 图标 `color` 属性 TypeScript 类型错误**
   - 日期：2025-06-25
   - 修改文件：`package.json`
