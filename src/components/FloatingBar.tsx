@@ -1,13 +1,14 @@
-import { Folder, NotebookPen } from "lucide-react-native";
+import { NotebookPen } from "lucide-react-native";
 import { useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { Category, iconMap, noteCategories } from "../data/categories";
+import { Category, getIcon, noteCategories } from "../data/categories";
 import { pulse } from "../hooks/animations";
 import { useDebounceNavigation } from "../hooks/useDebounceNavigation"; // 引入防抖导航函数
 import { useLongPressButton } from "../hooks/useLongPressButton";
 import AddNoteClass from "./addNoteClass";
+import CategoryActionModel from "./CategoryActionModel";
 
 
 type FloatingBarProps = {
@@ -32,7 +33,81 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         });
     };
     const [longPressVisible, setLongPressVisible] = useState<Category | null>(null);
-    const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+    const [categoryModelVisible, setCategoryModelVisible] = useState(false);
+    const handleDeleteCategory = () => {
+        if (!longPressVisible || longPressVisible.id === "all") return;
+        setCategories((prev) => prev.filter((c) => c.id !== longPressVisible.id));
+        setCategoryModelVisible(false);
+        setLongPressVisible(null);
+    };
+    const handleTogglePin = () => {
+        if (longPressVisible === null) return;
+        setCategories((prev) => {
+            return prev.map((c) =>
+                c.id === longPressVisible.id ? {
+                    ...c,
+                    is_pinned: !c.is_pinned
+                } : c
+            )
+
+        });
+        setLongPressVisible((prev) => {
+            return prev ? { ...prev, is_pinned: !prev.is_pinned } : null;
+        });
+
+    };
+    const handleToggleStar = () => {
+        if (longPressVisible === null) return;
+        setCategories((prev) => {
+            return prev.map((c) =>
+                c.id === longPressVisible.id ? {
+                    ...c,
+                    is_starred: !c.is_starred
+                } : c
+            )
+
+        });
+        setLongPressVisible((prev) => {
+            return prev ? { ...prev, is_starred: !prev.is_starred } : null;
+        });
+
+    };
+    const handleRename = (newName: string) => {
+        if (longPressVisible === null) return;
+        setCategories((prev) =>
+            prev.map((c) =>
+                c.id === longPressVisible.id ? {
+                    ...c,
+                    name: newName
+                } : c
+            )
+        );
+        setLongPressVisible((prev) => prev ? { ...prev, name: newName } : null);
+    };
+    const handleChangeIcon = (icon: string) => {
+        if (longPressVisible === null) return;
+        setCategories((prev) =>
+            prev.map((c) =>
+                c.id === longPressVisible.id ? {
+                    ...c,
+                    icon: icon
+                } : c
+            )
+        );
+        setLongPressVisible((prev) => prev ? { ...prev, icon: icon } : null);
+    };
+    const sortedCategories = [...categories].sort((a, b) => {
+        if (a.id === "all") {
+            return -1;
+        }
+        if (b.id === "all") {
+            return 1;
+        }
+        if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+        if (a.is_starred !== b.is_starred) return a.is_starred ? -1 : 1;
+        return 0;
+    });
+
 
     return (
         <View className="flex-col justify-center">
@@ -60,15 +135,15 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                     style={{ maxHeight: 560 }}
                     showsVerticalScrollIndicator={true}
                 >
-                    {categories.map((item) => {
+                    {sortedCategories.map((item) => {
                         const isActive = selectedId === item.id;
-                        const IconComponent = iconMap[item.icon as keyof typeof iconMap] || Folder;
+                        const IconComponent = getIcon(item.icon);
                         return (
                             <Pressable
                                 key={item.id}
                                 onLongPress={() => {
                                     setLongPressVisible(item);
-                                    setCategoryModalVisible(true);
+                                    setCategoryModelVisible(true);
                                 }}
                                 delayLongPress={400}
                                 className={`
@@ -115,6 +190,27 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                     onClose={() => setNoteClassMenu(false)}
                     onAdd={handleAddCategory}
                 />
+
+                {longPressVisible && (
+                    <CategoryActionModel
+                        visible={categoryModelVisible}
+                        onClose={() => {
+                            setCategoryModelVisible(false);
+                            setLongPressVisible(null);
+                        }}
+                        onDelete={handleDeleteCategory}
+                        onPin={handleTogglePin}
+                        onStar={handleToggleStar}
+                        onRename={handleRename}
+                        onChangeIcon={handleChangeIcon}
+                        categoryName={longPressVisible.name}
+                        categoryIcon={longPressVisible.icon}
+                        isPinned={longPressVisible.is_pinned}
+                        isStarred={longPressVisible.is_starred}
+                    />
+                )
+
+                }
                 <View className="h-[2px] bg-gray-300  w-[40px] mx-[auto]"></View>
             </View>
         </View>

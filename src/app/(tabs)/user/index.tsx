@@ -1,98 +1,144 @@
-// ============================================
-// 导入 React
-// ============================================
-
-// ============================================
-// 导入 React Native 组件
-// ============================================
-import { StyleSheet, Text, View } from "react-native";
-
-// ============================================
-// 导入悬浮菜单组件
-// ============================================
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router, useFocusEffect } from "expo-router";
+import {
+    ChevronRight,
+    LogOut,
+    Mail,
+    Moon,
+    Shield,
+    User as UserIcon,
+} from "lucide-react-native";
+import { useCallback, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import FloatingMenu from "../../../components/FloatingMenu";
 
-// ============================================
-// 定义用户页面组件
-// ============================================
+type UserInfo = {
+    id: number;
+    email: string;
+    nickname?: string;
+    created_at: string;
+};
+
+const MENU_ITEMS = [
+    { icon: Moon, label: "深色模式", color: "#7B61FF" },
+    { icon: Shield, label: "隐私设置", color: "#34C759" },
+    { icon: Mail, label: "意见反馈", color: "#FF9500" },
+];
+
 export default function User() {
-    // 返回 JSX 结构
+    const [user, setUser] = useState<UserInfo | null>(null);
+    const [token, setToken] = useState<string | null>(null);
+
+    useFocusEffect(
+        useCallback(() => {
+            const loadUser = async () => {
+                const storedToken = await AsyncStorage.getItem("token"); // 从 AsyncStorage 中获取 token
+                const storedUser = await AsyncStorage.getItem("user"); // 从 AsyncStorage 中获取 user
+                setToken(storedToken);
+                if (storedUser) {
+                    setUser(JSON.parse(storedUser));
+                }
+            };
+            loadUser();
+        }, []),
+    );
+
+    const handleLogout = async () => {
+        await AsyncStorage.removeItem("token");
+        await AsyncStorage.removeItem("user");
+        setUser(null);
+        setToken(null);
+    };
+
+    const isLoggedIn = !!token && !!user; // 检查 token 和 user 是否都存在
+
     return (
-        // 最外层容器（居中显示）
-        <View style={styles.container}>
-            {/* 标题 */}
-            <Text style={styles.title}>我的</Text>
-
-            {/* 提示文字 */}
-            <Text style={styles.subtitle}>这里是你的个人中心</Text>
-
-            {/* 用户头像占位 */}
-            <View style={styles.avatar}>
-                <Text style={styles.avatarText}>👤</Text>
+        <View className="flex-1 bg-[#f5f5f5]">
+            {/* 头部背景 */}
+            <View className="bg-[#007AFF] pt-12 pb-8 px-6 rounded-b-[32px]">
+                {isLoggedIn ? (
+                    <View className="items-center">
+                        {/* 头像 */}
+                        <View className="w-[80px] h-[80px] rounded-full bg-white/20 justify-center items-center mb-3 border-2 border-white/40">
+                            <UserIcon size={36} color="#fff" />
+                        </View>
+                        <Text className="text-white text-xl font-bold">
+                            {user.nickname || user.email.split("@")[0]}
+                        </Text>
+                        <Text className="text-white/70 text-sm mt-1">
+                            {user.email}
+                        </Text>
+                        <Text className="text-white/50 text-xs mt-2">
+                            {new Date(user.created_at).toLocaleDateString(
+                                "zh-CN",
+                            )}{" "}
+                            加入
+                        </Text>
+                    </View>
+                ) : (
+                    <View className="items-center">
+                        <View className="w-[80px] h-[80px] rounded-full bg-white/20 justify-center items-center mb-4 border-2 border-white/40">
+                            <UserIcon size={36} color="#fff" />
+                        </View>
+                        <Text className="text-white text-lg font-semibold mb-1">
+                            未登录
+                        </Text>
+                        <Text className="text-white/60 text-sm mb-5">
+                            登录后可同步数据到云端
+                        </Text>
+                        <Pressable
+                            className="bg-white rounded-xl px-10 py-3"
+                            onPress={() => router.push("/auth/login")}
+                        >
+                            <Text className="text-[#007AFF] text-base font-semibold">
+                                登录 / 注册
+                            </Text>
+                        </Pressable>
+                    </View>
+                )}
             </View>
 
-            {/* 用户信息占位 */}
-            <Text style={styles.username}>用户名</Text>
-            <Text style={styles.email}>user@example.com</Text>
+            {/* 菜单列表 */}
+            <ScrollView className="flex-1 px-4 pt-6">
+                {/* 功能菜单 */}
+                <View className="bg-white rounded-2xl overflow-hidden mb-4">
+                    {MENU_ITEMS.map((item, index) => (
+                        <Pressable
+                            key={item.label}
+                            className="flex-row items-center px-4 py-[14px] active:bg-gray-50"
+                        >
+                            <View
+                                className="w-9 h-9 rounded-xl justify-center items-center mr-3"
+                                style={{ backgroundColor: item.color + "18" }}
+                            >
+                                <item.icon size={18} color={item.color} />
+                            </View>
+                            <Text className="flex-1 text-base text-gray-800">
+                                {item.label}
+                            </Text>
+                            <ChevronRight size={18} color="#c0c0c0" />
+                        </Pressable>
+                    ))}
+                </View>
 
-            {/* 悬浮菜单 */}
+                {/* 退出登录 */}
+                {isLoggedIn && (
+                    <Pressable
+                        className="flex-row items-center justify-center bg-white rounded-2xl py-[14px] mb-4"
+                        onPress={handleLogout}
+                    >
+                        <LogOut size={18} color="#FF3B30" />
+                        <Text className="text-[#FF3B30] text-base ml-2">
+                            退出登录
+                        </Text>
+                    </Pressable>
+                )}
+
+                {/* 底部留白 */}
+                <View className="h-20" />
+            </ScrollView>
+
             <FloatingMenu />
         </View>
     );
 }
-
-// ============================================
-// 定义样式
-// ============================================
-const styles = StyleSheet.create({
-    // 容器样式
-    container: {
-        flex: 1, // 占满整个屏幕
-        justifyContent: "center", // 垂直居中
-        alignItems: "center", // 水平居中
-        backgroundColor: "#f5f5f5", // 浅灰色背景
-    },
-
-    // 标题样式
-    title: {
-        fontSize: 24, // 字体大小
-        fontWeight: "bold", // 加粗
-        marginBottom: 10, // 下边距
-    },
-
-    // 副标题样式
-    subtitle: {
-        fontSize: 16, // 字体大小
-        color: "#666", // 灰色文字
-        marginBottom: 30, // 下边距
-    },
-
-    // 头像样式
-    avatar: {
-        width: 100, // 宽度
-        height: 100, // 高度
-        borderRadius: 50, // 圆形
-        backgroundColor: "#E3F2FD", // 浅蓝色背景
-        justifyContent: "center", // 垂直居中
-        alignItems: "center", // 水平居中
-        marginBottom: 20, // 下边距
-    },
-
-    // 头像文字
-    avatarText: {
-        fontSize: 50, // 字体大小
-    },
-
-    // 用户名样式
-    username: {
-        fontSize: 20, // 字体大小
-        fontWeight: "bold", // 加粗
-        marginBottom: 5, // 下边距
-    },
-
-    // 邮箱样式
-    email: {
-        fontSize: 14, // 字体大小
-        color: "#666", // 灰色文字
-    },
-});
