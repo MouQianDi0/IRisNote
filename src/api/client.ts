@@ -2,7 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 const getBaseURL = () => {
-    return "https://tech-mou.top/api";
+
+    return "https://tech-mou.top/api"; // 生产环境服务器地址
 };
 
 const baseURL = getBaseURL();
