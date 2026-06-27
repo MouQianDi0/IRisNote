@@ -21,7 +21,7 @@
       "package": "com.mouqiandi.NextNote"
     },
     "web": {
-      "output": "static",
+      "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -36,12 +36,26 @@
           }
         }
       ],
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
+          ]
+        }
+      ],
       "react-native-edge-to-edge",
       "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "95b69422-6112-4501-b64c-9b0ea727d950"
+      }
     }
   }
 }

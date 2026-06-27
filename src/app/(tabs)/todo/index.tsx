@@ -8,11 +8,6 @@
 import { StyleSheet, Text, View } from "react-native";
 
 // ============================================
-// 导入悬浮菜单组件
-// ============================================
-import FloatingMenu from "../../../components/FloatingMenu";
-
-// ============================================
 // 定义待办页面组件
 // ============================================
 export default function Todo() {
@@ -28,9 +23,6 @@ export default function Todo() {
 
             {/* 提示用户可以添加待办 */}
             <Text style={styles.hint}>点击 + 按钮添加新待办</Text>
-
-            {/* 悬浮菜单 */}
-            <FloatingMenu />
         </View>
     );
 }

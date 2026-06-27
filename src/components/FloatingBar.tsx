@@ -10,7 +10,6 @@ import { useLongPressButton } from "../hooks/useLongPressButton";
 import AddNoteClass from "./addNoteClass";
 import CategoryActionModel from "./CategoryActionModel";
 
-
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
 };
@@ -163,7 +162,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                             animationTimingFunction: "ease-out",
                                         }}
                                     >
-                                        <IconComponent size={30} color="#37a5ffff" />
+                                        <IconComponent
+                                            size={30}
+                                            color="#37a5ffff"
+                                        />
                                     </Animated.View>
                                 ) : (
                                     <IconComponent size={30} color="#666" />

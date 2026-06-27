@@ -1,8 +1,8 @@
 import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
-import FloatingMenu from "@/components/FloatingMenu";
-import { useEffect, useState } from "react";
-import { FlatList, Text, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, FlatList, Pressable, Text, View } from "react-native";
 
 type Note = {
     id: number;
@@ -15,24 +15,64 @@ type Note = {
 export default function Index() {
     const [notes, setNotes] = useState<Note[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [currentCategory, setCurrentCategory] = useState("all");
 
-    useEffect(() => {
-        api.get<Note[]>("/notes")
-            .then(({ data }) => {
-                console.log("笔记数据:", JSON.stringify(data));
-                setNotes(data);
-            })
-            .catch((err) => console.error("获取笔记失败:", err.message))
-            .finally(() => setLoading(false));
+    const fetchNotes = useCallback(async () => {
+        try {
+            const { data } = await api.get<Note[]>("/notes");
+            setNotes(data);
+        } catch (err: any) {
+            console.error("获取笔记失败:", err.message);
+        }
     }, []);
+
+    useEffect(() => {
+        fetchNotes().finally(() => setLoading(false));
+    }, [fetchNotes]);
+
+    // 创建笔记返回后刷新
+    useFocusEffect(
+        useCallback(() => {
+            fetchNotes();
+        }, [fetchNotes]),
+    );
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await fetchNotes();
+        setRefreshing(false);
+    };
+
+    const handleDelete = (item: Note) => {
+        Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
+            { text: "取消", style: "cancel" },
+            {
+                text: "删除",
+                style: "destructive",
+                onPress: async () => {
+                    try {
+                        await api.delete(`/notes/${item.id}`);
+                        setNotes((prev) =>
+                            prev.filter((n) => n.id !== item.id),
+                        );
+                    } catch (err: any) {
+                        Alert.alert(
+                            "提示",
+                            err.response?.data?.error || "删除失败",
+                        );
+                    }
+                },
+            },
+        ]);
+    };
     const filteredNotes =
         currentCategory === "all"
             ? notes
             : notes.filter((note) => note.category === currentCategory); // 过滤分类为当前分类的笔记
 
     return (
-        <View className="flex-1 bp-[#ecedefff] ">
+        <View className="mt-10 bp-[#ecedefff] ">
             <View className="flex-row ">
                 <View
                     className="
@@ -58,8 +98,11 @@ export default function Index() {
                                     style={{ width: "100%", maxWidth: 400 }}
                                 ></View>
                             }
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
                             renderItem={({ item }) => (
-                                <View
+                                <Pressable
+                                    onLongPress={() => handleDelete(item)}
                                     className="bg-[#f4e2f4] rounded-[14px] p-5 mb-4 "
                                     style={{ width: "100%", maxWidth: 400 }}
                                 >
@@ -76,7 +119,7 @@ export default function Index() {
                                             </Text>
                                         </View>
                                     </View>
-                                </View>
+                                </Pressable>
                             )}
                             ListEmptyComponent={
                                 <View className="items-center py-8">
@@ -89,8 +132,6 @@ export default function Index() {
                     </View>
                 </View>
             </View>
-
-            <FloatingMenu />
         </View>
     );
 }
