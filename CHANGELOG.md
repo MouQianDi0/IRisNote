@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-06-28
+
+### 新增功能
+
+- **返回顶部按钮增加上下缓动动画**
+  - 日期：2026-06-28 23:15:00
+  - 修改文件：`src/app/(tabs)/note/index.tsx`
+  - 变更内容：为返回顶部按钮添加持续上下浮动动画（0 → -8px → 0，周期约 1.6s），使用 `Animated.loop` + `Animated.sequence` + `Easing.inOut` 实现缓入缓出效果。外层新增 `Animated.View` 承载动画变换，`Pressable` 作为子元素保持不变。新增导入 `Animated`、`Easing`。
+
 ## 2026-06-25
 
 ### 修复问题

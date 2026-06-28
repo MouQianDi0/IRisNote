@@ -31,11 +31,15 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
             return [...prev, newCategory];
         });
     };
-    const [longPressVisible, setLongPressVisible] = useState<Category | null>(null);
+    const [longPressVisible, setLongPressVisible] = useState<Category | null>(
+        null,
+    );
     const [categoryModelVisible, setCategoryModelVisible] = useState(false);
     const handleDeleteCategory = () => {
         if (!longPressVisible || longPressVisible.id === "all") return;
-        setCategories((prev) => prev.filter((c) => c.id !== longPressVisible.id));
+        setCategories((prev) =>
+            prev.filter((c) => c.id !== longPressVisible.id),
+        );
         setCategoryModelVisible(false);
         setLongPressVisible(null);
     };
@@ -43,57 +47,63 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         if (longPressVisible === null) return;
         setCategories((prev) => {
             return prev.map((c) =>
-                c.id === longPressVisible.id ? {
-                    ...c,
-                    is_pinned: !c.is_pinned
-                } : c
-            )
-
+                c.id === longPressVisible.id
+                    ? {
+                          ...c,
+                          is_pinned: !c.is_pinned,
+                      }
+                    : c,
+            );
         });
         setLongPressVisible((prev) => {
             return prev ? { ...prev, is_pinned: !prev.is_pinned } : null;
         });
-
     };
     const handleToggleStar = () => {
         if (longPressVisible === null) return;
         setCategories((prev) => {
             return prev.map((c) =>
-                c.id === longPressVisible.id ? {
-                    ...c,
-                    is_starred: !c.is_starred
-                } : c
-            )
-
+                c.id === longPressVisible.id
+                    ? {
+                          ...c,
+                          is_starred: !c.is_starred,
+                      }
+                    : c,
+            );
         });
         setLongPressVisible((prev) => {
             return prev ? { ...prev, is_starred: !prev.is_starred } : null;
         });
-
     };
     const handleRename = (newName: string) => {
         if (longPressVisible === null) return;
         setCategories((prev) =>
             prev.map((c) =>
-                c.id === longPressVisible.id ? {
-                    ...c,
-                    name: newName
-                } : c
-            )
+                c.id === longPressVisible.id
+                    ? {
+                          ...c,
+                          name: newName,
+                      }
+                    : c,
+            ),
         );
-        setLongPressVisible((prev) => prev ? { ...prev, name: newName } : null);
+        setLongPressVisible((prev) =>
+            prev ? { ...prev, name: newName } : null,
+        );
     };
     const handleChangeIcon = (icon: string) => {
         if (longPressVisible === null) return;
         setCategories((prev) =>
             prev.map((c) =>
-                c.id === longPressVisible.id ? {
-                    ...c,
-                    icon: icon
-                } : c
-            )
+                c.id === longPressVisible.id
+                    ? {
+                          ...c,
+                          icon: icon,
+                      }
+                    : c,
+            ),
         );
-        setLongPressVisible((prev) => prev ? { ...prev, icon: icon } : null);
+        setLongPressVisible((prev) => (prev ? { ...prev, icon: icon } : null));
     };
     const sortedCategories = [...categories].sort((a, b) => {
         if (a.id === "all") {
@@ -106,7 +116,6 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         if (a.is_starred !== b.is_starred) return a.is_starred ? -1 : 1;
         return 0;
     });
-
 
     return (
         <View className="flex-col justify-center">
@@ -210,10 +219,8 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         isPinned={longPressVisible.is_pinned}
                         isStarred={longPressVisible.is_starred}
                     />
-                )
-
-                }
-                <View className="h-[2px] bg-gray-300  w-[40px] mx-[auto]"></View>
+                )}
+                {/* <View className="h-[2px] bg-gray-300  w-[40px] mx-[auto]"></View> */}
             </View>
         </View>
     );
