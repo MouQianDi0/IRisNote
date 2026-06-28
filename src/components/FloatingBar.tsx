@@ -1,10 +1,17 @@
 import api from "@/api/client";
+import { useFocusEffect } from "expo-router";
 import { NotebookPen } from "lucide-react-native";
-import { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { ALL_CATEGORY, Category, getIcon } from "../data/categories";
+import {
+    ALL_CATEGORY,
+    Category,
+    getCurrentCategoryId,
+    getIcon,
+    setCurrentCategory,
+} from "../data/categories";
 import { pulse } from "../hooks/animations";
 import { useCategoryChangeIcon } from "../hooks/FloatingBar/useCategoryChangeIcon";
 import { useCategoryDelete } from "../hooks/FloatingBar/useCategoryDelete";
@@ -13,7 +20,6 @@ import { useCategoryRename } from "../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../hooks/FloatingBar/useCategoryStar";
 import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
-import { setCurrentCategory } from "../data/categories"
 import AddNoteClass from "./addNoteClass";
 import CategoryActionModel from "./CategoryActionModel";
 
@@ -21,7 +27,7 @@ type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
 };
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
-    const [selectedId, setSelectedId] = useState(ALL_CATEGORY.id);
+    const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const [NoteClassMenu, setNoteClassMenu] = useState(false);
     const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
     const handlePress = (id: number) => {
@@ -37,17 +43,27 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const onNavigate = useDebounceNavigation();
     const [categories, setCategories] = useState<Category[]>([]);
 
-    useEffect(() => {
+    const fetchCategories = useCallback(() => {
         api.get<Category[]>("/categories")
             .then(({ data }) => setCategories(data))
-            .catch((err: any) =>
+            .catch((err: any) => {
                 console.error(
                     "获取分类列表失败:",
                     err.response?.status,
                     err.response?.data || err.message,
-                ),
-            );
+                );
+                Alert.alert("加载失败", "获取分类列表失败，请检查网络后重试", [
+                    { text: "取消", style: "cancel" },
+                    { text: "重试", onPress: () => fetchCategories() },
+                ]);
+            });
     }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchCategories();
+        }, [fetchCategories]),
+    );
 
     const handleAddCategory = (name: string, icon: string) => {
         api.post<Category>("/categories", { name, icon })

@@ -9,14 +9,15 @@
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [快速开始](#快速开始)
-- [后端服务](#后端服务) *注意*：这个必须要看
+- [后端服务](#后端服务) _注意_：这个必须要看
 - [环境要求](#环境要求)
 
 ---
 
 ## 功能特性
 
-- **笔记** — 创建、编辑和保存笔记，支持标题与正文
+- **笔记** — 创建、编辑和保存笔记，支持标题与正文。笔记可归属到不同自定义分类，按分类筛选查看，所有笔记统一在「全部」视图下可见
+- **笔记分类** — 自定义分类（增/删/改/换图标），支持置顶和标星排序，数据持久化到后端 PostgreSQL
 - **待办清单** — 快速创建待办事项
 - **剪贴板摘录** — 收集和整理摘录内容
 - **个人中心** — 用户信息与设置管理
@@ -44,47 +45,64 @@
 ```
 src/
 ├── app/                        # Expo Router 文件路由
-│   ├── _layout.tsx             # 根布局（Stack + GestureHandlerRootView）
+│   ├── _layout.tsx             # 根布局（Stack + GestureHandlerRootView + AuthProvider）
 │   ├── index.tsx               # 入口重定向
-│   └── (tabs)/                 # Tab 路由组
-│       ├── _layout.tsx         # Tab 布局（隐藏 tabBar）
-│       ├── note/               # 笔记
-│       │   ├── _layout.tsx     # Stack 子路由
-│       │   ├── index.tsx       # 笔记首页（含 FloatingBar + FloatingMenu）
-│       │   └── create.tsx      # 新建笔记
-│       ├── todo/               # 待办
-│       │   ├── _layout.tsx
-│       │   ├── index.tsx       # 待办首页
-│       │   └── create.tsx      # 新建待办
-│       ├── excerpt/            # 剪贴板摘录
-│       │   ├── _layout.tsx
-│       │   ├── index.tsx       # 摘录首页
-│       │   └── create.tsx      # 新建摘录
-│       └── user/               # 个人中心
-│           ├── _layout.tsx
-│           ├── index.tsx       # 用户首页
-│           └── settings.tsx    # 设置页
+│   ├── auth/                   # 认证页
+│   │   ├── login.tsx           # 登录（邮箱 + 密码 + 验证码）
+│   │   └── register.tsx        # 注册
+│   ├── (tabs)/                 # Tab 路由组
+│   │   ├── _layout.tsx         # Tab 布局（隐藏 tabBar + 登录守卫）
+│   │   ├── note/               # 笔记
+│   │   │   ├── _layout.tsx     # Stack 子路由
+│   │   │   └── index.tsx       # 笔记首页（含 FloatingBar 分类筛选 + FloatingMenu）
+│   │   ├── todo/               # 待办
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx       # 待办首页
+│   │   │   └── create.tsx      # 新建待办
+│   │   ├── excerpt/            # 剪贴板摘录
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx       # 摘录首页
+│   │   │   └── create.tsx      # 新建摘录
+│   │   └── user/               # 个人中心
+│   │       ├── _layout.tsx
+│   │       ├── index.tsx       # 用户首页
+│   │       └── settings.tsx    # 设置页
+│   └── pages/                  # 非 Tab 页面
+│       ├── note/create.tsx     # 新建笔记（自动识别当前分类）
+│       ├── todo/create.tsx     # 新建待办
+│       ├── excerpt/create.tsx  # 新建摘录
+│       └── user/settings.tsx   # 用户设置
 ├── api/                        # HTTP 请求
-│   └── client.ts               # axios 实例（自动适配开发/生产环境地址）
+│   └── client.ts               # axios 实例（自动附加 JWT token）
 ├── components/                 # 公共组件
 │   ├── ActionButton.tsx        # 悬浮操作按钮（长按跳转 + 摇晃动画）
-│   ├── addNoteClass.tsx        # 新建笔记弹窗
-│   ├── FloatingBar.tsx         # 悬浮分类筛选栏（支持滑动选择）
+│   ├── addNoteClass.tsx        # 新建分类弹窗
+│   ├── CategoryActionModel.tsx # 分类操作弹窗（删除/置顶/标星/重命名/换图标）
+│   ├── FloatingBar.tsx         # 悬浮分类筛选栏（支持长按操作 + 选中高亮）
 │   └── FloatingMenu.tsx        # 悬浮导航菜单
 ├── hooks/                      # 自定义 Hook
+│   ├── FloatingBar/            # 分类操作 Hook
+│   │   ├── useCategoryChangeIcon.ts  # 更换分类图标
+│   │   ├── useCategoryDelete.ts     # 删除分类
+│   │   ├── useCategoryPin.ts        # 分类置顶/取消
+│   │   ├── useCategoryRename.ts     # 分类重命名
+│   │   └── useCategoryStar.ts       # 分类标星/取消
+│   ├── FloatingMenu/
+│   │   └── useSwipeTab.ts           # 滑动切换 tab
 │   ├── animations.ts           # 共享动画配置（pulse / shake / easing）
+│   ├── useAuth.tsx             # 认证上下文（登录态/用户信息/登出）
 │   ├── useDebounceNavigation.ts # 防抖 + 锁定导航
+│   ├── useEmailValidation.ts  # 邮箱格式校验
 │   ├── useLongPressButton.ts   # 长按导航（Gesture.Pan + 缩放动画）
-│   ├── useSwipeSelect.ts       # 滑动选择泛型 Hook
-│   └── useSwipeTab.ts          # 滑动切换 tab Hook（PanResponder）
+│   └── useSwipeSelect.ts       # 滑动选择泛型 Hook
 ├── data/                       # 数据层
 │   ├── actions.ts              # 操作路由映射（getAction / getActiveTabKey）
-│   ├── categories.ts           # 分类数据
-│   └── notedata/
-│       └── notedata.ts         # 笔记示例数据
+│   └── categories.ts           # 分类数据和共享状态（Category 类型 / ALL_CATEGORY / 分类切换上下文）
 └── docs/                       # 文档
-    ├── axios-express-postgresql（前端连接到数据库）.md
-    ├── IRISNote 服务端部署手册（Docker 生产版）.md
+    ├── API.md                  # API 接口文档
+    ├── JWT认证中间件详解.md
+    ├── 数据库设计与用户认证方案.md
+    ├── IRisNote 服务端部署手册（Docker 生产版）.md
     └── ...
 ```
 

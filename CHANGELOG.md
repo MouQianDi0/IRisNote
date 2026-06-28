@@ -2,7 +2,26 @@
 
 ## 2026-06-29
 
+### 文档更新
+
+- **更新 README.md 项目结构**
+  - 日期：2026-06-29 15:40:00
+  - 修改文件：`README.md`
+  - 变更内容：项目结构树同步当前代码（auth 登录注册、pages 非 Tab 页面、CategoryActionModel 组件、FloatingBar hooks、categories.ts 共享状态）；功能特性增加笔记分类、笔记与分类归属说明
+
 ### 修复问题
+
+- **分类列表仅在挂载时加载一次导致数据过时**
+  - 日期：2026-06-29 15:30:00
+  - 修改文件：`src/components/FloatingBar.tsx`
+  - 问题：使用 `useEffect([], [])` 仅挂载时获取一次分类，返回页面时不刷新，显示 stale 数据
+  - 修复：`useEffect` → `useFocusEffect`，每次页面聚焦时重新拉取；同时增加 Alert 错误弹窗和重试机制
+
+- **FloatingBar 选中状态与全局状态不匹配**
+  - 日期：2026-06-29 15:10:00
+  - 修改文件：`src/components/FloatingBar.tsx`
+  - 问题：组件初始化时 `selectedId` 硬编码 `ALL_CATEGORY.id`，返回页面时 UI 选中状态与实际全局 `_currentCategoryId` 不一致
+  - 修复：初始化改为 `getCurrentCategoryId()` 读取全局状态
 
 - **初始化时「全部」分类不显示笔记**
   - 日期：2026-06-29 15:00:00
