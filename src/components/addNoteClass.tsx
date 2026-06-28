@@ -8,31 +8,81 @@ import {
     TouchableWithoutFeedback,
     View,
 } from "react-native";
-import { Category, getIcon } from "../data/categories";
+import { getIcon } from "../data/categories";
 
 type ActionSheetProps = {
     visible: boolean;
     onClose: () => void;
-    onAdd: (category: Category) => void;
+    onAdd: (name: string, icon: string) => void;
 };
 
 const iconsGroup1 = [
-    "Folder", "FolderOpen", "FolderPlus", "FolderHeart",
-    "FileText", "File", "FileCheck", "Archive", "Inbox", "ClipboardList",
-    "Lightbulb", "LightbulbOff", "Sparkles", "Zap", "Flame", "Rocket", "Gem",
-    "Tag", "Tags", "Bookmark", "BookmarkCheck",
+    "Folder",
+    "FolderOpen",
+    "FolderPlus",
+    "FolderHeart",
+    "FileText",
+    "File",
+    "FileCheck",
+    "Archive",
+    "Inbox",
+    "ClipboardList",
+    "Lightbulb",
+    "LightbulbOff",
+    "Sparkles",
+    "Zap",
+    "Flame",
+    "Rocket",
+    "Gem",
+    "Tag",
+    "Tags",
+    "Bookmark",
+    "BookmarkCheck",
 ];
 // 图标分组：标签/任务/学习
 const iconsGroup2 = [
-    "Flag", "Star", "Heart", "CheckCircle", "ListTodo", "Briefcase", "Target",
-    "Calendar", "Clock", "Timer", "BookOpen", "Book", "GraduationCap", "Brain",
-    "Library", "Notebook", "PenTool", "Coffee", "Music", "Camera", "Gamepad2",
+    "Flag",
+    "Star",
+    "Heart",
+    "CheckCircle",
+    "ListTodo",
+    "Briefcase",
+    "Target",
+    "Calendar",
+    "Clock",
+    "Timer",
+    "BookOpen",
+    "Book",
+    "GraduationCap",
+    "Brain",
+    "Library",
+    "Notebook",
+    "PenTool",
+    "Coffee",
+    "Music",
+    "Camera",
+    "Gamepad2",
 ];
 // 图标分组：生活/工具/其他
 const iconsGroup3 = [
-    "Palette", "Utensils", "Plane", "Code", "Terminal", "Database", "Wrench",
-    "Settings", "Cpu", "Wifi", "Home", "Map", "Compass", "Globe", "Bell",
-    "Gift", "Smile", "Eye",
+    "Palette",
+    "Utensils",
+    "Plane",
+    "Code",
+    "Terminal",
+    "Database",
+    "Wrench",
+    "Settings",
+    "Cpu",
+    "Wifi",
+    "Home",
+    "Map",
+    "Compass",
+    "Globe",
+    "Bell",
+    "Gift",
+    "Smile",
+    "Eye",
 ];
 const groupLabels = ["文件/组织", "标签/任务/学习", "生活/工具/其他"];
 export default function AddNoteClass({
@@ -44,18 +94,9 @@ export default function AddNoteClass({
     const [selectedIcon, setSelectedIcon] = useState("Briefcase");
 
     const handleSubmit = () => {
-        if (!ClassName) {
-            return;
-        }
         const categoryName = ClassName.trim();
-        const newCategory: Category = {
-            id: `${Date.now()}`,
-            name: categoryName,
-            icon: selectedIcon,
-            is_pinned: false,
-            is_starred: false,
-        };
-        onAdd(newCategory);
+        if (!categoryName) return;
+        onAdd(categoryName, selectedIcon);
         setClassName("");
         setSelectedIcon("Briefcase");
         onClose();
@@ -64,7 +105,11 @@ export default function AddNoteClass({
         <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 4, paddingVertical: 8 }}
+            contentContainerStyle={{
+                gap: 8,
+                paddingHorizontal: 4,
+                paddingVertical: 8,
+            }}
             style={{ maxWidth: 300 }}
         >
             {icons.map((iconName) => {
@@ -76,7 +121,10 @@ export default function AddNoteClass({
                         onPress={() => handleIconChange(iconName)}
                         className={`w-[48px] h-[48px] items-center justify-center rounded-[12px] ${isSelected ? "bg-[#007AFF]" : "bg-[#F5F5F5]"}`}
                     >
-                        <IconComp size={24} color={isSelected ? "#FFF" : "#666"} />
+                        <IconComp
+                            size={24}
+                            color={isSelected ? "#FFF" : "#666"}
+                        />
                     </Pressable>
                 );
             })}
@@ -84,7 +132,7 @@ export default function AddNoteClass({
     );
     const handleIconChange = (icon: string) => {
         setSelectedIcon(icon);
-    }
+    };
 
     return (
         <Modal
@@ -115,15 +163,21 @@ export default function AddNoteClass({
                                 选择图标
                             </Text>
                             <View className="mb-1">
-                                <Text className="text-[12px] text-gray-400 mb-1">{groupLabels[0]}</Text>
+                                <Text className="text-[12px] text-gray-400 mb-1">
+                                    {groupLabels[0]}
+                                </Text>
                                 {renderIconRow(iconsGroup1)}
                             </View>
                             <View className="mb-1">
-                                <Text className="text-[12px] text-gray-400 mb-1">{groupLabels[1]}</Text>
+                                <Text className="text-[12px] text-gray-400 mb-1">
+                                    {groupLabels[1]}
+                                </Text>
                                 {renderIconRow(iconsGroup2)}
                             </View>
                             <View className="mb-1">
-                                <Text className="text-[12px] text-gray-400 mb-1">{groupLabels[2]}</Text>
+                                <Text className="text-[12px] text-gray-400 mb-1">
+                                    {groupLabels[2]}
+                                </Text>
                                 {renderIconRow(iconsGroup3)}
                             </View>
                             <View className="flex-row gap-3 mt-4">
@@ -136,18 +190,20 @@ export default function AddNoteClass({
                                     </Text>
                                 </Pressable>
                                 <Pressable
-                                    className={`flex-1 py-3 rounded-[12px] ${ClassName.trim()
-                                        ? "bg-[#007AFF]"
-                                        : "bg-gray-300"
-                                        }`}
+                                    className={`flex-1 py-3 rounded-[12px] ${
+                                        ClassName.trim()
+                                            ? "bg-[#007AFF]"
+                                            : "bg-gray-300"
+                                    }`}
                                     onPress={handleSubmit}
                                     disabled={!ClassName.trim()}
                                 >
                                     <Text
-                                        className={`text-[14px] text-center ${ClassName.trim()
-                                            ? "text-white"
-                                            : "text-gray-400"
-                                            }`}
+                                        className={`text-[14px] text-center ${
+                                            ClassName.trim()
+                                                ? "text-white"
+                                                : "text-gray-400"
+                                        }`}
                                     >
                                         确定
                                     </Text>

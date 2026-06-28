@@ -1,12 +1,19 @@
+import api from "@/api/client";
 import { NotebookPen } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { Category, getIcon, noteCategories } from "../data/categories";
+import { ALL_CATEGORY, Category, getIcon } from "../data/categories";
 import { pulse } from "../hooks/animations";
-import { useDebounceNavigation } from "../hooks/useDebounceNavigation"; // 引入防抖导航函数
+import { useCategoryChangeIcon } from "../hooks/FloatingBar/useCategoryChangeIcon";
+import { useCategoryDelete } from "../hooks/FloatingBar/useCategoryDelete";
+import { useCategoryPin } from "../hooks/FloatingBar/useCategoryPin";
+import { useCategoryRename } from "../hooks/FloatingBar/useCategoryRename";
+import { useCategoryStar } from "../hooks/FloatingBar/useCategoryStar";
+import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
+import { setCurrentCategory } from "../data/categories"
 import AddNoteClass from "./addNoteClass";
 import CategoryActionModel from "./CategoryActionModel";
 
@@ -14,104 +21,69 @@ type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
 };
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
-    const [selectedId, setSelectedId] = useState("all");
+    const [selectedId, setSelectedId] = useState(ALL_CATEGORY.id);
     const [NoteClassMenu, setNoteClassMenu] = useState(false);
     const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
-    const handlePress = (id: string) => {
+    const handlePress = (id: number) => {
         if (id === selectedId) return;
         setSelectedId(id);
-        onCategoryPress(id);
+        const cat =
+            id === ALL_CATEGORY.id
+                ? ALL_CATEGORY
+                : (categories.find((c) => c.id === id) ?? ALL_CATEGORY);
+        setCurrentCategory(id, cat.name);
+        onCategoryPress(String(id));
     };
-    const onNavigate = useDebounceNavigation(); // 引入防抖导航函数
-    const [categories, setCategories] = useState(noteCategories);
-    const handleAddCategory = (newCategory: Category) => {
-        console.log("收到新分类:", newCategory);
-        setCategories((prev) => {
-            console.log("更新前数量:", prev.length);
-            return [...prev, newCategory];
-        });
+    const onNavigate = useDebounceNavigation();
+    const [categories, setCategories] = useState<Category[]>([]);
+
+    useEffect(() => {
+        api.get<Category[]>("/categories")
+            .then(({ data }) => setCategories(data))
+            .catch((err: any) =>
+                console.error(
+                    "获取分类列表失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                ),
+            );
+    }, []);
+
+    const handleAddCategory = (name: string, icon: string) => {
+        api.post<Category>("/categories", { name, icon })
+            .then(({ data }) => {
+                setCategories((prev) => [...prev, data]);
+            })
+            .catch((err: any) => {
+                console.error(
+                    "创建分类失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                );
+            });
     };
     const [longPressVisible, setLongPressVisible] = useState<Category | null>(
         null,
     );
     const [categoryModelVisible, setCategoryModelVisible] = useState(false);
-    const handleDeleteCategory = () => {
-        if (!longPressVisible || longPressVisible.id === "all") return;
-        setCategories((prev) =>
-            prev.filter((c) => c.id !== longPressVisible.id),
-        );
-        setCategoryModelVisible(false);
-        setLongPressVisible(null);
-    };
-    const handleTogglePin = () => {
-        if (longPressVisible === null) return;
-        setCategories((prev) => {
-            return prev.map((c) =>
-                c.id === longPressVisible.id
-                    ? {
-                          ...c,
-                          is_pinned: !c.is_pinned,
-                      }
-                    : c,
-            );
-        });
-        setLongPressVisible((prev) => {
-            return prev ? { ...prev, is_pinned: !prev.is_pinned } : null;
-        });
-    };
-    const handleToggleStar = () => {
-        if (longPressVisible === null) return;
-        setCategories((prev) => {
-            return prev.map((c) =>
-                c.id === longPressVisible.id
-                    ? {
-                          ...c,
-                          is_starred: !c.is_starred,
-                      }
-                    : c,
-            );
-        });
-        setLongPressVisible((prev) => {
-            return prev ? { ...prev, is_starred: !prev.is_starred } : null;
-        });
-    };
-    const handleRename = (newName: string) => {
-        if (longPressVisible === null) return;
-        setCategories((prev) =>
-            prev.map((c) =>
-                c.id === longPressVisible.id
-                    ? {
-                          ...c,
-                          name: newName,
-                      }
-                    : c,
-            ),
-        );
-        setLongPressVisible((prev) =>
-            prev ? { ...prev, name: newName } : null,
-        );
-    };
-    const handleChangeIcon = (icon: string) => {
-        if (longPressVisible === null) return;
-        setCategories((prev) =>
-            prev.map((c) =>
-                c.id === longPressVisible.id
-                    ? {
-                          ...c,
-                          icon: icon,
-                      }
-                    : c,
-            ),
-        );
-        setLongPressVisible((prev) => (prev ? { ...prev, icon: icon } : null));
-    };
-    const sortedCategories = [...categories].sort((a, b) => {
-        if (a.id === "all") {
-            return -1;
-        }
-        if (b.id === "all") {
-            return 1;
-        }
+    const { deleteCategory } = useCategoryDelete(
+        setCategories,
+        setLongPressVisible,
+        setCategoryModelVisible,
+    );
+    const { togglePin } = useCategoryPin(setCategories, setLongPressVisible);
+    const { toggleStar } = useCategoryStar(setCategories, setLongPressVisible);
+    const { renameCategory } = useCategoryRename(
+        setCategories,
+        setLongPressVisible,
+    );
+    const { changeIcon } = useCategoryChangeIcon(
+        setCategories,
+        setLongPressVisible,
+    );
+    const sortedCategories = [ALL_CATEGORY, ...categories].sort((a, b) => {
+        if (a.id === ALL_CATEGORY.id) return -1;
+        if (b.id === ALL_CATEGORY.id) return 1;
         if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
         if (a.is_starred !== b.is_starred) return a.is_starred ? -1 : 1;
         return 0;
@@ -209,18 +181,30 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                             setCategoryModelVisible(false);
                             setLongPressVisible(null);
                         }}
-                        onDelete={handleDeleteCategory}
-                        onPin={handleTogglePin}
-                        onStar={handleToggleStar}
-                        onRename={handleRename}
-                        onChangeIcon={handleChangeIcon}
+                        onDelete={() => {
+                            if (longPressVisible)
+                                deleteCategory(longPressVisible);
+                        }}
+                        onPin={() => {
+                            if (longPressVisible) togglePin(longPressVisible);
+                        }}
+                        onStar={() => {
+                            if (longPressVisible) toggleStar(longPressVisible);
+                        }}
+                        onRename={(name) => {
+                            if (longPressVisible)
+                                renameCategory(longPressVisible, name);
+                        }}
+                        onChangeIcon={(icon) => {
+                            if (longPressVisible)
+                                changeIcon(longPressVisible, icon);
+                        }}
                         categoryName={longPressVisible.name}
                         categoryIcon={longPressVisible.icon}
                         isPinned={longPressVisible.is_pinned}
                         isStarred={longPressVisible.is_starred}
                     />
                 )}
-                {/* <View className="h-[2px] bg-gray-300  w-[40px] mx-[auto]"></View> */}
             </View>
         </View>
     );
