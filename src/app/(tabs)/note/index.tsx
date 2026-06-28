@@ -1,7 +1,8 @@
 import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { ChevronUp } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, FlatList, Pressable, Text, View } from "react-native";
 
 type Note = {
@@ -17,6 +18,8 @@ export default function Index() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [currentCategory, setCurrentCategory] = useState("all");
+    const [showScrollTop, setShowScrollTop] = useState(false);
+    const flatListRef = useRef<FlatList<Note>>(null);
 
     const fetchNotes = useCallback(async () => {
         try {
@@ -66,6 +69,15 @@ export default function Index() {
             },
         ]);
     };
+    const handleScrollToTop = () => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    };
+
+    const handleScroll = useCallback((event: any) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        setShowScrollTop(offsetY > 300);
+    }, []);
+
     const filteredNotes =
         currentCategory === "all"
             ? notes
@@ -87,11 +99,14 @@ export default function Index() {
                 <View className="relative flex-1">
                     <View className="bg-white rounded-tl-[30px] p-4 h-[100%]  ">
                         <FlatList
+                            ref={flatListRef}
                             className="rounded-[14px]"
                             data={filteredNotes}
                             keyExtractor={(item) => String(item.id)}
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={{ paddingBottom: 10 }}
+                            onScroll={handleScroll}
+                            scrollEventThrottle={16}
                             ListHeaderComponent={
                                 <View
                                     className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
@@ -130,6 +145,14 @@ export default function Index() {
                             }
                         />
                     </View>
+                    {showScrollTop && (
+                        <Pressable
+                            onPress={handleScrollToTop}
+                            className="absolute bottom-15 left-1/2 -translate-x-1/2 w-11 h-11 bg-transparent rounded-full items-center justify-center "
+                        >
+                            <ChevronUp size={50} color="#cbcbcbff" />
+                        </Pressable>
+                    )}
                 </View>
             </View>
         </View>
