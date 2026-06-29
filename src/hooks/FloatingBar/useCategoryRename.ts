@@ -1,6 +1,7 @@
 import api from "@/api/client";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
+import { notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryRename(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
@@ -18,6 +19,7 @@ export function useCategoryRename(
                     setLongPressVisible((prev) =>
                         prev ? { ...prev, name: newName } : null,
                     );
+                    notifyCategoriesChanged();
                 })
                 .catch((err) => {
                     console.error("重命名分类失败:", err.message);

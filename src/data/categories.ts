@@ -37,3 +37,19 @@ export const setCurrentCategory = (id: number, name: string) => {
 };
 export const getCurrentCategoryId = () => _currentCategoryId;
 export const getCurrentCategoryName = () => _currentCategoryName;
+
+// 分类变更通知机制（FloatingBar 修改分类 → note/index 刷新标签）
+type CategoriesListener = () => void;
+const _categoriesListeners: CategoriesListener[] = [];
+
+export const notifyCategoriesChanged = () => {
+    _categoriesListeners.forEach((fn) => fn());
+};
+
+export const onCategoriesChanged = (fn: CategoriesListener) => {
+    _categoriesListeners.push(fn);
+    return () => {
+        const idx = _categoriesListeners.indexOf(fn);
+        if (idx >= 0) _categoriesListeners.splice(idx, 1);
+    };
+};

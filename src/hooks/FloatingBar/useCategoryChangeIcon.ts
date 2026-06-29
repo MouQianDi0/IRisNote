@@ -1,6 +1,7 @@
 import api from "@/api/client";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
+import { notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryChangeIcon(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
@@ -18,6 +19,7 @@ export function useCategoryChangeIcon(
                     setLongPressVisible((prev) =>
                         prev ? { ...prev, icon } : null,
                     );
+                    notifyCategoriesChanged();
                 })
                 .catch((err) => {
                     console.error("更换图标失败:", err.message);

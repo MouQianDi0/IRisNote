@@ -1,6 +1,10 @@
 import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
-import { ALL_CATEGORY, type Category } from "@/data/categories";
+import {
+    ALL_CATEGORY,
+    onCategoriesChanged,
+    type Category,
+} from "@/data/categories";
 import { useFocusEffect } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,6 +62,14 @@ export default function Index() {
             setLoading(false),
         );
     }, [fetchNotes, fetchCategories]);
+
+    // 订阅分类变更通知（FloatingBar 修改分类后自动刷新标签）
+    useEffect(() => {
+        const unsub = onCategoriesChanged(() => {
+            fetchCategories();
+        });
+        return unsub;
+    }, [fetchCategories]);
 
     // 创建笔记返回后刷新
     useFocusEffect(
