@@ -11,6 +11,12 @@
 
 ### 修复问题
 
+- **分类变更后笔记标签不同步**
+  - 日期：2026-06-29 16:00:00
+  - 修改文件：`src/data/categories.ts`、`src/components/FloatingBar.tsx`、`src/app/(tabs)/note/index.tsx`、`src/hooks/FloatingBar/useCategoryPin.ts`、`src/hooks/FloatingBar/useCategoryStar.ts`、`src/hooks/FloatingBar/useCategoryDelete.ts`、`src/hooks/FloatingBar/useCategoryRename.ts`、`src/hooks/FloatingBar/useCategoryChangeIcon.ts`
+  - 问题：FloatingBar 修改分类（重命名/删除等）后，note/index 的 categoryNameMap 不会更新，笔记卡片标签显示旧名称
+  - 修复：`categories.ts` 增加 `notifyCategoriesChanged`/`onCategoriesChanged` 订阅机制；5 个 mutation hook 成功后调用通知；FloatingBar 的 fetchCategories/handleAddCategory 成功后通知；note/index 订阅通知并自动 refetch
+
 - **分类列表仅在挂载时加载一次导致数据过时**
   - 日期：2026-06-29 15:30:00
   - 修改文件：`src/components/FloatingBar.tsx`

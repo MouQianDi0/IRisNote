@@ -1,6 +1,7 @@
 import api from "@/api/client";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
+import { notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryPin(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
@@ -21,6 +22,7 @@ export function useCategoryPin(
                     setLongPressVisible((prev) =>
                         prev ? { ...prev, is_pinned: newPinned } : null,
                     );
+                    notifyCategoriesChanged();
                 })
                 .catch((err) => {
                     console.error("切换置顶失败:", err.message);

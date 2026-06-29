@@ -10,6 +10,7 @@ import {
     Category,
     getCurrentCategoryId,
     getIcon,
+    notifyCategoriesChanged,
     setCurrentCategory,
 } from "../data/categories";
 import { pulse } from "../hooks/animations";
@@ -45,7 +46,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
 
     const fetchCategories = useCallback(() => {
         api.get<Category[]>("/categories")
-            .then(({ data }) => setCategories(data))
+            .then(({ data }) => {
+                setCategories(data);
+                notifyCategoriesChanged();
+            })
             .catch((err: any) => {
                 console.error(
                     "获取分类列表失败:",
@@ -69,6 +73,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         api.post<Category>("/categories", { name, icon })
             .then(({ data }) => {
                 setCategories((prev) => [...prev, data]);
+                notifyCategoriesChanged();
             })
             .catch((err: any) => {
                 console.error(

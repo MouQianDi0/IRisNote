@@ -1,7 +1,7 @@
 import api from "@/api/client";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
-import { ALL_CATEGORY } from "../../data/categories";
+import { ALL_CATEGORY, notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryDelete(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
@@ -18,6 +18,7 @@ export function useCategoryDelete(
                     );
                     setCategoryModelVisible(false);
                     setLongPressVisible(null);
+                    notifyCategoriesChanged();
                 })
                 .catch((err) => {
                     console.error("删除分类失败:", err.message);
