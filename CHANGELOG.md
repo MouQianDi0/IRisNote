@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-06-30
+
+### 修复问题
+
+- **修复 CategoryActionModel 删除分类确认弹窗无法触发**
+  - 日期：2026-06-30 10:00:00
+  - 修改文件：`src/components/CategoryActionModel.tsx`
+  - 变更内容：`onEnd` 回调中 `isOverTrash`（React state）替换为 `isOverTrashBackground.value`（SharedValue），解决 state 异步更新导致拖拽松手后读不到过阈值的值、Alert 弹不出的问题；随后将 `Alert.alert` 替换为自定义 Modal 确认弹窗（`showDeleteConfirm` 状态），避免手势回调中调用 Alert 的不确定性
+
+- **修复 useCategoryDelete 接口响应解析错误**
+  - 日期：2026-06-30 10:30:00
+  - 修改文件：`src/hooks/FloatingBar/useCategoryDelete.ts`
+  - 变更内容：`api.delete(/categories/:id)` 返回的 `res.data` 可能非数组或不含 notes 字段，原 `{ data: notes }` 解构未做类型检查导致 `notes.map is not a function`。改为兼容多种响应格式（数组 / `{notes:[]}` / 其他），仅在 notes 为有效非空数组时逐条删除笔记，无笔记时直接跳过进入 UI 更新
+
+### 优化代码
+
+- **优化 CategoryActionModel 动画性能与代码结构**
+  - 日期：2026-06-30 10:00:00
+  - 修改文件：`src/components/CategoryActionModel.tsx`
+  - 变更内容：
+    - 将 `renderIconRow` 从组件内部提取到模块级别，避免每次 re-render 重建函数引用
+    - 新增 `isOverTrashBackground`（SharedValue）独立驱动 animated style 背景色，与 `isOverTrash`（React state）职责分离，消除 UI 线程与 JS 线程状态竞争
+    - `onUpdate` 中比较 `isOverTrashBackground.value` 替代 `isOverTrash`，减少不必要的 re-render
+    - 新增 `onPin` prop，置顶按钮使用独立回调，与标星按钮 `onStar` 分离
+
+- **开发环境绕过登录**
+  - 日期：2026-06-30 11:00:00
+  - 修改文件：`src/hooks/useAuth.tsx`
+  - 变更内容：`isLoggedIn` 在 `__DEV__` 模式强制返回 `true`，注入 mock 用户数据，方便开发调试时跳过登录页
+
+- **修复 Floatingbar 组件报错**
+  - 日期：2026-06-30 11:30:00
+  - 修改文件：`src/components/Floatingbar.tsx`
+  - 变更内容：修复 `Image` 未从 react-native 导入、JSX 多余分号、`item.icon` 字符串未通过 `iconMap` 解析成组件、`onClose` 箭头函数中 `setLongPressVisible(null)` 被分号踢出函数体、`CategoryActionModel` 的 `onPin`/`onStar` prop 名对齐
+
 ## 2026-06-29
 
 ### 文档更新
