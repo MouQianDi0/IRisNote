@@ -1,41 +1,82 @@
 import api from "@/api/client";
 import FloatingBar from "@/components/FloatingBar";
+import {
+    ALL_CATEGORY,
+    onCategoriesChanged,
+    type Category,
+} from "@/data/categories";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { ChevronUp } from "lucide-react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Pressable, Text, View } from "react-native";
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withTiming,
+} from "react-native-reanimated";
 
 type Note = {
     id: number;
     title: string;
     content: string | null;
-    category: string | null;
+    category_id: number | null;
     created_at: string;
 };
 
 export default function Index() {
     const [notes, setNotes] = useState<Note[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [currentCategory, setCurrentCategory] = useState("all");
+    const [currentCategory, setCurrentCategory] = useState(
+        String(ALL_CATEGORY.id),
+    );
+    const [showScrollTop, setShowScrollTop] = useState(false);
+    const flatListRef = useRef<FlatList<Note>>(null);
 
     const fetchNotes = useCallback(async () => {
         try {
             const { data } = await api.get<Note[]>("/notes");
             setNotes(data);
         } catch (err: any) {
-            console.error("获取笔记失败:", err.message);
+            console.error(
+                "获取笔记失败:",
+                err.response?.status,
+                err.response?.data || err.message,
+            );
+        }
+    }, []);
+
+    const fetchCategories = useCallback(async () => {
+        try {
+            const { data } = await api.get<Category[]>("/categories");
+            setCategories(data);
+        } catch (err: any) {
+            console.error("获取分类失败:", err.message);
         }
     }, []);
 
     useEffect(() => {
-        fetchNotes().finally(() => setLoading(false));
-    }, [fetchNotes]);
+        Promise.all([fetchNotes(), fetchCategories()]).finally(() =>
+            setLoading(false),
+        );
+    }, [fetchNotes, fetchCategories]);
+
+    // 订阅分类变更通知（FloatingBar 修改分类后自动刷新标签）
+    useEffect(() => {
+        const unsub = onCategoriesChanged(() => {
+            fetchCategories();
+        });
+        return unsub;
+    }, [fetchCategories]);
 
     // 创建笔记返回后刷新
     useFocusEffect(
         useCallback(() => {
             fetchNotes();
-        }, [fetchNotes]),
+            fetchCategories();
+        }, [fetchNotes, fetchCategories]),
     );
 
     const handleRefresh = async () => {
@@ -66,10 +107,40 @@ export default function Index() {
             },
         ]);
     };
+    const handleScrollToTop = () => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    };
+
+    const handleScroll = useCallback((event: any) => {
+        const offsetY = event.nativeEvent.contentOffset.y;
+        setShowScrollTop(offsetY > 300);
+    }, []);
+
+    // 滚动到顶部按钮的上下缓动动画
+    const bounceY = useSharedValue(0);
+    useEffect(() => {
+        bounceY.value = withRepeat(
+            withTiming(-10, { duration: 1000 }),
+            -1,
+            true,
+        );
+    }, [bounceY]);
+    const bounceStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: bounceY.value }],
+    }));
+
+    const categoryNameMap = useMemo(() => {
+        const map = new Map<number, string>();
+        categories.forEach((c) => map.set(c.id, c.name));
+        return map;
+    }, [categories]);
+
     const filteredNotes =
-        currentCategory === "all"
+        currentCategory === String(ALL_CATEGORY.id)
             ? notes
-            : notes.filter((note) => note.category === currentCategory); // 过滤分类为当前分类的笔记
+            : notes.filter(
+                  (note) => String(note.category_id) === currentCategory,
+              );
 
     return (
         <View className="mt-10 bp-[#ecedefff] ">
@@ -87,11 +158,14 @@ export default function Index() {
                 <View className="relative flex-1">
                     <View className="bg-white rounded-tl-[30px] p-4 h-[100%]  ">
                         <FlatList
+                            ref={flatListRef}
                             className="rounded-[14px]"
                             data={filteredNotes}
                             keyExtractor={(item) => String(item.id)}
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={{ paddingBottom: 10 }}
+                            onScroll={handleScroll}
+                            scrollEventThrottle={16}
                             ListHeaderComponent={
                                 <View
                                     className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
@@ -115,7 +189,11 @@ export default function Index() {
                                     <View className="flex-row items-center mt-2">
                                         <View className="bg-blue-50 rounded-full px-2 py-0.5">
                                             <Text className="text-xs text-blue-500">
-                                                {item.category ?? "默认"}
+                                                {item.category_id != null
+                                                    ? (categoryNameMap.get(
+                                                          item.category_id,
+                                                      ) ?? "未知")
+                                                    : "默认"}
                                             </Text>
                                         </View>
                                     </View>
@@ -130,6 +208,19 @@ export default function Index() {
                             }
                         />
                     </View>
+                    {showScrollTop && (
+                        <Animated.View
+                            style={bounceStyle}
+                            className="absolute bottom-15 left-1/2 -translate-x-1/2"
+                        >
+                            <Pressable
+                                onPress={handleScrollToTop}
+                                className="right-1/2 -translate-x-1/2 w-11 h-11 bg-transparent rounded-full items-center justify-center relative"
+                            >
+                                <ChevronUp size={50} color="#7c7c7ccb" />
+                            </Pressable>
+                        </Animated.View>
+                    )}
                 </View>
             </View>
         </View>

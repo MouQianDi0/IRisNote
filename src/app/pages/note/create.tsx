@@ -25,6 +25,11 @@ import { router } from "expo-router";
 // 导入 API
 // ============================================
 import api from "@/api/client";
+import {
+    ALL_CATEGORY,
+    getCurrentCategoryId,
+    getCurrentCategoryName,
+} from "@/data/categories";
 
 // ============================================
 // 导入图标库
@@ -51,10 +56,15 @@ export default function CreateNote() {
 
         setSubmitting(true);
         try {
-            await api.post("/notes", {
+            const categoryId = getCurrentCategoryId();
+            const body: Record<string, string | number> = {
                 title: title.trim(),
                 content: content.trim(),
-            });
+            };
+            if (categoryId !== ALL_CATEGORY.id) {
+                body.category_id = categoryId;
+            }
+            await api.post("/notes", body);
             router.back();
         } catch (err: any) {
             const message = err.response?.data?.error || "保存失败，请稍后再试";
@@ -95,6 +105,15 @@ export default function CreateNote() {
                     )}
                 </TouchableOpacity>
             </View>
+
+            {/* 当前分类提示 */}
+            {getCurrentCategoryId() !== ALL_CATEGORY.id && (
+                <View className="px-5 pb-2">
+                    <Text className="text-sm text-[#007AFF]">
+                        分类：{getCurrentCategoryName()}
+                    </Text>
+                </View>
+            )}
 
             {/* 笔记标题输入框 */}
             <TextInput

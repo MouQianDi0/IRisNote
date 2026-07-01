@@ -9,7 +9,7 @@ import {
 import { Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { pulse } from "../hooks/animations";
-import { useSwipeTab } from "../hooks/useSwipeTab";
+import { useSwipeTab } from "../hooks/FloatingMenu/useSwipeTab";
 import ActionButton from "./ActionButton";
 
 const menuItems = [
@@ -47,7 +47,7 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
 
     return (
         <View
-            className="absolute bottom-[50] right-5 items-end"
+            className="absolute bottom-[50] right-5 items-end flex "
             {...panHandlers}
         >
             <View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">

@@ -1,8 +1,8 @@
 import { type Href, useRouter } from "expo-router";
 import { useRef } from "react";
 import { PanResponder } from "react-native";
-import type { TabKey } from "../data/actions";
-import { getActiveTabKey } from "../data/actions";
+import type { TabKey } from "../../data/actions";
+import { getActiveTabKey } from "../../data/actions";
 
 const tabPaths = [
     "/(tabs)/user",
