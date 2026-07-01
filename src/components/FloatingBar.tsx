@@ -87,10 +87,20 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         null,
     );
     const [categoryModelVisible, setCategoryModelVisible] = useState(false);
+    const handleCategoryDeleted = useCallback(
+        (category: Category) => {
+            if (selectedId !== category.id) return;
+            setSelectedId(ALL_CATEGORY.id);
+            setCurrentCategory(ALL_CATEGORY.id, ALL_CATEGORY.name);
+            onCategoryPress(String(ALL_CATEGORY.id));
+        },
+        [onCategoryPress, selectedId],
+    );
     const { deleteCategory } = useCategoryDelete(
         setCategories,
         setLongPressVisible,
         setCategoryModelVisible,
+        handleCategoryDeleted,
     );
     const { togglePin } = useCategoryPin(setCategories, setLongPressVisible);
     const { toggleStar } = useCategoryStar(setCategories, setLongPressVisible);
