@@ -67,9 +67,10 @@ export default function Index() {
     useEffect(() => {
         const unsub = onCategoriesChanged(() => {
             fetchCategories();
+            fetchNotes();
         });
         return unsub;
-    }, [fetchCategories]);
+    }, [fetchCategories, fetchNotes]);
 
     // 创建笔记返回后刷新
     useFocusEffect(
