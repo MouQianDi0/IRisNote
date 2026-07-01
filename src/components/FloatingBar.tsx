@@ -106,7 +106,6 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         if (a.id === ALL_CATEGORY.id) return -1;
         if (b.id === ALL_CATEGORY.id) return 1;
         if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
-        if (a.is_starred !== b.is_starred) return a.is_starred ? -1 : 1;
         return 0;
     });
 
@@ -152,7 +151,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         rounded-[12px]
                         justify-center
                         items-center
-                        padding-[4px]
+                        pl-[6px] pr-[4px] py-[4px]
                         ${isActive ? ` bg-[#f2f2f2]` : `bg-[#f2f2f2]`}`}
                                 onPress={() => handlePress(item.id)}
                             >
