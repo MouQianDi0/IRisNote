@@ -17,7 +17,7 @@ import {
 } from "react-native";
 
 export default function Login() {
-    const { refresh } = useAuth();
+    const { refresh, syncProfile } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [code, setCode] = useState("");
@@ -92,6 +92,7 @@ export default function Login() {
             await AsyncStorage.setItem("token", data.token);
             await AsyncStorage.setItem("user", JSON.stringify(data.user));
             await refresh();
+            await syncProfile();
 
             Alert.alert("成功", "登录成功", [
                 { text: "确定", onPress: () => router.replace("/(tabs)/user") },

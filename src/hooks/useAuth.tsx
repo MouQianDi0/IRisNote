@@ -1,3 +1,4 @@
+import { getUserProfile } from "@/api/user";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import {
@@ -5,6 +6,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useRef,
     useState,
     type PropsWithChildren,
 } from "react";
@@ -12,7 +14,8 @@ import {
 export type UserInfo = {
     id: number;
     email: string;
-    nickname?: string;
+    nickname?: string | null;
+    avatar?: string | null;
     created_at: string;
 };
 
@@ -23,6 +26,7 @@ type AuthState = {
     loading: boolean;
     logout: () => Promise<void>;
     refresh: () => Promise<void>;
+    syncProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -33,6 +37,7 @@ export function AuthProvider({
     const [user, setUser] = useState<UserInfo | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const initialLoadDone = useRef(false);
 
     const load = useCallback(async () => {
         const storedToken = await AsyncStorage.getItem("token");
@@ -46,9 +51,26 @@ export function AuthProvider({
         setLoading(false);
     }, []);
 
+    const syncProfile = useCallback(async () => {
+        const storedToken = await AsyncStorage.getItem("token");
+        if (!storedToken) return;
+        try {
+            const profile = await getUserProfile();
+            await AsyncStorage.setItem("user", JSON.stringify(profile));
+            setUser(profile);
+        } catch {
+            // 服务端同步失败时保留本地数据
+        }
+    }, []);
+
     useEffect(() => {
-        load();
-    }, [load]);
+        load().then(() => {
+            if (!initialLoadDone.current) {
+                initialLoadDone.current = true;
+                syncProfile();
+            }
+        });
+    }, [load, syncProfile]);
 
     useFocusEffect(
         useCallback(() => {
@@ -72,6 +94,7 @@ export function AuthProvider({
                 loading,
                 logout,
                 refresh: load,
+                syncProfile,
             }}
         >
             {children}

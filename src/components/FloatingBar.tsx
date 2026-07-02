@@ -1,6 +1,6 @@
 import api from "@/api/client";
 import { useFocusEffect } from "expo-router";
-import { NotebookPen } from "lucide-react-native";
+import { NotebookPen, UserIcon } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
@@ -19,6 +19,7 @@ import { useCategoryDelete } from "../hooks/FloatingBar/useCategoryDelete";
 import { useCategoryPin } from "../hooks/FloatingBar/useCategoryPin";
 import { useCategoryRename } from "../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../hooks/FloatingBar/useCategoryStar";
+import { useAvatar } from "../hooks/useAvatar";
 import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
 import AddNoteClass from "./addNoteClass";
@@ -119,6 +120,8 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         return 0;
     });
 
+    const { avatarSource, avatarKey } = useAvatar();
+
     return (
         <View className="flex-col justify-center">
             <View className="w-[50px]">
@@ -128,15 +131,20 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                             className="w-[50px] h-[50px] mb-[10px]"
                             onPress={() => onNavigate("/user")}
                         >
-                            <Image
-                                style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    borderRadius: 12,
-                                }}
-                                className="border-[2px] border-[#36A5FF] "
-                                source={require("../data/profilephoto.png")}
-                            />
+                            {avatarSource ? (
+                                <Image
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        borderRadius: 12,
+                                    }}
+                                    key={avatarKey}
+                                    className="border-[2px] border-[#36A5FF] "
+                                    source={avatarSource}
+                                />
+                            ) : (
+                                <UserIcon size={36} color="#fff" />
+                            )}
                         </Pressable>
                     </GestureDetector>
                 </Animated.View>

@@ -17,7 +17,7 @@ import {
 } from "react-native";
 
 export default function Register() {
-    const { refresh } = useAuth();
+    const { refresh, syncProfile } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -108,6 +108,7 @@ export default function Register() {
             await AsyncStorage.setItem("token", data.token);
             await AsyncStorage.setItem("user", JSON.stringify(data.user));
             await refresh();
+            await syncProfile();
 
             Alert.alert("成功", "注册成功", [
                 { text: "确定", onPress: () => router.replace("/(tabs)/user") },
