@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { useAvatar } from "@/hooks/useAvatar";
 import { router } from "expo-router";
 import {
     ChevronRight,
@@ -8,7 +9,7 @@ import {
     Shield,
     User as UserIcon,
 } from "lucide-react-native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, Text, View } from "react-native";
 
 const MENU_ITEMS = [
     { icon: Moon, label: "深色模式", color: "#7B61FF" },
@@ -18,6 +19,8 @@ const MENU_ITEMS = [
 
 export default function User() {
     const { user, isLoggedIn, logout } = useAuth();
+    const { avatarSource, avatarKey, avatarUploading, showAvatarOptions } =
+        useAvatar();
 
     return (
         <View className="flex-1 bg-[#f5f5f5]">
@@ -26,9 +29,22 @@ export default function User() {
                 {isLoggedIn ? (
                     <View className="items-center">
                         {/* 头像 */}
-                        <View className="w-[80px] h-[80px] rounded-full bg-white/20 justify-center items-center mb-3 border-2 border-white/40">
-                            <UserIcon size={36} color="#fff" />
-                        </View>
+                        <Pressable
+                            className="relative mb-3 h-[80px] w-[80px] items-center justify-center rounded-full border-2 border-white/40 bg-white/20 active:opacity-80"
+                            onPress={showAvatarOptions}
+                            disabled={avatarUploading}
+                            accessibilityLabel="更换头像"
+                        >
+                            {avatarSource ? (
+                                <Image
+                                    key={avatarKey}
+                                    className="h-full w-full rounded-full"
+                                    source={avatarSource}
+                                />
+                            ) : (
+                                <UserIcon size={36} color="#fff" />
+                            )}
+                        </Pressable>
                         <Text className="text-white text-xl font-bold">
                             {user?.nickname || user?.email?.split("@")[0]}
                         </Text>

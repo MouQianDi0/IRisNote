@@ -6,11 +6,11 @@ const getBaseURL = () => {
     return "https://tech-mou.top/api"; // 生产环境服务器地址
 };
 
-const baseURL = getBaseURL();
-console.log("[API] 请求地址:", baseURL, "__DEV__:", __DEV__);
+export const API_BASE_URL = getBaseURL();
+console.log("[API] 请求地址:", API_BASE_URL, "__DEV__:", __DEV__);
 
 const api = axios.create({
-    baseURL,
+    baseURL: API_BASE_URL,
 });
 
 // 请求拦截器：自动附加 token
