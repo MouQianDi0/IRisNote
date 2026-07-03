@@ -2,7 +2,9 @@ import api, { API_BASE_URL } from "@/api/client";
 import * as ImagePicker from "expo-image-picker";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
-const API_ORIGIN = new URL(API_BASE_URL).origin;
+const API_ORIGIN = new URL(API_BASE_URL).origin; // 提取API基础URL的域名部分
+
+console.log(API_ORIGIN);
 
 export type UserProfile = {
     id: number;
@@ -115,17 +117,17 @@ export function normalizeAvatarUrl(avatar?: string | null): string | null {
     if (!avatar) return null;
     if (avatar.startsWith("data:") || avatar.startsWith("file:")) {
         return avatar;
-    }
+    } // 处理data URI和file URI
 
     const url = new URL(avatar, API_ORIGIN);
+    const segments = url.pathname.split("/").filter(Boolean);
+    const filename = segments[segments.length - 1];
     if (url.hostname === "127.0.0.1" || url.hostname === "localhost") {
         // 提取文件名，映射到正确的获取头像接口路径
-        const segments = url.pathname.split("/").filter(Boolean);
-        const filename = segments[segments.length - 1];
         return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
     }
 
-    return url.href;
+    return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
 }
 
 function collectAvatarFromResult(
