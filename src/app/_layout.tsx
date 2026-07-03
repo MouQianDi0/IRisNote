@@ -11,7 +11,7 @@ export default function RootLayout() {
                 <SafeAreaView
                     style={{ flex: 1, backgroundColor: "rgb(242, 242, 242)" }}
                 >
-                    <Stack>
+                    <Stack screenOptions={{ animation: "fade_from_bottom" }}>
                         <Stack.Screen
                             name="(tabs)"
                             options={{ headerShown: false }}

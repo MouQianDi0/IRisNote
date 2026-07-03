@@ -1,7 +1,7 @@
 import api from "@/api/client";
 import { useFocusEffect } from "expo-router";
-import { NotebookPen, UserIcon } from "lucide-react-native";
-import { useCallback, useState } from "react";
+import { UserIcon } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
@@ -11,6 +11,7 @@ import {
     getCurrentCategoryId,
     getIcon,
     notifyCategoriesChanged,
+    onCategoriesChanged,
     setCurrentCategory,
 } from "../data/categories";
 import { pulse } from "../hooks/animations";
@@ -22,7 +23,6 @@ import { useCategoryStar } from "../hooks/FloatingBar/useCategoryStar";
 import { useAvatar } from "../hooks/useAvatar";
 import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
-import AddNoteClass from "./addNoteClass";
 import CategoryActionModel from "./CategoryActionModel";
 
 type FloatingBarProps = {
@@ -30,7 +30,6 @@ type FloatingBarProps = {
 };
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
-    const [NoteClassMenu, setNoteClassMenu] = useState(false);
     const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
@@ -70,20 +69,14 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         }, [fetchCategories]),
     );
 
-    const handleAddCategory = (name: string, icon: string) => {
-        api.post<Category>("/categories", { name, icon })
-            .then(({ data }) => {
-                setCategories((prev) => [...prev, data]);
-                notifyCategoriesChanged();
-            })
-            .catch((err: any) => {
-                console.error(
-                    "创建分类失败:",
-                    err.response?.status,
-                    err.response?.data || err.message,
-                );
-            });
-    };
+    // 订阅分类变更通知，外部创建分类后自动刷新列表
+    useEffect(() => {
+        const unsub = onCategoriesChanged(() => {
+            fetchCategories();
+        });
+        return unsub;
+    }, [fetchCategories]);
+
     const [longPressVisible, setLongPressVisible] = useState<Category | null>(
         null,
     );
@@ -198,19 +191,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         );
                     })}
                 </ScrollView>
-
-                <Pressable
-                    className="w-[48px] h-[48px] justify-center items-center bg-[rgb(220,220,220)] rounded-full m-[2px]"
-                    onPress={() => setNoteClassMenu(true)}
-                >
-                    <NotebookPen size={22} color="#0000006e" />
-                </Pressable>
-
-                <AddNoteClass
-                    visible={NoteClassMenu}
-                    onClose={() => setNoteClassMenu(false)}
-                    onAdd={handleAddCategory}
-                />
+                <View className="h-[2px] bg-gray-300 my-[7px] w-[40px] mx-[auto]"></View>
 
                 {longPressVisible && (
                     <CategoryActionModel

@@ -1,7 +1,10 @@
 import api from "@/api/client";
+import AddCategoryButton from "@/components/AddCategoryButton";
+import AddNoteClass from "@/components/addNoteClass";
 import FloatingBar from "@/components/FloatingBar";
 import {
     ALL_CATEGORY,
+    notifyCategoriesChanged,
     onCategoriesChanged,
     type Category,
 } from "@/data/categories";
@@ -33,6 +36,7 @@ export default function Index() {
         String(ALL_CATEGORY.id),
     );
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const [NoteClassMenu, setNoteClassMenu] = useState(false);
     const flatListRef = useRef<FlatList<Note>>(null);
 
     const fetchNotes = useCallback(async () => {
@@ -108,6 +112,18 @@ export default function Index() {
             },
         ]);
     };
+
+    const handleAddCategory = async (name: string, icon: string) => {
+        try {
+            await api.post("/categories", { name, icon });
+            notifyCategoriesChanged();
+            fetchCategories();
+            setNoteClassMenu(false);
+        } catch (err: any) {
+            console.error("创建分类失败:", err.message);
+        }
+    };
+
     const handleScrollToTop = () => {
         flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     };
@@ -144,10 +160,10 @@ export default function Index() {
               );
 
     return (
-        <View className="mt-10 bp-[#ecedefff] ">
-            <View className="flex-row ">
+        <View className="mt-10 bp-[#ecedefff] h-full">
+            <View className="flex-row h-full ">
                 <View
-                    className="
+                    className="     relative
                                     w-[75px]
                                     bg-[rgb(242, 242, 242)]
                                     h-auto                           
@@ -155,9 +171,14 @@ export default function Index() {
                                     items-center gap-[6px]"
                 >
                     <FloatingBar onCategoryPress={setCurrentCategory} />
+                    <View className="absolute bottom-20">
+                        <AddCategoryButton
+                            onPress={() => setNoteClassMenu(true)}
+                        />
+                    </View>
                 </View>
                 <View className="relative flex-1">
-                    <View className="bg-white rounded-tl-[30px] p-4 h-[100%]  ">
+                    <View className="bg-white rounded-tl-[30px] p-4 h-[100%] border-[1px] border-[#d7d7d7]">
                         <FlatList
                             ref={flatListRef}
                             className="rounded-[14px]"
@@ -224,6 +245,11 @@ export default function Index() {
                     )}
                 </View>
             </View>
+            <AddNoteClass
+                visible={NoteClassMenu}
+                onClose={() => setNoteClassMenu(false)}
+                onAdd={handleAddCategory}
+            />
         </View>
     );
 }
