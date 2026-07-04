@@ -1,7 +1,7 @@
 import api from "@/api/client";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
-import FloatingBar from "@/components/FloatingBar";
+import FloatingBar from "@/components/FloatingBarComponents/FloatingBar";
 import {
     ALL_CATEGORY,
     notifyCategoriesChanged,
