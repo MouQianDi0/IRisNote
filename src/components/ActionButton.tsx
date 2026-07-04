@@ -8,13 +8,13 @@ import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
 
 export default function ActionButton() {
-    const pathname = usePathname();
-    const onNavigate = useDebounceNavigation();
+  const pathname = usePathname();
+  const onNavigate = useDebounceNavigation();
 
-    const { icon: ActionIcon } = getAction(pathname);
-    const { gesture: longPress, animatedStyle } = useLongPressButton(
-        getAction(pathname).route as Href,
-    );
+  const { icon: ActionIcon } = getAction(pathname);
+  const { gesture: longPress, animatedStyle } = useLongPressButton(
+    getAction(pathname).route as Href,
+  );
 
     return (
         <Animated.View style={animatedStyle}>
