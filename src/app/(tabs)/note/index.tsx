@@ -8,7 +8,7 @@ import {
     onCategoriesChanged,
     type Category,
 } from "@/data/categories";
-import { useFocusEffect } from "expo-router";
+import { onNotesChanged } from "@/data/notes";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, Pressable, Text, View } from "react-native";
@@ -38,27 +38,47 @@ export default function Index() {
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [NoteClassMenu, setNoteClassMenu] = useState(false);
     const flatListRef = useRef<FlatList<Note>>(null);
+    const notesRequestRef = useRef<Promise<void> | null>(null);
+    const categoriesRequestRef = useRef<Promise<void> | null>(null);
 
-    const fetchNotes = useCallback(async () => {
-        try {
-            const { data } = await api.get<Note[]>("/notes");
-            setNotes(data);
-        } catch (err: any) {
-            console.error(
-                "获取笔记失败:",
-                err.response?.status,
-                err.response?.data || err.message,
-            );
-        }
+    const fetchNotes = useCallback(() => {
+        if (notesRequestRef.current) return notesRequestRef.current;
+
+        const request = (async () => {
+            try {
+                const { data } = await api.get<Note[]>("/notes");
+                setNotes(Array.isArray(data) ? data : []);
+            } catch (err: any) {
+                console.error(
+                    "获取笔记失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                );
+            } finally {
+                notesRequestRef.current = null;
+            }
+        })();
+
+        notesRequestRef.current = request;
+        return request;
     }, []);
 
-    const fetchCategories = useCallback(async () => {
-        try {
-            const { data } = await api.get<Category[]>("/categories");
-            setCategories(data);
-        } catch (err: any) {
-            console.error("获取分类失败:", err.message);
-        }
+    const fetchCategories = useCallback(() => {
+        if (categoriesRequestRef.current) return categoriesRequestRef.current;
+
+        const request = (async () => {
+            try {
+                const { data } = await api.get<Category[]>("/categories");
+                setCategories(Array.isArray(data) ? data : []);
+            } catch (err: any) {
+                console.error("获取分类失败:", err.message);
+            } finally {
+                categoriesRequestRef.current = null;
+            }
+        })();
+
+        categoriesRequestRef.current = request;
+        return request;
     }, []);
 
     useEffect(() => {
@@ -71,18 +91,17 @@ export default function Index() {
     useEffect(() => {
         const unsub = onCategoriesChanged(() => {
             fetchCategories();
+        });
+        return unsub;
+    }, [fetchCategories]);
+
+    // 创建笔记返回后刷新
+    useEffect(() => {
+        const unsub = onNotesChanged(() => {
             fetchNotes();
         });
         return unsub;
-    }, [fetchCategories, fetchNotes]);
-
-    // 创建笔记返回后刷新
-    useFocusEffect(
-        useCallback(() => {
-            fetchNotes();
-            fetchCategories();
-        }, [fetchNotes, fetchCategories]),
-    );
+    }, [fetchNotes]);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -117,7 +136,6 @@ export default function Index() {
         try {
             await api.post("/categories", { name, icon });
             notifyCategoriesChanged();
-            fetchCategories();
             setNoteClassMenu(false);
         } catch (err: any) {
             console.error("创建分类失败:", err.message);
@@ -150,7 +168,7 @@ export default function Index() {
         const map = new Map<number, string>();
         categories.forEach((c) => map.set(c.id, c.name));
         return map;
-    }, [categories]);
+    }, [categories]); // 缓存分类名称映射，避免每次渲染都重新计算
 
     const filteredNotes =
         currentCategory === String(ALL_CATEGORY.id)

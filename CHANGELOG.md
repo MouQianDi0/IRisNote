@@ -1,5 +1,37 @@
 # CHANGELOG
 
+---
+
+## 2026-07-04 15:13:49 | 优化代码
+
+- **优化笔记页重复请求问题**
+    - 移除分类列表获取成功后再次广播分类变更的逻辑，避免形成重复刷新链路
+    - 分类点击仅更新当前分类状态，不再触发全局分类变更事件
+    - 笔记页移除聚焦时无条件全量刷新，改为初次加载、笔记变更事件和手动刷新时更新
+    - 为 `/notes` 与 `/categories` 请求增加 in-flight 去重，复用尚未完成的同类请求
+
+- **修改文件列表**
+    - `src/components/FloatingBar.tsx` - 清理分类点击广播与分类请求重复触发
+    - `src/app/(tabs)/note/index.tsx` - 调整笔记页刷新时机并增加请求去重
+    - `src/app/pages/note/create.tsx` - 新建笔记成功后发送笔记变更通知
+    - `src/data/notes.ts` - 新增笔记变更通知机制
+    - `CHANGELOG.md` - 记录本次优化变更
+
+---
+
+## 2026-07-04 15:07:22 | 优化代码
+
+- **优化滑动切换页面的导航方式**
+    - 将滑动切换底部 Tab 时使用的 `router.push` 调整为 `router.replace`
+    - 避免连续滑动切换页面时不断堆积导航栈
+    - 降低页面返回栈膨胀带来的切换卡顿风险
+
+- **修改文件列表**
+    - `src/hooks/FloatingMenu/useSwipeTab.ts` - 优化滑动切换 Tab 的导航方式
+    - `CHANGELOG.md` - 记录本次优化变更
+
+---
+
 ## 2026-07-02 15:00:00 | 重构优化
 
 - **将头像逻辑抽离为独立 Hook `useAvatar`**
@@ -38,3 +70,4 @@
     - `src/app/(tabs)/user/index.tsx` — 移除冗余代码、添加 cache-busting、调用 `syncProfile`
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
+    - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
