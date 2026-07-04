@@ -1,5 +1,6 @@
-type NotesListener = () => void;
+type NotesListener = () => void; // 监听笔记变化的回调函数
 
+// 笔记变化监听器列表
 const notesListeners: NotesListener[] = [];
 
 export const notifyNotesChanged = () => {
