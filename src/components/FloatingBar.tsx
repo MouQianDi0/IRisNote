@@ -1,7 +1,6 @@
 import api from "@/api/client";
-import { useFocusEffect } from "expo-router";
 import { UserIcon } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
@@ -10,7 +9,6 @@ import {
     Category,
     getCurrentCategoryId,
     getIcon,
-    notifyCategoriesChanged,
     onCategoriesChanged,
     setCurrentCategory,
 } from "../data/categories";
@@ -30,6 +28,7 @@ type FloatingBarProps = {
 };
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
+    const categoriesRequestRef = useRef<Promise<void> | null>(null);
     const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
@@ -45,10 +44,12 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [categories, setCategories] = useState<Category[]>([]);
 
     const fetchCategories = useCallback(() => {
-        api.get<Category[]>("/categories")
+        if (categoriesRequestRef.current) return categoriesRequestRef.current;
+
+        const request = api
+            .get<Category[]>("/categories")
             .then(({ data }) => {
                 setCategories(data);
-                notifyCategoriesChanged();
             })
             .catch((err: any) => {
                 console.error(
@@ -60,14 +61,18 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                     { text: "取消", style: "cancel" },
                     { text: "重试", onPress: () => fetchCategories() },
                 ]);
+            })
+            .finally(() => {
+                categoriesRequestRef.current = null;
             });
+
+        categoriesRequestRef.current = request;
+        return request;
     }, []);
 
-    useFocusEffect(
-        useCallback(() => {
-            fetchCategories();
-        }, [fetchCategories]),
-    );
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
 
     // 订阅分类变更通知，外部创建分类后自动刷新列表
     useEffect(() => {
@@ -144,7 +149,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 <View className="h-[2px] bg-gray-300 my-[7px] w-[40px] mx-[auto]"></View>
                 <ScrollView
                     style={{ maxHeight: 560 }}
-                    showsVerticalScrollIndicator={true}
+                    showsVerticalScrollIndicator={false}
                 >
                     {sortedCategories.map((item) => {
                         const isActive = selectedId === item.id;

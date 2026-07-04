@@ -4,8 +4,8 @@ import type { Category } from "../../data/categories";
 import { notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryRename(
-    setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
-    setLongPressVisible: React.Dispatch<React.SetStateAction<Category | null>>,
+    setCategories: React.Dispatch<React.SetStateAction<Category[]>>, // 更新分类列表
+    setLongPressVisible: React.Dispatch<React.SetStateAction<Category | null>>, // 长按分类时显示的分类信息
 ) {
     const renameCategory = useCallback(
         (category: Category, newName: string) => {

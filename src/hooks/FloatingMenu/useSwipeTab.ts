@@ -38,10 +38,10 @@ export function useSwipeTab(pathname: string) {
 
             if (gesture.dy < -30) {
                 const prevIndex = (currentIndex - 1 + total) % total;
-                router.push(tabPaths[prevIndex] as Href);
+                router.replace(tabPaths[prevIndex] as Href);
             } else if (gesture.dy > 30) {
                 const nextIndex = (currentIndex + 1) % total;
-                router.push(tabPaths[nextIndex] as Href);
+                router.replace(tabPaths[nextIndex] as Href);
             }
         },
     });

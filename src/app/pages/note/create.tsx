@@ -1,7 +1,7 @@
 // ============================================
 // 导入 React
 // ============================================
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 // ============================================
 // 导入 React Native 组件
@@ -29,7 +29,9 @@ import {
     ALL_CATEGORY,
     getCurrentCategoryId,
     getCurrentCategoryName,
+    onCategoriesChanged,
 } from "@/data/categories";
+import { notifyNotesChanged } from "@/data/notes";
 
 // ============================================
 // 导入图标库
@@ -43,6 +45,17 @@ export default function CreateNote() {
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [categoryName, setCategoryName] = useState(getCurrentCategoryName);
+    const [categoryId, setCategoryId] = useState(getCurrentCategoryId);
+
+    console.log(categoryName);
+    useEffect(() => {
+        const unsub = onCategoriesChanged(() => {
+            setCategoryName(getCurrentCategoryName());
+            setCategoryId(getCurrentCategoryId());
+        });
+        return unsub;
+    }, []);
 
     const handleSave = async () => {
         if (!title.trim()) {
@@ -56,15 +69,16 @@ export default function CreateNote() {
 
         setSubmitting(true);
         try {
-            const categoryId = getCurrentCategoryId();
+            const categoryIdCurrent = getCurrentCategoryId();
             const body: Record<string, string | number> = {
                 title: title.trim(),
                 content: content.trim(),
             };
-            if (categoryId !== ALL_CATEGORY.id) {
-                body.category_id = categoryId;
+            if (categoryIdCurrent !== ALL_CATEGORY.id) {
+                body.category_id = categoryIdCurrent;
             }
             await api.post("/notes", body);
+            notifyNotesChanged();
             router.back();
         } catch (err: any) {
             const message = err.response?.data?.error || "保存失败，请稍后再试";
@@ -105,12 +119,11 @@ export default function CreateNote() {
                     )}
                 </TouchableOpacity>
             </View>
-
             {/* 当前分类提示 */}
-            {getCurrentCategoryId() !== ALL_CATEGORY.id && (
+            {categoryId !== ALL_CATEGORY.id && (
                 <View className="px-5 pb-2">
                     <Text className="text-sm text-[#007AFF]">
-                        分类：{getCurrentCategoryName()}
+                        分类：{categoryName}
                     </Text>
                 </View>
             )}
@@ -122,7 +135,6 @@ export default function CreateNote() {
                 value={title} // 绑定 title 状态
                 onChangeText={setTitle} // 输入变化时更新 title
             />
-
             {/* 笔记内容输入框 */}
             <TextInput
                 style={styles.contentInput} // 内容输入框样式
