@@ -8,6 +8,27 @@ type Note = {
     category_id: number | null;
 };
 
+const DELETE_BATCH_SIZE = 3;
+const DELETE_BATCH_DELAY_MS = 100;
+
+const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+    });
+
+const deleteNotesInBatches = async (notes: Note[]) => {
+    // TODO: Replace this with a server-side bulk delete endpoint when available.
+    for (let index = 0; index < notes.length; index += DELETE_BATCH_SIZE) {
+        const batch = notes.slice(index, index + DELETE_BATCH_SIZE);
+        await Promise.all(batch.map((note) => api.delete(`/notes/${note.id}`)));
+
+        const hasNextBatch = index + DELETE_BATCH_SIZE < notes.length;
+        if (hasNextBatch) {
+            await wait(DELETE_BATCH_DELAY_MS);
+        }
+    }
+};
+
 export function useCategoryDelete(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
     setLongPressVisible: React.Dispatch<React.SetStateAction<Category | null>>,
@@ -25,11 +46,7 @@ export function useCategoryDelete(
                     (note) => note.category_id === category.id,
                 );
 
-                await Promise.all(
-                    categoryNotes.map((note) =>
-                        api.delete(`/notes/${note.id}`),
-                    ),
-                );
+                await deleteNotesInBatches(categoryNotes);
 
                 await api.delete(`/categories/${category.id}`);
                 setCategories((prev) =>

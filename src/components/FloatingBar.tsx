@@ -1,17 +1,16 @@
 import api from "@/api/client";
-import { useFocusEffect } from "expo-router";
 import { UserIcon } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import {
-  ALL_CATEGORY,
-  Category,
-  getCurrentCategoryId,
-  notifyCategoriesChanged,
-  onCategoriesChanged,
-  setCurrentCategory,
+    ALL_CATEGORY,
+    Category,
+    getCurrentCategoryId,
+    getIcon,
+    onCategoriesChanged,
+    setCurrentCategory,
 } from "../data/categories";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
 import FloatingBarDivider from "./FloatingBarDivider";
@@ -29,46 +28,52 @@ type FloatingBarProps = {
   onCategoryPress: (category: string) => void;
 };
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
-  const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
-  const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
-  const handlePress = (id: number) => {
-    if (id === selectedId) return;
-    setSelectedId(id);
-    const cat =
-      id === ALL_CATEGORY.id
-        ? ALL_CATEGORY
-        : (categories.find((c) => c.id === id) ?? ALL_CATEGORY);
-    setCurrentCategory(id, cat.name);
-    onCategoryPress(String(id));
-  };
-  const onNavigate = useDebounceNavigation();
-  const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
+    const categoriesRequestRef = useRef<Promise<void> | null>(null);
+    const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
+    const handlePress = (id: number) => {
+        if (id === selectedId) return;
+        setSelectedId(id);
+        const cat =
+            id === ALL_CATEGORY.id
+                ? ALL_CATEGORY
+                : (categories.find((c) => c.id === id) ?? ALL_CATEGORY);
+        setCurrentCategory(id, cat.name);
+        onCategoryPress(String(id));
+    };
+    const onNavigate = useDebounceNavigation();
+    const [categories, setCategories] = useState<Category[]>([]);
 
-  const fetchCategories = useCallback(() => {
-    api
-      .get<Category[]>("/categories")
-      .then(({ data }) => {
-        setCategories(data);
-        notifyCategoriesChanged();
-      })
-      .catch((err: any) => {
-        console.error(
-          "获取分类列表失败:",
-          err.response?.status,
-          err.response?.data || err.message,
-        );
-        Alert.alert("加载失败", "获取分类列表失败，请检查网络后重试", [
-          { text: "取消", style: "cancel" },
-          { text: "重试", onPress: () => fetchCategories() },
-        ]);
-      });
-  }, []);
+    const fetchCategories = useCallback(() => {
+        if (categoriesRequestRef.current) return categoriesRequestRef.current;
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchCategories();
-    }, [fetchCategories]),
-  );
+        const request = api
+            .get<Category[]>("/categories")
+            .then(({ data }) => {
+                setCategories(data);
+            })
+            .catch((err: any) => {
+                console.error(
+                    "获取分类列表失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                );
+                Alert.alert("加载失败", "获取分类列表失败，请检查网络后重试", [
+                    { text: "取消", style: "cancel" },
+                    { text: "重试", onPress: () => fetchCategories() },
+                ]);
+            })
+            .finally(() => {
+                categoriesRequestRef.current = null;
+            });
+
+        categoriesRequestRef.current = request;
+        return request;
+    }, []);
+
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
 
   // 订阅分类变更通知，外部创建分类后自动刷新列表
   useEffect(() => {
