@@ -126,7 +126,6 @@ export function normalizeAvatarUrl(avatar?: string | null): string | null {
         // 提取文件名，映射到正确的获取头像接口路径
         return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
     }
-
     return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
 }
 
