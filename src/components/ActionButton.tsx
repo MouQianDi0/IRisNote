@@ -20,10 +20,10 @@ export default function ActionButton() {
         <Animated.View style={animatedStyle}>
             <GestureDetector gesture={longPress}>
                 <Pressable
-                    className="size-[66] items-center justify-center rounded-[18] bg-[#0037ebff] shadow-lg"
+                    className="size-[66] items-center justify-center rounded-[18] bg-[#213ac5eb] shadow-md"
                     style={({ pressed }) =>
                         pressed
-                            ? { backgroundColor: "#001692ff", opacity: 0.7 }
+                            ? { backgroundColor: "#213ac5eb", opacity: 0.7 }
                             : undefined
                     }
                     onPress={() =>

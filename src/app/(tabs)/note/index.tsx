@@ -8,10 +8,20 @@ import {
     onCategoriesChanged,
     type Category,
 } from "@/data/categories";
+import { setFloatingMenuHidden } from "@/data/floatingMenuVisibility";
 import { onNotesChanged } from "@/data/notes";
 import { ChevronUp } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, Pressable, Text, View } from "react-native";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    Alert,
+    FlatList,
+    Pressable,
+    Text,
+    View,
+    type ListRenderItem,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
+} from "react-native";
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -27,6 +37,42 @@ type Note = {
     created_at: string;
 };
 
+type NoteListItemProps = {
+    item: Note;
+    categoryName: string;
+    onDelete: (item: Note) => void;
+};
+
+const NoteListItem = memo(function NoteListItem({
+    item,
+    categoryName,
+    onDelete,
+}: NoteListItemProps) {
+    const handleLongPress = useCallback(() => {
+        onDelete(item);
+    }, [item, onDelete]);
+
+    return (
+        <Pressable
+            onLongPress={handleLongPress}
+            className="bg-[#f4e2f4] rounded-[14px] p-5 mb-4 "
+            style={{ width: "100%", maxWidth: 400 }}
+        >
+            <Text className="text-base font-semibold text-gray-800">
+                {item.title}
+            </Text>
+            <Text className="text-sm text-gray-500 mt-1">{item.content}</Text>
+            <View className="flex-row items-center mt-2">
+                <View className="bg-blue-50 rounded-full px-2 py-0.5">
+                    <Text className="text-xs text-blue-500">
+                        {categoryName}
+                    </Text>
+                </View>
+            </View>
+        </Pressable>
+    );
+});
+
 export default function Index() {
     const [notes, setNotes] = useState<Note[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -40,6 +86,10 @@ export default function Index() {
     const flatListRef = useRef<FlatList<Note>>(null);
     const notesRequestRef = useRef<Promise<void> | null>(null);
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
+    const showScrollTopRef = useRef(false);
+    const floatingMenuRestoreTimerRef = useRef<ReturnType<
+        typeof setTimeout
+    > | null>(null);
 
     const fetchNotes = useCallback(() => {
         if (notesRequestRef.current) return notesRequestRef.current;
@@ -103,13 +153,13 @@ export default function Index() {
         return unsub;
     }, [fetchNotes]);
 
-    const handleRefresh = async () => {
+    const handleRefresh = useCallback(async () => {
         setRefreshing(true);
         await fetchNotes();
         setRefreshing(false);
-    };
+    }, [fetchNotes]);
 
-    const handleDelete = (item: Note) => {
+    const handleDelete = useCallback((item: Note) => {
         Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
             { text: "取消", style: "cancel" },
             {
@@ -130,26 +180,61 @@ export default function Index() {
                 },
             },
         ]);
-    };
-
-    const handleAddCategory = async (name: string, icon: string) => {
-        try {
-            await api.post("/categories", { name, icon });
-            notifyCategoriesChanged();
-            setNoteClassMenu(false);
-        } catch (err: any) {
-            console.error("创建分类失败:", err.message);
-        }
-    };
-
-    const handleScrollToTop = () => {
-        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    };
-
-    const handleScroll = useCallback((event: any) => {
-        const offsetY = event.nativeEvent.contentOffset.y;
-        setShowScrollTop(offsetY > 300);
     }, []);
+
+    const handleAddCategory = useCallback(
+        async (name: string, icon: string) => {
+            try {
+                await api.post("/categories", { name, icon });
+                notifyCategoriesChanged();
+                setNoteClassMenu(false);
+            } catch (err: any) {
+                console.error("创建分类失败:", err.message);
+            }
+        },
+        [],
+    );
+
+    const handleScrollToTop = useCallback(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, []);
+
+    const scheduleFloatingMenuRestore = useCallback(() => {
+        if (floatingMenuRestoreTimerRef.current) {
+            clearTimeout(floatingMenuRestoreTimerRef.current);
+        }
+
+        setFloatingMenuHidden(true);
+        floatingMenuRestoreTimerRef.current = setTimeout(() => {
+            setFloatingMenuHidden(false);
+            floatingMenuRestoreTimerRef.current = null;
+        }, 180);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (floatingMenuRestoreTimerRef.current) {
+                clearTimeout(floatingMenuRestoreTimerRef.current);
+            }
+
+            setFloatingMenuHidden(false);
+        };
+    }, []);
+
+    const handleScroll = useCallback(
+        (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scheduleFloatingMenuRestore();
+
+            const offsetY = event.nativeEvent.contentOffset.y;
+            const shouldShowScrollTop = offsetY > 300;
+
+            if (showScrollTopRef.current !== shouldShowScrollTop) {
+                showScrollTopRef.current = shouldShowScrollTop;
+                setShowScrollTop(shouldShowScrollTop);
+            }
+        },
+        [scheduleFloatingMenuRestore],
+    );
 
     // 滚动到顶部按钮的上下缓动动画
     const bounceY = useSharedValue(0);
@@ -170,12 +255,59 @@ export default function Index() {
         return map;
     }, [categories]); // 缓存分类名称映射，避免每次渲染都重新计算
 
-    const filteredNotes =
-        currentCategory === String(ALL_CATEGORY.id)
-            ? notes
-            : notes.filter(
-                  (note) => String(note.category_id) === currentCategory,
-              );
+    const filteredNotes = useMemo(() => {
+        if (currentCategory === String(ALL_CATEGORY.id)) {
+            return notes;
+        }
+
+        return notes.filter(
+            (note) => String(note.category_id) === currentCategory,
+        );
+    }, [currentCategory, notes]);
+
+    const keyExtractor = useCallback((item: Note) => String(item.id), []);
+
+    const renderNoteItem = useCallback<ListRenderItem<Note>>(
+        ({ item }) => {
+            const categoryName =
+                item.category_id != null
+                    ? (categoryNameMap.get(item.category_id) ?? "未知")
+                    : "默认";
+
+            return (
+                <NoteListItem
+                    item={item}
+                    categoryName={categoryName}
+                    onDelete={handleDelete}
+                />
+            );
+        },
+        [categoryNameMap, handleDelete],
+    );
+
+    const listContentContainerStyle = useMemo(
+        () => ({ paddingBottom: 10 }),
+        [],
+    );
+
+    const listHeaderComponent = useMemo(
+        () => (
+            <View
+                className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
+                style={{ width: "100%", maxWidth: 400 }}
+            />
+        ),
+        [],
+    );
+
+    const listEmptyComponent = useMemo(
+        () => (
+            <View className="items-center py-5">
+                <Text className="text-gray-400 text-base">暂无笔记</Text>
+            </View>
+        ),
+        [],
+    );
 
     return (
         <View className="mt-10 bp-[#ecedefff] h-full">
@@ -201,51 +333,22 @@ export default function Index() {
                             ref={flatListRef}
                             className="rounded-[14px]"
                             data={filteredNotes}
-                            keyExtractor={(item) => String(item.id)}
+                            extraData={categoryNameMap}
+                            keyExtractor={keyExtractor}
                             showsVerticalScrollIndicator={false}
-                            contentContainerStyle={{ paddingBottom: 10 }}
+                            contentContainerStyle={listContentContainerStyle}
                             onScroll={handleScroll}
                             scrollEventThrottle={16}
-                            ListHeaderComponent={
-                                <View
-                                    className="bg-blue-50 h-[200px] rounded-[14px] mb-6 "
-                                    style={{ width: "100%", maxWidth: 400 }}
-                                ></View>
-                            }
+                            ListHeaderComponent={listHeaderComponent}
                             refreshing={refreshing}
                             onRefresh={handleRefresh}
-                            renderItem={({ item }) => (
-                                <Pressable
-                                    onLongPress={() => handleDelete(item)}
-                                    className="bg-[#f4e2f4] rounded-[14px] p-5 mb-4 "
-                                    style={{ width: "100%", maxWidth: 400 }}
-                                >
-                                    <Text className="text-base font-semibold text-gray-800">
-                                        {item.title}
-                                    </Text>
-                                    <Text className="text-sm text-gray-500 mt-1">
-                                        {item.content}
-                                    </Text>
-                                    <View className="flex-row items-center mt-2">
-                                        <View className="bg-blue-50 rounded-full px-2 py-0.5">
-                                            <Text className="text-xs text-blue-500">
-                                                {item.category_id != null
-                                                    ? (categoryNameMap.get(
-                                                          item.category_id,
-                                                      ) ?? "未知")
-                                                    : "默认"}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                </Pressable>
-                            )}
-                            ListEmptyComponent={
-                                <View className="items-center py-8">
-                                    <Text className="text-gray-400 text-base">
-                                        暂无笔记
-                                    </Text>
-                                </View>
-                            }
+                            renderItem={renderNoteItem}
+                            ListEmptyComponent={listEmptyComponent}
+                            initialNumToRender={8}
+                            maxToRenderPerBatch={6}
+                            updateCellsBatchingPeriod={50}
+                            windowSize={7}
+                            removeClippedSubviews
                         />
                     </View>
                     {showScrollTop && (
