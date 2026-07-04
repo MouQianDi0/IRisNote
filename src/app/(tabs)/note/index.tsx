@@ -321,7 +321,7 @@ export default function Index() {
                                     items-center gap-[6px]"
                 >
                     <FloatingBar onCategoryPress={setCurrentCategory} />
-                    <View className="absolute bottom-20">
+                    <View className="absolute bottom-21">
                         <AddCategoryButton
                             onPress={() => setNoteClassMenu(true)}
                         />
@@ -358,7 +358,7 @@ export default function Index() {
                         >
                             <Pressable
                                 onPress={handleScrollToTop}
-                                className="right-1/2 -translate-x-1/2 w-11 h-11 bg-transparent rounded-full items-center justify-center relative"
+                                className="right-1/2 translate-x-1/2 w-11 h-11 bg-transparent rounded-full"
                             >
                                 <ChevronUp size={50} color="#7c7c7ccb" />
                             </Pressable>
