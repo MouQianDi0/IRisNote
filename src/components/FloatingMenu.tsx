@@ -6,8 +6,17 @@ import {
     SquareCheckBig,
     Sticker,
 } from "lucide-react-native";
+import { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+    withTiming,
+} from "react-native-reanimated";
+import {
+    getFloatingMenuHidden,
+    onFloatingMenuVisibilityChanged,
+} from "../data/floatingMenuVisibility";
 import { pulse } from "../hooks/animations";
 import { useSwipeTab } from "../hooks/FloatingMenu/useSwipeTab";
 import ActionButton from "./ActionButton";
@@ -39,18 +48,38 @@ const menuItems = [
     },
 ];
 
+const hiddenOffsetX = 130;
+
 export default function FloatingMenu({ state }: BottomTabBarProps) {
     const router = useRouter();
     const pathname = usePathname();
     const activeTab = state.routes[state.index]?.name ?? "note";
     const panHandlers = useSwipeTab(pathname);
+    const translateX = useSharedValue(
+        getFloatingMenuHidden() ? hiddenOffsetX : 0,
+    );
+
+    useEffect(() => {
+        const unsubscribe = onFloatingMenuVisibilityChanged((hidden) => {
+            translateX.value = withTiming(hidden ? hiddenOffsetX : 0, {
+                duration: 600,
+            });
+        });
+
+        return unsubscribe;
+    }, [translateX]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ translateX: translateX.value }],
+    }));
 
     return (
-        <View
-            className="absolute bottom-[50] right-5 items-end flex "
+        <Animated.View
+            className="absolute bottom-[50] right-4 items-end flex"
+            style={animatedStyle}
             {...panHandlers}
         >
-            <View className="mb-[15] rounded-[18] bg-white px-2 py-[10] shadow-md">
+            <View className="mb-[15] rounded-[18] bg-[rgba(255,255,255,0.85)] px-2 py-[10] shadow-md">
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
@@ -87,6 +116,6 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
                 ))}
             </View>
             <ActionButton />
-        </View>
+        </Animated.View>
     );
 }

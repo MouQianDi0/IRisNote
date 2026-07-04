@@ -2,6 +2,38 @@
 
 ---
 
+## 2026-07-04 16:06:19 | 新增功能
+
+- **新增笔记列表滚动时隐藏 FloatingMenu**
+    - 新增跨组件菜单显示状态通知，笔记页滚动时发布隐藏状态，滚动停止后恢复显示
+    - `FloatingMenu` 订阅隐藏状态，并使用 Reanimated `withTiming` 控制整体向屏幕右侧滑出/滑回
+    - 在笔记页 `FlatList` 的 `onScroll` 中加入 180ms 停止滚动防抖，覆盖拖拽滚动和惯性滚动场景
+    - 页面卸载时清理恢复定时器并强制显示菜单，避免菜单状态残留
+
+- **修改文件列表**
+    - `src/data/floatingMenuVisibility.ts` - 新增 FloatingMenu 隐藏/显示状态通知模块
+    - `src/components/FloatingMenu.tsx` - 新增菜单横向滑出/滑回动画和状态订阅
+    - `src/app/(tabs)/note/index.tsx` - 在笔记列表滚动时触发菜单隐藏，停止滚动后恢复
+    - `CHANGELOG.md` - 记录本次新增功能变更
+
+---
+
+## 2026-07-04 15:39:59 | 优化代码
+
+- **优化笔记列表渲染性能**
+    - 将 `filteredNotes` 改为 `useMemo`，避免滚动按钮、弹窗等无关状态变化时重复过滤笔记数组
+    - 新增 `NoteListItem` 并使用 `memo` 包裹，减少父组件状态变化导致的笔记卡片重复渲染
+    - 将删除、刷新、滚动到顶部、`renderItem`、`keyExtractor` 等回调改为稳定引用，降低 FlatList 内部重复更新成本
+    - 固定列表头部、空态和内容容器样式对象，减少 FlatList 子节点重复创建
+    - 为 FlatList 增加 `initialNumToRender`、`maxToRenderPerBatch`、`updateCellsBatchingPeriod`、`windowSize`、`removeClippedSubviews` 等批量渲染约束
+    - 新增 `showScrollTopRef`，仅在滚动阈值状态变化时更新 `showScrollTop`，避免滚动中重复触发 state 更新
+
+- **修改文件列表**
+    - `src/app/(tabs)/note/index.tsx` - 优化笔记列表过滤、渲染、滚动状态与 FlatList 批量渲染参数
+    - `CHANGELOG.md` - 记录本次优化变更
+
+---
+
 ## 2026-07-04 15:13:49 | 优化代码
 
 - **优化笔记页重复请求问题**
