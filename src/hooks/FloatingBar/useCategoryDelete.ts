@@ -2,6 +2,7 @@ import api from "@/api/client";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
 import { ALL_CATEGORY, notifyCategoriesChanged } from "../../data/categories";
+import { notifyNotesRemovedByCategory } from "../../data/notes";
 
 type Note = {
     id: number;
@@ -56,6 +57,7 @@ export function useCategoryDelete(
                 setCategoryModelVisible(false);
                 setLongPressVisible(null);
                 notifyCategoriesChanged();
+                notifyNotesRemovedByCategory(category.id);
             } catch (err: any) {
                 console.error(
                     "删除分类失败:",

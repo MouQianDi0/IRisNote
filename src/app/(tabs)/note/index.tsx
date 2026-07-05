@@ -9,7 +9,7 @@ import {
     type Category,
 } from "@/data/categories";
 import { setFloatingMenuHidden } from "@/data/floatingMenuVisibility";
-import { onNotesChanged } from "@/data/notes";
+import { onNotesChanged, onNotesRemovedByCategory } from "@/data/notes";
 import { ChevronUp } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -152,6 +152,16 @@ export default function Index() {
         });
         return unsub;
     }, [fetchNotes]);
+
+    // 删除分类成功后，本地增量移除该分类下的笔记，避免重新拉取全部笔记。
+    useEffect(() => {
+        const unsub = onNotesRemovedByCategory((categoryId) => {
+            setNotes((prev) =>
+                prev.filter((note) => note.category_id !== categoryId),
+            );
+        });
+        return unsub;
+    }, []);
 
     const handleRefresh = useCallback(async () => {
         setRefreshing(true);
