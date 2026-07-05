@@ -9,7 +9,13 @@ import {
   type Category,
 } from "@/data/categories";
 import { setFloatingMenuHidden } from "@/data/floatingMenuVisibility";
-import { onNotesChanged, onNotesRemovedByCategory } from "@/data/notes";
+import {
+  onNotesChanged,
+  onNotesRemovedByCategory,
+  removeCachedNoteById,
+  setCachedNotes,
+} from "@/data/notes";
+import { router } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -41,19 +47,33 @@ type NoteListItemProps = {
   item: Note;
   categoryName: string;
   onDelete: (item: Note) => void;
+  onOpen: (item: Note) => void;
 };
 
 const NoteListItem = memo(function NoteListItem({
   item,
   categoryName,
   onDelete,
+  onOpen,
 }: NoteListItemProps) {
+  const lastLongPressAtRef = useRef(0);
+
   const handleLongPress = useCallback(() => {
+    lastLongPressAtRef.current = Date.now();
     onDelete(item);
   }, [item, onDelete]);
 
+  const handlePress = useCallback(() => {
+    if (Date.now() - lastLongPressAtRef.current < 600) {
+      return;
+    }
+
+    onOpen(item);
+  }, [item, onOpen]);
+
   return (
     <Pressable
+      onPress={handlePress}
       onLongPress={handleLongPress}
       className="bg-[#e0eaff] rounded-[14px] p-5 mb-4 overflow-hidden"
       style={{ width: "100%", maxWidth: 400, maxHeight: 175 }}
@@ -105,7 +125,9 @@ export default function Index() {
     const request = (async () => {
       try {
         const { data } = await api.get<Note[]>("/notes");
-        setNotes(Array.isArray(data) ? data : []);
+        const nextNotes = Array.isArray(data) ? data : [];
+        setNotes(nextNotes);
+        setCachedNotes(nextNotes);
       } catch (err: any) {
         console.error(
           "获取笔记失败:",
@@ -164,9 +186,11 @@ export default function Index() {
   // 删除分类成功后，本地增量移除该分类下的笔记，避免重新拉取全部笔记。
   useEffect(() => {
     const unsub = onNotesRemovedByCategory((categoryId) => {
-      setNotes((prev) =>
-        prev.filter((note) => note.category_id !== categoryId),
-      );
+      setNotes((prev) => {
+        const nextNotes = prev.filter((note) => note.category_id !== categoryId);
+        setCachedNotes(nextNotes);
+        return nextNotes;
+      });
     });
     return unsub;
   }, []);
@@ -186,13 +210,25 @@ export default function Index() {
         onPress: async () => {
           try {
             await api.delete(`/notes/${item.id}`);
-            setNotes((prev) => prev.filter((n) => n.id !== item.id));
+            removeCachedNoteById(item.id);
+            setNotes((prev) => {
+              const nextNotes = prev.filter((n) => n.id !== item.id);
+              setCachedNotes(nextNotes);
+              return nextNotes;
+            });
           } catch (err: any) {
             Alert.alert("提示", err.response?.data?.error || "删除失败");
           }
         },
       },
     ]);
+  }, []);
+
+  const handleOpenNote = useCallback((item: Note) => {
+    router.push({
+      pathname: "/note/[id]",
+      params: { id: String(item.id) },
+    });
   }, []);
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
@@ -283,10 +319,11 @@ export default function Index() {
           item={item}
           categoryName={categoryName}
           onDelete={handleDelete}
+          onOpen={handleOpenNote}
         />
       );
     },
-    [categoryNameMap, handleDelete],
+    [categoryNameMap, handleDelete, handleOpenNote],
   );
 
   const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10 }), []);
