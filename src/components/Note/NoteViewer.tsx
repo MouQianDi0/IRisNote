@@ -62,7 +62,9 @@ export default function NoteViewer({ note, onBack }: NoteViewerProps) {
         <View className="mt-3 flex-row flex-wrap items-center gap-2">
           <View className="rounded-full bg-blue-50 px-3 py-1">
             <Text className="text-xs text-blue-500">
-              {note.category_id == null ? "默认分类" : `分类 ${note.category_id}`}
+              {note.category_id == null
+                ? "默认分类"
+                : `分类 ${note.category_id}`}
             </Text>
           </View>
           <Text className="text-xs text-gray-400">

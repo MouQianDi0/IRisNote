@@ -15,7 +15,7 @@ import {
   removeCachedNoteById,
   setCachedNotes,
 } from "@/data/notes";
-import { router } from "expo-router";
+import { useDebounceNavigation } from "@/hooks/useDebounceNavigation";
 import { ChevronUp } from "lucide-react-native";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -102,6 +102,7 @@ const NoteListItem = memo(function NoteListItem({
 });
 
 export default function Index() {
+  const onNavigate = useDebounceNavigation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,7 +188,9 @@ export default function Index() {
   useEffect(() => {
     const unsub = onNotesRemovedByCategory((categoryId) => {
       setNotes((prev) => {
-        const nextNotes = prev.filter((note) => note.category_id !== categoryId);
+        const nextNotes = prev.filter(
+          (note) => note.category_id !== categoryId,
+        );
         setCachedNotes(nextNotes);
         return nextNotes;
       });
@@ -225,11 +228,11 @@ export default function Index() {
   }, []);
 
   const handleOpenNote = useCallback((item: Note) => {
-    router.push({
+    onNavigate({
       pathname: "/note/[id]",
       params: { id: String(item.id) },
     });
-  }, []);
+  }, [onNavigate]);
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
     try {
