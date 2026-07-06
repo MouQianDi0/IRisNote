@@ -137,7 +137,16 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                     source={avatarSource}
                                 />
                             ) : (
-                                <UserIcon size={36} color="#fff" />
+                                <View
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        borderRadius: 12,
+                                    }}
+                                    className="border-[2px] border-[#36A5FF] flex justify-center items-center"
+                                >
+                                    <UserIcon size={36} color="#fff" />
+                                </View>
                             )}
                         </Pressable>
                     </GestureDetector>
