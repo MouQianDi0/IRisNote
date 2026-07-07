@@ -338,17 +338,32 @@ export default function Index() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
-  const scheduleFloatingMenuRestore = useCallback(() => {
+  const clearFloatingMenuRestoreTimer = useCallback(() => {
     if (floatingMenuRestoreTimerRef.current) {
       clearTimeout(floatingMenuRestoreTimerRef.current);
+      floatingMenuRestoreTimerRef.current = null;
     }
+  }, []);
+
+  const scheduleFloatingMenuRestore = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
 
     setFloatingMenuHidden(true);
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
       setFloatingMenuHidden(false);
       floatingMenuRestoreTimerRef.current = null;
     }, 500);
-  }, []);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const hideFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    setFloatingMenuHidden(true);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const showFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    setFloatingMenuHidden(false);
+  }, [clearFloatingMenuRestoreTimer]);
 
   useEffect(() => {
     return () => {
@@ -419,6 +434,8 @@ export default function Index() {
           onToggleStar={handleToggleStar}
           onOpenActions={setOpenedNoteId}
           onCloseActions={() => setOpenedNoteId(null)}
+          onSwipeStart={hideFloatingMenu}
+          onSwipeClose={showFloatingMenu}
         />
       );
     },
@@ -428,7 +445,9 @@ export default function Index() {
       handleOpenNote,
       handleTogglePin,
       handleToggleStar,
+      hideFloatingMenu,
       openedNoteId,
+      showFloatingMenu,
     ],
   );
 

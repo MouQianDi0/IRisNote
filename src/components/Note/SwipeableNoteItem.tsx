@@ -35,6 +35,8 @@ type SwipeableNoteItemProps = {
   onToggleStar: (item: SwipeableNote) => void;
   onOpenActions: (noteId: number) => void;
   onCloseActions: () => void;
+  onSwipeStart?: () => void;
+  onSwipeClose?: () => void;
 };
 
 const RIGHT_ACTION_WIDTH = 138;
@@ -52,6 +54,8 @@ export default function SwipeableNoteItem({
   onToggleStar,
   onOpenActions,
   onCloseActions,
+  onSwipeStart,
+  onSwipeClose,
 }: SwipeableNoteItemProps) {
   const runDebouncedAction = useDebouncedAction();
   const translateX = useSharedValue(0);
@@ -65,10 +69,18 @@ export default function SwipeableNoteItem({
     }, 120);
   }, []);
 
-  const closeActions = useCallback(() => {
-    translateX.value = withTiming(0, { duration: 180 });
+  const finishCloseActions = useCallback(() => {
     onCloseActions();
-  }, [onCloseActions, translateX]);
+    onSwipeClose?.();
+  }, [onCloseActions, onSwipeClose]);
+
+  const closeActions = useCallback(() => {
+    translateX.value = withTiming(0, { duration: 180 }, (finished) => {
+      if (finished) {
+        runOnJS(finishCloseActions)();
+      }
+    });
+  }, [finishCloseActions, translateX]);
 
   useEffect(() => {
     if (openedNoteId !== item.id) {
@@ -81,6 +93,11 @@ export default function SwipeableNoteItem({
     .failOffsetY([-10, 10])
     .onBegin(() => {
       startX.value = translateX.value;
+    })
+    .onStart(() => {
+      if (onSwipeStart) {
+        runOnJS(onSwipeStart)();
+      }
     })
     .onUpdate((event) => {
       const nextX = startX.value + event.translationX;
@@ -102,8 +119,11 @@ export default function SwipeableNoteItem({
         return;
       }
 
-      translateX.value = withTiming(0, { duration: 180 });
-      runOnJS(onCloseActions)();
+      translateX.value = withTiming(0, { duration: 180 }, (finished) => {
+        if (finished) {
+          runOnJS(finishCloseActions)();
+        }
+      });
     })
     .onFinalize((event) => {
       if (Math.abs(event.translationX) > TAP_GUARD_DISTANCE) {
