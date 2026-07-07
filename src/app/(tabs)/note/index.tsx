@@ -18,7 +18,7 @@ import {
   removeCachedNoteById,
   setCachedNotes,
 } from "@/data/notes";
-import { useDebounceNavigation } from "@/hooks/useDebounceNavigation";
+import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
 import { useFocusEffect, type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

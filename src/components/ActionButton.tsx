@@ -4,17 +4,17 @@ import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { getAction } from "../data/actions";
 import { shake } from "../hooks/animations";
-import { useDebounceNavigation } from "../hooks/useDebounceNavigation";
+import { useDebounceNavigation } from "../hooks/useDebounced/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
 
 export default function ActionButton() {
-  const pathname = usePathname();
-  const onNavigate = useDebounceNavigation();
+    const pathname = usePathname();
+    const onNavigate = useDebounceNavigation();
 
-  const { icon: ActionIcon } = getAction(pathname);
-  const { gesture: longPress, animatedStyle } = useLongPressButton(
-    getAction(pathname).route as Href,
-  );
+    const { icon: ActionIcon } = getAction(pathname);
+    const { gesture: longPress, animatedStyle } = useLongPressButton(
+        getAction(pathname).route as Href,
+    );
 
     return (
         <Animated.View style={animatedStyle}>

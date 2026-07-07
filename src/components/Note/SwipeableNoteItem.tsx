@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
 import PinBadge from "@/components/PinBadge";
 import StarBadge from "@/components/StarBadge";
-import { useDebouncedAction } from "@/hooks/useDebouncedAction";
+import { useDebouncedAction } from "@/hooks/useDebounced/useDebouncedAction";
 import { Pin, Star, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef } from "react";
 import { Pressable, Text, View } from "react-native";
