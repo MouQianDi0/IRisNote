@@ -16,6 +16,10 @@ export type CachedNote = {
     content: string | null;    // 笔记内容，支持空值
     category_id: number | null; // 所属分类 ID，支持空值（未分类）
     created_at: string;        // 创建时间（ISO 格式）
+    is_pinned?: boolean;       // 是否置顶（本地状态可选）
+    is_starred?: boolean;      // 是否标星（本地状态可选）
+    local_order?: number;      // 本地原始顺序，用于取消置顶后回到原位
+    pinned_order?: number;     // 本地置顶顺序，数值越大越靠前
 };
 
 /** 监听笔记变化的回调函数类型 */

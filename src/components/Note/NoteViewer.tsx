@@ -7,6 +7,10 @@ export type NoteViewerNote = {
   content: string | null;
   category_id: number | null;
   created_at: string;
+  is_pinned?: boolean;
+  is_starred?: boolean;
+  local_order?: number;
+  pinned_order?: number;
 };
 
 type NoteViewerProps = {

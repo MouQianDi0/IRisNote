@@ -2,6 +2,9 @@ import api from "@/api/client";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
 import FloatingBar from "@/components/FloatingBarComponents/FloatingBar";
+import SwipeableNoteItem, {
+  type SwipeableNote,
+} from "@/components/Note/SwipeableNoteItem";
 import {
   ALL_CATEGORY,
   notifyCategoriesChanged,
@@ -17,7 +20,7 @@ import {
 } from "@/data/notes";
 import { useDebounceNavigation } from "@/hooks/useDebounceNavigation";
 import { ChevronUp } from "lucide-react-native";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -35,71 +38,28 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
-type Note = {
-  id: number;
-  title: string;
-  content: string | null;
-  category_id: number | null;
-  created_at: string;
+type Note = SwipeableNote;
+
+const withLocalOrder = (notes: Note[]) => {
+  return notes.map((note, index) => ({
+    ...note,
+    local_order: note.local_order ?? index,
+  }));
 };
 
-type NoteListItemProps = {
-  item: Note;
-  categoryName: string;
-  onDelete: (item: Note) => void;
-  onOpen: (item: Note) => void;
-};
-
-const NoteListItem = memo(function NoteListItem({
-  item,
-  categoryName,
-  onDelete,
-  onOpen,
-}: NoteListItemProps) {
-  const lastLongPressAtRef = useRef(0);
-
-  const handleLongPress = useCallback(() => {
-    lastLongPressAtRef.current = Date.now();
-    onDelete(item);
-  }, [item, onDelete]);
-
-  const handlePress = useCallback(() => {
-    if (Date.now() - lastLongPressAtRef.current < 600) {
-      return;
+const sortNotesByPinned = (notes: Note[]) => {
+  return [...notes].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) {
+      return Number(b.is_pinned) - Number(a.is_pinned);
     }
 
-    onOpen(item);
-  }, [item, onOpen]);
+    if (a.is_pinned && b.is_pinned) {
+      return (b.pinned_order ?? 0) - (a.pinned_order ?? 0);
+    }
 
-  return (
-    <Pressable
-      onPress={handlePress}
-      onLongPress={handleLongPress}
-      className="bg-[#e0eaff] rounded-[14px] p-5 mb-4 overflow-hidden"
-      style={{ width: "100%", maxWidth: 400, maxHeight: 175 }}
-    >
-      <Text
-        className="text-base font-semibold text-gray-800"
-        numberOfLines={2}
-        ellipsizeMode="tail"
-      >
-        {item.title}
-      </Text>
-      <Text
-        className="text-sm text-gray-500 mt-1"
-        numberOfLines={4}
-        ellipsizeMode="tail"
-      >
-        {item.content}
-      </Text>
-      <View className="flex-row items-center mt-2">
-        <View className="bg-blue-50 rounded-full px-2 py-0.5">
-          <Text className="text-xs text-blue-500">{categoryName}</Text>
-        </View>
-      </View>
-    </Pressable>
-  );
-});
+    return (a.local_order ?? 0) - (b.local_order ?? 0);
+  });
+};
 
 export default function Index() {
   const onNavigate = useDebounceNavigation();
@@ -112,10 +72,12 @@ export default function Index() {
   );
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [NoteClassMenu, setNoteClassMenu] = useState(false);
+  const [openedNoteId, setOpenedNoteId] = useState<number | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRequestRef = useRef<Promise<void> | null>(null);
   const categoriesRequestRef = useRef<Promise<void> | null>(null);
   const showScrollTopRef = useRef(false);
+  const pinnedOrderRef = useRef(0);
   const floatingMenuRestoreTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -126,7 +88,7 @@ export default function Index() {
     const request = (async () => {
       try {
         const { data } = await api.get<Note[]>("/notes");
-        const nextNotes = Array.isArray(data) ? data : [];
+        const nextNotes = withLocalOrder(Array.isArray(data) ? data : []);
         setNotes(nextNotes);
         setCachedNotes(nextNotes);
       } catch (err: any) {
@@ -204,6 +166,20 @@ export default function Index() {
     setRefreshing(false);
   }, [fetchNotes]);
 
+  const updateNotesLocally = useCallback(
+    (updater: (prev: Note[]) => Note[], shouldSort = false) => {
+      setNotes((prev) => {
+        const nextNotes = updater(prev);
+        const orderedNotes = shouldSort
+          ? sortNotesByPinned(nextNotes)
+          : nextNotes;
+        setCachedNotes(orderedNotes);
+        return orderedNotes;
+      });
+    },
+    [],
+  );
+
   const handleDelete = useCallback((item: Note) => {
     Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
       { text: "取消", style: "cancel" },
@@ -214,18 +190,65 @@ export default function Index() {
           try {
             await api.delete(`/notes/${item.id}`);
             removeCachedNoteById(item.id);
-            setNotes((prev) => {
-              const nextNotes = prev.filter((n) => n.id !== item.id);
-              setCachedNotes(nextNotes);
-              return nextNotes;
-            });
+            updateNotesLocally((prev) => prev.filter((n) => n.id !== item.id));
+            setOpenedNoteId(null);
+            console.log("笔记删除成功:", { id: item.id });
           } catch (err: any) {
             Alert.alert("提示", err.response?.data?.error || "删除失败");
           }
         },
       },
     ]);
-  }, []);
+  }, [updateNotesLocally]);
+
+  const handleTogglePin = useCallback(
+    (item: Note) => {
+      const nextPinned = !item.is_pinned;
+      const nextPinnedOrder = nextPinned
+        ? pinnedOrderRef.current + 1
+        : undefined;
+      if (nextPinnedOrder != null) {
+        pinnedOrderRef.current = nextPinnedOrder;
+      }
+
+      updateNotesLocally(
+        (prev) =>
+          prev.map((note) =>
+            note.id === item.id
+              ? {
+                  ...note,
+                  is_pinned: nextPinned,
+                  pinned_order: nextPinnedOrder,
+                }
+              : note,
+          ),
+        true,
+      );
+      setOpenedNoteId(null);
+      console.log("笔记置顶状态已更新:", {
+        id: item.id,
+        is_pinned: nextPinned,
+      });
+    },
+    [updateNotesLocally],
+  );
+
+  const handleToggleStar = useCallback(
+    (item: Note) => {
+      const nextStarred = !item.is_starred;
+      updateNotesLocally((prev) =>
+        prev.map((note) =>
+          note.id === item.id ? { ...note, is_starred: nextStarred } : note,
+        ),
+      );
+      setOpenedNoteId(null);
+      console.log("笔记标星状态已更新:", {
+        id: item.id,
+        is_starred: nextStarred,
+      });
+    },
+    [updateNotesLocally],
+  );
 
   const handleOpenNote = useCallback((item: Note) => {
     onNavigate({
@@ -301,11 +324,12 @@ export default function Index() {
   }, [categories]); // 缓存分类名称映射，避免每次渲染都重新计算
 
   const filteredNotes = useMemo(() => {
-    if (currentCategory === String(ALL_CATEGORY.id)) {
-      return notes;
-    }
+    const nextNotes =
+      currentCategory === String(ALL_CATEGORY.id)
+        ? notes
+        : notes.filter((note) => String(note.category_id) === currentCategory);
 
-    return notes.filter((note) => String(note.category_id) === currentCategory);
+    return sortNotesByPinned(nextNotes);
   }, [currentCategory, notes]);
 
   const keyExtractor = useCallback((item: Note) => String(item.id), []);
@@ -318,15 +342,27 @@ export default function Index() {
           : "默认";
 
       return (
-        <NoteListItem
+        <SwipeableNoteItem
           item={item}
           categoryName={categoryName}
+          openedNoteId={openedNoteId}
           onDelete={handleDelete}
           onOpen={handleOpenNote}
+          onTogglePin={handleTogglePin}
+          onToggleStar={handleToggleStar}
+          onOpenActions={setOpenedNoteId}
+          onCloseActions={() => setOpenedNoteId(null)}
         />
       );
     },
-    [categoryNameMap, handleDelete, handleOpenNote],
+    [
+      categoryNameMap,
+      handleDelete,
+      handleOpenNote,
+      handleTogglePin,
+      handleToggleStar,
+      openedNoteId,
+    ],
   );
 
   const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10 }), []);
