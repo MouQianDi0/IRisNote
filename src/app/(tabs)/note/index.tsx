@@ -19,11 +19,12 @@ import {
   setCachedNotes,
 } from "@/data/notes";
 import { useDebounceNavigation } from "@/hooks/useDebounceNavigation";
-import { type Href } from "expo-router";
+import { useFocusEffect, type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  BackHandler,
   FlatList,
   Pressable,
   Text,
@@ -88,6 +89,11 @@ export default function Index() {
   const floatingMenuRestoreTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const openedNoteIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    openedNoteIdRef.current = openedNoteId;
+  }, [openedNoteId]);
 
   const fetchNotes = useCallback(() => {
     if (notesRequestRef.current) return notesRequestRef.current;
@@ -350,7 +356,10 @@ export default function Index() {
 
     setFloatingMenuHidden(true);
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
-      setFloatingMenuHidden(false);
+      if (openedNoteIdRef.current === null) {
+        setFloatingMenuHidden(false);
+      }
+
       floatingMenuRestoreTimerRef.current = null;
     }, 500);
   }, [clearFloatingMenuRestoreTimer]);
@@ -374,6 +383,22 @@ export default function Index() {
       setFloatingMenuHidden(false);
     };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        "hardwareBackPress",
+        () => {
+          if (openedNoteIdRef.current === null) return false;
+
+          setOpenedNoteId(null);
+          return true;
+        },
+      );
+
+      return () => subscription.remove();
+    }, []),
+  );
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

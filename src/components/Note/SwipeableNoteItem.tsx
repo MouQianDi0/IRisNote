@@ -61,6 +61,7 @@ export default function SwipeableNoteItem({
   const translateX = useSharedValue(0);
   const startX = useSharedValue(0);
   const swipedRef = useRef(false);
+  const isOpenRef = useRef(false);
 
   const markSwiped = useCallback(() => {
     swipedRef.current = true;
@@ -70,9 +71,18 @@ export default function SwipeableNoteItem({
   }, []);
 
   const finishCloseActions = useCallback(() => {
+    isOpenRef.current = false;
     onCloseActions();
     onSwipeClose?.();
   }, [onCloseActions, onSwipeClose]);
+
+  const openActions = useCallback(
+    (noteId: number) => {
+      isOpenRef.current = true;
+      onOpenActions(noteId);
+    },
+    [onOpenActions],
+  );
 
   const closeActions = useCallback(() => {
     translateX.value = withTiming(0, { duration: 180 }, (finished) => {
@@ -83,10 +93,25 @@ export default function SwipeableNoteItem({
   }, [finishCloseActions, translateX]);
 
   useEffect(() => {
+    if (openedNoteId === item.id) {
+      isOpenRef.current = true;
+      return;
+    }
+
+    if (openedNoteId === null && isOpenRef.current) {
+      translateX.value = withTiming(0, { duration: 180 }, (finished) => {
+        if (finished) {
+          runOnJS(finishCloseActions)();
+        }
+      });
+      return;
+    }
+
     if (openedNoteId !== item.id) {
+      isOpenRef.current = false;
       translateX.value = withTiming(0, { duration: 180 });
     }
-  }, [item.id, openedNoteId, translateX]);
+  }, [finishCloseActions, item.id, openedNoteId, translateX]);
 
   const panGesture = Gesture.Pan()
     .activeOffsetX([-12, 12])
@@ -109,13 +134,13 @@ export default function SwipeableNoteItem({
     .onEnd(() => {
       if (translateX.value > OPEN_THRESHOLD) {
         translateX.value = withTiming(RIGHT_ACTION_WIDTH, { duration: 180 });
-        runOnJS(onOpenActions)(item.id);
+        runOnJS(openActions)(item.id);
         return;
       }
 
       if (translateX.value < -OPEN_THRESHOLD) {
         translateX.value = withTiming(-LEFT_ACTION_WIDTH, { duration: 180 });
-        runOnJS(onOpenActions)(item.id);
+        runOnJS(openActions)(item.id);
         return;
       }
 
