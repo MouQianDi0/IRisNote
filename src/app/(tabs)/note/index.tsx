@@ -19,6 +19,7 @@ import {
   setCachedNotes,
 } from "@/data/notes";
 import { useDebounceNavigation } from "@/hooks/useDebounceNavigation";
+import { type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -43,17 +44,22 @@ type Note = SwipeableNote;
 const withLocalOrder = (notes: Note[]) => {
   return notes.map((note, index) => ({
     ...note,
+    is_pinned: Boolean(note.is_pinned),
+    is_starred: Boolean(note.is_starred),
     local_order: note.local_order ?? index,
   }));
 };
 
 const sortNotesByPinned = (notes: Note[]) => {
   return [...notes].sort((a, b) => {
-    if (a.is_pinned !== b.is_pinned) {
-      return Number(b.is_pinned) - Number(a.is_pinned);
+    const aPinned = Boolean(a.is_pinned);
+    const bPinned = Boolean(b.is_pinned);
+
+    if (aPinned !== bPinned) {
+      return Number(bPinned) - Number(aPinned);
     }
 
-    if (a.is_pinned && b.is_pinned) {
+    if (aPinned && bPinned) {
       return (b.pinned_order ?? 0) - (a.pinned_order ?? 0);
     }
 
@@ -74,6 +80,7 @@ export default function Index() {
   const [NoteClassMenu, setNoteClassMenu] = useState(false);
   const [openedNoteId, setOpenedNoteId] = useState<number | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
+  const notesRef = useRef<Note[]>([]);
   const notesRequestRef = useRef<Promise<void> | null>(null);
   const categoriesRequestRef = useRef<Promise<void> | null>(null);
   const showScrollTopRef = useRef(false);
@@ -89,6 +96,10 @@ export default function Index() {
       try {
         const { data } = await api.get<Note[]>("/notes");
         const nextNotes = withLocalOrder(Array.isArray(data) ? data : []);
+        pinnedOrderRef.current = Math.max(
+          0,
+          ...nextNotes.map((note) => note.pinned_order ?? 0),
+        );
         setNotes(nextNotes);
         setCachedNotes(nextNotes);
       } catch (err: any) {
@@ -123,6 +134,10 @@ export default function Index() {
     categoriesRequestRef.current = request;
     return request;
   }, []);
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
 
   useEffect(() => {
     Promise.all([fetchNotes(), fetchCategories()]).finally(() =>
@@ -202,7 +217,8 @@ export default function Index() {
   }, [updateNotesLocally]);
 
   const handleTogglePin = useCallback(
-    (item: Note) => {
+    async (item: Note) => {
+      const previousNotes = notesRef.current;
       const nextPinned = !item.is_pinned;
       const nextPinnedOrder = nextPinned
         ? pinnedOrderRef.current + 1
@@ -225,16 +241,40 @@ export default function Index() {
         true,
       );
       setOpenedNoteId(null);
-      console.log("笔记置顶状态已更新:", {
-        id: item.id,
-        is_pinned: nextPinned,
-      });
+
+      const payload = { is_pinned: nextPinned };
+      console.log("笔记置顶后端同步开始:", { id: item.id, payload });
+
+      try {
+        const { data } = await api.put(`/notes/${item.id}`, payload);
+        console.log("笔记置顶后端同步成功:", {
+          id: item.id,
+          is_pinned: nextPinned,
+          response: data,
+        });
+      } catch (err: any) {
+        console.error("笔记置顶后端同步失败:", {
+          id: item.id,
+          status: err.response?.status,
+          data: err.response?.data || err.message,
+        });
+        pinnedOrderRef.current = Math.max(
+          0,
+          ...previousNotes.map((note) => note.pinned_order ?? 0),
+        );
+        updateNotesLocally(() => previousNotes, true);
+        Alert.alert(
+          "提示",
+          err.response?.data?.error || "同步置顶状态失败，已恢复原状态",
+        );
+      }
     },
     [updateNotesLocally],
   );
 
   const handleToggleStar = useCallback(
-    (item: Note) => {
+    async (item: Note) => {
+      const previousNotes = notesRef.current;
       const nextStarred = !item.is_starred;
       updateNotesLocally((prev) =>
         prev.map((note) =>
@@ -242,19 +282,38 @@ export default function Index() {
         ),
       );
       setOpenedNoteId(null);
-      console.log("笔记标星状态已更新:", {
-        id: item.id,
-        is_starred: nextStarred,
-      });
+
+      const payload = { is_starred: nextStarred };
+      console.log("笔记收藏后端同步开始:", { id: item.id, payload });
+
+      try {
+        const { data } = await api.put(`/notes/${item.id}`, payload);
+        console.log("笔记收藏后端同步成功:", {
+          id: item.id,
+          is_starred: nextStarred,
+          response: data,
+        });
+      } catch (err: any) {
+        console.error("笔记收藏后端同步失败:", {
+          id: item.id,
+          status: err.response?.status,
+          data: err.response?.data || err.message,
+        });
+        updateNotesLocally(() => previousNotes);
+        Alert.alert(
+          "提示",
+          err.response?.data?.error || "同步收藏状态失败，已恢复原状态",
+        );
+      }
     },
     [updateNotesLocally],
   );
 
   const handleOpenNote = useCallback((item: Note) => {
     onNavigate({
-      pathname: "/note/[id]",
+      pathname: "/pages/note/[id]",
       params: { id: String(item.id) },
-    });
+    } as unknown as Href);
   }, [onNavigate]);
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
