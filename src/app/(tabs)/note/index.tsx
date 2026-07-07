@@ -195,26 +195,31 @@ export default function Index() {
     [],
   );
 
-  const handleDelete = useCallback((item: Note) => {
-    Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
-      { text: "取消", style: "cancel" },
-      {
-        text: "删除",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await api.delete(`/notes/${item.id}`);
-            removeCachedNoteById(item.id);
-            updateNotesLocally((prev) => prev.filter((n) => n.id !== item.id));
-            setOpenedNoteId(null);
-            console.log("笔记删除成功:", { id: item.id });
-          } catch (err: any) {
-            Alert.alert("提示", err.response?.data?.error || "删除失败");
-          }
+  const handleDelete = useCallback(
+    (item: Note) => {
+      Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
+        { text: "取消", style: "cancel" },
+        {
+          text: "删除",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.delete(`/notes/${item.id}`);
+              removeCachedNoteById(item.id);
+              updateNotesLocally((prev) =>
+                prev.filter((n) => n.id !== item.id),
+              );
+              setOpenedNoteId(null);
+              console.log("笔记删除成功:", { id: item.id });
+            } catch (err: any) {
+              Alert.alert("提示", err.response?.data?.error || "删除失败");
+            }
+          },
         },
-      },
-    ]);
-  }, [updateNotesLocally]);
+      ]);
+    },
+    [updateNotesLocally],
+  );
 
   const handleTogglePin = useCallback(
     async (item: Note) => {
@@ -309,12 +314,15 @@ export default function Index() {
     [updateNotesLocally],
   );
 
-  const handleOpenNote = useCallback((item: Note) => {
-    onNavigate({
-      pathname: "/pages/note/[id]",
-      params: { id: String(item.id) },
-    } as unknown as Href);
-  }, [onNavigate]);
+  const handleOpenNote = useCallback(
+    (item: Note) => {
+      onNavigate({
+        pathname: "/pages/note/[id]",
+        params: { id: String(item.id) },
+      } as unknown as Href);
+    },
+    [onNavigate],
+  );
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
     try {
@@ -339,7 +347,7 @@ export default function Index() {
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
       setFloatingMenuHidden(false);
       floatingMenuRestoreTimerRef.current = null;
-    }, 180);
+    }, 500);
   }, []);
 
   useEffect(() => {
