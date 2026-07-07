@@ -17,7 +17,7 @@ import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";
 import { useCategoryRename } from "../../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
 import { useAvatar } from "../../hooks/useAvatar";
-import { useDebounceNavigation } from "../../hooks/useDebounceNavigation";
+import { useDebounceNavigation } from "../../hooks/useDebounced/useDebounceNavigation";
 import { useLongPressButton } from "../../hooks/useLongPressButton";
 import CategoryActionModel from "../CategoryActionModel";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
