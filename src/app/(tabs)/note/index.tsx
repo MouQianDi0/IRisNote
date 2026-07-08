@@ -18,6 +18,8 @@ import {
     removeCachedNoteById,
     setCachedNotes,
 } from "@/data/notes";
+import { useNotePin } from "@/hooks/notes/useNotePin";
+import { useNoteStar } from "@/hooks/notes/useNoteStar";
 import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
 import { type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
@@ -100,7 +102,7 @@ export default function Index() {
                 );
                 pinnedOrderRef.current = Math.max(
                     0,
-                    ...nextNotes.map((note) => note.pinned_order ?? 0),
+                    ...nextNotes.map((note) => note.pinned_order ?? 0), // 找到最大的置顶顺序
                 );
                 setNotes(nextNotes);
                 setCachedNotes(nextNotes);
@@ -195,7 +197,7 @@ export default function Index() {
             });
         },
         [],
-    );
+    ); // 本地更新笔记列表，支持排序
 
     const handleDelete = useCallback(
         (item: Note) => {
@@ -226,101 +228,17 @@ export default function Index() {
         [updateNotesLocally],
     );
 
-    const handleTogglePin = useCallback(
-        async (item: Note) => {
-            const previousNotes = notesRef.current;
-            const nextPinned = !item.is_pinned;
-            const nextPinnedOrder = nextPinned
-                ? pinnedOrderRef.current + 1
-                : undefined;
-            if (nextPinnedOrder != null) {
-                pinnedOrderRef.current = nextPinnedOrder;
-            }
-
-            updateNotesLocally(
-                (prev) =>
-                    prev.map((note) =>
-                        note.id === item.id
-                            ? {
-                                  ...note,
-                                  is_pinned: nextPinned,
-                                  pinned_order: nextPinnedOrder,
-                              }
-                            : note,
-                    ),
-                true,
-            );
-            setOpenedNoteId(null);
-
-            const payload = { is_pinned: nextPinned };
-            console.log("笔记置顶后端同步开始:", { id: item.id, payload });
-
-            try {
-                const { data } = await api.put(`/notes/${item.id}`, payload);
-                console.log("笔记置顶后端同步成功:", {
-                    id: item.id,
-                    is_pinned: nextPinned,
-                    response: data,
-                });
-            } catch (err: any) {
-                console.error("笔记置顶后端同步失败:", {
-                    id: item.id,
-                    status: err.response?.status,
-                    data: err.response?.data || err.message,
-                });
-                pinnedOrderRef.current = Math.max(
-                    0,
-                    ...previousNotes.map((note) => note.pinned_order ?? 0),
-                );
-                updateNotesLocally(() => previousNotes, true);
-                Alert.alert(
-                    "提示",
-                    err.response?.data?.error ||
-                        "同步置顶状态失败，已恢复原状态",
-                );
-            }
-        },
-        [updateNotesLocally],
+    const { togglePin: handleTogglePin } = useNotePin(
+        notesRef,
+        pinnedOrderRef,
+        updateNotesLocally,
+        setOpenedNoteId,
     );
 
-    const handleToggleStar = useCallback(
-        async (item: Note) => {
-            const previousNotes = notesRef.current;
-            const nextStarred = !item.is_starred;
-            updateNotesLocally((prev) =>
-                prev.map((note) =>
-                    note.id === item.id
-                        ? { ...note, is_starred: nextStarred }
-                        : note,
-                ),
-            );
-            setOpenedNoteId(null);
-
-            const payload = { is_starred: nextStarred };
-            console.log("笔记收藏后端同步开始:", { id: item.id, payload });
-
-            try {
-                const { data } = await api.put(`/notes/${item.id}`, payload);
-                console.log("笔记收藏后端同步成功:", {
-                    id: item.id,
-                    is_starred: nextStarred,
-                    response: data,
-                });
-            } catch (err: any) {
-                console.error("笔记收藏后端同步失败:", {
-                    id: item.id,
-                    status: err.response?.status,
-                    data: err.response?.data || err.message,
-                });
-                updateNotesLocally(() => previousNotes);
-                Alert.alert(
-                    "提示",
-                    err.response?.data?.error ||
-                        "同步收藏状态失败，已恢复原状态",
-                );
-            }
-        },
-        [updateNotesLocally],
+    const { toggleStar: handleToggleStar } = useNoteStar(
+        notesRef,
+        updateNotesLocally,
+        setOpenedNoteId,
     );
 
     const handleOpenNote = useCallback(
