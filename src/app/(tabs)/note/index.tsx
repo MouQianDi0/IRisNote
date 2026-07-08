@@ -18,6 +18,8 @@ import {
   removeCachedNoteById,
   setCachedNotes,
 } from "@/data/notes";
+import { useNotePin } from "@/hooks/notes/useNotePin";
+import { useNoteStar } from "@/hooks/notes/useNoteStar";
 import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
 import { useFocusEffect, type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
@@ -95,8 +97,28 @@ export default function Index() {
     openedNoteIdRef.current = openedNoteId;
   }, [openedNoteId]);
 
-  const fetchNotes = useCallback(() => {
-    if (notesRequestRef.current) return notesRequestRef.current;
+        const request = (async () => {
+            try {
+                const { data } = await api.get<Note[]>("/notes");
+                const nextNotes = withLocalOrder(
+                    Array.isArray(data) ? data : [],
+                );
+                pinnedOrderRef.current = Math.max(
+                    0,
+                    ...nextNotes.map((note) => note.pinned_order ?? 0), // 找到最大的置顶顺序
+                );
+                setNotes(nextNotes);
+                setCachedNotes(nextNotes);
+            } catch (err: any) {
+                console.error(
+                    "获取笔记失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                );
+            } finally {
+                notesRequestRef.current = null;
+            }
+        })();
 
     const request = (async () => {
       try {
@@ -106,13 +128,171 @@ export default function Index() {
           0,
           ...nextNotes.map((note) => note.pinned_order ?? 0),
         );
-        setNotes(nextNotes);
-        setCachedNotes(nextNotes);
-      } catch (err: any) {
-        console.error(
-          "获取笔记失败:",
-          err.response?.status,
-          err.response?.data || err.message,
+    }, [fetchNotes, fetchCategories]);
+
+    // 订阅分类变更通知（FloatingBar 修改分类后自动刷新标签）
+    useEffect(() => {
+        const unsub = onCategoriesChanged(() => {
+            fetchCategories();
+        });
+        return unsub;
+    }, [fetchCategories]);
+
+    // 创建笔记返回后刷新
+    useEffect(() => {
+        const unsub = onNotesChanged(() => {
+            fetchNotes();
+        });
+        return unsub;
+    }, [fetchNotes]);
+
+    // 删除分类成功后，本地增量移除该分类下的笔记，避免重新拉取全部笔记。
+    useEffect(() => {
+        const unsub = onNotesRemovedByCategory((categoryId) => {
+            setNotes((prev) => {
+                const nextNotes = prev.filter(
+                    (note) => note.category_id !== categoryId,
+                );
+                setCachedNotes(nextNotes);
+                return nextNotes;
+            });
+        });
+        return unsub;
+    }, []);
+
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchNotes();
+        setRefreshing(false);
+    }, [fetchNotes]);
+
+    const updateNotesLocally = useCallback(
+        (updater: (prev: Note[]) => Note[], shouldSort = false) => {
+            setNotes((prev) => {
+                const nextNotes = updater(prev);
+                const orderedNotes = shouldSort
+                    ? sortNotesByPinned(nextNotes)
+                    : nextNotes;
+                setCachedNotes(orderedNotes);
+                return orderedNotes;
+            });
+        },
+        [],
+    ); // 本地更新笔记列表，支持排序
+
+    const handleDelete = useCallback(
+        (item: Note) => {
+            Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
+                { text: "取消", style: "cancel" },
+                {
+                    text: "删除",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await api.delete(`/notes/${item.id}`);
+                            removeCachedNoteById(item.id);
+                            updateNotesLocally((prev) =>
+                                prev.filter((n) => n.id !== item.id),
+                            );
+                            setOpenedNoteId(null);
+                            console.log("笔记删除成功:", { id: item.id });
+                        } catch (err: any) {
+                            Alert.alert(
+                                "提示",
+                                err.response?.data?.error || "删除失败",
+                            );
+                        }
+                    },
+                },
+            ]);
+        },
+        [updateNotesLocally],
+    );
+
+    const { togglePin: handleTogglePin } = useNotePin(
+        notesRef,
+        pinnedOrderRef,
+        updateNotesLocally,
+        setOpenedNoteId,
+    );
+
+    const { toggleStar: handleToggleStar } = useNoteStar(
+        notesRef,
+        updateNotesLocally,
+        setOpenedNoteId,
+    );
+
+    const handleOpenNote = useCallback(
+        (item: Note) => {
+            onNavigate({
+                pathname: "/pages/note/[id]",
+                params: { id: String(item.id) },
+            } as unknown as Href);
+        },
+        [onNavigate],
+    );
+
+    const handleAddCategory = useCallback(
+        async (name: string, icon: string) => {
+            try {
+                await api.post("/categories", { name, icon });
+                notifyCategoriesChanged();
+                setNoteClassMenu(false);
+            } catch (err: any) {
+                console.error("创建分类失败:", err.message);
+            }
+        },
+        [],
+    );
+
+    const handleScrollToTop = useCallback(() => {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, []);
+
+    const scheduleFloatingMenuRestore = useCallback(() => {
+        if (floatingMenuRestoreTimerRef.current) {
+            clearTimeout(floatingMenuRestoreTimerRef.current);
+        }
+
+        setFloatingMenuHidden(true);
+        floatingMenuRestoreTimerRef.current = setTimeout(() => {
+            setFloatingMenuHidden(false);
+            floatingMenuRestoreTimerRef.current = null;
+        }, 500);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (floatingMenuRestoreTimerRef.current) {
+                clearTimeout(floatingMenuRestoreTimerRef.current);
+            }
+
+            setFloatingMenuHidden(false);
+        };
+    }, []);
+
+    const handleScroll = useCallback(
+        (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+            scheduleFloatingMenuRestore();
+
+            const offsetY = event.nativeEvent.contentOffset.y;
+            const shouldShowScrollTop = offsetY > 300;
+
+            if (showScrollTopRef.current !== shouldShowScrollTop) {
+                showScrollTopRef.current = shouldShowScrollTop;
+                setShowScrollTop(shouldShowScrollTop);
+            }
+        },
+        [scheduleFloatingMenuRestore],
+    );
+
+    // 滚动到顶部按钮的上下缓动动画
+    const bounceY = useSharedValue(0);
+    useEffect(() => {
+        bounceY.value = withRepeat(
+            withTiming(-10, { duration: 1000 }),
+            -1,
+            true,
         );
       } finally {
         notesRequestRef.current = null;
