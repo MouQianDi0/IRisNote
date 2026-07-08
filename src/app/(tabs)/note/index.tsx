@@ -19,12 +19,11 @@ import {
   setCachedNotes,
 } from "@/data/notes";
 import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
-import { useFocusEffect, type Href } from "expo-router";
+import { type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  BackHandler,
   FlatList,
   Pressable,
   Text,
@@ -344,35 +343,17 @@ export default function Index() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
-  const clearFloatingMenuRestoreTimer = useCallback(() => {
+  const scheduleFloatingMenuRestore = useCallback(() => {
     if (floatingMenuRestoreTimerRef.current) {
       clearTimeout(floatingMenuRestoreTimerRef.current);
-      floatingMenuRestoreTimerRef.current = null;
     }
-  }, []);
-
-  const scheduleFloatingMenuRestore = useCallback(() => {
-    clearFloatingMenuRestoreTimer();
 
     setFloatingMenuHidden(true);
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
-      if (openedNoteIdRef.current === null) {
-        setFloatingMenuHidden(false);
-      }
-
+      setFloatingMenuHidden(false);
       floatingMenuRestoreTimerRef.current = null;
     }, 500);
-  }, [clearFloatingMenuRestoreTimer]);
-
-  const hideFloatingMenu = useCallback(() => {
-    clearFloatingMenuRestoreTimer();
-    setFloatingMenuHidden(true);
-  }, [clearFloatingMenuRestoreTimer]);
-
-  const showFloatingMenu = useCallback(() => {
-    clearFloatingMenuRestoreTimer();
-    setFloatingMenuHidden(false);
-  }, [clearFloatingMenuRestoreTimer]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -383,22 +364,6 @@ export default function Index() {
       setFloatingMenuHidden(false);
     };
   }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener(
-        "hardwareBackPress",
-        () => {
-          if (openedNoteIdRef.current === null) return false;
-
-          setOpenedNoteId(null);
-          return true;
-        },
-      );
-
-      return () => subscription.remove();
-    }, []),
-  );
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -459,8 +424,6 @@ export default function Index() {
           onToggleStar={handleToggleStar}
           onOpenActions={setOpenedNoteId}
           onCloseActions={() => setOpenedNoteId(null)}
-          onSwipeStart={hideFloatingMenu}
-          onSwipeClose={showFloatingMenu}
         />
       );
     },
@@ -470,9 +433,7 @@ export default function Index() {
       handleOpenNote,
       handleTogglePin,
       handleToggleStar,
-      hideFloatingMenu,
       openedNoteId,
-      showFloatingMenu,
     ],
   );
 
