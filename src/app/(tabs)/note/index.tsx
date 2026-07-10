@@ -2,6 +2,7 @@ import api from "@/api/client";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
 import FloatingBar from "@/components/FloatingBarComponents/FloatingBar";
+import NoteContextMenu from "@/components/Note/NoteContextMenu";
 import SwipeableNoteItem, {
   type SwipeableNote,
 } from "@/components/Note/SwipeableNoteItem";
@@ -79,6 +80,8 @@ export default function Index() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [NoteClassMenu, setNoteClassMenu] = useState(false);
   const [openedNoteId, setOpenedNoteId] = useState<number | null>(null);
+  const [contextMenuNote, setContextMenuNote] = useState<Note | null>(null);
+  const contextMenuNoteRef = useRef<Note | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRef = useRef<Note[]>([]);
   const notesRequestRef = useRef<Promise<void> | null>(null);
@@ -343,17 +346,66 @@ export default function Index() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
-  const scheduleFloatingMenuRestore = useCallback(() => {
+  const clearFloatingMenuRestoreTimer = useCallback(() => {
     if (floatingMenuRestoreTimerRef.current) {
       clearTimeout(floatingMenuRestoreTimerRef.current);
+      floatingMenuRestoreTimerRef.current = null;
     }
+  }, []);
+
+  const scheduleFloatingMenuRestore = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
 
     setFloatingMenuHidden(true);
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
-      setFloatingMenuHidden(false);
+      if (openedNoteIdRef.current === null) {
+        setFloatingMenuHidden(false);
+      }
+
       floatingMenuRestoreTimerRef.current = null;
     }, 500);
-  }, []);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const hideFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    setFloatingMenuHidden(true);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const showFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    if (contextMenuNoteRef.current === null) {
+      setFloatingMenuHidden(false);
+    }
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const handleOpenContextMenu = useCallback(
+    (item: Note) => {
+      contextMenuNoteRef.current = item;
+      setOpenedNoteId(null);
+      hideFloatingMenu();
+      setContextMenuNote(item);
+    },
+    [hideFloatingMenu],
+  );
+
+  const handleCloseContextMenu = useCallback(() => {
+    contextMenuNoteRef.current = null;
+    setContextMenuNote(null);
+    showFloatingMenu();
+  }, [showFloatingMenu]);
+
+  const handleEditFromContextMenu = useCallback(() => {
+    if (!contextMenuNote) return;
+    onNavigate({
+      pathname: "/pages/note/edit/[id]",
+      params: { id: String(contextMenuNote.id) },
+    } as unknown as Href);
+  }, [contextMenuNote, onNavigate]);
+
+  const handleDeleteFromContextMenu = useCallback(() => {
+    if (!contextMenuNote) return;
+    handleDelete(contextMenuNote);
+  }, [contextMenuNote, handleDelete]);
 
   useEffect(() => {
     return () => {
@@ -424,6 +476,9 @@ export default function Index() {
           onToggleStar={handleToggleStar}
           onOpenActions={setOpenedNoteId}
           onCloseActions={() => setOpenedNoteId(null)}
+          onSwipeStart={hideFloatingMenu}
+          onSwipeClose={showFloatingMenu}
+          onLongPress={handleOpenContextMenu}
         />
       );
     },
@@ -433,7 +488,10 @@ export default function Index() {
       handleOpenNote,
       handleTogglePin,
       handleToggleStar,
+      hideFloatingMenu,
+      handleOpenContextMenu,
       openedNoteId,
+      showFloatingMenu,
     ],
   );
 
@@ -517,6 +575,13 @@ export default function Index() {
         visible={NoteClassMenu}
         onClose={() => setNoteClassMenu(false)}
         onAdd={handleAddCategory}
+      />
+      <NoteContextMenu
+        visible={contextMenuNote !== null}
+        note={contextMenuNote}
+        onClose={handleCloseContextMenu}
+        onEdit={handleEditFromContextMenu}
+        onDelete={handleDeleteFromContextMenu}
       />
     </View>
   );

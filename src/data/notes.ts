@@ -125,3 +125,8 @@ export const onNotesRemovedByCategory = (
         if (index >= 0) notesRemovedByCategoryListeners.splice(index, 1);
     };
 };
+
+/** 写入或更新单条缓存笔记。 */
+export const setCachedNote = (note: CachedNote) => {
+    cachedNotesById.set(note.id, note);
+};

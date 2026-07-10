@@ -36,6 +36,7 @@ type SwipeableNoteItemProps = {
   onCloseActions: () => void;
   onSwipeStart?: () => void;
   onSwipeClose?: () => void;
+  onLongPress: (item: SwipeableNote) => void;
 };
 
 const RIGHT_ACTION_WIDTH = 138;
@@ -55,17 +56,30 @@ export default function SwipeableNoteItem({
   onCloseActions,
   onSwipeStart,
   onSwipeClose,
+  onLongPress,
 }: SwipeableNoteItemProps) {
   const runDebouncedAction = useDebouncedAction();
   const translateX = useSharedValue(0);
   const startX = useSharedValue(0);
   const swipedRef = useRef(false);
+  const longPressedRef = useRef(false);
   const isOpenRef = useRef(false);
 
   const markSwiped = useCallback(() => {
     swipedRef.current = true;
     setTimeout(() => {
       swipedRef.current = false;
+    }, 120);
+  }, []);
+
+  const handleLongPress = useCallback(() => {
+    longPressedRef.current = true;
+    onLongPress(item);
+  }, [item, onLongPress]);
+
+  const releaseLongPressGuard = useCallback(() => {
+    setTimeout(() => {
+      longPressedRef.current = false;
     }, 120);
   }, []);
 
@@ -155,12 +169,24 @@ export default function SwipeableNoteItem({
       }
     });
 
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .maxDistance(10)
+    .onStart(() => {
+      runOnJS(handleLongPress)();
+    })
+    .onFinalize(() => {
+      runOnJS(releaseLongPressGuard)();
+    });
+
+  const cardGesture = Gesture.Race(panGesture, longPressGesture);
+
   const cardStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
 
   const handlePress = useCallback(() => {
-    if (swipedRef.current) return;
+    if (swipedRef.current || longPressedRef.current) return;
 
     if (openedNoteId === item.id) {
       closeActions();
@@ -204,7 +230,7 @@ export default function SwipeableNoteItem({
         onDeletePress={handleDeletePress}
       />
 
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={cardGesture}>
         <Animated.View style={cardStyle}>
           <NoteCard
             title={item.title}
