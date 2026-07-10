@@ -24,7 +24,8 @@ import { router } from "expo-router";
 // ============================================
 // 导入 API
 // ============================================
-import api from "@/api/client";
+import { getApiErrorMessage } from "@/api/errors";
+import { createNote, type CreateNotePayload } from "@/api/notes";
 import {
     ALL_CATEGORY,
     getCurrentCategoryId,
@@ -70,19 +71,18 @@ export default function CreateNote() {
         setSubmitting(true);
         try {
             const categoryIdCurrent = getCurrentCategoryId();
-            const body: Record<string, string | number> = {
+            const body: CreateNotePayload = {
                 title: title.trim(),
                 content: content.trim(),
             };
             if (categoryIdCurrent !== ALL_CATEGORY.id) {
                 body.category_id = categoryIdCurrent;
             }
-            await api.post("/notes", body);
+            await createNote(body);
             notifyNotesChanged();
             router.back();
-        } catch (err: any) {
-            const message = err.response?.data?.error || "保存失败，请稍后再试";
-            Alert.alert("提示", message);
+        } catch (err: unknown) {
+            Alert.alert("提示", getApiErrorMessage(err, "保存失败，请稍后再试"));
         } finally {
             setSubmitting(false);
         }

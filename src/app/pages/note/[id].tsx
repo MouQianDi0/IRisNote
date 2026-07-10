@@ -1,4 +1,5 @@
-import api from "@/api/client";
+import { getApiErrorMessage } from "@/api/errors";
+import { getNotes } from "@/api/notes";
 import NoteViewer, { type NoteViewerNote } from "@/components/Note/NoteViewer";
 import NoteDetailStateView, {
   type NoteDetailState,
@@ -46,8 +47,7 @@ export default function NoteDetail() {
     setErrorMessage("");
 
     try {
-      const { data } = await api.get<Note[]>("/notes");
-      const nextNotes = Array.isArray(data) ? data : [];
+      const nextNotes = await getNotes();
       setCachedNotes(nextNotes);
 
       const nextNote = nextNotes.find((item) => item.id === numericNoteId);
@@ -60,9 +60,9 @@ export default function NoteDetail() {
 
       setNote(nextNote);
       setLoadState("ready");
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNote(null);
-      setErrorMessage(err.response?.data?.error || "获取笔记失败");
+      setErrorMessage(getApiErrorMessage(err, "获取笔记失败"));
       setLoadState("error");
     }
   }, [numericNoteId]);

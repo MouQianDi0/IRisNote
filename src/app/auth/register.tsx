@@ -1,4 +1,5 @@
-import api from "@/api/client";
+import { register, sendVerificationCode } from "@/api/auth";
+import { getApiErrorMessage } from "@/api/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -45,7 +46,7 @@ export default function Register() {
         }
         setSendingCode(true);
         try {
-            await api.post("/verify/send", {
+            await sendVerificationCode({
                 email: email.trim(),
                 type: "register",
             });
@@ -61,9 +62,8 @@ export default function Register() {
                     return prev - 1;
                 });
             }, 1000);
-        } catch (err: any) {
-            const message = err.response?.data?.error || "发送失败，请稍后再试";
-            Alert.alert("提示", message);
+        } catch (err: unknown) {
+            Alert.alert("提示", getApiErrorMessage(err, "发送失败，请稍后再试"));
         } finally {
             setSendingCode(false);
         }
@@ -97,7 +97,7 @@ export default function Register() {
 
         setLoading(true);
         try {
-            const { data } = await api.post("/auth/register", {
+            const data = await register({
                 email: email.trim(),
                 password,
                 nickname: nickname.trim(),
@@ -113,9 +113,8 @@ export default function Register() {
             Alert.alert("成功", "注册成功", [
                 { text: "确定", onPress: () => router.replace("/(tabs)/user") },
             ]);
-        } catch (err: any) {
-            const message = err.response?.data?.error || "注册失败，请稍后再试";
-            Alert.alert("提示", message);
+        } catch (err: unknown) {
+            Alert.alert("提示", getApiErrorMessage(err, "注册失败，请稍后再试"));
         } finally {
             setLoading(false);
         }

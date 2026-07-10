@@ -1,4 +1,4 @@
-import api from "@/api/client";
+import { updateCategory } from "@/api/categories";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
 import { notifyCategoriesChanged } from "../../data/categories";
@@ -10,7 +10,7 @@ export function useCategoryPin(
     const togglePin = useCallback(
         (category: Category) => {
             const newPinned = !category.is_pinned;
-            api.put(`/categories/${category.id}`, { is_pinned: newPinned })
+            updateCategory(category.id, { is_pinned: newPinned })
                 .then(() => {
                     setCategories((prev) =>
                         prev.map((c) =>

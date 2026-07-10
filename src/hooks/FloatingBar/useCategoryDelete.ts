@@ -1,4 +1,5 @@
-import api from "@/api/client";
+import { deleteCategory as deleteCategoryRequest } from "@/api/categories";
+import { deleteNote, getNotes } from "@/api/notes";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
 import { ALL_CATEGORY, notifyCategoriesChanged } from "../../data/categories";
@@ -21,7 +22,7 @@ const deleteNotesInBatches = async (notes: Note[]) => {
     // TODO: Replace this with a server-side bulk delete endpoint when available.
     for (let index = 0; index < notes.length; index += DELETE_BATCH_SIZE) {
         const batch = notes.slice(index, index + DELETE_BATCH_SIZE);
-        await Promise.all(batch.map((note) => api.delete(`/notes/${note.id}`)));
+        await Promise.all(batch.map((note) => deleteNote(note.id)));
 
         const hasNextBatch = index + DELETE_BATCH_SIZE < notes.length;
         if (hasNextBatch) {
@@ -41,15 +42,14 @@ export function useCategoryDelete(
             if (category.id === ALL_CATEGORY.id) return;
 
             try {
-                const { data } = await api.get<Note[]>("/notes");
-                const notes = Array.isArray(data) ? data : [];
+                const notes = await getNotes();
                 const categoryNotes = notes.filter(
                     (note) => note.category_id === category.id,
                 );
 
                 await deleteNotesInBatches(categoryNotes);
 
-                await api.delete(`/categories/${category.id}`);
+                await deleteCategoryRequest(category.id);
                 setCategories((prev) =>
                     prev.filter((c) => c.id !== category.id),
                 );

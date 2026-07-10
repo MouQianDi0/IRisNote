@@ -1,4 +1,5 @@
-import api from "@/api/client";
+import { getApiErrorMessage } from "@/api/errors";
+import { loginWithPassword, sendVerificationCode } from "@/api/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -42,7 +43,7 @@ export default function Login() {
         }
         setSendingCode(true);
         try {
-            await api.post("/verify/send", {
+            await sendVerificationCode({
                 email: email.trim(),
                 type: "login",
             });
@@ -58,9 +59,8 @@ export default function Login() {
                     return prev - 1;
                 });
             }, 1000);
-        } catch (err: any) {
-            const message = err.response?.data?.error || "发送失败，请稍后再试";
-            Alert.alert("提示", message);
+        } catch (err: unknown) {
+            Alert.alert("提示", getApiErrorMessage(err, "发送失败，请稍后再试"));
         } finally {
             setSendingCode(false);
         }
@@ -82,7 +82,7 @@ export default function Login() {
 
         setLoading(true);
         try {
-            const { data } = await api.post("/auth/login", {
+            const data = await loginWithPassword({
                 email: email.trim(),
                 password,
                 code: code.trim(),
@@ -97,9 +97,8 @@ export default function Login() {
             Alert.alert("成功", "登录成功", [
                 { text: "确定", onPress: () => router.replace("/(tabs)/user") },
             ]);
-        } catch (err: any) {
-            const message = err.response?.data?.error || "登录失败，请稍后再试";
-            Alert.alert("提示", message);
+        } catch (err: unknown) {
+            Alert.alert("提示", getApiErrorMessage(err, "登录失败，请稍后再试"));
         } finally {
             setLoading(false);
         }
