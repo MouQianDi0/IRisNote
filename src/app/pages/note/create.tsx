@@ -49,14 +49,13 @@ export default function CreateNote() {
     const [categoryName, setCategoryName] = useState(getCurrentCategoryName);
     const [categoryId, setCategoryId] = useState(getCurrentCategoryId);
 
-    console.log(categoryName);
     useEffect(() => {
         const unsub = onCategoriesChanged(() => {
             setCategoryName(getCurrentCategoryName());
             setCategoryId(getCurrentCategoryId());
         });
         return unsub;
-    }, []);
+    }, []); // 监听分类变化
 
     const handleSave = async () => {
         if (!title.trim()) {
@@ -82,7 +81,10 @@ export default function CreateNote() {
             notifyNotesChanged();
             router.back();
         } catch (err: unknown) {
-            Alert.alert("提示", getApiErrorMessage(err, "保存失败，请稍后再试"));
+            Alert.alert(
+                "提示",
+                getApiErrorMessage(err, "保存失败，请稍后再试"),
+            );
         } finally {
             setSubmitting(false);
         }
