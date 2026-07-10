@@ -1,4 +1,5 @@
-import api from "@/api/client";
+import { getApiErrorMessage } from "@/api/errors";
+import { updateNote } from "@/api/notes";
 import type { SwipeableNote } from "@/components/Note/SwipeableNoteItem";
 import { useCallback } from "react";
 import { Alert } from "react-native";
@@ -37,7 +38,7 @@ export function useNoteStar(
             console.log("笔记标星后端同步开始:", { id: item.id, payload });
 
             try {
-                const { data } = await api.put(`/notes/${item.id}`, payload);
+                const data = await updateNote(item.id, payload);
                 console.log("笔记标星后端同步成功:", {
                     id: item.id,
                     is_starred: nextStarred,
@@ -52,8 +53,7 @@ export function useNoteStar(
                 updateNotesLocally(() => previousNotes);
                 Alert.alert(
                     "提示",
-                    err.response?.data?.error ||
-                        "同步标星状态失败，已恢复原状态",
+                    getApiErrorMessage(err, "同步标星状态失败，已恢复原状态"),
                 );
             }
         },

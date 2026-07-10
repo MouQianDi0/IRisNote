@@ -1,4 +1,4 @@
-import api from "@/api/client";
+import { updateCategory } from "@/api/categories";
 import { useCallback } from "react";
 import type { Category } from "../../data/categories";
 import { notifyCategoriesChanged } from "../../data/categories";
@@ -9,7 +9,7 @@ export function useCategoryChangeIcon(
 ) {
     const changeIcon = useCallback(
         (category: Category, icon: string) => {
-            api.put(`/categories/${category.id}`, { icon })
+            updateCategory(category.id, { icon })
                 .then(() => {
                     setCategories((prev) =>
                         prev.map((c) =>

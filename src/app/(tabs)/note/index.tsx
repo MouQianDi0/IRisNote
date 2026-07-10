@@ -1,4 +1,6 @@
-import api from "@/api/client";
+import { createCategory, getCategories } from "@/api/categories";
+import { getApiErrorMessage } from "@/api/errors";
+import { deleteNote, getNotes } from "@/api/notes";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
 import FloatingBar from "@/components/FloatingBarComponents/FloatingBar";
@@ -101,8 +103,7 @@ export default function Index() {
 
     const request = (async () => {
       try {
-        const { data } = await api.get<Note[]>("/notes");
-        const nextNotes = withLocalOrder(Array.isArray(data) ? data : []);
+        const nextNotes = withLocalOrder(await getNotes());
         pinnedOrderRef.current = Math.max(
           0,
           ...nextNotes.map((note) => note.pinned_order ?? 0),
@@ -129,8 +130,7 @@ export default function Index() {
 
     const request = (async () => {
       try {
-        const { data } = await api.get<Category[]>("/categories");
-        setCategories(Array.isArray(data) ? data : []);
+        setCategories(await getCategories());
       } catch (err: any) {
         console.error("获取分类失败:", err.message);
       } finally {
@@ -211,7 +211,7 @@ export default function Index() {
           style: "destructive",
           onPress: async () => {
             try {
-              await api.delete(`/notes/${item.id}`);
+              await deleteNote(item.id);
               removeCachedNoteById(item.id);
               updateNotesLocally((prev) =>
                 prev.filter((n) => n.id !== item.id),
@@ -219,7 +219,7 @@ export default function Index() {
               setOpenedNoteId(null);
               console.log("笔记删除成功:", { id: item.id });
             } catch (err: any) {
-              Alert.alert("提示", err.response?.data?.error || "删除失败");
+              Alert.alert("提示", getApiErrorMessage(err, "删除失败"));
             }
           },
         },
@@ -253,7 +253,7 @@ export default function Index() {
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
     try {
-      await api.post("/categories", { name, icon });
+      await createCategory({ name, icon });
       notifyCategoriesChanged();
       setNoteClassMenu(false);
     } catch (err: any) {

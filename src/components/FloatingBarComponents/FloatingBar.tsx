@@ -1,4 +1,4 @@
-import api from "@/api/client";
+import { getCategories } from "@/api/categories";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, View } from "react-native";
@@ -43,12 +43,11 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const onNavigate = useDebounceNavigation();
     const [categories, setCategories] = useState<Category[]>([]);
 
-    const fetchCategories = useCallback(() => {
+    const fetchCategories = useCallback(function fetchCategoriesRequest() {
         if (categoriesRequestRef.current) return categoriesRequestRef.current;
 
-        const request = api
-            .get<Category[]>("/categories")
-            .then(({ data }) => {
+        const request = getCategories()
+            .then((data) => {
                 setCategories(data);
             })
             .catch((err: any) => {
@@ -59,7 +58,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 );
                 Alert.alert("加载失败", "获取分类列表失败，请检查网络后重试", [
                     { text: "取消", style: "cancel" },
-                    { text: "重试", onPress: () => fetchCategories() },
+                    { text: "重试", onPress: () => fetchCategoriesRequest() },
                 ]);
             })
             .finally(() => {
