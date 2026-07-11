@@ -1,4 +1,4 @@
-import { getApiErrorMessage } from "@/api/errors";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { updateNote } from "@/api/notes";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";

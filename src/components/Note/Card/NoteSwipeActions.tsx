@@ -1,6 +1,6 @@
 import { Pin, Star, Trash2 } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
 
 type NoteSwipeActionsProps = {
     isPinned?: boolean;

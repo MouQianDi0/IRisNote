@@ -1,9 +1,9 @@
 import { getIcon } from "@/data/categories";
 import type { Category } from "@/features/notes/categories/categories.types";
+import { pulse } from "@/shared/theme/motion";
+import { colors } from "@/shared/theme";
 import { Pressable, Text } from "react-native";
 import Animated from "react-native-reanimated";
-import { pulse } from "../../hooks/animations";
-import { colors } from "../../theme";
 import StarBadge from "../StarBadge";
 
 type FloatingBarCategoryButtonProps = {

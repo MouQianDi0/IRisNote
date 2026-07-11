@@ -1,9 +1,10 @@
 import { register, sendVerificationCode } from "@/api/auth";
-import { getApiErrorMessage } from "@/api/errors";
-import { Button, TextField } from "@/components/ui";
+import { getApiErrorMessage } from "@/shared/http/errors";
+import { Button, TextField } from "@/shared/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
+import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Eye, EyeOff } from "lucide-react-native";
@@ -107,8 +108,11 @@ export default function Register() {
             });
 
             // 保存 token 和用户信息
-            await AsyncStorage.setItem("token", data.token);
-            await AsyncStorage.setItem("user", JSON.stringify(data.user));
+            await AsyncStorage.setItem(storageKeys.authToken, data.token);
+            await AsyncStorage.setItem(
+                storageKeys.authUser,
+                JSON.stringify(data.user),
+            );
             await refresh();
             await syncProfile();
 

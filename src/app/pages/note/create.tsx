@@ -23,7 +23,7 @@ import { router } from "expo-router";
 // ============================================
 // 导入 API
 // ============================================
-import { getApiErrorMessage } from "@/api/errors";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { createNote } from "@/api/notes";
 import {
     ALL_CATEGORY,
@@ -33,7 +33,7 @@ import {
 } from "@/data/categories";
 import { notifyNotesChanged } from "@/data/notes";
 import type { CreateNotePayload } from "@/features/notes/notes.types";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
 
 // ============================================
 // 导入图标库

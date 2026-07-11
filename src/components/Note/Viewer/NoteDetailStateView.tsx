@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
+import { Button } from "@/shared/ui";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 export type NoteDetailState = "loading" | "error" | "not-found";

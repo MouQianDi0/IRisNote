@@ -29,8 +29,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { getIcon } from "../data/categories";
-import { colors } from "../theme";
-import { Button, ModalPanel } from "./ui";
+import { colors } from "@/shared/theme";
+import { Button, ModalPanel } from "@/shared/ui";
 
 type Props = {
     visible: boolean;

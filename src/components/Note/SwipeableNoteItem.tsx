@@ -2,7 +2,7 @@
 import NoteCard from "@/components/Note/Card/NoteCard";
 import NoteSwipeActions from "@/components/Note/Card/NoteSwipeActions";
 import type { Note } from "@/features/notes/notes.types";
-import { useDebouncedAction } from "@/hooks/useDebounced/useDebouncedAction";
+import { useDebouncedAction } from "@/shared/hooks/useDebouncedAction";
 import { useCallback, useEffect, useRef } from "react";
 import { View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";

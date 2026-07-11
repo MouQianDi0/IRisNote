@@ -1,6 +1,6 @@
 import PinBadge from "@/components/PinBadge";
 import StarBadge from "@/components/StarBadge";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
 import { Pressable, Text, View } from "react-native";
 
 type NoteCardProps = {

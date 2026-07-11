@@ -1,4 +1,4 @@
-import { Screen } from "@/components/ui";
+import { Screen } from "@/shared/ui";
 import { Text } from "react-native";
 
 export default function Settings() {

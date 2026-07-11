@@ -1,4 +1,4 @@
-import api from "@/api/client";
+import api from "@/shared/http/client";
 import type {
     Category,
     CreateCategoryPayload,

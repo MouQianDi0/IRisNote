@@ -1,4 +1,4 @@
-import { getApiErrorMessage } from "@/api/errors";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { getNotes } from "@/api/notes";
 import NoteViewer from "@/components/Note/NoteViewer";
 import NoteDetailStateView, {

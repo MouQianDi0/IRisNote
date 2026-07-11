@@ -9,8 +9,8 @@ import {
     View,
 } from "react-native";
 import { getIcon } from "../data/categories";
-import { colors } from "../theme";
-import { Button, ModalPanel } from "./ui";
+import { colors } from "@/shared/theme";
+import { Button, ModalPanel } from "@/shared/ui";
 
 type ActionSheetProps = {
     visible: boolean;

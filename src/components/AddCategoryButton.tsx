@@ -1,6 +1,6 @@
 import { NotebookPen } from "lucide-react-native";
 import { Pressable } from "react-native";
-import { colors } from "../theme";
+import { colors } from "@/shared/theme";
 
 type AddCategoryButtonProps = {
     onPress: () => void;

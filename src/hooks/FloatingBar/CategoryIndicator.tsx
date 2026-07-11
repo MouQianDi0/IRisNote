@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, } from "react-native-reanimated";
-import { colors } from "../../theme";
+import { colors } from "@/shared/theme";
 
 type Props = {
     isActive: boolean;

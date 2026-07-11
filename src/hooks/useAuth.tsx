@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/api/user";
 import type { AuthState } from "@/features/auth/auth.types";
 import type { User } from "@/shared/types/user";
+import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import {
@@ -24,8 +25,8 @@ export function AuthProvider({
     const initialLoadDone = useRef(false);
 
     const load = useCallback(async () => {
-        const storedToken = await AsyncStorage.getItem("token");
-        const storedUser = await AsyncStorage.getItem("user");
+        const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
+        const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
         setToken(storedToken);
         if (storedUser) {
             setUser(JSON.parse(storedUser));
@@ -36,11 +37,14 @@ export function AuthProvider({
     }, []);
 
     const syncProfile = useCallback(async () => {
-        const storedToken = await AsyncStorage.getItem("token");
+        const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
         if (!storedToken) return;
         try {
             const profile = await getUserProfile();
-            await AsyncStorage.setItem("user", JSON.stringify(profile));
+            await AsyncStorage.setItem(
+                storageKeys.authUser,
+                JSON.stringify(profile),
+            );
             setUser(profile);
         } catch {
             // 服务端同步失败时保留本地数据
@@ -63,8 +67,8 @@ export function AuthProvider({
     );
 
     const logout = useCallback(async () => {
-        await AsyncStorage.removeItem("token");
-        await AsyncStorage.removeItem("user");
+        await AsyncStorage.removeItem(storageKeys.authToken);
+        await AsyncStorage.removeItem(storageKeys.authUser);
         setUser(null);
         setToken(null);
     }, []);

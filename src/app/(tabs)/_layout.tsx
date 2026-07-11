@@ -1,43 +1,9 @@
+import TabsBackExitHandler from "@/core/navigation/components/TabsBackExitHandler";
+import FloatingMenu from "@/core/navigation/components/FloatingMenu";
 import { useAuth } from "@/hooks/useAuth";
-import { colors } from "@/theme";
-import { Redirect, Tabs, useFocusEffect } from "expo-router";
-import { useCallback, useRef } from "react";
-import {
-    ActivityIndicator,
-    BackHandler,
-    Easing,
-    ToastAndroid,
-    View,
-} from "react-native";
-import FloatingMenu from "../../components/FloatingMenu";
-
-function TabsBackExitHandler() {
-  const lastBackPressRef = useRef(0);
-
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener(
-        "hardwareBackPress",
-        () => {
-          const now = Date.now();
-
-          if (now - lastBackPressRef.current <= 1500) {
-            BackHandler.exitApp();
-            return true;
-          }
-
-          lastBackPressRef.current = now;
-          ToastAndroid.show("再次返回退出应用", ToastAndroid.SHORT);
-          return true;
-        },
-      );
-
-      return () => subscription.remove();
-    }, []),
-  );
-
-  return null;
-}
+import { colors } from "@/shared/theme";
+import { Redirect, Tabs } from "expo-router";
+import { ActivityIndicator, Easing, View } from "react-native";
 
 export default function TabsLayout() {
   const { isLoggedIn, loading } = useAuth();

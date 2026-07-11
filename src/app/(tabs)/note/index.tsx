@@ -1,5 +1,7 @@
 import { createCategory, getCategories } from "@/api/categories";
-import { getApiErrorMessage } from "@/api/errors";
+import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { deleteNote, getNotes } from "@/api/notes";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
@@ -10,7 +12,6 @@ import {
   notifyCategoriesChanged,
   onCategoriesChanged,
 } from "@/data/categories";
-import { setFloatingMenuHidden } from "@/data/floatingMenuVisibility";
 import {
   onNotesChanged,
   onNotesRemovedByCategory,
@@ -21,8 +22,7 @@ import type { Category } from "@/features/notes/categories/categories.types";
 import type { Note } from "@/features/notes/notes.types";
 import { useNotePin } from "@/hooks/notes/useNotePin";
 import { useNoteStar } from "@/hooks/notes/useNoteStar";
-import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
 import { type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -70,7 +70,7 @@ const sortNotesByPinned = (notes: Note[]) => {
 };
 
 export default function Index() {
-  const onNavigate = useDebounceNavigation();
+    const onNavigate = useDebouncedNavigation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);

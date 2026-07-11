@@ -1,4 +1,4 @@
-import api, { API_BASE_URL } from "@/api/client";
+import api, { API_BASE_URL } from "@/shared/http/client";
 import type {
     CollectedAvatar,
     UploadAvatarResponse,

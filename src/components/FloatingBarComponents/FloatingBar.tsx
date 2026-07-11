@@ -1,4 +1,7 @@
 import { getCategories } from "@/api/categories";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
+import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavigation";
+import { colors, radius } from "@/shared/theme";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, View } from "react-native";
@@ -17,9 +20,6 @@ import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";
 import { useCategoryRename } from "../../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
 import { useAvatar } from "../../hooks/useAvatar";
-import { useDebounceNavigation } from "../../hooks/useDebounced/useDebounceNavigation";
-import { useLongPressButton } from "../../hooks/useLongPressButton";
-import { colors, radius } from "../../theme";
 import CategoryActionModel from "../CategoryActionModel";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
 import FloatingBarDivider from "./FloatingBarDivider";
@@ -30,7 +30,7 @@ type FloatingBarProps = {
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
-    const { gesture: longPress, animatedStyle } = useLongPressButton("/user");
+    const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
         setSelectedId(id);
@@ -41,7 +41,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
         setCurrentCategory(id, cat.name);
         onCategoryPress(String(id));
     };
-    const onNavigate = useDebounceNavigation();
+    const onNavigate = useDebouncedNavigation();
     const [categories, setCategories] = useState<Category[]>([]);
 
     const fetchCategories = useCallback(function fetchCategoriesRequest() {

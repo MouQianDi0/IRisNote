@@ -1,7 +1,7 @@
-import { Card, Screen } from "@/components/ui";
+import { Card, Screen } from "@/shared/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/hooks/useAvatar";
-import { colors } from "@/theme";
+import { colors } from "@/shared/theme";
 import { router } from "expo-router";
 import {
     ChevronRight,
