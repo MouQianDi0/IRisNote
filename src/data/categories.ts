@@ -1,12 +1,7 @@
 import * as LucideIcons from "lucide-react-native";
+import type { Category } from "@/features/notes/categories/categories.types";
 
-export type Category = {
-    id: number;
-    name: string;
-    icon: string;
-    is_pinned: boolean;
-    is_starred: boolean;
-};
+export type { Category } from "@/features/notes/categories/categories.types";
 
 // 动态解析图标，拼错名字自动降级为 Folder
 const fallback = "Folder";

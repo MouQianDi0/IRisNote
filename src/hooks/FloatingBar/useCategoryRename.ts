@@ -1,6 +1,6 @@
 import { updateCategory } from "@/api/categories";
+import type { Category } from "@/features/notes/categories/categories.types";
 import { useCallback } from "react";
-import type { Category } from "../../data/categories";
 import { notifyCategoriesChanged } from "../../data/categories";
 
 export function useCategoryRename(

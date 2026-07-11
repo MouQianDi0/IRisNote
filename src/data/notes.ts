@@ -9,18 +9,7 @@
 
 // ==================== 类型定义 ====================
 
-/** 缓存笔记的数据结构 */
-export type CachedNote = {
-    id: number;                // 笔记唯一标识
-    title: string;             // 笔记标题
-    content: string | null;    // 笔记内容，支持空值
-    category_id: number | null; // 所属分类 ID，支持空值（未分类）
-    created_at: string;        // 创建时间（ISO 格式）
-    is_pinned?: boolean;       // 是否置顶（本地状态可选）
-    is_starred?: boolean;      // 是否标星（本地状态可选）
-    local_order?: number;      // 本地原始顺序，用于取消置顶后回到原位
-    pinned_order?: number;     // 本地置顶顺序，数值越大越靠前
-};
+import type { Note } from "@/features/notes/notes.types";
 
 /** 监听笔记变化的回调函数类型 */
 type NotesListener = () => void;
@@ -37,7 +26,7 @@ const notesListeners: NotesListener[] = [];
 const notesRemovedByCategoryListeners: NotesRemovedByCategoryListener[] = [];
 
 /** 笔记缓存表，key 为笔记 ID，value 为笔记对象 */
-const cachedNotesById = new Map<number, CachedNote>();
+const cachedNotesById = new Map<number, Note>();
 
 // ==================== 缓存操作 ====================
 
@@ -45,7 +34,7 @@ const cachedNotesById = new Map<number, CachedNote>();
  * 批量设置缓存笔记（全量替换）
  * @param notes - 要缓存的笔记数组
  */
-export const setCachedNotes = (notes: CachedNote[]) => {
+export const setCachedNotes = (notes: Note[]) => {
     cachedNotesById.clear(); // 清空旧缓存
     notes.forEach((note) => {
         cachedNotesById.set(note.id, note);

@@ -1,14 +1,13 @@
 import { getApiErrorMessage } from "@/api/errors";
 import { getNotes } from "@/api/notes";
-import NoteViewer, { type NoteViewerNote } from "@/components/Note/NoteViewer";
+import NoteViewer from "@/components/Note/NoteViewer";
 import NoteDetailStateView, {
   type NoteDetailState,
 } from "@/components/Note/Viewer/NoteDetailStateView";
 import { getCachedNoteById, setCachedNotes } from "@/data/notes";
+import type { Note } from "@/features/notes/notes.types";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-type Note = NoteViewerNote;
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
 

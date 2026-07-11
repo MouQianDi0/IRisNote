@@ -24,7 +24,7 @@ import { router } from "expo-router";
 // 导入 API
 // ============================================
 import { getApiErrorMessage } from "@/api/errors";
-import { createNote, type CreateNotePayload } from "@/api/notes";
+import { createNote } from "@/api/notes";
 import {
     ALL_CATEGORY,
     getCurrentCategoryId,
@@ -32,6 +32,7 @@ import {
     onCategoriesChanged,
 } from "@/data/categories";
 import { notifyNotesChanged } from "@/data/notes";
+import type { CreateNotePayload } from "@/features/notes/notes.types";
 import { colors } from "@/theme";
 
 // ============================================

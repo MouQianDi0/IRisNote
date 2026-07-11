@@ -1,4 +1,10 @@
 import api, { API_BASE_URL } from "@/api/client";
+import type {
+    CollectedAvatar,
+    UploadAvatarResponse,
+    UserProfileResponse,
+} from "@/features/profile/profile.types";
+import type { User } from "@/shared/types/user";
 import * as ImagePicker from "expo-image-picker";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -6,28 +12,12 @@ const API_ORIGIN = new URL(API_BASE_URL).origin; // 提取API基础URL的域名�
 
 console.log(API_ORIGIN);
 
-export type UserProfile = {
-    id: number;
-    email: string;
-    nickname?: string | null;
-    avatar?: string | null;
-    created_at: string;
-};
-
-export type UserProfileResponse = {
-    user: UserProfile;
-};
-
-export type UploadAvatarResponse = {
-    avatar: string;
-};
-
-export type CollectedAvatar = {
-    avatar: string;
-    asset: ImagePicker.ImagePickerAsset;
-    mimeType: string;
-    size: number;
-};
+export type {
+    CollectedAvatar,
+    UploadAvatarResponse,
+    UserProfileResponse,
+} from "@/features/profile/profile.types";
+export type { User } from "@/shared/types/user";
 
 const avatarPickerOptions: ImagePicker.ImagePickerOptions = {
     mediaTypes: ["images"],
@@ -37,7 +27,7 @@ const avatarPickerOptions: ImagePicker.ImagePickerOptions = {
     base64: true,
 };
 
-export async function getUserProfile(): Promise<UserProfile> {
+export async function getUserProfile(): Promise<User> {
     const { data } = await api.get<UserProfileResponse>("/user/profile");
     return {
         ...data.user,

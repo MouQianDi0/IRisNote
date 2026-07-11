@@ -6,11 +6,11 @@ import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import {
     ALL_CATEGORY,
-    Category,
     getCurrentCategoryId,
     onCategoriesChanged,
     setCurrentCategory,
 } from "../../data/categories";
+import type { Category } from "@/features/notes/categories/categories.types";
 import { useCategoryChangeIcon } from "../../hooks/FloatingBar/useCategoryChangeIcon";
 import { useCategoryDelete } from "../../hooks/FloatingBar/useCategoryDelete";
 import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";

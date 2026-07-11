@@ -1,14 +1,10 @@
 import { deleteCategory as deleteCategoryRequest } from "@/api/categories";
 import { deleteNote, getNotes } from "@/api/notes";
+import type { Category } from "@/features/notes/categories/categories.types";
+import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
-import type { Category } from "../../data/categories";
 import { ALL_CATEGORY, notifyCategoriesChanged } from "../../data/categories";
 import { notifyNotesRemovedByCategory } from "../../data/notes";
-
-type Note = {
-    id: number;
-    category_id: number | null;
-};
 
 const DELETE_BATCH_SIZE = 3;
 const DELETE_BATCH_DELAY_MS = 100;
@@ -18,7 +14,9 @@ const wait = (ms: number) =>
         setTimeout(resolve, ms);
     });
 
-const deleteNotesInBatches = async (notes: Note[]) => {
+const deleteNotesInBatches = async (
+    notes: Pick<Note, "id" | "category_id">[],
+) => {
     // TODO: Replace this with a server-side bulk delete endpoint when available.
     for (let index = 0; index < notes.length; index += DELETE_BATCH_SIZE) {
         const batch = notes.slice(index, index + DELETE_BATCH_SIZE);

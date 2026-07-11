@@ -1,4 +1,6 @@
 import { getUserProfile } from "@/api/user";
+import type { AuthState } from "@/features/auth/auth.types";
+import type { User } from "@/shared/types/user";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import {
@@ -11,30 +13,12 @@ import {
     type PropsWithChildren,
 } from "react";
 
-export type UserInfo = {
-    id: number;
-    email: string;
-    nickname?: string | null;
-    avatar?: string | null;
-    created_at: string;
-};
-
-type AuthState = {
-    isLoggedIn: boolean;
-    user: UserInfo | null;
-    token: string | null;
-    loading: boolean;
-    logout: () => Promise<void>;
-    refresh: () => Promise<void>;
-    syncProfile: () => Promise<void>;
-};
-
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({
     children,
 }: PropsWithChildren): React.JSX.Element {
-    const [user, setUser] = useState<UserInfo | null>(null);
+    const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const initialLoadDone = useRef(false);

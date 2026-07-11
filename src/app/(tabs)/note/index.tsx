@@ -4,14 +4,11 @@ import { deleteNote, getNotes } from "@/api/notes";
 import AddCategoryButton from "@/components/AddCategoryButton";
 import AddNoteClass from "@/components/addNoteClass";
 import FloatingBar from "@/components/FloatingBarComponents/FloatingBar";
-import SwipeableNoteItem, {
-  type SwipeableNote,
-} from "@/components/Note/SwipeableNoteItem";
+import SwipeableNoteItem from "@/components/Note/SwipeableNoteItem";
 import {
   ALL_CATEGORY,
   notifyCategoriesChanged,
   onCategoriesChanged,
-  type Category,
 } from "@/data/categories";
 import { setFloatingMenuHidden } from "@/data/floatingMenuVisibility";
 import {
@@ -20,6 +17,8 @@ import {
   removeCachedNoteById,
   setCachedNotes,
 } from "@/data/notes";
+import type { Category } from "@/features/notes/categories/categories.types";
+import type { Note } from "@/features/notes/notes.types";
 import { useNotePin } from "@/hooks/notes/useNotePin";
 import { useNoteStar } from "@/hooks/notes/useNoteStar";
 import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
@@ -43,8 +42,6 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
-
-type Note = SwipeableNote;
 
 const withLocalOrder = (notes: Note[]) => {
   return notes.map((note, index) => ({

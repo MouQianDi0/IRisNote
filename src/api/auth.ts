@@ -1,54 +1,26 @@
 import api from "@/api/client";
+import type {
+    AuthResponse,
+    CheckVerificationCodePayload,
+    CheckVerificationCodeResponse,
+    LoginPayload,
+    LoginWithCodePayload,
+    RegisterPayload,
+    SendVerificationCodePayload,
+    SendVerificationCodeResponse,
+} from "@/features/auth/auth.types";
 
-export type VerificationType = "register" | "login";
-
-export type AuthUser = {
-    id: number;
-    email: string;
-    nickname?: string | null;
-    avatar?: string | null;
-    created_at: string;
-};
-
-export type AuthResponse = {
-    token: string;
-    user: AuthUser;
-};
-
-export type SendVerificationCodePayload = {
-    email: string;
-    type: VerificationType;
-};
-
-export type SendVerificationCodeResponse = {
-    message: string;
-};
-
-export type CheckVerificationCodePayload = SendVerificationCodePayload & {
-    code: string;
-};
-
-export type CheckVerificationCodeResponse = {
-    valid: boolean;
-};
-
-export type RegisterPayload = {
-    email: string;
-    password: string;
-    nickname?: string;
-    code: string;
-};
-
-export type LoginPayload = {
-    email: string;
-    password: string;
-    code: string;
-};
-
-export type LoginWithCodePayload = {
-    email: string;
-    code: string;
-};
+export type {
+    AuthResponse,
+    CheckVerificationCodePayload,
+    CheckVerificationCodeResponse,
+    LoginPayload,
+    LoginWithCodePayload,
+    RegisterPayload,
+    SendVerificationCodePayload,
+    SendVerificationCodeResponse,
+    VerificationType,
+} from "@/features/auth/auth.types";
 
 export async function sendVerificationCode(
     payload: SendVerificationCodePayload,

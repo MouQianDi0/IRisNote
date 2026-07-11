@@ -1,4 +1,5 @@
-import { Category, getIcon } from "@/data/categories";
+import { getIcon } from "@/data/categories";
+import type { Category } from "@/features/notes/categories/categories.types";
 import { Pressable, Text } from "react-native";
 import Animated from "react-native-reanimated";
 import { pulse } from "../../hooks/animations";

@@ -1,14 +1,15 @@
 import api from "@/api/client";
-import type { Category } from "@/data/categories";
+import type {
+    Category,
+    CreateCategoryPayload,
+    UpdateCategoryPayload,
+} from "@/features/notes/categories/categories.types";
 
-export type CreateCategoryPayload = {
-    name: string;
-    icon?: string;
-};
-
-export type UpdateCategoryPayload = Partial<
-    Pick<Category, "name" | "icon" | "is_pinned" | "is_starred">
->;
+export type {
+    Category,
+    CreateCategoryPayload,
+    UpdateCategoryPayload,
+} from "@/features/notes/categories/categories.types";
 
 export async function getCategories(): Promise<Category[]> {
     const { data } = await api.get<Category[]>("/categories");

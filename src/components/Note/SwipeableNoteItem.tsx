@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
 import NoteCard from "@/components/Note/Card/NoteCard";
 import NoteSwipeActions from "@/components/Note/Card/NoteSwipeActions";
+import type { Note } from "@/features/notes/notes.types";
 import { useDebouncedAction } from "@/hooks/useDebounced/useDebouncedAction";
 import { useCallback, useEffect, useRef } from "react";
 import { View } from "react-native";
@@ -12,26 +13,14 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 
-export type SwipeableNote = {
-    id: number;
-    title: string;
-    content: string | null;
-    category_id: number | null;
-    created_at: string;
-    is_pinned?: boolean;
-    is_starred?: boolean;
-    local_order?: number;
-    pinned_order?: number;
-};
-
 type SwipeableNoteItemProps = {
-    item: SwipeableNote;
+    item: Note;
     categoryName: string;
     openedNoteId: number | null;
-    onOpen: (item: SwipeableNote) => void;
-    onDelete: (item: SwipeableNote) => void;
-    onTogglePin: (item: SwipeableNote) => void;
-    onToggleStar: (item: SwipeableNote) => void;
+    onOpen: (item: Note) => void;
+    onDelete: (item: Note) => void;
+    onTogglePin: (item: Note) => void;
+    onToggleStar: (item: Note) => void;
     onOpenActions: (noteId: number) => void;
     onCloseActions: () => void;
     onSwipeStart?: () => void;

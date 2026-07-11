@@ -1,10 +1,8 @@
 import { getApiErrorMessage } from "@/api/errors";
 import { updateNote } from "@/api/notes";
-import type { SwipeableNote } from "@/components/Note/SwipeableNoteItem";
+import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
 import { Alert } from "react-native";
-
-type Note = SwipeableNote;
 
 type NotesRef = {
     current: Note[];
