@@ -1,5 +1,6 @@
 import type { StyleProp, ViewStyle } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { colors } from "../theme";
 
 type StarBadgeProps = {
     size?: number;
@@ -16,17 +17,17 @@ const mainPath =
 
 export default function StarBadge({
     size = 18,
-    color = "#ffcc00ff",
+    color = colors.starBadge,
     style,
 }: StarBadgeProps) {
     return (
         <Svg width={size} height={size} viewBox="0 0 26 26" style={style}>
             <Path
                 d={shadowPath}
-                fill="rgba(0, 0, 0, 0.13)"
+                fill={colors.shadow}
                 transform="translate(1.5 1.5)"
             />
-            <Path d={outlinePath} fill="#ffffff" />
+            <Path d={outlinePath} fill={colors.surfaceFull} />
             <Path d={mainPath} fill={color} />
         </Svg>
     );

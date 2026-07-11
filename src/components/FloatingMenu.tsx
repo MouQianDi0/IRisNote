@@ -19,6 +19,7 @@ import {
 } from "../data/floatingMenuVisibility";
 import { pulse } from "../hooks/animations";
 import { useSwipeTab } from "../hooks/FloatingMenu/useSwipeTab";
+import { colors } from "../theme";
 import ActionButton from "./ActionButton";
 
 const menuItems = [
@@ -79,7 +80,7 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
             style={animatedStyle}
             {...panHandlers}
         >
-            <View className="mb-[15] rounded-[18] bg-[rgba(255,255,255,0.85)] px-2 py-[10] shadow-md">
+            <View className="mb-[15] rounded-floating bg-floating-surface px-2 py-[10] shadow-md">
                 {menuItems.map((item, index) => (
                     <Pressable
                         key={index}
@@ -104,12 +105,18 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
                                     animationTimingFunction: "ease-out",
                                 }}
                             >
-                                <item.icon size={24} color="#37a5ffff" />
+                                <item.icon
+                                    size={24}
+                                    color={colors.floatingAccentOpaque}
+                                />
                             </Animated.View>
                         ) : (
-                            <item.icon size={24} color="#666" />
+                            <item.icon
+                                size={24}
+                                color={colors.textSecondary}
+                            />
                         )}
-                        <Text className="top-[3] text-center text-xs text-[#666] opacity-100">
+                        <Text className="top-[3] text-center text-xs text-text-secondary opacity-100">
                             {item.name}
                         </Text>
                     </Pressable>

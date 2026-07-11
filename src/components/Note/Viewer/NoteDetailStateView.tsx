@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui";
+import { colors } from "@/theme";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 export type NoteDetailState = "loading" | "error" | "not-found";
@@ -19,14 +21,14 @@ export default function NoteDetailStateView({
     <View className="flex-1 bg-white px-6 py-5">
       <View className="flex-row items-center justify-between pb-5">
         <Pressable onPress={onBack} className="px-1 py-2">
-          <Text className="text-base text-[#007AFF]">返回</Text>
+          <Text className="text-base text-primary">返回</Text>
         </Pressable>
       </View>
 
       <View className="flex-1 items-center justify-center gap-3">
         {loadState === "loading" ? (
           <>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text className="text-base text-gray-500">正在加载笔记</Text>
           </>
         ) : (
@@ -39,14 +41,14 @@ export default function NoteDetailStateView({
                 ? "当前笔记可能已被删除或链接无效"
                 : errorMessage}
             </Text>
-            <Pressable
+            <Button
               onPress={() => {
                 void onRetry();
               }}
-              className="mt-2 rounded-full bg-[#007AFF] px-5 py-2"
+              className="mt-2 rounded-full px-5 py-2"
             >
               <Text className="font-semibold text-white">重试</Text>
-            </Pressable>
+            </Button>
           </>
         )}
       </View>

@@ -197,7 +197,7 @@ export default function SwipeableNoteItem({
 
     return (
         <View
-            className="mb-4 overflow-hidden rounded-[14px] shadow-sm"
+            className="mb-4 overflow-hidden rounded-card shadow-sm"
             style={{ width: "100%", maxWidth: 400, maxHeight: 175 }}
         >
             <NoteSwipeActions

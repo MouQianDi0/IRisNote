@@ -1,5 +1,6 @@
 import { NotebookPen } from "lucide-react-native";
 import { Pressable } from "react-native";
+import { colors } from "../theme";
 
 type AddCategoryButtonProps = {
     onPress: () => void;
@@ -8,10 +9,10 @@ type AddCategoryButtonProps = {
 export default function AddCategoryButton({ onPress }: AddCategoryButtonProps) {
     return (
         <Pressable
-            className=" w-[60px] h-[60px] justify-center items-center bg-[rgb(220,220,220)] rounded-[12px] m-[2px] my-[10px] border-[1px] border-[#c4c4c4a1]"
+            className="w-[60px] h-[60px] justify-center items-center bg-category-button rounded-control m-[2px] my-[10px] border-[1px] border-category-button-border"
             onPress={onPress}
         >
-            <NotebookPen size={30} color="#0000006e" />
+            <NotebookPen size={30} color={colors.categoryIcon} />
         </Pressable>
     );
 }

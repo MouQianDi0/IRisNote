@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { colors } from "@/theme";
 import { Redirect, Tabs, useFocusEffect } from "expo-router";
 import { useCallback, useRef } from "react";
 import {
@@ -50,7 +51,7 @@ export default function TabsLayout() {
           alignItems: "center",
         }}
       >
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }

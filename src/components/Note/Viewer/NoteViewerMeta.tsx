@@ -1,5 +1,6 @@
 import { getCategories } from "@/api/categories";
 import { ALL_CATEGORY } from "@/data/categories";
+import { colors } from "@/theme";
 import { ChevronDown } from "lucide-react-native";
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
@@ -104,7 +105,7 @@ export default function NoteViewerMeta({
                     className="h-7 w-7 items-center justify-center"
                 >
                     <Animated.View style={chevronAnimatedStyle}>
-                        <ChevronDown size={20} color="#6b7280" />
+                        <ChevronDown size={20} color={colors.viewerChevron} />
                     </Animated.View>
                 </Pressable>
             )}

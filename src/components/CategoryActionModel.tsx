@@ -29,6 +29,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { getIcon } from "../data/categories";
+import { colors } from "../theme";
+import { Button, ModalPanel } from "./ui";
 
 type Props = {
     visible: boolean;
@@ -138,9 +140,14 @@ const renderIconRow = (
                 <Pressable
                     key={iconName}
                     onPress={() => onIconPress(iconName)}
-                    className={`w-[48px] h-[48px] items-center justify-center rounded-[12px] ${isSelected ? "bg-[#007AFF]" : "bg-[#F5F5F5]"}`}
+                    className={`w-[48px] h-[48px] items-center justify-center rounded-control ${isSelected ? "bg-primary" : "bg-surface-muted"}`}
                 >
-                    <IconComp size={24} color={isSelected ? "#FFF" : "#666"} />
+                    <IconComp
+                        size={24}
+                        color={
+                            isSelected ? colors.surface : colors.textSecondary
+                        }
+                    />
                 </Pressable>
             );
         })}
@@ -243,7 +250,7 @@ export default function CategoryActionModel({
     }));
     const rotationAnimatedStyle = useAnimatedStyle(() => ({
         transform: [{ rotate: `${iconRotation.value}deg` }],
-        backgroundColor: "transparent",
+        backgroundColor: colors.transparent,
     }));
     const handleIconToggle = () => {
         iconRotation.value = withTiming(iconPickerOpen ? 0 : 90, {
@@ -260,12 +267,9 @@ export default function CategoryActionModel({
         >
             <GestureHandlerRootView style={{ flex: 1 }}>
                 <TouchableWithoutFeedback onPress={onClose}>
-                    <View
-                        className="flex-1 items-center justify-center"
-                        style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-                    >
+                    <View className="flex-1 items-center justify-center bg-overlay-strong">
                         <TouchableWithoutFeedback>
-                            <View className="bg-white p-5 rounded-[12px] shadow-md w-[300px]">
+                            <ModalPanel variant="actions">
                                 {editing ? (
                                     <TextInput
                                         value={editName}
@@ -285,23 +289,28 @@ export default function CategoryActionModel({
                                     onPress={() => setEditing(true)}
                                     className="p-1"
                                 >
-                                    <Pencil size={24} color="#666" />
+                                    <Pencil
+                                        size={24}
+                                        color={colors.textSecondary}
+                                    />
                                 </Pressable>
 
                                 <View className="flex-row gap-3 mb-4 mt-3">
                                     <Pressable
                                         onPress={onPin}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-[12px] py-2 ${isPinned ? "bg-[#FFF3E0]" : "bg-[#F5F5F5]"}`}
+                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isPinned ? "bg-warning-surface" : "bg-surface-muted"}`}
                                     >
                                         <Pin
                                             size={24}
                                             color={
-                                                isPinned ? "#FF9800" : "#666"
+                                                isPinned
+                                                    ? colors.warning
+                                                    : colors.textSecondary
                                             }
                                             fill={
                                                 isPinned
-                                                    ? "#FF9800"
-                                                    : "transparent"
+                                                    ? colors.warning
+                                                    : colors.transparent
                                             }
                                         />
                                         <Text className="text-[14px] text-gray-500">
@@ -310,17 +319,19 @@ export default function CategoryActionModel({
                                     </Pressable>
                                     <Pressable
                                         onPress={onStar}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-[12px] py-2 ${isStarred ? "bg-[#FFF3E0]" : "bg-[#F5F5F5]"}`}
+                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isStarred ? "bg-warning-surface" : "bg-surface-muted"}`}
                                     >
                                         <Star
                                             size={24}
                                             color={
-                                                isStarred ? "#FF9800" : "#666"
+                                                isStarred
+                                                    ? colors.warning
+                                                    : colors.textSecondary
                                             }
                                             fill={
                                                 isStarred
-                                                    ? "#FF9800"
-                                                    : "transparent"
+                                                    ? colors.warning
+                                                    : colors.transparent
                                             }
                                         />
                                         <Text className="text-[14px] text-gray-500">
@@ -329,7 +340,7 @@ export default function CategoryActionModel({
                                     </Pressable>
                                 </View>
                                 <Pressable
-                                    className="flex-row items-center justify-between py-3 px-2 bg-[#F5F5F5] rounded-[12px] mb-3"
+                                    className="flex-row items-center justify-between py-3 px-2 bg-surface-muted rounded-control mb-3"
                                     onPress={handleIconToggle}
                                 >
                                     <Text className="text-[14px] text-gray-600">
@@ -338,7 +349,10 @@ export default function CategoryActionModel({
                                     <Animated.View
                                         style={rotationAnimatedStyle}
                                     >
-                                        <ChevronRight size={20} color="#666" />
+                                        <ChevronRight
+                                            size={20}
+                                            color={colors.textSecondary}
+                                        />
                                     </Animated.View>
                                 </Pressable>
                                 {iconPickerOpen && (
@@ -370,7 +384,7 @@ export default function CategoryActionModel({
                                     (!deleteMode ? (
                                         <Pressable
                                             onPress={() => setDeleteMode(true)}
-                                            className="mt-2 py-2 bg-red-50 rounded-[12px]"
+                                            className="mt-2 py-2 bg-red-50 rounded-control"
                                         >
                                             <Text className="text-center text-[14px] font-bold text-red-500">
                                                 删除分类
@@ -378,7 +392,7 @@ export default function CategoryActionModel({
                                         </Pressable>
                                     ) : (
                                         <View className="mt-2">
-                                            <View className="bg-red-50 rounded-[12px] p-4">
+                                            <View className="bg-red-50 rounded-control p-4">
                                                 <Text className="text-[12px] text-red-500 text-center font-bold mb-1">
                                                     该操作不可撤回
                                                 </Text>
@@ -393,7 +407,7 @@ export default function CategoryActionModel({
                                                             style={
                                                                 iconAnimatedStyle
                                                             }
-                                                            className="w-[30px] h-[30px] items-center justify-center rounded-[6px] "
+                                                            className="w-[30px] h-[30px] items-center justify-center rounded-indicator"
                                                         >
                                                             {(() => {
                                                                 const IconComp =
@@ -405,7 +419,9 @@ export default function CategoryActionModel({
                                                                         size={
                                                                             28
                                                                         }
-                                                                        color="#666"
+                                                                        color={
+                                                                            colors.textSecondary
+                                                                        }
                                                                     />
                                                                 );
                                                             })()}
@@ -413,7 +429,9 @@ export default function CategoryActionModel({
                                                     </GestureDetector>
                                                     <MoveHorizontal
                                                         size={20}
-                                                        color="#ccc"
+                                                        color={
+                                                            colors.textSubtle
+                                                        }
                                                     />
                                                     <Animated.View
                                                         style={
@@ -424,8 +442,8 @@ export default function CategoryActionModel({
                                                             size={28}
                                                             color={
                                                                 isOverTrash
-                                                                    ? "#ff0000ff"
-                                                                    : "#666"
+                                                                    ? colors.dangerBright
+                                                                    : colors.textSecondary
                                                             }
                                                         />
                                                     </Animated.View>
@@ -435,7 +453,7 @@ export default function CategoryActionModel({
                                                 onPress={() =>
                                                     setDeleteMode(false)
                                                 }
-                                                className="mt-3 py-3 bg-gray-100 rounded-[12px]"
+                                                className="mt-3 py-3 bg-gray-100 rounded-control"
                                             >
                                                 <Text className="text-center text-[14px] text-gray-500">
                                                     取消
@@ -443,7 +461,7 @@ export default function CategoryActionModel({
                                             </Pressable>
                                         </View>
                                     ))}
-                            </View>
+                            </ModalPanel>
                         </TouchableWithoutFeedback>
                     </View>
                 </TouchableWithoutFeedback>
@@ -458,12 +476,9 @@ export default function CategoryActionModel({
                     <TouchableWithoutFeedback
                         onPress={() => setShowDeleteConfirm(false)}
                     >
-                        <View
-                            className="flex-1 items-center justify-center"
-                            style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
-                        >
+                        <View className="flex-1 items-center justify-center bg-overlay-strong">
                             <TouchableWithoutFeedback>
-                                <View className="bg-white p-5 rounded-[14px] shadow-md w-[280px]">
+                                <ModalPanel variant="confirm">
                                     <Text className="text-[16px] font-bold text-gray-800 text-center mb-2">
                                         确认删除？
                                     </Text>
@@ -472,30 +487,32 @@ export default function CategoryActionModel({
                                         " 下的笔记将被永久删除
                                     </Text>
                                     <View className="flex-row gap-3">
-                                        <Pressable
+                                        <Button
                                             onPress={() =>
                                                 setShowDeleteConfirm(false)
                                             }
-                                            className="flex-1 py-3 bg-gray-100 rounded-[12px]"
+                                            className="flex-1 py-3 rounded-control"
+                                            variant="secondary"
                                         >
                                             <Text className="text-center text-[14px] text-gray-600">
                                                 取消
                                             </Text>
-                                        </Pressable>
-                                        <Pressable
+                                        </Button>
+                                        <Button
                                             onPress={() => {
                                                 onDelete();
                                                 onClose();
                                                 setShowDeleteConfirm(false);
                                             }}
-                                            className="flex-1 py-3 bg-red-500 rounded-[12px]"
+                                            className="flex-1 py-3 rounded-control"
+                                            variant="danger"
                                         >
                                             <Text className="text-center text-[14px] font-bold text-white">
                                                 确认删除
                                             </Text>
-                                        </Pressable>
+                                        </Button>
                                     </View>
-                                </View>
+                                </ModalPanel>
                             </TouchableWithoutFeedback>
                         </View>
                     </TouchableWithoutFeedback>

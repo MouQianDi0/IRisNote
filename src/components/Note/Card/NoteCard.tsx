@@ -1,5 +1,6 @@
 import PinBadge from "@/components/PinBadge";
 import StarBadge from "@/components/StarBadge";
+import { colors } from "@/theme";
 import { Pressable, Text, View } from "react-native";
 
 type NoteCardProps = {
@@ -22,7 +23,7 @@ export default function NoteCard({
     return (
         <Pressable
             onPress={onPress}
-            className="bg-[#e0eaff] rounded-[14px] p-5 overflow-hidden shadow-lg"
+            className="bg-note-card rounded-card p-5 overflow-hidden shadow-lg"
             style={{ width: "100%", maxWidth: 400, maxHeight: 175 }}
         >
             <View className="flex-row items-start justify-between gap-3">
@@ -34,8 +35,8 @@ export default function NoteCard({
                     {title}
                 </Text>
                 <View className="flex-row gap-1">
-                    {isPinned && <PinBadge size={14} color="#2563eb" />}
-                    {isStarred && <StarBadge size={14} color="#f59e0b" />}
+                    {isPinned && <PinBadge size={14} color={colors.pin} />}
+                    {isStarred && <StarBadge size={14} color={colors.star} />}
                 </View>
             </View>
             <Text

@@ -1,5 +1,7 @@
+import { Card, Screen } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useAvatar } from "@/hooks/useAvatar";
+import { colors } from "@/theme";
 import { router } from "expo-router";
 import {
     ChevronRight,
@@ -12,9 +14,9 @@ import {
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
 
 const MENU_ITEMS = [
-    { icon: Moon, label: "深色模式", color: "#7B61FF" },
-    { icon: Shield, label: "隐私设置", color: "#34C759" },
-    { icon: Mail, label: "意见反馈", color: "#FF9500" },
+    { icon: Moon, label: "深色模式", color: colors.profilePurple },
+    { icon: Shield, label: "隐私设置", color: colors.profileGreen },
+    { icon: Mail, label: "意见反馈", color: colors.profileOrange },
 ];
 
 export default function User() {
@@ -23,9 +25,9 @@ export default function User() {
         useAvatar();
 
     return (
-        <View className="flex-1 bg-[#f5f5f5]">
+        <Screen className="bg-surface-muted">
             {/* 头部背景 */}
-            <View className="bg-[#007AFF] pt-12 pb-8 px-4 rounded-[32px]">
+            <View className="bg-primary pt-12 pb-8 px-4 rounded-profile">
                 {isLoggedIn ? (
                     <View className="items-center">
                         {/* 头像 */}
@@ -42,7 +44,7 @@ export default function User() {
                                     source={avatarSource}
                                 />
                             ) : (
-                                <UserIcon size={36} color="#fff" />
+                                <UserIcon size={36} color={colors.surface} />
                             )}
                         </Pressable>
                         <Text className="text-white text-xl font-bold">
@@ -63,7 +65,7 @@ export default function User() {
                 ) : (
                     <View className="items-center">
                         <View className="w-[80px] h-[80px] rounded-full bg-white/20 justify-center items-center mb-4 border-2 border-white/40">
-                            <UserIcon size={36} color="#fff" />
+                            <UserIcon size={36} color={colors.surface} />
                         </View>
                         <Text className="text-white text-lg font-semibold mb-1">
                             未登录
@@ -75,7 +77,7 @@ export default function User() {
                             className="bg-white rounded-xl px-10 py-3"
                             onPress={() => router.push("/auth/login")}
                         >
-                            <Text className="text-[#007AFF] text-base font-semibold">
+                            <Text className="text-primary text-base font-semibold">
                                 登录 / 注册
                             </Text>
                         </Pressable>
@@ -86,7 +88,7 @@ export default function User() {
             {/* 菜单列表 */}
             <ScrollView className="flex-1 px-4 pt-6">
                 {/* 功能菜单 */}
-                <View className="bg-white rounded-2xl overflow-hidden mb-4">
+                <Card className="rounded-2xl overflow-hidden mb-4">
                     {MENU_ITEMS.map((item, index) => (
                         <Pressable
                             key={item.label}
@@ -101,10 +103,13 @@ export default function User() {
                             <Text className="flex-1 text-base text-gray-800">
                                 {item.label}
                             </Text>
-                            <ChevronRight size={18} color="#c0c0c0" />
+                            <ChevronRight
+                                size={18}
+                                color={colors.profileSilver}
+                            />
                         </Pressable>
                     ))}
-                </View>
+                </Card>
 
                 {/* 退出登录 */}
                 {isLoggedIn && (
@@ -112,8 +117,8 @@ export default function User() {
                         className="flex-row items-center justify-center bg-white rounded-2xl py-[14px] mb-4"
                         onPress={logout}
                     >
-                        <LogOut size={18} color="#FF3B30" />
-                        <Text className="text-[#FF3B30] text-base ml-2">
+                        <LogOut size={18} color={colors.danger} />
+                        <Text className="text-danger text-base ml-2">
                             退出登录
                         </Text>
                     </Pressable>
@@ -122,6 +127,6 @@ export default function User() {
                 {/* 底部留白 */}
                 <View className="h-20" />
             </ScrollView>
-        </View>
+        </Screen>
     );
 }

@@ -23,6 +23,7 @@ import {
 import { useNotePin } from "@/hooks/notes/useNotePin";
 import { useNoteStar } from "@/hooks/notes/useNoteStar";
 import { useDebounceNavigation } from "@/hooks/useDebounced/useDebounceNavigation";
+import { colors } from "@/theme";
 import { type Href } from "expo-router";
 import { ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -364,7 +365,7 @@ export default function Index() {
   const listHeaderComponent = useMemo(
     () => (
       <View
-        className="bg-blue-50 h-[200px] rounded-[14px] mb-6 overflow-hidden"
+        className="bg-blue-50 h-[200px] rounded-card mb-6 overflow-hidden"
         style={{ width: "100%", maxWidth: 400 }}
       />
     ),
@@ -381,14 +382,14 @@ export default function Index() {
   );
 
   return (
-    <View className="mt-10 bg-[#ecedefff] h-full">
+    <View className="mt-10 bg-note-page-background h-full">
       <View className="flex-row h-full ">
         <View
           className="     relative
                                     w-[75px]
-                                    bg-[rgb(242, 242, 242)]
+                                    bg-app-background
                                     h-auto                           
-                                    rounded-[18px]
+                                    rounded-floating
                                     items-center gap-[6px]"
         >
           <FloatingBar onCategoryPress={setCurrentCategory} />
@@ -397,10 +398,10 @@ export default function Index() {
           </View>
         </View>
         <View className="relative flex-1">
-          <View className="bg-white rounded-tl-[30px] p-4 h-[100%] border-[1px] border-[#d7d7d7]">
+          <View className="bg-white rounded-tl-content p-4 h-[100%] border-[1px] border-note-page-border">
             <FlatList
               ref={flatListRef}
-              className="rounded-[14px]"
+              className="rounded-card"
               data={filteredNotes}
               extraData={categoryNameMap}
               keyExtractor={keyExtractor}
@@ -429,7 +430,7 @@ export default function Index() {
                 onPress={handleScrollToTop}
                 className="right-1/2 translate-x-1/2 w-11 h-11 bg-transparent rounded-full"
               >
-                <ChevronUp size={50} color="#7c7c7ccb" />
+                <ChevronUp size={50} color={colors.scrollTopIcon} />
               </Pressable>
             </Animated.View>
           )}

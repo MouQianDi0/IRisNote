@@ -19,6 +19,7 @@ import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
 import { useAvatar } from "../../hooks/useAvatar";
 import { useDebounceNavigation } from "../../hooks/useDebounced/useDebounceNavigation";
 import { useLongPressButton } from "../../hooks/useLongPressButton";
+import { colors, radius } from "../../theme";
 import CategoryActionModel from "../CategoryActionModel";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
 import FloatingBarDivider from "./FloatingBarDivider";
@@ -129,10 +130,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                     style={{
                                         width: "100%",
                                         height: "100%",
-                                        borderRadius: 12,
+                                        borderRadius: radius.control,
                                     }}
                                     key={avatarKey}
-                                    className="border-[2px] border-[#36A5FF] "
+                                    className="border-[2px] border-floating-accent"
                                     source={avatarSource}
                                 />
                             ) : (
@@ -140,11 +141,14 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                                     style={{
                                         width: "100%",
                                         height: "100%",
-                                        borderRadius: 12,
+                                        borderRadius: radius.control,
                                     }}
-                                    className="border-[2px] border-[#36A5FF] flex justify-center items-center"
+                                    className="border-[2px] border-floating-accent flex justify-center items-center"
                                 >
-                                    <UserIcon size={36} color="#fff" />
+                                    <UserIcon
+                                        size={36}
+                                        color={colors.surface}
+                                    />
                                 </View>
                             )}
                         </Pressable>

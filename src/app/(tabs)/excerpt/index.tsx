@@ -5,7 +5,7 @@
 // ============================================
 // 导入 React Native 组件
 // ============================================
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, { useSharedValue } from "react-native-reanimated";
 
 // ============================================
@@ -15,51 +15,22 @@ export default function copyExcerpt() {
     const isMenuOpen = useSharedValue(false);
     // 返回 JSX 结构
     return (
-        <View style={{ flex: 1 }}>
+        <View className="flex-1">
             {/*  最外层容器（居中显示） */}
-            <Animated.View style={styles.container}>
+            <Animated.View className="flex-1 items-center justify-center bg-surface-muted">
                 {/* 标题 */}
-                <Text style={styles.title}>剪贴板摘录</Text>
+                <Text className="mb-[10px] text-2xl font-bold">剪贴板摘录</Text>
 
                 {/* 提示文字 */}
-                <Text style={styles.subtitle}>这里是你的剪贴板摘录</Text>
+                <Text className="mb-5 text-base text-text-secondary">
+                    这里是你的剪贴板摘录
+                </Text>
 
                 {/* 提示用户可以添加待办 */}
-                <Text style={styles.hint}>点击 + 按钮添加新摘录内容</Text>
+                <Text className="text-sm text-text-muted">
+                    点击 + 按钮添加新摘录内容
+                </Text>
             </Animated.View>
         </View>
     );
 }
-
-// ============================================
-// 定义样式
-// ============================================
-const styles = StyleSheet.create({
-    // 容器样式
-    container: {
-        flex: 1, // 占满整个屏幕
-        justifyContent: "center", // 垂直居中
-        alignItems: "center", // 水平居中
-        backgroundColor: "#f5f5f5", // 浅灰色背景
-    },
-
-    // 标题样式
-    title: {
-        fontSize: 24, // 字体大小
-        fontWeight: "bold", // 加粗
-        marginBottom: 10, // 下边距
-    },
-
-    // 副标题样式
-    subtitle: {
-        fontSize: 16, // 字体大小
-        color: "#666", // 灰色文字
-        marginBottom: 20, // 下边距
-    },
-
-    // 提示文字样式
-    hint: {
-        fontSize: 14, // 字体大小
-        color: "#999", // 浅灰色文字
-    },
-});

@@ -6,6 +6,7 @@ import { getAction } from "../data/actions";
 import { shake } from "../hooks/animations";
 import { useDebounceNavigation } from "../hooks/useDebounced/useDebounceNavigation";
 import { useLongPressButton } from "../hooks/useLongPressButton";
+import { colors } from "../theme";
 
 export default function ActionButton() {
     const pathname = usePathname();
@@ -20,10 +21,10 @@ export default function ActionButton() {
         <Animated.View style={animatedStyle}>
             <GestureDetector gesture={longPress}>
                 <Pressable
-                    className="size-[66] items-center justify-center rounded-[18] bg-[#213ac5eb] shadow-md"
+                    className="size-[66] items-center justify-center rounded-floating bg-action shadow-md"
                     style={({ pressed }) =>
                         pressed
-                            ? { backgroundColor: "#213ac5eb", opacity: 0.7 }
+                            ? { backgroundColor: colors.action, opacity: 0.7 }
                             : undefined
                     }
                     onPress={() =>
@@ -38,7 +39,7 @@ export default function ActionButton() {
                             animationTimingFunction: "ease-in-out",
                         }}
                     >
-                        <ActionIcon size={35} color="#ffffffff" />
+                        <ActionIcon size={35} color={colors.surfaceFull} />
                     </Animated.View>
                 </Pressable>
             </GestureDetector>
