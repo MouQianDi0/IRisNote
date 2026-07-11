@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming, } from "react-native-reanimated";
+import { colors } from "../../theme";
 
 type Props = {
     isActive: boolean;
@@ -28,11 +29,11 @@ export default function CategoryIndicator({ isActive, isPinned, isStarred, }: Pr
     return (
         <View className="w-[3px]">
             {isActive && (<Animated.View
-                className="absolute w-[2px] h-[10px] bg-[#4CAF50] rounded-full"
+                className="absolute w-[2px] h-[10px] bg-success rounded-full"
                 style={[
                     glowStyle,
                     {
-                        shadowColor: "#4CAF50",
+                        shadowColor: colors.success,
                         shadowOffset: { width: 0, height: 0 },
                         shadowRadius: 4,
                         elevation: 4
@@ -42,7 +43,7 @@ export default function CategoryIndicator({ isActive, isPinned, isStarred, }: Pr
             {isPinned && isStarred && !isActive && (<Animated.View
                 className="absolute w-[2px] h-[10px] rounded-full overflow-hidden"
                 style={{
-                    shadowColor: "#37A5FF",
+                    shadowColor: colors.floatingAccent,
                 }}
             />)}{ }{ }
         </View>

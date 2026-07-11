@@ -9,6 +9,8 @@ import {
     View,
 } from "react-native";
 import { getIcon } from "../data/categories";
+import { colors } from "../theme";
+import { Button, ModalPanel } from "./ui";
 
 type ActionSheetProps = {
     visible: boolean;
@@ -119,11 +121,15 @@ export default function AddNoteClass({
                     <Pressable
                         key={iconName}
                         onPress={() => handleIconChange(iconName)}
-                        className={`w-[48px] h-[48px] items-center justify-center rounded-[12px] ${isSelected ? "bg-[#007AFF]" : "bg-[#F5F5F5]"}`}
+                        className={`w-[48px] h-[48px] items-center justify-center rounded-control ${isSelected ? "bg-primary" : "bg-surface-muted"}`}
                     >
                         <IconComp
                             size={24}
-                            color={isSelected ? "#FFF" : "#666"}
+                            color={
+                                isSelected
+                                    ? colors.surface
+                                    : colors.textSecondary
+                            }
                         />
                     </Pressable>
                 );
@@ -142,9 +148,9 @@ export default function AddNoteClass({
             onRequestClose={onClose}
         >
             <TouchableWithoutFeedback onPress={onClose}>
-                <View className="flex-1 bg-[rgba(0,0,0,0.4)] justify-center items-center">
+                <View className="flex-1 bg-overlay justify-center items-center">
                     <TouchableWithoutFeedback>
-                        <View className="bg-white rounded-[16px] p-5 w-[320px] shadow-lg">
+                        <ModalPanel variant="create">
                             <Text className="text-[18px] font-semibold text-gray-800 text-center mb-4">
                                 新建分类
                             </Text>
@@ -152,9 +158,9 @@ export default function AddNoteClass({
                                 分类名称
                             </Text>
                             <TextInput
-                                className="border border-gray-300 rounded-[12px] px-4 py-3 text-[16px] mb-4"
+                                className="border border-gray-300 rounded-control px-4 py-3 text-[16px] mb-4"
                                 placeholder="请输入分类名称"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textMuted}
                                 value={ClassName}
                                 onChangeText={setClassName}
                                 maxLength={10}
@@ -181,20 +187,22 @@ export default function AddNoteClass({
                                 {renderIconRow(iconsGroup3)}
                             </View>
                             <View className="flex-row gap-3 mt-4">
-                                <Pressable
-                                    className="flex-1 py-3 rounded-[12px] bg-gray-100"
+                                <Button
+                                    className="flex-1 py-3 rounded-control"
+                                    variant="secondary"
                                     onPress={onClose}
                                 >
                                     <Text className="text-[14px] text-gray-600 text-center">
                                         取消
                                     </Text>
-                                </Pressable>
-                                <Pressable
-                                    className={`flex-1 py-3 rounded-[12px] ${
+                                </Button>
+                                <Button
+                                    className="flex-1 py-3 rounded-control"
+                                    variant={
                                         ClassName.trim()
-                                            ? "bg-[#007AFF]"
-                                            : "bg-gray-300"
-                                    }`}
+                                            ? "primary"
+                                            : "disabled"
+                                    }
                                     onPress={handleSubmit}
                                     disabled={!ClassName.trim()}
                                 >
@@ -207,9 +215,9 @@ export default function AddNoteClass({
                                     >
                                         确定
                                     </Text>
-                                </Pressable>
+                                </Button>
                             </View>
-                        </View>
+                        </ModalPanel>
                     </TouchableWithoutFeedback>
                 </View>
             </TouchableWithoutFeedback>

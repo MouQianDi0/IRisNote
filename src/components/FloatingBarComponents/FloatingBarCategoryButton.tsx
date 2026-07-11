@@ -2,6 +2,7 @@ import { Category, getIcon } from "@/data/categories";
 import { Pressable, Text } from "react-native";
 import Animated from "react-native-reanimated";
 import { pulse } from "../../hooks/animations";
+import { colors } from "../../theme";
 import StarBadge from "../StarBadge";
 
 type FloatingBarCategoryButtonProps = {
@@ -26,7 +27,7 @@ export default function FloatingBarCategoryButton({
             className={`
                 relative
                 w-[50px] h-[60px] mb-[6px]
-                rounded-[12px]
+                rounded-control
                 justify-center
                 items-center
                 pl-[6px] pr-[4px] py-[4px]
@@ -53,10 +54,13 @@ export default function FloatingBarCategoryButton({
                         animationTimingFunction: "ease-out",
                     }}
                 >
-                    <IconComponent size={30} color="#37a5ffff" />
+                    <IconComponent
+                        size={30}
+                        color={colors.floatingAccentOpaque}
+                    />
                 </Animated.View>
             ) : (
-                <IconComponent size={30} color="#666" />
+                <IconComponent size={30} color={colors.textSecondary} />
             )}
 
             <Text

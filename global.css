@@ -3,3 +3,48 @@
 @import "tailwindcss/utilities.css";
 
 @import "nativewind/theme";
+
+/*
+ * IRisNote design tokens.
+ *
+ * Keep the existing visual values here and reference them through semantic
+ * NativeWind utilities such as bg-primary, text-primary and rounded-control.
+ */
+@theme {
+    --color-primary: #007aff;
+    --color-app-background: rgb(242, 242, 242);
+    --color-surface: #ffffff;
+    --color-surface-muted: #f5f5f5;
+    --color-text-secondary: #666666;
+    --color-text-muted: #999999;
+    --color-text-subtle: #cccccc;
+    --color-overlay: rgba(0, 0, 0, 0.4);
+    --color-overlay-strong: rgba(0, 0, 0, 0.5);
+    --color-danger: #ff3b30;
+    --color-warning: #ff9800;
+    --color-warning-surface: #fff3e0;
+    --color-success: #4caf50;
+    --color-action: #213ac5eb;
+    --color-floating-accent: #36a5ff;
+    --color-floating-surface: rgba(255, 255, 255, 0.85);
+    --color-note-card: #e0eaff;
+    --color-note-actions: #e8f1ff;
+    --color-note-pin-action: #d9e7ff;
+    --color-note-star-action: #fff4cc;
+    --color-note-delete-action: #ff4d4f;
+    --color-divider: #d8dee8;
+    --color-note-page-background: #ecedefff;
+    --color-note-page-border: #d7d7d7;
+    --color-settings-background: #d697ffff;
+    --color-category-button: rgb(220, 220, 220);
+    --color-category-button-border: #c4c4c4a1;
+    --color-border-soft: #eeeeee;
+
+    --radius-indicator: 6px;
+    --radius-control: 12px;
+    --radius-card: 14px;
+    --radius-modal: 16px;
+    --radius-floating: 18px;
+    --radius-profile: 32px;
+    --radius-content: 30px;
+}

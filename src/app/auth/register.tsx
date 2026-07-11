@@ -1,7 +1,9 @@
 import { register, sendVerificationCode } from "@/api/auth";
 import { getApiErrorMessage } from "@/api/errors";
+import { Button, TextField } from "@/components/ui";
 import { useAuth } from "@/hooks/useAuth";
 import { useEmailValidation } from "@/hooks/useEmailValidation";
+import { colors } from "@/theme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { Eye, EyeOff } from "lucide-react-native";
@@ -128,12 +130,10 @@ export default function Register() {
             {/* 表单区域 */}
             <View className="flex-1 px-6 pt-8">
                 <Text className="text-sm text-gray-500 mb-2 ml-1">用户名</Text>
-                <TextInput
-                    className={
-                        "border rounded-xl px-4 py-3.5 text-base mb-1 bg-gray-50 border-gray-200"
-                    }
+                <TextField
+                    className="mb-1 border-gray-200"
                     placeholder="请输入用户名"
-                    placeholderTextColor="#999"
+                    placeholderTextColor={colors.textMuted}
                     value={nickname}
                     onChangeText={setNickname}
                     keyboardType="default"
@@ -142,14 +142,14 @@ export default function Register() {
 
                 {/* 邮箱 */}
                 <Text className="text-sm text-gray-500 mb-2 ml-1">邮箱</Text>
-                <TextInput
-                    className={`border rounded-xl px-4 py-3.5 text-base mb-1 bg-gray-50 ${
+                <TextField
+                    className={`mb-1 ${
                         emailCheck.error && email
                             ? "border-red-400"
                             : "border-gray-200"
                     }`}
                     placeholder="请输入邮箱"
-                    placeholderTextColor="#999"
+                    placeholderTextColor={colors.textMuted}
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
@@ -166,36 +166,40 @@ export default function Register() {
                     邮箱验证码
                 </Text>
                 <View className="flex-row items-center mb-5">
-                    <TextInput
-                        className="flex-1 border border-gray-200 rounded-xl px-4 py-3.5 text-base bg-gray-50"
+                    <TextField
+                        className="flex-1 border-gray-200"
                         placeholder="请输入验证码"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={colors.textMuted}
                         value={code}
                         onChangeText={setCode}
                         keyboardType="number-pad"
                         maxLength={6}
                     />
-                    <Pressable
-                        className={`ml-3 rounded-xl px-4 py-3.5 ${
+                    <Button
+                        className="ml-3 rounded-xl px-4 py-3.5"
+                        variant={
                             emailCheck.isValid &&
                             countdown === 0 &&
                             !sendingCode
-                                ? "bg-[#007AFF]"
-                                : "bg-gray-300"
-                        }`}
+                                ? "primary"
+                                : "disabled"
+                        }
                         onPress={handleSendCode}
                         disabled={
                             !emailCheck.isValid || countdown > 0 || sendingCode
                         }
                     >
                         {sendingCode ? (
-                            <ActivityIndicator size="small" color="#fff" />
+                            <ActivityIndicator
+                                size="small"
+                                color={colors.surface}
+                            />
                         ) : (
                             <Text className="text-white text-sm font-semibold whitespace-nowrap">
                                 {countdown > 0 ? `${countdown}s` : "发送验证码"}
                             </Text>
                         )}
-                    </Pressable>
+                    </Button>
                 </View>
 
                 {/* 密码 */}
@@ -204,7 +208,7 @@ export default function Register() {
                     <TextInput
                         className="flex-1 px-4 py-3.5 text-base"
                         placeholder="至少6位"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={colors.textMuted}
                         value={password}
                         onChangeText={setPassword}
                         secureTextEntry={!showPassword}
@@ -214,9 +218,9 @@ export default function Register() {
                         onPress={() => setShowPassword(!showPassword)}
                     >
                         {showPassword ? (
-                            <EyeOff size={20} color="#999" />
+                            <EyeOff size={20} color={colors.textMuted} />
                         ) : (
-                            <Eye size={20} color="#999" />
+                            <Eye size={20} color={colors.textMuted} />
                         )}
                     </Pressable>
                 </View>
@@ -229,7 +233,7 @@ export default function Register() {
                     <TextInput
                         className="flex-1 px-4 py-3.5 text-base"
                         placeholder="再次输入密码"
-                        placeholderTextColor="#999"
+                        placeholderTextColor={colors.textMuted}
                         value={confirmPassword}
                         onChangeText={setConfirmPassword}
                         secureTextEntry={!showConfirm}
@@ -239,25 +243,26 @@ export default function Register() {
                         onPress={() => setShowConfirm(!showConfirm)}
                     >
                         {showConfirm ? (
-                            <EyeOff size={20} color="#999" />
+                            <EyeOff size={20} color={colors.textMuted} />
                         ) : (
-                            <Eye size={20} color="#999" />
+                            <Eye size={20} color={colors.textMuted} />
                         )}
                     </Pressable>
                 </View>
 
                 {/* 注册按钮 */}
-                <Pressable
-                    className={`rounded-xl py-3.5 mt-6 flex-row justify-center items-center ${
+                <Button
+                    className="rounded-xl py-3.5 mt-6 flex-row justify-center items-center"
+                    variant={
                         nickname.trim() &&
                         emailCheck.isValid &&
                         password.trim() &&
                         confirmPassword.trim() &&
                         code.trim() &&
                         !loading
-                            ? "bg-[#007AFF]"
-                            : "bg-gray-300"
-                    }`}
+                            ? "primary"
+                            : "disabled"
+                    }
                     onPress={handleRegister}
                     disabled={
                         !emailCheck.isValid ||
@@ -269,19 +274,19 @@ export default function Register() {
                     }
                 >
                     {loading ? (
-                        <ActivityIndicator color="#fff" />
+                        <ActivityIndicator color={colors.surface} />
                     ) : (
                         <Text className="text-white text-center text-base font-semibold">
                             注册
                         </Text>
                     )}
-                </Pressable>
+                </Button>
 
                 {/* 跳转登录 */}
                 <View className="flex-row justify-center mt-6">
                     <Text className="text-sm text-gray-500">已有账号？</Text>
                     <Pressable onPress={() => router.back()}>
-                        <Text className="text-sm text-[#007AFF] ml-1">
+                        <Text className="text-sm text-primary ml-1">
                             立即登录
                         </Text>
                     </Pressable>
