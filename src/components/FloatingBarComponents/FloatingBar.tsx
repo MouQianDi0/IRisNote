@@ -1,6 +1,8 @@
 import { getCategories } from "@/api/categories";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavigation";
+import type { Category } from "@/features/notes/categories/categories.types";
+import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { colors, radius } from "@/shared/theme";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,13 +15,11 @@ import {
     onCategoriesChanged,
     setCurrentCategory,
 } from "../../data/categories";
-import type { Category } from "@/features/notes/categories/categories.types";
 import { useCategoryChangeIcon } from "../../hooks/FloatingBar/useCategoryChangeIcon";
 import { useCategoryDelete } from "../../hooks/FloatingBar/useCategoryDelete";
 import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";
 import { useCategoryRename } from "../../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import CategoryActionModel from "../CategoryActionModel";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
 import FloatingBarDivider from "./FloatingBarDivider";
@@ -30,7 +30,8 @@ type FloatingBarProps = {
 export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
-    const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
+    const { gesture: longPress, animatedStyle } =
+        useLongPressNavigation("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
         setSelectedId(id);
@@ -122,7 +123,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 <Animated.View style={animatedStyle}>
                     <GestureDetector gesture={longPress}>
                         <Pressable
-                              1  ="w-[50px] h-[50px] mb-[10px]"
+                            className="w-[50px] h-[50px] mb-[10px]"
                             onPress={() => onNavigate("/user")}
                         >
                             {avatarSource ? (
