@@ -1,10 +1,10 @@
-import { getIcon } from "@/data/categories";
+import { getCategoryIcon } from "../category-icons";
 import type { Category } from "@/features/notes/categories/categories.types";
 import { pulse } from "@/shared/theme/motion";
 import { colors } from "@/shared/theme";
 import { Pressable, Text } from "react-native";
 import Animated from "react-native-reanimated";
-import StarBadge from "../StarBadge";
+import StarBadge from "../../components/StarBadge";
 
 type FloatingBarCategoryButtonProps = {
     category: Category;
@@ -19,7 +19,7 @@ export default function FloatingBarCategoryButton({
     onPress,
     onLongPress,
 }: FloatingBarCategoryButtonProps) {
-    const IconComponent = getIcon(category.icon);
+    const IconComponent = getCategoryIcon(category.icon);
 
     return (
         <Pressable

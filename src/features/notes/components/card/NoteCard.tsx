@@ -1,5 +1,5 @@
-import PinBadge from "@/components/PinBadge";
-import StarBadge from "@/components/StarBadge";
+import PinBadge from "../PinBadge";
+import StarBadge from "../StarBadge";
 import { colors } from "@/shared/theme";
 import { Pressable, Text, View } from "react-native";
 

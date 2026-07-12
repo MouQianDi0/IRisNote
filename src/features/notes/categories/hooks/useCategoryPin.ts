@@ -1,32 +1,35 @@
-import { updateCategory } from "@/api/categories";
+import { updateCategory } from "../api/categories.api";
 import type { Category } from "@/features/notes/categories/categories.types";
 import { useCallback } from "react";
-import { notifyCategoriesChanged } from "../../data/categories";
+import { notifyCategoriesChanged } from "../categories.events";
 
-export function useCategoryChangeIcon(
+export function useCategoryPin(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
     setLongPressVisible: React.Dispatch<React.SetStateAction<Category | null>>,
 ) {
-    const changeIcon = useCallback(
-        (category: Category, icon: string) => {
-            updateCategory(category.id, { icon })
+    const togglePin = useCallback(
+        (category: Category) => {
+            const newPinned = !category.is_pinned;
+            updateCategory(category.id, { is_pinned: newPinned })
                 .then(() => {
                     setCategories((prev) =>
                         prev.map((c) =>
-                            c.id === category.id ? { ...c, icon } : c,
+                            c.id === category.id
+                                ? { ...c, is_pinned: newPinned }
+                                : c,
                         ),
                     );
                     setLongPressVisible((prev) =>
-                        prev ? { ...prev, icon } : null,
+                        prev ? { ...prev, is_pinned: newPinned } : null,
                     );
                     notifyCategoriesChanged();
                 })
                 .catch((err) => {
-                    console.error("更换图标失败:", err.message);
+                    console.error("切换置顶失败:", err.message);
                 });
         },
         [setCategories, setLongPressVisible],
     );
 
-    return { changeIcon };
+    return { togglePin };
 }

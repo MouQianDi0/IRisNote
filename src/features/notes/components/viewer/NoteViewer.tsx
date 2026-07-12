@@ -1,7 +1,7 @@
-import NoteViewerContent from "@/components/Note/Viewer/NoteViewerContent";
-import NoteViewerHeader from "@/components/Note/Viewer/NoteViewerHeader";
-import NoteViewerMeta from "@/components/Note/Viewer/NoteViewerMeta";
-import NoteViewerTitle from "@/components/Note/Viewer/NoteViewerTitle";
+import NoteViewerContent from "./NoteViewerContent";
+import NoteViewerHeader from "./NoteViewerHeader";
+import NoteViewerMeta from "./NoteViewerMeta";
+import NoteViewerTitle from "./NoteViewerTitle";
 import type { Note } from "@/features/notes/notes.types";
 import { ScrollView, View } from "react-native";
 

@@ -28,7 +28,7 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { getIcon } from "../data/categories";
+import { getCategoryIcon } from "../category-icons";
 import { colors } from "@/shared/theme";
 import { Button, ModalPanel } from "@/shared/ui";
 
@@ -134,7 +134,7 @@ const renderIconRow = (
         style={{ maxWidth: 300 }}
     >
         {icons.map((iconName) => {
-            const IconComp = getIcon(iconName);
+            const IconComp = getCategoryIcon(iconName);
             const isSelected = iconName === selectedIcon;
             return (
                 <Pressable
@@ -154,7 +154,7 @@ const renderIconRow = (
     </ScrollView>
 );
 
-export default function CategoryActionModel({
+export default function CategoryActionModal({
     visible,
     onClose,
     onDelete,
@@ -411,7 +411,7 @@ export default function CategoryActionModel({
                                                         >
                                                             {(() => {
                                                                 const IconComp =
-                                                                    getIcon(
+                                                                    getCategoryIcon(
                                                                         selectedIcon,
                                                                     );
                                                                 return (

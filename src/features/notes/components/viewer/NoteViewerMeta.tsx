@@ -1,5 +1,5 @@
-import { getCategories } from "@/api/categories";
-import { ALL_CATEGORY } from "@/data/categories";
+import { getCategories } from "../../categories/api/categories.api";
+import { ALL_CATEGORY } from "../../categories/categories.constants";
 import { colors } from "@/shared/theme";
 import { ChevronDown } from "lucide-react-native";
 import type { ComponentProps } from "react";

@@ -1,7 +1,7 @@
-import { updateCategory } from "@/api/categories";
+import { updateCategory } from "../api/categories.api";
 import type { Category } from "@/features/notes/categories/categories.types";
 import { useCallback } from "react";
-import { notifyCategoriesChanged } from "../../data/categories";
+import { notifyCategoriesChanged } from "../categories.events";
 
 export function useCategoryRename(
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>, // 更新分类列表

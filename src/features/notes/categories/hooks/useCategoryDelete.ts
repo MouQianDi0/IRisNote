@@ -1,10 +1,11 @@
-import { deleteCategory as deleteCategoryRequest } from "@/api/categories";
-import { deleteNote, getNotes } from "@/api/notes";
+import { deleteCategory as deleteCategoryRequest } from "../api/categories.api";
+import { deleteNote, getNotes } from "../../api/notes.api";
 import type { Category } from "@/features/notes/categories/categories.types";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
-import { ALL_CATEGORY, notifyCategoriesChanged } from "../../data/categories";
-import { notifyNotesRemovedByCategory } from "../../data/notes";
+import { ALL_CATEGORY } from "../categories.constants";
+import { notifyCategoriesChanged } from "../categories.events";
+import { notifyNotesRemovedByCategory } from "../../notes.events";
 
 const DELETE_BATCH_SIZE = 3;
 const DELETE_BATCH_DELAY_MS = 100;

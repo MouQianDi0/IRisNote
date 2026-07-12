@@ -1,4 +1,4 @@
-import { getCategories } from "@/api/categories";
+import { getCategories } from "../api/categories.api";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavigation";
 import { colors, radius } from "@/shared/theme";
@@ -7,22 +7,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
+import { ALL_CATEGORY } from "../categories.constants";
 import {
-    ALL_CATEGORY,
     getCurrentCategoryId,
-    onCategoriesChanged,
     setCurrentCategory,
-} from "../../data/categories";
+} from "../category-selection";
+import { onCategoriesChanged } from "../categories.events";
 import type { Category } from "@/features/notes/categories/categories.types";
-import { useCategoryChangeIcon } from "../../hooks/FloatingBar/useCategoryChangeIcon";
-import { useCategoryDelete } from "../../hooks/FloatingBar/useCategoryDelete";
-import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";
-import { useCategoryRename } from "../../hooks/FloatingBar/useCategoryRename";
-import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
+import { useCategoryChangeIcon } from "../hooks/useCategoryChangeIcon";
+import { useCategoryDelete } from "../hooks/useCategoryDelete";
+import { useCategoryPin } from "../hooks/useCategoryPin";
+import { useCategoryRename } from "../hooks/useCategoryRename";
+import { useCategoryStar } from "../hooks/useCategoryStar";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
-import CategoryActionModel from "../CategoryActionModel";
-import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
-import FloatingBarDivider from "./FloatingBarDivider";
+import CategoryActionModal from "./CategoryActionModal";
+import CategoryButton from "./CategoryButton";
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
@@ -122,7 +121,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                 <Animated.View style={animatedStyle}>
                     <GestureDetector gesture={longPress}>
                         <Pressable
-                              1  ="w-[50px] h-[50px] mb-[10px]"
+                            className="w-[50px] h-[50px] mb-[10px]"
                             onPress={() => onNavigate("/user")}
                         >
                             {avatarSource ? (
@@ -154,12 +153,12 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         </Pressable>
                     </GestureDetector>
                 </Animated.View>
-                <FloatingBarDivider />
+                <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
                 <ScrollView
                     style={{ maxHeight: 560 }}
                     showsVerticalScrollIndicator={false}
                 >
-                    <FloatingBarCategoryButton
+                    <CategoryButton
                         category={ALL_CATEGORY}
                         isActive={selectedId === ALL_CATEGORY.id}
                         onPress={() => handlePress(ALL_CATEGORY.id)}
@@ -168,7 +167,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                     {pinnedCategories.length > 0 && (
                         <>
                             {pinnedCategories.map((category) => (
-                                <FloatingBarCategoryButton
+                                <CategoryButton
                                     key={category.id}
                                     category={category}
                                     isActive={selectedId === category.id}
@@ -182,7 +181,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         </>
                     )}
                     {normalCategories.map((category) => (
-                        <FloatingBarCategoryButton
+                        <CategoryButton
                             key={category.id}
                             category={category}
                             isActive={selectedId === category.id}
@@ -194,10 +193,10 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                         />
                     ))}
                 </ScrollView>
-                <FloatingBarDivider />
+                <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
 
                 {longPressVisible && (
-                    <CategoryActionModel
+                    <CategoryActionModal
                         visible={categoryModelVisible}
                         onClose={() => {
                             setCategoryModelVisible(false);

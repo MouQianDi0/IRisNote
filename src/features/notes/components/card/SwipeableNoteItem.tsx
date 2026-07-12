@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/immutability, react-hooks/refs */
-import NoteCard from "@/components/Note/Card/NoteCard";
-import NoteSwipeActions from "@/components/Note/Card/NoteSwipeActions";
+import NoteCard from "./NoteCard";
+import NoteSwipeActions from "./NoteSwipeActions";
 import type { Note } from "@/features/notes/notes.types";
 import { useDebouncedAction } from "@/shared/hooks/useDebouncedAction";
 import { useCallback, useEffect, useRef } from "react";

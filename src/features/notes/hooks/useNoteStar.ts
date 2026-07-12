@@ -1,5 +1,5 @@
 import { getApiErrorMessage } from "@/shared/http/errors";
-import { updateNote } from "@/api/notes";
+import { updateNote } from "../api/notes.api";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
 import { Alert } from "react-native";
