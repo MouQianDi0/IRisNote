@@ -1,19 +1,39 @@
 import {
-    copyNoteToClipboard,
-    type ShareableNote,
+  copyNoteToClipboard,
+  type ShareableNote,
 } from "@/components/Note/NoteShare/CopyNoteToClipboard";
-import { shareNote } from "@/components/Note/NoteShare/NoteShareManager";
-import { Copy, Share2, SquarePen, Trash2 } from "lucide-react-native";
-import type { ComponentType } from "react";
 import {
-    Alert,
-    Modal,
-    Platform,
-    Pressable,
-    Text,
-    ToastAndroid,
-    TouchableWithoutFeedback,
-    View,
+  NoteShareUnavailableError,
+  shareNote,
+  shareNoteImage,
+  type NoteShareFormat,
+} from "@/components/Note/NoteShare/NoteShareManager";
+import {
+  captureNoteShareImage,
+  NoteShareImageCard,
+  noteShareImageHostStyle,
+} from "@/components/Note/NoteShare/NoteShareToImage";
+import {
+  ChevronLeft,
+  Copy,
+  FileCode2,
+  FileText,
+  Image as ImageIcon,
+  Settings,
+  Share2,
+  SquarePen,
+  Trash2,
+} from "lucide-react-native";
+import { type ComponentType, useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  Text,
+  ToastAndroid,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 
 type MenuIcon = ComponentType<{
@@ -34,6 +54,7 @@ type MenuActionProps = {
   icon: MenuIcon;
   onPress: () => void;
   destructive?: boolean;
+  disabled?: boolean;
 };
 
 function MenuAction({
@@ -41,13 +62,15 @@ function MenuAction({
   icon: Icon,
   onPress,
   destructive = false,
+  disabled = false,
 }: MenuActionProps) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       className={`flex-row items-center gap-3 rounded-[12px] px-4 py-3 ${
         destructive ? "bg-red-50" : "bg-[#F5F5F5]"
-      }`}
+      } ${disabled ? "opacity-50" : ""}`}
     >
       <Icon size={21} color={destructive ? "#ef4444" : "#666"} />
       <Text
@@ -61,6 +84,40 @@ function MenuAction({
   );
 }
 
+function ImageShareAction({
+  disabled,
+  onShare,
+  onSettings,
+}: {
+  disabled: boolean;
+  onShare: () => void;
+  onSettings: () => void;
+}) {
+  return (
+    <View className={`flex-row gap-2 ${disabled ? "opacity-50" : ""}`}>
+      <Pressable
+        onPress={onShare}
+        disabled={disabled}
+        className="flex-1 flex-row items-center gap-3 rounded-[12px] bg-[#F5F5F5] px-4 py-3"
+      >
+        <ImageIcon size={21} color="#666" />
+        <Text className="text-[15px] font-medium text-gray-700">
+          分享为图片
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onSettings}
+        disabled={disabled}
+        accessibilityRole="button"
+        accessibilityLabel="图片分享设置"
+        className="w-12 items-center justify-center rounded-[12px] bg-[#F5F5F5]"
+      >
+        <Settings size={21} color="#666" />
+      </Pressable>
+    </View>
+  );
+}
+
 export default function NoteContextMenu({
   visible,
   note,
@@ -68,6 +125,18 @@ export default function NoteContextMenu({
   onEdit,
   onDelete,
 }: NoteContextMenuProps) {
+  const [showShareFormats, setShowShareFormats] = useState(false);
+  const [showImageSettings, setShowImageSettings] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const imageCardRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!visible) {
+      setShowShareFormats(false);
+      setShowImageSettings(false);
+    }
+  }, [visible]);
+
   const runAction = (action: () => void) => {
     onClose();
     action();
@@ -88,13 +157,40 @@ export default function NoteContextMenu({
     }
   };
 
-  const handleShare = async () => {
-    if (!note) return;
+  const handleShare = async (format: NoteShareFormat) => {
+    if (!note || isSharing) return;
+    setIsSharing(true);
     onClose();
     try {
-      await shareNote(note);
-    } catch {
-      Alert.alert("提示", "分享笔记失败");
+      await shareNote(note, format);
+    } catch (error) {
+      Alert.alert(
+        "提示",
+        error instanceof NoteShareUnavailableError
+          ? error.message
+          : "生成或分享笔记文件失败",
+      );
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleImageShare = async () => {
+    if (!note || !imageCardRef.current || isSharing) return;
+    setIsSharing(true);
+    try {
+      const fileUri = await captureNoteShareImage(imageCardRef.current);
+      onClose();
+      await shareNoteImage(fileUri);
+    } catch (error) {
+      Alert.alert(
+        "提示",
+        error instanceof NoteShareUnavailableError
+          ? error.message
+          : "生成或分享笔记图片失败",
+      );
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -110,7 +206,11 @@ export default function NoteContextMenu({
           <TouchableWithoutFeedback>
             <View className="bg-white rounded-[16px] p-5 w-[320px] shadow-lg">
               <Text className="text-[18px] font-semibold text-gray-800 text-center mb-2">
-                笔记操作
+                {showImageSettings
+                  ? "图片分享设置"
+                  : showShareFormats
+                    ? "选择分享格式"
+                    : "笔记操作"}
               </Text>
               {!!note?.title && (
                 <Text
@@ -122,34 +222,97 @@ export default function NoteContextMenu({
                 </Text>
               )}
               <View className="gap-3">
-                <MenuAction
-                  label="编辑笔记"
-                  icon={SquarePen}
-                  onPress={() => runAction(onEdit)}
-                />
-                <MenuAction label="复制笔记" icon={Copy} onPress={handleCopy} />
-                <MenuAction
-                  label="分享笔记"
-                  icon={Share2}
-                  onPress={handleShare}
-                />
-                <MenuAction
-                  label="删除笔记"
-                  icon={Trash2}
-                  destructive
-                  onPress={() => runAction(onDelete)}
-                />
+                {showImageSettings ? (
+                  <>
+                    <View className="rounded-[12px] bg-[#F5F5F5] px-4 py-4">
+                      <Text className="text-[15px] font-medium text-gray-700">
+                        当前使用默认纸张样式
+                      </Text>
+                      <Text className="mt-2 text-[13px] leading-5 text-gray-400">
+                        主题、比例、字号与水印等自定义选项将在下一步加入。
+                      </Text>
+                    </View>
+                    <MenuAction
+                      label="返回分享格式"
+                      icon={ChevronLeft}
+                      disabled={isSharing}
+                      onPress={() => setShowImageSettings(false)}
+                    />
+                  </>
+                ) : showShareFormats ? (
+                  <>
+                    <ImageShareAction
+                      disabled={isSharing}
+                      onShare={() => void handleImageShare()}
+                      onSettings={() => setShowImageSettings(true)}
+                    />
+                    <MenuAction
+                      label="分享为 TXT 文件"
+                      icon={FileText}
+                      disabled={isSharing}
+                      onPress={() => void handleShare("txt")}
+                    />
+                    <MenuAction
+                      label="分享为 Markdown 文件"
+                      icon={FileCode2}
+                      disabled={isSharing}
+                      onPress={() => void handleShare("markdown")}
+                    />
+                    <MenuAction
+                      label="返回笔记操作"
+                      icon={ChevronLeft}
+                      disabled={isSharing}
+                      onPress={() => setShowShareFormats(false)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <MenuAction
+                      label="编辑笔记"
+                      icon={SquarePen}
+                      onPress={() => runAction(onEdit)}
+                    />
+                    <MenuAction
+                      label="复制笔记"
+                      icon={Copy}
+                      onPress={handleCopy}
+                    />
+                    <MenuAction
+                      label="分享笔记"
+                      icon={Share2}
+                      onPress={() => setShowShareFormats(true)}
+                    />
+                    <MenuAction
+                      label="删除笔记"
+                      icon={Trash2}
+                      destructive
+                      onPress={() => runAction(onDelete)}
+                    />
+                  </>
+                )}
               </View>
               <Pressable
-                onPress={onClose}
+                onPress={
+                  showImageSettings
+                    ? () => setShowImageSettings(false)
+                    : showShareFormats
+                      ? () => setShowShareFormats(false)
+                      : onClose
+                }
+                disabled={isSharing}
                 className="mt-4 py-3 rounded-[12px] bg-gray-100"
               >
                 <Text className="text-center text-[14px] text-gray-600">
-                  取消
+                  {showImageSettings || showShareFormats ? "返回" : "取消"}
                 </Text>
               </Pressable>
             </View>
           </TouchableWithoutFeedback>
+          {!!note && (
+            <View pointerEvents="none" style={noteShareImageHostStyle}>
+              <NoteShareImageCard ref={imageCardRef} note={note} />
+            </View>
+          )}
         </View>
       </TouchableWithoutFeedback>
     </Modal>
