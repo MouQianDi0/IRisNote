@@ -1,6 +1,6 @@
 import TabsBackExitHandler from "@/core/navigation/components/TabsBackExitHandler";
 import FloatingMenu from "@/core/navigation/components/FloatingMenu";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { colors } from "@/shared/theme";
 import { Redirect, Tabs } from "expo-router";
 import { ActivityIndicator, Easing, View } from "react-native";

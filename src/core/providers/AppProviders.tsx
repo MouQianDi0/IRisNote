@@ -1,4 +1,4 @@
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider } from "@/features/auth/providers/AuthProvider";
 import type { PropsWithChildren } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 

@@ -10,6 +10,8 @@ import type {
     SendVerificationCodeResponse,
 } from "@/features/auth/auth.types";
 
+/** Authentication and verification API calls. */
+
 export type {
     AuthResponse,
     CheckVerificationCodePayload,

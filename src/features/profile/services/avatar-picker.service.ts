@@ -1,23 +1,10 @@
-import api, { API_BASE_URL } from "@/shared/http/client";
-import type {
-    CollectedAvatar,
-    UploadAvatarResponse,
-    UserProfileResponse,
-} from "@/features/profile/profile.types";
-import type { User } from "@/shared/types/user";
-import * as ImagePicker from "expo-image-picker";
+import type * as ImagePicker from "expo-image-picker";
+import * as ImagePickerModule from "expo-image-picker";
+import type { CollectedAvatar, UploadAvatarResponse } from "../profile.types";
+import { uploadUserAvatar } from "../api/profile.api";
+import { createAvatarDataUri } from "../utils/avatar";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
-const API_ORIGIN = new URL(API_BASE_URL).origin; // 提取API基础URL的域名部分
-
-console.log(API_ORIGIN);
-
-export type {
-    CollectedAvatar,
-    UploadAvatarResponse,
-    UserProfileResponse,
-} from "@/features/profile/profile.types";
-export type { User } from "@/shared/types/user";
 
 const avatarPickerOptions: ImagePicker.ImagePickerOptions = {
     mediaTypes: ["images"],
@@ -27,55 +14,34 @@ const avatarPickerOptions: ImagePicker.ImagePickerOptions = {
     base64: true,
 };
 
-export async function getUserProfile(): Promise<User> {
-    const { data } = await api.get<UserProfileResponse>("/user/profile");
-    return {
-        ...data.user,
-        avatar: normalizeAvatarUrl(data.user.avatar),
-    };
-}
-
-export async function uploadUserAvatar(
-    avatar: string,
-): Promise<UploadAvatarResponse> {
-    const { data } = await api.post<UploadAvatarResponse>("/user/avatar", {
-        avatar,
-    });
-    return {
-        ...data,
-        avatar: normalizeAvatarUrl(data.avatar) || data.avatar,
-    };
-}
-
 export async function collectAvatarFromLibrary(
     options?: ImagePicker.ImagePickerOptions,
 ): Promise<CollectedAvatar | null> {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission =
+        await ImagePickerModule.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
         throw new Error("Media library permission is required.");
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await ImagePickerModule.launchImageLibraryAsync({
         ...avatarPickerOptions,
         ...options,
     });
-
     return collectAvatarFromResult(result);
 }
 
 export async function collectAvatarFromCamera(
     options?: ImagePicker.ImagePickerOptions,
 ): Promise<CollectedAvatar | null> {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    const permission = await ImagePickerModule.requestCameraPermissionsAsync();
     if (!permission.granted) {
         throw new Error("Camera permission is required.");
     }
 
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await ImagePickerModule.launchCameraAsync({
         ...avatarPickerOptions,
         ...options,
     });
-
     return collectAvatarFromResult(result);
 }
 
@@ -95,30 +61,6 @@ export async function collectAndUploadAvatarFromCamera(
     return uploadUserAvatar(collectedAvatar.avatar);
 }
 
-export function createAvatarDataUri(
-    base64: string,
-    mimeType = "image/jpeg",
-): string {
-    if (base64.startsWith("data:")) return base64;
-    return `data:${mimeType};base64,${base64}`;
-}
-
-export function normalizeAvatarUrl(avatar?: string | null): string | null {
-    if (!avatar) return null;
-    if (avatar.startsWith("data:") || avatar.startsWith("file:")) {
-        return avatar;
-    } // 处理data URI和file URI
-
-    const url = new URL(avatar, API_ORIGIN);
-    const segments = url.pathname.split("/").filter(Boolean);
-    const filename = segments[segments.length - 1];
-    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") {
-        // 提取文件名，映射到正确的获取头像接口路径
-        return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
-    }
-    return new URL(`/api/user/avatar/${filename}`, API_ORIGIN).href;
-}
-
 function collectAvatarFromResult(
     result: ImagePicker.ImagePickerResult,
 ): CollectedAvatar | null {
@@ -129,7 +71,7 @@ function collectAvatarFromResult(
         throw new Error("Avatar base64 data was not returned.");
     }
 
-    const mimeType = normalizeAvatarMimeType(asset.mimeType); // 标准化MIME类型
+    const mimeType = normalizeAvatarMimeType(asset.mimeType);
     const size = asset.fileSize ?? estimateBase64ByteSize(asset.base64);
     if (size > AVATAR_MAX_BYTES) {
         throw new Error("Avatar image must be 2MB or smaller.");
@@ -152,7 +94,6 @@ function normalizeAvatarMimeType(mimeType?: string): string {
     ) {
         return mimeType;
     }
-
     return "image/jpeg";
 }
 

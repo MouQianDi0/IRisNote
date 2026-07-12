@@ -1,9 +1,9 @@
 import {
     collectAndUploadAvatarFromCamera,
     collectAndUploadAvatarFromLibrary,
-    normalizeAvatarUrl,
-} from "@/api/user";
-import { useAuth } from "@/hooks/useAuth";
+} from "@/features/profile/services/avatar-picker.service";
+import { useAuth } from "@/features/auth/hooks/useAuth";
+import { normalizeAvatarUrl } from "@/shared/utils/avatar";
 import { useState } from "react";
 import { Alert, type ImageSourcePropType } from "react-native";
 

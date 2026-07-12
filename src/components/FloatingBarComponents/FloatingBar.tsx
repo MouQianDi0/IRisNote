@@ -19,7 +19,7 @@ import { useCategoryDelete } from "../../hooks/FloatingBar/useCategoryDelete";
 import { useCategoryPin } from "../../hooks/FloatingBar/useCategoryPin";
 import { useCategoryRename } from "../../hooks/FloatingBar/useCategoryRename";
 import { useCategoryStar } from "../../hooks/FloatingBar/useCategoryStar";
-import { useAvatar } from "../../hooks/useAvatar";
+import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import CategoryActionModel from "../CategoryActionModel";
 import FloatingBarCategoryButton from "./FloatingBarCategoryButton";
 import FloatingBarDivider from "./FloatingBarDivider";

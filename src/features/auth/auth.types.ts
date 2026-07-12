@@ -7,6 +7,10 @@ export type AuthResponse = {
     user: User;
 };
 
+export type UserProfileResponse = {
+    user: User;
+};
+
 export type SendVerificationCodePayload = {
     email: string;
     type: VerificationType;

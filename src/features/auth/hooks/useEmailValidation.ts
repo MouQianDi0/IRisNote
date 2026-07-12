@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+/** Validates the email input shared by authentication screens. */
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function useEmailValidation(email: string) {

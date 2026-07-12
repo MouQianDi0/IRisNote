@@ -1,20 +1,17 @@
-import { getUserProfile } from "@/api/user";
+import { getUserProfile } from "@/features/auth/api/session.api";
 import type { AuthState } from "@/features/auth/auth.types";
 import type { User } from "@/shared/types/user";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import {
-    createContext,
     useCallback,
-    useContext,
     useEffect,
     useRef,
     useState,
     type PropsWithChildren,
 } from "react";
-
-const AuthContext = createContext<AuthState | null>(null);
+import { AuthContext } from "../auth.context";
 
 export function AuthProvider({
     children,
@@ -88,12 +85,4 @@ export function AuthProvider({
             {children}
         </AuthContext.Provider>
     );
-}
-
-export function useAuth(): AuthState {
-    const ctx = useContext(AuthContext);
-    if (!ctx) {
-        throw new Error("useAuth must be used within an <AuthProvider>");
-    }
-    return ctx;
 }

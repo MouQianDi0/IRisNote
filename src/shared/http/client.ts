@@ -1,5 +1,5 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "axios";
 
 const DEFAULT_API_BASE_URL = "https://tech-mou.top/api";
@@ -40,9 +40,9 @@ const getDeviceId = async () => {
     if (storedDeviceId) return storedDeviceId;
 
     const nextDeviceId = createDeviceId();
-    await AsyncStorage.setItem(storageKeys.deviceId, nextDeviceId);
+    await AsyncStorage.setItem(storageKeys.deviceId, nextDeviceId); //存储设备标识
     return nextDeviceId;
-};
+}; //获取设备标识
 
 // 请求拦截器：自动附加 token，并为验证码链路附加设备标识
 api.interceptors.request.use(async (config) => {
