@@ -7,6 +7,7 @@ import AddCategoryButton from "../categories/components/AddCategoryButton";
 import CreateCategoryModal from "../categories/components/CreateCategoryModal";
 import CategoryBar from "../categories/components/CategoryBar";
 import SwipeableNoteItem from "../components/card/SwipeableNoteItem";
+import NoteContextMenu from "../components/viewer/NoteContextMenu";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import { notifyCategoriesChanged, onCategoriesChanged } from "../categories/categories.events";
 import { onNotesChanged, onNotesRemovedByCategory } from "../notes.events";
@@ -39,7 +40,7 @@ import Animated, {
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
 export default function NotesScreen() {
-    const onNavigate = useDebouncedNavigation();
+  const onNavigate = useDebouncedNavigation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,8 @@ export default function NotesScreen() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [NoteClassMenu, setNoteClassMenu] = useState(false);
   const [openedNoteId, setOpenedNoteId] = useState<number | null>(null);
+  const [contextMenuNote, setContextMenuNote] = useState<Note | null>(null);
+  const contextMenuNoteRef = useRef<Note | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRef = useRef<Note[]>([]);
   const notesRequestRef = useRef<Promise<void> | null>(null);
@@ -232,17 +235,67 @@ export default function NotesScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
-  const scheduleFloatingMenuRestore = useCallback(() => {
+  const clearFloatingMenuRestoreTimer = useCallback(() => {
     if (floatingMenuRestoreTimerRef.current) {
       clearTimeout(floatingMenuRestoreTimerRef.current);
+      floatingMenuRestoreTimerRef.current = null;
     }
+  }, []);
+
+  const scheduleFloatingMenuRestore = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
 
     setFloatingMenuHidden(true);
     floatingMenuRestoreTimerRef.current = setTimeout(() => {
-      setFloatingMenuHidden(false);
+      if (openedNoteIdRef.current === null) {
+        setFloatingMenuHidden(false);
+      }
+
       floatingMenuRestoreTimerRef.current = null;
     }, 500);
-  }, []);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const hideFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    setFloatingMenuHidden(true);
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const showFloatingMenu = useCallback(() => {
+    clearFloatingMenuRestoreTimer();
+    if (contextMenuNoteRef.current === null) {
+      setFloatingMenuHidden(false);
+    }
+  }, [clearFloatingMenuRestoreTimer]);
+
+  const handleOpenContextMenu = useCallback(
+    (item: Note) => {
+      contextMenuNoteRef.current = item;
+      setOpenedNoteId(null);
+      hideFloatingMenu();
+      setContextMenuNote(item);
+    },
+    [hideFloatingMenu],
+  );
+
+  const handleCloseContextMenu = useCallback(() => {
+    contextMenuNoteRef.current = null;
+    setContextMenuNote(null);
+    showFloatingMenu();
+  }, [showFloatingMenu]);
+
+  const handleEditFromContextMenu = useCallback(() => {
+    if (!contextMenuNote) return;
+
+    onNavigate({
+      pathname: "/pages/note/edit/[id]",
+      params: { id: String(contextMenuNote.id) },
+    } as unknown as Href);
+  }, [contextMenuNote, onNavigate]);
+
+  const handleDeleteFromContextMenu = useCallback(() => {
+    if (!contextMenuNote) return;
+    handleDelete(contextMenuNote);
+  }, [contextMenuNote, handleDelete]);
 
   useEffect(() => {
     return () => {
@@ -313,6 +366,9 @@ export default function NotesScreen() {
           onToggleStar={handleToggleStar}
           onOpenActions={setOpenedNoteId}
           onCloseActions={() => setOpenedNoteId(null)}
+          onSwipeStart={hideFloatingMenu}
+          onSwipeClose={showFloatingMenu}
+          onLongPress={handleOpenContextMenu}
         />
       );
     },
@@ -322,7 +378,10 @@ export default function NotesScreen() {
       handleOpenNote,
       handleTogglePin,
       handleToggleStar,
+      handleOpenContextMenu,
+      hideFloatingMenu,
       openedNoteId,
+      showFloatingMenu,
     ],
   );
 
@@ -354,7 +413,7 @@ export default function NotesScreen() {
           className="     relative
                                     w-[75px]
                                     bg-app-background
-                                    h-auto                           
+                                    h-auto
                                     rounded-floating
                                     items-center gap-[6px]"
         >
@@ -406,6 +465,13 @@ export default function NotesScreen() {
         visible={NoteClassMenu}
         onClose={() => setNoteClassMenu(false)}
         onAdd={handleAddCategory}
+      />
+      <NoteContextMenu
+        visible={contextMenuNote !== null}
+        note={contextMenuNote}
+        onClose={handleCloseContextMenu}
+        onEdit={handleEditFromContextMenu}
+        onDelete={handleDeleteFromContextMenu}
       />
     </View>
   );

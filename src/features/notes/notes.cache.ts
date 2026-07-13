@@ -13,3 +13,8 @@ export const getCachedNoteById = (noteId: number) =>
 export const removeCachedNoteById = (noteId: number) => {
     cachedNotesById.delete(noteId);
 };
+
+/** Write or replace one cached note without invalidating the remaining cache. */
+export const setCachedNote = (note: Note) => {
+    cachedNotesById.set(note.id, note);
+};
