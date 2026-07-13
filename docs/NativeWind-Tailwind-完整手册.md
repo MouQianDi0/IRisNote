@@ -1,5 +1,7 @@
 # NativeWind v5 + Tailwind CSS v4 完整开发手册
 
+> IRisNote 项目说明：当前项目使用 NativeWind v5 与 Tailwind CSS v4 的 CSS-first 配置。项目实际配置和日常写法以同目录的 `样式开发规范.md`、项目根目录 `global.css` 以及 `src/theme/` 为准；不要为本项目新增旧版 `tailwind.config.js` 或 `@tailwind` 指令。
+
 > **📱 = App端支持 | 🌐 = Web专用 | 📱🌐 = 两端都支持**
 >
 > 本手册基于 NativeWind v5 官方文档 + Tailwind CSS v4 官方文档整理
