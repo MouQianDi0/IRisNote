@@ -1,19 +1,4 @@
 import {
-  copyNoteToClipboard,
-  type ShareableNote,
-} from "./NoteShare/CopyNoteToClipboard";
-import {
-  NoteShareUnavailableError,
-  shareNote,
-  shareNoteImage,
-  type NoteShareFormat,
-} from "./NoteShare/NoteShareManager";
-import {
-  captureNoteShareImage,
-  NoteShareImageCard,
-  noteShareImageHostStyle,
-} from "./NoteShare/NoteShareToImage";
-import {
   ChevronLeft,
   Copy,
   FileCode2,
@@ -24,7 +9,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react-native";
-import { type ComponentType, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   Alert,
   Modal,
@@ -35,6 +20,21 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import {
+  copyNoteToClipboard,
+  type ShareableNote,
+} from "../NoteShare/CopyNoteToClipboard";
+import {
+  NoteShareUnavailableError,
+  shareNote,
+  shareNoteImage,
+  type NoteShareFormat,
+} from "../NoteShare/NoteShareManager";
+import {
+  captureNoteShareImage,
+  NoteShareImageCard,
+  noteShareImageHostStyle,
+} from "../NoteShare/NoteShareToImage";
 
 type MenuIcon = ComponentType<{
   size?: number;
