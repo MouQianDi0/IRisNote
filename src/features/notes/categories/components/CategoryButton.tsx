@@ -4,7 +4,28 @@ import { pulse } from "@/shared/theme/motion";
 import { colors } from "@/shared/theme";
 import { Pressable, Text } from "react-native";
 import Animated from "react-native-reanimated";
+import { tv } from "tailwind-variants";
 import StarBadge from "../../components/StarBadge";
+
+const categoryButtonStyles = tv({
+    slots: {
+        base: "relative mb-[6px] h-[60px] w-[50px] items-center justify-center rounded-control py-[4px] pl-[6px] pr-[4px]",
+        label: "max-w-[44px] text-[10px]",
+    },
+    variants: {
+        active: {
+            true: {
+                label: "font-semibold text-blue-500",
+            },
+            false: {
+                label: "text-gray-400",
+            },
+        },
+    },
+    defaultVariants: {
+        active: false,
+    },
+});
 
 type FloatingBarCategoryButtonProps = {
     category: Category;
@@ -20,19 +41,13 @@ export default function FloatingBarCategoryButton({
     onLongPress,
 }: FloatingBarCategoryButtonProps) {
     const IconComponent = getCategoryIcon(category.icon);
+    const { base, label } = categoryButtonStyles({ active: isActive });
 
     return (
         <Pressable
             onLongPress={onLongPress}
             delayLongPress={400}
-            className={`
-                relative
-                w-[50px] h-[60px] mb-[6px]
-                rounded-control
-                justify-center
-                items-center
-                pl-[6px] pr-[4px] py-[4px]
-            `}
+            className={base()}
             onPress={onPress}
         >
             {category.is_starred && (
@@ -67,9 +82,7 @@ export default function FloatingBarCategoryButton({
             <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
-                className={`max-w-[44px] text-[10px] ${
-                    isActive ? "text-blue-500 font-semibold" : "text-gray-400"
-                }`}
+                className={label()}
             >
                 {category.name}
             </Text>

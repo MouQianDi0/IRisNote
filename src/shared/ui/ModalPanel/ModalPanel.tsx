@@ -1,32 +1,37 @@
 import type { PropsWithChildren } from "react";
 import { View, type ViewProps } from "react-native";
+import { tv, type VariantProps } from "tailwind-variants";
 
 /** Shared modal content panel. */
-type ModalPanelVariant = "create" | "actions" | "confirm";
+const modalPanelStyles = tv({
+    base: "bg-white p-5",
+    variants: {
+        variant: {
+            create: "w-[320px] rounded-modal shadow-lg",
+            actions: "w-[300px] rounded-control shadow-md",
+            confirm: "w-[280px] rounded-card shadow-md",
+        },
+    },
+});
 
 type ModalPanelProps = PropsWithChildren<
-    ViewProps & {
+    ViewProps &
+        VariantProps<typeof modalPanelStyles> & {
         className?: string;
-        variant: ModalPanelVariant;
-    }
+    } &
+        Required<Pick<VariantProps<typeof modalPanelStyles>, "variant">>
 >;
-
-const variantClassNames: Record<ModalPanelVariant, string> = {
-    create: "w-[320px] rounded-modal shadow-lg",
-    actions: "w-[300px] rounded-control shadow-md",
-    confirm: "w-[280px] rounded-card shadow-md",
-};
 
 export function ModalPanel({
     children,
-    className = "",
+    className,
     variant,
     ...props
 }: ModalPanelProps) {
     return (
         <View
             {...props}
-            className={`bg-white p-5 ${variantClassNames[variant]} ${className}`.trim()}
+            className={modalPanelStyles({ className, variant })}
         >
             {children}
         </View>

@@ -1,32 +1,39 @@
 import type { PropsWithChildren } from "react";
 import { View, type ViewProps } from "react-native";
+import { tv, type VariantProps } from "tailwind-variants";
 
 /** Shared top-level screen container. */
-type ScreenVariant = "plain" | "surface" | "centeredMuted";
+const screenStyles = tv({
+    variants: {
+        variant: {
+            plain: "flex-1",
+            surface: "flex-1 bg-white",
+            centeredMuted:
+                "flex-1 items-center justify-center bg-surface-muted",
+        },
+    },
+    defaultVariants: {
+        variant: "plain",
+    },
+});
 
 type ScreenProps = PropsWithChildren<
-    ViewProps & {
+    ViewProps &
+        VariantProps<typeof screenStyles> & {
         className?: string;
-        variant?: ScreenVariant;
     }
 >;
 
-const variantClassNames: Record<ScreenVariant, string> = {
-    plain: "flex-1",
-    surface: "flex-1 bg-white",
-    centeredMuted: "flex-1 items-center justify-center bg-surface-muted",
-};
-
 export function Screen({
     children,
-    className = "",
-    variant = "plain",
+    className,
+    variant,
     ...props
 }: ScreenProps) {
     return (
         <View
             {...props}
-            className={`${variantClassNames[variant]} ${className}`.trim()}
+            className={screenStyles({ className, variant })}
         >
             {children}
         </View>

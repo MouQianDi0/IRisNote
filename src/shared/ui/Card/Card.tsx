@@ -1,31 +1,37 @@
 import type { PropsWithChildren } from "react";
 import { View, type ViewProps } from "react-native";
+import { tv, type VariantProps } from "tailwind-variants";
 
 /** Shared surface container. */
-type CardVariant = "surface" | "muted";
+const cardStyles = tv({
+    variants: {
+        variant: {
+            surface: "bg-white",
+            muted: "bg-surface-muted",
+        },
+    },
+    defaultVariants: {
+        variant: "surface",
+    },
+});
 
 type CardProps = PropsWithChildren<
-    ViewProps & {
+    ViewProps &
+        VariantProps<typeof cardStyles> & {
         className?: string;
-        variant?: CardVariant;
     }
 >;
 
-const variantClassNames: Record<CardVariant, string> = {
-    surface: "bg-white",
-    muted: "bg-surface-muted",
-};
-
 export function Card({
     children,
-    className = "",
-    variant = "surface",
+    className,
+    variant,
     ...props
 }: CardProps) {
     return (
         <View
             {...props}
-            className={`${className} ${variantClassNames[variant]}`.trim()}
+            className={cardStyles({ className, variant })}
         >
             {children}
         </View>

@@ -7,6 +7,7 @@ import Animated, {
     useSharedValue,
     withTiming,
 } from "react-native-reanimated";
+import { tv } from "tailwind-variants";
 import {
     getFloatingMenuHidden,
     onFloatingMenuVisibilityChanged,
@@ -18,6 +19,19 @@ import { colors } from "@/shared/theme";
 import FloatingActionButton from "./FloatingActionButton";
 
 const hiddenOffsetX = 130;
+
+const floatingMenuItemStyles = tv({
+    base: "my-[5] size-[50] items-center justify-center rounded-full",
+    variants: {
+        active: {
+            true: "opacity-100",
+            false: "opacity-70",
+        },
+    },
+    defaultVariants: {
+        active: false,
+    },
+});
 
 export default function FloatingMenu({ state }: BottomTabBarProps) {
     const router = useRouter();
@@ -52,11 +66,9 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
                 {TAB_MENU_ITEMS.map((item, index) => (
                     <Pressable
                         key={index}
-                        className={`my-[5] size-[50] items-center justify-center rounded-full ${
-                            activeTab === item.key
-                                ? "opacity-100"
-                                : "opacity-70"
-                        }`}
+                        className={floatingMenuItemStyles({
+                            active: activeTab === item.key,
+                        })}
                         style={({ pressed }) =>
                             pressed ? { opacity: 0.7 } : undefined
                         }

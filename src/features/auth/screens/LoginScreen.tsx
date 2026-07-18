@@ -123,11 +123,8 @@ export default function LoginScreen() {
                 {/* 邮箱 */}
                 <Text className="text-sm text-gray-500 mb-2 ml-1">邮箱</Text>
                 <TextField
-                    className={`mb-1 ${
-                        emailCheck.error && email
-                            ? "border-red-400"
-                            : "border-gray-200"
-                    }`}
+                    className="mb-1"
+                    invalid={Boolean(emailCheck.error && email)}
                     placeholder="请输入邮箱"
                     placeholderTextColor={colors.textMuted}
                     value={email}
@@ -147,7 +144,7 @@ export default function LoginScreen() {
                 </Text>
                 <View className="flex-row items-center mb-5">
                     <TextField
-                        className="flex-1 border-gray-200"
+                        className="flex-1"
                         placeholder="请输入验证码"
                         placeholderTextColor={colors.textMuted}
                         value={code}
@@ -157,13 +154,6 @@ export default function LoginScreen() {
                     />
                     <Button
                         className="ml-3 rounded-xl px-4 py-3.5"
-                        variant={
-                            emailCheck.isValid &&
-                            countdown === 0 &&
-                            !sendingCode
-                                ? "primary"
-                                : "disabled"
-                        }
                         onPress={handleSendCode}
                         disabled={
                             !emailCheck.isValid || countdown > 0 || sendingCode
@@ -208,14 +198,6 @@ export default function LoginScreen() {
                 {/* 登录按钮 */}
                 <Button
                     className="rounded-xl py-3.5 mt-6 flex-row justify-center items-center"
-                    variant={
-                        emailCheck.isValid &&
-                        password.trim() &&
-                        code.trim() &&
-                        !loading
-                            ? "primary"
-                            : "disabled"
-                    }
                     onPress={handleLogin}
                     disabled={
                         !emailCheck.isValid ||

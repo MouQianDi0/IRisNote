@@ -27,12 +27,26 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { tv } from "tailwind-variants";
 import { colors } from "@/shared/theme";
 import { ModalPanel } from "@/shared/ui";
 import { ALL_CATEGORY } from "../categories.constants";
 import { getCategoryIcon } from "../category-icons";
 import CategoryDeleteConfirmModal from "./CategoryDeleteConfirmModal";
 import CategoryIconPicker from "./CategoryIconPicker";
+
+const categoryStatusButtonStyles = tv({
+    base: "flex-1 flex-row items-center justify-center gap-1 rounded-control py-2",
+    variants: {
+        active: {
+            true: "bg-warning-surface",
+            false: "bg-surface-muted",
+        },
+    },
+    defaultVariants: {
+        active: false,
+    },
+});
 
 type CategoryActionModalProps = {
     visible: boolean;
@@ -192,7 +206,9 @@ export default function CategoryActionModal({
                                 <View className="flex-row gap-3 mb-4 mt-3">
                                     <Pressable
                                         onPress={onPin}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isPinned ? "bg-warning-surface" : "bg-surface-muted"}`}
+                                        className={categoryStatusButtonStyles({
+                                            active: isPinned,
+                                        })}
                                     >
                                         <Pin
                                             size={24}
@@ -205,7 +221,9 @@ export default function CategoryActionModal({
                                     </Pressable>
                                     <Pressable
                                         onPress={onStar}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isStarred ? "bg-warning-surface" : "bg-surface-muted"}`}
+                                        className={categoryStatusButtonStyles({
+                                            active: isStarred,
+                                        })}
                                     >
                                         <Star
                                             size={24}

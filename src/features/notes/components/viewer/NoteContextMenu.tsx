@@ -20,6 +20,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { tv } from "tailwind-variants";
 import {
   copyNoteToClipboard,
   type ShareableNote,
@@ -57,6 +58,46 @@ type MenuActionProps = {
   disabled?: boolean;
 };
 
+const menuActionStyles = tv({
+  slots: {
+    base: "flex-row items-center gap-3 rounded-[12px] px-4 py-3",
+    label: "text-[15px] font-medium",
+  },
+  variants: {
+    destructive: {
+      true: {
+        base: "bg-red-50",
+        label: "text-red-500",
+      },
+      false: {
+        base: "bg-[#F5F5F5]",
+        label: "text-gray-700",
+      },
+    },
+    disabled: {
+      true: {
+        base: "opacity-50",
+      },
+    },
+  },
+  defaultVariants: {
+    destructive: false,
+    disabled: false,
+  },
+});
+
+const imageShareActionStyles = tv({
+  base: "flex-row gap-2",
+  variants: {
+    disabled: {
+      true: "opacity-50",
+    },
+  },
+  defaultVariants: {
+    disabled: false,
+  },
+});
+
 function MenuAction({
   label,
   icon: Icon,
@@ -64,20 +105,19 @@ function MenuAction({
   destructive = false,
   disabled = false,
 }: MenuActionProps) {
+  const { base, label: labelStyles } = menuActionStyles({
+    destructive,
+    disabled,
+  });
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      className={`flex-row items-center gap-3 rounded-[12px] px-4 py-3 ${
-        destructive ? "bg-red-50" : "bg-[#F5F5F5]"
-      } ${disabled ? "opacity-50" : ""}`}
+      className={base()}
     >
       <Icon size={21} color={destructive ? "#ef4444" : "#666"} />
-      <Text
-        className={`text-[15px] font-medium ${
-          destructive ? "text-red-500" : "text-gray-700"
-        }`}
-      >
+      <Text className={labelStyles()}>
         {label}
       </Text>
     </Pressable>
@@ -94,7 +134,7 @@ function ImageShareAction({
   onSettings: () => void;
 }) {
   return (
-    <View className={`flex-row gap-2 ${disabled ? "opacity-50" : ""}`}>
+    <View className={imageShareActionStyles({ disabled })}>
       <Pressable
         onPress={onShare}
         disabled={disabled}

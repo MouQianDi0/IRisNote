@@ -2,7 +2,21 @@ import { useState } from "react";
 import { Modal, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 import { colors } from "@/shared/theme";
 import { Button, ModalPanel } from "@/shared/ui";
+import { tv } from "tailwind-variants";
 import CategoryIconPicker from "./CategoryIconPicker";
+
+const submitLabelStyles = tv({
+    base: "text-center text-[14px]",
+    variants: {
+        disabled: {
+            true: "text-gray-400",
+            false: "text-white",
+        },
+    },
+    defaultVariants: {
+        disabled: false,
+    },
+});
 
 type CreateCategoryModalProps = {
     visible: boolean;
@@ -52,11 +66,10 @@ export default function CreateCategoryModal({
                                 </Button>
                                 <Button
                                     className="flex-1 py-3 rounded-control"
-                                    variant={name.trim() ? "primary" : "disabled"}
                                     onPress={handleSubmit}
                                     disabled={!name.trim()}
                                 >
-                                    <Text className={`text-[14px] text-center ${name.trim() ? "text-white" : "text-gray-400"}`}>确定</Text>
+                                    <Text className={submitLabelStyles({ disabled: !name.trim() })}>确定</Text>
                                 </Button>
                             </View>
                         </ModalPanel>

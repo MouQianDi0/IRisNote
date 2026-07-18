@@ -1,6 +1,20 @@
 import { categoryIconGroups, getCategoryIcon } from "../category-icons";
 import { colors } from "@/shared/theme";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { tv } from "tailwind-variants";
+
+const categoryIconButtonStyles = tv({
+    base: "h-[48px] w-[48px] items-center justify-center rounded-control",
+    variants: {
+        selected: {
+            true: "bg-primary",
+            false: "bg-surface-muted",
+        },
+    },
+    defaultVariants: {
+        selected: false,
+    },
+});
 
 type CategoryIconPickerProps = {
     selectedIcon: string;
@@ -35,7 +49,9 @@ export default function CategoryIconPicker({
                                 <Pressable
                                     key={iconName}
                                     onPress={() => onChange(iconName)}
-                                    className={`w-[48px] h-[48px] items-center justify-center rounded-control ${selected ? "bg-primary" : "bg-surface-muted"}`}
+                                    className={categoryIconButtonStyles({
+                                        selected,
+                                    })}
                                 >
                                     <Icon size={24} color={selected ? colors.surface : colors.textSecondary} />
                                 </Pressable>

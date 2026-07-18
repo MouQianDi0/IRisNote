@@ -1,33 +1,44 @@
 import type { PropsWithChildren } from "react";
 import { Pressable, type PressableProps } from "react-native";
+import { tv, type VariantProps } from "tailwind-variants";
 
 /** Shared pressable button with semantic visual variants. */
-type ButtonVariant = "primary" | "disabled" | "secondary" | "danger";
+const buttonStyles = tv({
+    variants: {
+        variant: {
+            primary: "bg-primary",
+            secondary: "bg-gray-100",
+            danger: "bg-red-500",
+        },
+        disabled: {
+            true: "bg-gray-300",
+        },
+    },
+    defaultVariants: {
+        variant: "primary",
+        disabled: false,
+    },
+});
 
 type ButtonProps = PropsWithChildren<
-    PressableProps & {
+    PressableProps &
+        VariantProps<typeof buttonStyles> & {
         className?: string;
-        variant?: ButtonVariant;
     }
 >;
 
-const variantClassNames: Record<ButtonVariant, string> = {
-    primary: "bg-primary",
-    disabled: "bg-gray-300",
-    secondary: "bg-gray-100",
-    danger: "bg-red-500",
-};
-
 export function Button({
     children,
-    className = "",
-    variant = "primary",
+    className,
+    disabled,
+    variant,
     ...props
 }: ButtonProps) {
     return (
         <Pressable
             {...props}
-            className={`${className} ${variantClassNames[variant]}`.trim()}
+            disabled={disabled}
+            className={buttonStyles({ className, disabled, variant })}
         >
             {children}
         </Pressable>
