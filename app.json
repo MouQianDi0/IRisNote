@@ -53,7 +53,8 @@
                     "cameraPermission": "Allow NextNote to use the camera so you can take an avatar photo.",
                     "microphonePermission": false
                 }
-            ]
+            ],
+            "expo-sharing"
         ],
         "experiments": {
             "typedRoutes": true,

@@ -1,8 +1,8 @@
 import {
     ChevronRight,
     MoveHorizontal,
-    Pencil,
     Pin,
+    SquarePen,
     Star,
     Trash2,
 } from "lucide-react-native";
@@ -179,13 +179,15 @@ export default function CategoryActionModal({
                                         onSubmitEditing={handleRename}
                                     />
                                 ) : (
-                                    <Text className="text-[18px] font-bold text-gray-800">
-                                        “{categoryName}”
-                                    </Text>
+                                    <View className="mb-2 flex-row items-center justify-between">
+                                        <Text className="text-[18px] font-bold text-gray-800">
+                                            “{categoryName}”
+                                        </Text>
+                                        <Pressable onPress={() => setEditing(true)} className="p-1">
+                                            <SquarePen size={18} color={colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
                                 )}
-                                <Pressable onPress={() => setEditing(true)} className="p-1">
-                                    <Pencil size={24} color={colors.textSecondary} />
-                                </Pressable>
 
                                 <View className="flex-row gap-3 mb-4 mt-3">
                                     <Pressable
