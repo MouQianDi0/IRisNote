@@ -29,7 +29,6 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { colors } from "@/shared/theme";
 import { ModalPanel } from "@/shared/ui";
-import { ALL_CATEGORY } from "../categories.constants";
 import { getCategoryIcon } from "../category-icons";
 import CategoryDeleteConfirmModal from "./CategoryDeleteConfirmModal";
 import CategoryIconPicker from "./CategoryIconPicker";
@@ -235,51 +234,50 @@ export default function CategoryActionModal({
                                     />
                                 )}
 
-                                {categoryName !== ALL_CATEGORY.name &&
-                                    (!deleteMode ? (
-                                        <Pressable
-                                            onPress={() => setDeleteMode(true)}
-                                            className="mt-2 py-2 bg-red-50 rounded-control"
-                                        >
-                                            <Text className="text-center text-[14px] font-bold text-red-500">
-                                                删除分类
+                                {!deleteMode ? (
+                                    <Pressable
+                                        onPress={() => setDeleteMode(true)}
+                                        className="mt-2 py-2 bg-red-50 rounded-control"
+                                    >
+                                        <Text className="text-center text-[14px] font-bold text-red-500">
+                                            删除分类
+                                        </Text>
+                                    </Pressable>
+                                ) : (
+                                    <View className="mt-2">
+                                        <View className="bg-red-50 rounded-control p-4">
+                                            <Text className="text-[12px] text-red-500 text-center font-bold mb-1">
+                                                此操作不可撤销
                                             </Text>
-                                        </Pressable>
-                                    ) : (
-                                        <View className="mt-2">
-                                            <View className="bg-red-50 rounded-control p-4">
-                                                <Text className="text-[12px] text-red-500 text-center font-bold mb-1">
-                                                    此操作不可撤销
-                                                </Text>
-                                                <Text className="text-[12px] text-red-400 text-center mb-3">
-                                                    按住图标右滑到垃圾桶确认删除
-                                                </Text>
-                                                <View className="flex-row items-center justify-center gap-4">
-                                                    <GestureDetector gesture={panGesture}>
-                                                        <Animated.View
-                                                            style={iconAnimatedStyle}
-                                                            className="w-[30px] h-[30px] items-center justify-center rounded-indicator"
-                                                        >
-                                                            <SelectedIcon size={28} color={colors.textSecondary} />
-                                                        </Animated.View>
-                                                    </GestureDetector>
-                                                    <MoveHorizontal size={20} color={colors.textSubtle} />
-                                                    <Animated.View style={trashAnimatedStyle}>
-                                                        <Trash2
-                                                            size={28}
-                                                            color={isOverTrash ? colors.dangerBright : colors.textSecondary}
-                                                        />
+                                            <Text className="text-[12px] text-red-400 text-center mb-3">
+                                                按住图标右滑到垃圾桶确认删除
+                                            </Text>
+                                            <View className="flex-row items-center justify-center gap-4">
+                                                <GestureDetector gesture={panGesture}>
+                                                    <Animated.View
+                                                        style={iconAnimatedStyle}
+                                                        className="w-[30px] h-[30px] items-center justify-center rounded-indicator"
+                                                    >
+                                                        <SelectedIcon size={28} color={colors.textSecondary} />
                                                     </Animated.View>
-                                                </View>
+                                                </GestureDetector>
+                                                <MoveHorizontal size={20} color={colors.textSubtle} />
+                                                <Animated.View style={trashAnimatedStyle}>
+                                                    <Trash2
+                                                        size={28}
+                                                        color={isOverTrash ? colors.dangerBright : colors.textSecondary}
+                                                    />
+                                                </Animated.View>
                                             </View>
-                                            <Pressable
-                                                onPress={() => setDeleteMode(false)}
-                                                className="mt-3 py-3 bg-gray-100 rounded-control"
-                                            >
-                                                <Text className="text-center text-[14px] text-gray-500">取消</Text>
-                                            </Pressable>
                                         </View>
-                                    ))}
+                                        <Pressable
+                                            onPress={() => setDeleteMode(false)}
+                                            className="mt-3 py-3 bg-gray-100 rounded-control"
+                                        >
+                                            <Text className="text-center text-[14px] text-gray-500">取消</Text>
+                                        </Pressable>
+                                    </View>
+                                )}
                             </ModalPanel>
                         </TouchableWithoutFeedback>
                     </View>

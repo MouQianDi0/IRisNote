@@ -52,7 +52,7 @@ export default function CreateCategoryModal({
                                 </Button>
                                 <Button
                                     className="flex-1 py-3 rounded-control"
-                                    variant={name.trim() ? "primary" : "disabled"}
+                                    variant="primary"
                                     onPress={handleSubmit}
                                     disabled={!name.trim()}
                                 >

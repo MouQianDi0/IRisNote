@@ -181,13 +181,7 @@ export default function RegisterScreen() {
                     />
                     <Button
                         className="ml-3 rounded-xl px-4 py-3.5"
-                        variant={
-                            emailCheck.isValid &&
-                            countdown === 0 &&
-                            !sendingCode
-                                ? "primary"
-                                : "disabled"
-                        }
+                        variant="primary"
                         onPress={handleSendCode}
                         disabled={
                             !emailCheck.isValid || countdown > 0 || sendingCode
@@ -257,16 +251,7 @@ export default function RegisterScreen() {
                 {/* 注册按钮 */}
                 <Button
                     className="rounded-xl py-3.5 mt-6 flex-row justify-center items-center"
-                    variant={
-                        nickname.trim() &&
-                        emailCheck.isValid &&
-                        password.trim() &&
-                        confirmPassword.trim() &&
-                        code.trim() &&
-                        !loading
-                            ? "primary"
-                            : "disabled"
-                    }
+                    variant="primary"
                     onPress={handleRegister}
                     disabled={
                         !emailCheck.isValid ||

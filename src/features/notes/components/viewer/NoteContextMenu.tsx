@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   Copy,
   FileCode2,
+  FileDown,
   FileText,
   Image as ImageIcon,
   Settings,
@@ -25,6 +26,8 @@ import {
   type ShareableNote,
 } from "../NoteShare/CopyNoteToClipboard";
 import {
+  NoteShareFileGenerationError,
+  NoteSharePresentationError,
   NoteShareUnavailableError,
   shareNote,
   shareNoteImage,
@@ -32,6 +35,8 @@ import {
 } from "../NoteShare/NoteShareManager";
 import {
   captureNoteShareImage,
+  isNoteShareImageContentTooLong,
+  NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH,
   NoteShareImageCard,
   noteShareImageHostStyle,
 } from "../NoteShare/NoteShareToImage";
@@ -164,11 +169,14 @@ export default function NoteContextMenu({
     try {
       await shareNote(note, format);
     } catch (error) {
+      console.error("分享笔记文件失败:", error);
       Alert.alert(
         "提示",
-        error instanceof NoteShareUnavailableError
+        error instanceof NoteShareUnavailableError ||
+          error instanceof NoteShareFileGenerationError ||
+          error instanceof NoteSharePresentationError
           ? error.message
-          : "生成或分享笔记文件失败",
+          : "分享笔记文件失败",
       );
     } finally {
       setIsSharing(false);
@@ -177,15 +185,31 @@ export default function NoteContextMenu({
 
   const handleImageShare = async () => {
     if (!note || !imageCardRef.current || isSharing) return;
+
+    if (isNoteShareImageContentTooLong(note.content)) {
+      Alert.alert(
+        "笔记内容较长",
+        `正文超过图片分享上限 ${NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH} 个字符，是否改为分享 PDF？`,
+        [
+          { text: "否", style: "cancel" },
+          { text: "是", onPress: () => void handleShare("pdf") },
+        ],
+        { cancelable: false },
+      );
+      return;
+    }
+
     setIsSharing(true);
     try {
       const fileUri = await captureNoteShareImage(imageCardRef.current);
       onClose();
       await shareNoteImage(fileUri);
     } catch (error) {
+      console.error("分享笔记图片失败:", error);
       Alert.alert(
         "提示",
-        error instanceof NoteShareUnavailableError
+        error instanceof NoteShareUnavailableError ||
+          error instanceof NoteSharePresentationError
           ? error.message
           : "生成或分享笔记图片失败",
       );
@@ -245,6 +269,12 @@ export default function NoteContextMenu({
                       disabled={isSharing}
                       onShare={() => void handleImageShare()}
                       onSettings={() => setShowImageSettings(true)}
+                    />
+                    <MenuAction
+                      label="分享为 PDF 文件"
+                      icon={FileDown}
+                      disabled={isSharing}
+                      onPress={() => void handleShare("pdf")}
                     />
                     <MenuAction
                       label="分享为 TXT 文件"

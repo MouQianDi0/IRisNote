@@ -1,16 +1,25 @@
-import { type ShareableNote } from "./CopyNoteToClipboard";
 import { forwardRef } from "react";
 import { PixelRatio, StyleSheet, Text, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
+import { type ShareableNote } from "./CopyNoteToClipboard";
 
 const TARGET_IMAGE_WIDTH = 1080;
-const MAX_CONTENT_LENGTH = 900;
+export const NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH = 4500;
 const getImageCardWidth = () => TARGET_IMAGE_WIDTH / PixelRatio.get();
 
+const normalizeImageContent = (content: string | null) =>
+  content?.trim() ?? "";
+
+export const isNoteShareImageContentTooLong = (content: string | null) =>
+  normalizeImageContent(content).length > NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH;
+
 const formatImageContent = (content: string | null) => {
-  const normalizedContent = content?.trim() ?? "";
-  if (normalizedContent.length <= MAX_CONTENT_LENGTH) return normalizedContent;
-  return `${normalizedContent.slice(0, MAX_CONTENT_LENGTH).trimEnd()}…`;
+  const normalizedContent = normalizeImageContent(content);
+  if (normalizedContent.length <= NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH)
+    return normalizedContent;
+  return `${normalizedContent
+    .slice(0, NOTE_SHARE_IMAGE_MAX_CONTENT_LENGTH)
+    .trimEnd()}…`;
 };
 
 type NoteShareImageCardProps = { note: ShareableNote };
