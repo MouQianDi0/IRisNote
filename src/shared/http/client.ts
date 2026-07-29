@@ -36,7 +36,7 @@ const createDeviceId = () => {
             : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     return `irisnote-${randomPart}`;
-};
+}; //创建设备标识
 
 const getDeviceId = async () => {
     const storedDeviceId = await AsyncStorage.getItem(storageKeys.deviceId);
