@@ -24,6 +24,8 @@ export default function NoteViewer({ note, onBack }: NoteViewerProps) {
           title={note.title}
           renderMeta={(titleControls) => (
             <NoteViewerMeta
+              noteId={note.id}
+              content={note.content}
               categoryId={note.category_id}
               createdAt={note.created_at}
               isTitleExpandable={titleControls.isTitleExpandable}
