@@ -6,7 +6,7 @@ import NoteDetailStateView, {
 } from "../components/viewer/NoteDetailStateView";
 import { getCachedNoteById, setCachedNotes } from "../notes.cache";
 import type { Note } from "@/features/notes/notes.types";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
@@ -69,6 +69,24 @@ export default function NoteDetailScreen() {
   useEffect(() => {
     void fetchNote();
   }, [fetchNote]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (numericNoteId == null) return;
+
+      const frameId = requestAnimationFrame(() => {
+        const cachedNote = getCachedNoteById(numericNoteId);
+        if (!cachedNote) return;
+
+        setNote((currentNote) =>
+          currentNote === cachedNote ? currentNote : cachedNote,
+        );
+        setLoadState("ready");
+      });
+
+      return () => cancelAnimationFrame(frameId);
+    }, [numericNoteId]),
+  );
 
   const handleBack = useCallback(() => {
     if (router.canGoBack()) {

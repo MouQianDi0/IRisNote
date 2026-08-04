@@ -6,8 +6,11 @@ import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
+import NoteStatisticsPopover from "./note-statistics-popover";
 
 type NoteViewerMetaProps = {
+    noteId: number;
+    content: string | null;
     categoryId: number | null;
     createdAt: string;
     isTitleExpandable: boolean;
@@ -33,6 +36,8 @@ const formatCreatedAt = (createdAt: string) => {
 };
 
 export default function NoteViewerMeta({
+    noteId,
+    content,
     categoryId,
     createdAt,
     isTitleExpandable,
@@ -94,9 +99,7 @@ export default function NoteViewerMeta({
                         </Text>
                     </View>
                 )}
-                <Text className="text-xs text-gray-400">
-                    {formatCreatedAt(createdAt)}
-                </Text>
+                <NoteStatisticsPopover noteId={noteId} content={content} />
             </View>
 
             {isTitleExpandable && (
@@ -109,6 +112,10 @@ export default function NoteViewerMeta({
                     </Animated.View>
                 </Pressable>
             )}
+
+            <Text className="text-xs text-gray-400">
+                {formatCreatedAt(createdAt)}
+            </Text>
         </View>
     );
 }
