@@ -1,7 +1,8 @@
 import { createCategory, getCategories } from "../categories/api/categories.api";
 import { useApplicationDatabase } from "@/core/database";
-import { banner, captureNotificationSession } from "@/core/notifications";
-import { isServerConnectionUnavailable } from "@/core/notifications/server-connection-coordinator";
+import { captureNotificationSession } from "@/core/notifications";
+import NotesSyncHeader from "../components/NotesSyncHeader";
+import { readNoteSyncTime, saveNoteSyncTime } from "../data/note-sync-history";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
@@ -56,7 +57,8 @@ export default function NotesScreen() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<{ userId: number; timestamp: number | null } | null>(null);
+  const scrollOffset = useSharedValue(0);
   const [currentCategory, setCurrentCategory] = useState(
     String(ALL_CATEGORY.id),
   );
@@ -77,6 +79,18 @@ export default function NotesScreen() {
     typeof setTimeout
   > | null>(null);
   const openedNoteIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const userId = user.id;
+    let active = true;
+    void readNoteSyncTime(userId).then(timestamp => {
+      if (!active) return;
+      setSyncHistory(current => current?.userId === userId && current.timestamp !== null
+        ? current : { userId, timestamp });
+    });
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => {
     openedNoteIdRef.current = openedNoteId;
@@ -121,6 +135,9 @@ export default function NotesScreen() {
         );
         if (notesRequestOwnerIdRef.current !== ownerUserId) return;
         applyNotes(reconciledNotes);
+        const timestamp = Date.now();
+        setSyncHistory({ userId: ownerUserId, timestamp });
+        await saveNoteSyncTime(ownerUserId, timestamp);
         return { addedCount };
       } catch (err: any) {
         console.error(
@@ -233,17 +250,10 @@ export default function NotesScreen() {
 
   const handleRefresh = useCallback(async () => {
     const current = captureNotificationSession();
-    const id = banner.show({ id: `notes-refresh:${user?.id}:${Date.now()}`, type: "neutral", title: "正在同步笔记…",
-      lifetime: { mode: "persistent" }, progress: { mode: "indeterminate" } });
-    setRefreshing(true);
     const result = await fetchNotes();
-    if (current()) {
-      if (result) banner.resolve(id, { type: "success", title: result.addedCount ? `同步完成，本次新增 ${result.addedCount} 条` : "同步完成，暂无新内容" });
-      else if (isServerConnectionUnavailable()) banner.dismiss(id);
-      else banner.resolve(id, { type: "important", title: "同步未完成，请稍后重试", lifetime: { mode: "persistent" } });
-    }
-    setRefreshing(false);
-  }, [fetchNotes, user?.id]);
+    if (!current()) return;
+    return result || undefined;
+  }, [fetchNotes]);
 
   const updateNotesLocally = useCallback(
     (updater: (prev: Note[]) => Note[], shouldSort = false) => {
@@ -406,6 +416,7 @@ export default function NotesScreen() {
       scheduleFloatingMenuRestore();
 
       const offsetY = event.nativeEvent.contentOffset.y;
+      scrollOffset.set(offsetY);
       const shouldShowScrollTop = offsetY > 300;
 
       if (showScrollTopRef.current !== shouldShowScrollTop) {
@@ -413,7 +424,7 @@ export default function NotesScreen() {
         setShowScrollTop(shouldShowScrollTop);
       }
     },
-    [scheduleFloatingMenuRestore],
+    [scheduleFloatingMenuRestore, scrollOffset],
   );
 
   // 滚动到顶部按钮的上下缓动动画
@@ -479,7 +490,7 @@ export default function NotesScreen() {
     ],
   );
 
-  const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10 }), []);
+  const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10, flexGrow: 1 }), []);
 
   const listHeaderComponent = useMemo(
     () => (
@@ -518,27 +529,36 @@ export default function NotesScreen() {
         </View>
         <View className="relative flex-1">
           <View className="bg-white rounded-tl-content p-4 h-[100%] border-[1px] border-note-page-border">
-            <FlatList
-              ref={flatListRef}
-              className="rounded-card"
-              data={filteredNotes}
-              extraData={categoryNameMap}
-              keyExtractor={keyExtractor}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={listContentContainerStyle}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              ListHeaderComponent={listHeaderComponent}
-              refreshing={refreshing}
+            <NotesSyncHeader
+              key={user?.id ?? "signed-out"}
+              count={filteredNotes.length}
+              lastSyncTime={syncHistory?.userId === user?.id ? syncHistory?.timestamp ?? null : null}
+              enabled={!!user && !loading}
+              scrollOffset={scrollOffset}
               onRefresh={handleRefresh}
-              renderItem={renderNoteItem}
-              ListEmptyComponent={listEmptyComponent}
-              initialNumToRender={8}
-              maxToRenderPerBatch={6}
-              updateCellsBatchingPeriod={50}
-              windowSize={7}
-              removeClippedSubviews
-            />
+            >
+              <FlatList
+                ref={flatListRef}
+                className="rounded-card"
+                data={filteredNotes}
+                extraData={categoryNameMap}
+                keyExtractor={keyExtractor}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={listContentContainerStyle}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                ListHeaderComponent={listHeaderComponent}
+                bounces={false}
+                overScrollMode="never"
+                renderItem={renderNoteItem}
+                ListEmptyComponent={listEmptyComponent}
+                initialNumToRender={8}
+                maxToRenderPerBatch={6}
+                updateCellsBatchingPeriod={50}
+                windowSize={7}
+                removeClippedSubviews
+              />
+            </NotesSyncHeader>
           </View>
           {showScrollTop && (
             <Animated.View
