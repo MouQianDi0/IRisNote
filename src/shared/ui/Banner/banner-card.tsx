@@ -26,6 +26,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { bannerColors } from "@/shared/theme/banner";
+import { LocalOnlyText } from "../local-only-text";
 
 type Props = {
   title: string;
@@ -136,14 +137,14 @@ export function BannerCard(props: Props) {
         numberOfLines={2}
         style={{ color: palette.foreground, fontSize: 14, fontWeight: "600" }}
       >
-        {props.title}
+        <LocalOnlyText>{props.title}</LocalOnlyText>
       </Text>
       {props.message && (
         <Text
           numberOfLines={3}
           style={{ color: palette.foreground, fontSize: 12, marginTop: 3 }}
         >
-          {props.message}
+          <LocalOnlyText>{props.message}</LocalOnlyText>
         </Text>
       )}
       {props.progress?.mode === "determinate" && (

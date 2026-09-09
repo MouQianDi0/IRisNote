@@ -16,7 +16,7 @@ export type NoteDraft = {
     sequence: number;
     updated_at: string;
 };
-export type DraftCommit = { key: string; sessionId: string; sequence: number };
+export type DraftCommit = { key: string; sessionId: string; sequence: number; beforeDelete?: () => Promise<void> };
 
 export const noteDraftValue = (note: Note): NoteDraftValue => ({
     title: note.title, content: note.content ?? "", categoryId: note.category_id,
@@ -98,6 +98,17 @@ export async function writeNoteDraft(
 }
 
 export async function deleteNoteDraft(db: ApplicationDatabase, owner: number, commit: DraftCommit) {
+    if (commit.beforeDelete) {
+        return db.transaction(async (tx) => {
+            const row = await readNoteDraft(tx, owner, commit.key);
+            if (!row || row.session_id !== commit.sessionId || row.sequence !== commit.sequence) {
+                throw new Error("草稿已变化，未删除任何内容，请重新打开后检查");
+            }
+            await commit.beforeDelete!();
+            await tx.run("DELETE FROM note_drafts WHERE owner_user_id = ? AND draft_key = ? AND session_id = ? AND sequence = ?",
+                [owner, commit.key, commit.sessionId, commit.sequence]);
+        });
+    }
     const result = await db.run(
         "DELETE FROM note_drafts WHERE owner_user_id = ? AND draft_key = ? AND session_id = ? AND sequence = ?",
         [owner, commit.key, commit.sessionId, commit.sequence],

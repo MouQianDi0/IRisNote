@@ -22,6 +22,7 @@ import type {
 export type NoteCloudSaveState = "accepted" | "rejected" | "unknown";
 
 export type NoteSaveResult = {
+    draftCleanupPending?: boolean;
     note: Note;
     cloudState: NoteCloudSaveState;
     /** true 表示内容与当前版本一致，本次保存没有创建新版本。 */
@@ -242,10 +243,18 @@ export async function saveEditedNoteLocalFirst(
             throw new Error("[Note save] Unchanged note could not be reloaded.");
         }
         publishNote(syncedNote);
+        let draftCleanupPending = false;
+        if (draft?.beforeDelete) {
+            try { await deleteNoteDraft(database, ownerUserId, draft); }
+            catch {
+                draftCleanupPending = true;
+                console.warn("[Note draft] 保存已完成，草稿清理未完成", { clientId: syncedNote.id });
+            }
+        }
         console.info("[Note save] 内容未变化，未创建新版本", {
             clientId: syncedNote.id,
         });
-        return { note: syncedNote, cloudState: "accepted", unchanged: true };
+        return { note: syncedNote, cloudState: "accepted", unchanged: true, draftCleanupPending };
     }
 
     return finishDraftSave(
@@ -267,6 +276,7 @@ async function finishDraftSave(
         try {
             await deleteNoteDraft(database, owner, draft);
         } catch {
+            if (draft.beforeDelete) saveResult.draftCleanupPending = true;
             // 云端保存成功不能因草稿清理失败被误报为保存失败，也不能删除新会话内容。
             console.warn("[Note draft] 保存已完成，草稿清理未完成", { clientId: note.id });
         }

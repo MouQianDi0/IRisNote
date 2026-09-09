@@ -31,10 +31,200 @@ const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 const api = { createNote: async () => { throw new Error('test network unavailable'); }, updateNote: async () => { throw new Error('test network unavailable'); } };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
+const filesPath = require.resolve('../../src/features/notes/data/saved-draft-files.ts');
+const fileMemory = new Map();
+const savedDraftFiles = {
+    async keys(owner) { return [...fileMemory.keys()].filter((key) => key.startsWith(owner + '/')).map((key) => key.slice(String(owner).length + 1)); },
+    async read(owner, key) { return fileMemory.get(owner + '/' + key) ?? null; },
+    async write(owner, key, text) { fileMemory.set(owner + '/' + key, text); },
+    async remove(owner, key) { fileMemory.delete(owner + '/' + key); },
+};
+require.cache[filesPath] = { id: filesPath, filename: filesPath, loaded: true, exports: { savedDraftFiles } };
+const newDrafts = require('../../src/features/notes/data/new-note-draft.repository.ts');
+const { NewNoteDraftSession } = require('../../src/features/notes/services/new-note-draft-session.ts');
 
 const value = (content, title = '标题') => ({ title, content, categoryId: 3 });
 const payload = (content) => ({ title: '标题', content, category_id: 3 });
 const settled = () => new Promise(setImmediate);
+
+const blank = { title: '', content: '', categoryId: null };
+function newSession(db, owner = 7) {
+    return new NewNoteDraftSession(db, owner, blank, () => {});
+}
+
+test('new drafts separate automatic recovery, explicit files and accounts', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); const b = newSession(port);
+    a.change(value('A')); b.change(value('B'));
+    await a.flush(); await b.flush();
+    assert.notEqual(a.key, b.key);
+    assert.equal(fileMemory.size, 0);
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 7)).length, 2);
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 8), []);
+    await a.saveDraft();
+    assert.equal(fileMemory.size, 1);
+    assert.equal(await drafts.readNoteDraft(port, 7, a.key), null);
+    const list = await newDrafts.listNewNoteDrafts(port, 7);
+    assert.equal(list.find((entry) => entry.key === a.key).kind, 'saved');
+    assert.equal(list.find((entry) => entry.key === b.key).kind, 'recovery');
+    await a.close(); await b.close();
+});
+
+test('explicit save updates one file; discarded edits preserve its earlier contents', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('first')); await a.saveDraft(); await a.close();
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    b.change(value('second')); await b.saveDraft(); await b.close();
+    assert.equal(fileMemory.size, 1);
+    const c = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    assert.equal(c.value.content, 'second');
+    c.change(value('discard me')); await c.discard(); await c.close();
+    assert.equal(await drafts.readNoteDraft(port, 7, a.key), null);
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 7))[0].row.content, 'second');
+});
+
+test('discard does not need a successful recovery write and cannot resurrect on close', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); await a.ready;
+    const run = port.run.bind(port);
+    t.mock.method(port, 'run', async (sql, bindings) => {
+        if (sql.startsWith('UPDATE note_drafts SET title')) throw new Error('disk full');
+        return run(sql, bindings);
+    });
+    a.change(value('not written'));
+    await assert.rejects(a.flush(), /disk full/);
+    await a.discard(); await a.close();
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+});
+
+test('discard waits for an in-flight write before deleting', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); await a.ready;
+    const run = port.run.bind(port);
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    let started;
+    const writing = new Promise((resolve) => { started = resolve; });
+    t.mock.method(port, 'run', async (sql, bindings) => {
+        if (sql.startsWith('UPDATE note_drafts SET title')) { started(); await gate; }
+        return run(sql, bindings);
+    });
+    a.change(value('in flight')); const flush = a.flush(); await writing;
+    const discard = a.discard();
+    assert.notEqual(await drafts.readNoteDraft(port, 7, a.key), null);
+    release(); await flush; await discard; await a.close();
+    assert.equal(await drafts.readNoteDraft(port, 7, a.key), null);
+});
+
+test('explicit file write failure leaves recovery and allows continued editing', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('first'));
+    const mocked = t.mock.method(savedDraftFiles, 'write', async () => { throw new Error('file write failed'); });
+    await assert.rejects(a.saveDraft(), /file write failed/);
+    assert.equal((await drafts.readNoteDraft(port, 7, a.key)).content, 'first');
+    mocked.mock.restore();
+    a.change(value('still editing')); await a.saveDraft(); await a.close();
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 7))[0].row.content, 'still editing');
+});
+
+test('blank and whitespace-only new sessions are not recovery candidates', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change({ title: ' \n ', content: '\t ', categoryId: 3 });
+    await a.flush();
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+    assert.equal(newDrafts.hasDraftContent({ ...blank, title: 'title only' }), true);
+    await a.discard(); await a.close();
+});
+
+test('reading candidates does not take ownership; superseded session cannot save or delete', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('first')); await a.flush();
+    await newDrafts.listNewNoteDrafts(port, 7);
+    assert.equal((await drafts.readNoteDraft(port, 7, a.key)).session_id, a.sessionId);
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    await assert.rejects(a.saveDraft(), /会话已变化/);
+    await assert.rejects(a.discard(), /会话已变化/);
+    b.change(value('second')); await b.saveDraft(); await b.close(); await a.close();
+});
+
+test('formal save clears corresponding explicit file and recovery, preserving another draft', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    t.mock.method(api, 'createNote', async (body) => ({ id: 900, server_id: 900, ...body, user_id: 7, created_at: new Date().toISOString() }));
+    const a = newSession(port); a.change(value('saved')); await a.saveDraft(); await a.close();
+    const other = newSession(port); other.change(value('other')); await other.saveDraft(); await other.close();
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    const snapshot = await b.beginSave();
+    const result = await saves.saveNewNoteLocalFirst(port, 7, payload('saved'), snapshot.commit);
+    b.finish(); await b.close();
+    assert.equal(result.cloudState, 'accepted');
+    const list = await newDrafts.listNewNoteDrafts(port, 7);
+    assert.deepEqual(list.map((entry) => entry.key), [other.key]);
+});
+
+test('file cleanup failure retains linked recovery and retry does not duplicate a synced note', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    let posts = 0;
+    t.mock.method(api, 'createNote', async (body) => ({ id: 901 + posts++, server_id: 901, ...body, user_id: 7, created_at: new Date().toISOString() }));
+    const a = newSession(port); a.change(value('saved')); await a.saveDraft(); await a.close();
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    const snap = await b.beginSave();
+    const remove = t.mock.method(savedDraftFiles, 'remove', async () => { throw new Error('remove failed'); });
+    const result = await saves.saveNewNoteLocalFirst(port, 7, payload('saved'), snap.commit);
+    b.finish(); await b.close();
+    assert.equal(result.cloudState, 'accepted');
+    assert.equal((await drafts.readNoteDraft(port, 7, a.key)).note_id, result.note.id);
+    assert.equal(result.draftCleanupPending, true);
+    remove.mock.restore();
+    const c = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    const retry = await c.beginSave();
+    await saves.saveEditedNoteLocalFirst(port, 7, retry.target, payload('saved'), retry.commit);
+    c.finish(); await c.close();
+    assert.equal(posts, 1);
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+});
+
+test('discard after local-only commit keeps saved file linked to same note', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    let posts = 0;
+    t.mock.method(api, 'createNote', async () => { posts++; throw new Error('network lost'); });
+    const a = newSession(port); a.change(value('original')); await a.saveDraft(); await a.close();
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    b.change(value('local commit')); const snap = await b.beginSave();
+    const result = await saves.saveNewNoteLocalFirst(port, 7, payload('local commit'), snap.commit);
+    b.finish(); await b.close();
+    assert.equal(result.cloudState, 'unknown');
+    const c = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    c.change(value('discarded changes')); await c.discard(); await c.close();
+    const d = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    assert.equal(d.value.content, 'original');
+    const retry = await d.beginSave();
+    assert.equal(retry.target.id, result.note.id);
+    await saves.saveEditedNoteLocalFirst(port, 7, retry.target, payload('original'), retry.commit);
+    d.finish(); await d.close();
+    assert.equal(posts, 1);
+    assert.equal((await notes.getLocalNotes(port, 7)).length, 1);
+});
+
+test('an interrupted explicit file cannot hide its intact recovery copy', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('recover this')); await a.flush();
+    await savedDraftFiles.write(7, a.key, '{partial');
+    const list = await newDrafts.listNewNoteDrafts(port, 7);
+    assert.equal(list[0].row.content, 'recover this');
+    assert.equal(list[0].kind, 'recovery');
+    await a.close();
+});
 
 async function database(t, filename = ':memory:') {
     const sql = new DatabaseSync(filename);

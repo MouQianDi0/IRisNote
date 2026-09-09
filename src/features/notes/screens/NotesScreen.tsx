@@ -2,6 +2,7 @@ import { createCategory, getCategories } from "../categories/api/categories.api"
 import { useApplicationDatabase } from "@/core/database";
 import { captureNotificationSession } from "@/core/notifications";
 import NotesSyncHeader from "../components/NotesSyncHeader";
+import DraftListModal from "../components/draft-list-modal";
 import { readNoteSyncTime, saveNoteSyncTime } from "../data/note-sync-history";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
@@ -29,7 +30,7 @@ import { useNotePin } from "../hooks/useNotePin";
 import { useNoteStar } from "../hooks/useNoteStar";
 import { colors } from "@/shared/theme";
 import { type Href } from "expo-router";
-import { ChevronUp } from "lucide-react-native";
+import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -51,6 +52,7 @@ import Animated, {
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
 export default function NotesScreen() {
+  const [draftListVisible, setDraftListVisible] = useState(false);
   const database = useApplicationDatabase();
   const { user } = useAuth();
   const onNavigate = useDebouncedNavigation();
@@ -513,6 +515,7 @@ export default function NotesScreen() {
 
   return (
     <View className="mt-10 bg-note-page-background h-full">
+      {draftListVisible && user && <DraftListModal key={user.id} owner={user.id} onClose={() => setDraftListVisible(false)} />}
       <View className="flex-row h-full ">
         <View
           className="     relative
@@ -523,6 +526,17 @@ export default function NotesScreen() {
                                     items-center gap-[6px]"
         >
           <CategoryBar onCategoryPress={setCurrentCategory} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="草稿"
+            onPress={() => setDraftListVisible(true)}
+            className="w-[50px] h-[60px] mb-[6px] rounded-control justify-center items-center pl-[6px] pr-[4px] py-[4px]"
+          >
+            <Archive size={30} color={colors.textSecondary} />
+            <Text numberOfLines={1} ellipsizeMode="tail" className="max-w-[44px] text-[10px] text-gray-400">
+              草稿
+            </Text>
+          </Pressable>
           <View className="absolute bottom-21">
             <AddCategoryButton onPress={() => setNoteClassMenu(true)} />
           </View>

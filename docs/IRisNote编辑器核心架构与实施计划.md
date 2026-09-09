@@ -132,6 +132,7 @@ IRisNote 编辑器最终应具备以下能力：
 | D-012 | 可由 Notes、Excerpts 等多个业务复用的编辑器输入与交互能力放在 `src/core/editor`。 |
 | D-013 | `core/editor` 禁止依赖任何 Feature；草稿、版本、API、缓存、同步和容量由具体业务适配层负责。 |
 | D-014 | 每次编辑器变更必须同步记录计划状态、`项目编辑器进度.md` 和 `CHANGELOG.md`。 |
+| D-015 | 主页草稿入口图标取自项目现有 lucide-react-native 1.17.0（不新增依赖），经用户在 FilePen、NotebookPen、PenLine、Archive 备选中确认使用 Archive；草稿相关 UI 效果不执行自动化浏览器自检，由用户验收。 |
 
 ### 4.2 暂定
 

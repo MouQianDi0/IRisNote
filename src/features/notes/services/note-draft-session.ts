@@ -85,6 +85,23 @@ export class NoteDraftSession {
 
     endSave() { this.locked = false; }
 
+    /** 放弃内容时不强迫写入最后一次输入，但必须等在途写入结束再删除。 */
+    async suspendForDiscard() {
+        if (this.closed || this.locked) throw new Error("当前编辑会话正在处理，请稍后再试");
+        this.locked = true;
+        this.clearTimers();
+        await this.writing?.catch(() => undefined);
+        this.clearTimers();
+        return this.persistedSequence;
+    }
+
+    abandon() {
+        this.closed = true;
+        this.locked = true;
+        this.clearTimers();
+        this.persistedSequence = this.sequence;
+    }
+
     async close() {
         this.closed = true;
         this.clearTimers();

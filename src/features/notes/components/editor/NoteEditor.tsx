@@ -7,10 +7,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { noteDraftValue } from "../../data/note-draft.repository";
 import { useNoteDraft } from "../../hooks/useNoteDraft";
+import NewNoteEditor from "./new-note-editor";
+import { LocalOnlyText } from "@/shared/ui/local-only-text";
 import type { Note } from "../../notes.types";
 import { saveEditedNoteLocalFirst, saveNewNoteLocalFirst } from "../../services/note-save.service";
 
 type NoteEditorProps = {
+    draftKey?: string;
     autoFocusContent?: boolean;
     note?: Note;
     categoryId?: number | null;
@@ -26,7 +29,8 @@ export default function NoteEditor(props: NoteEditorProps) {
     if (props.note?.user_id != null && props.note.user_id !== user.id) {
         return <View className="flex-1 bg-white p-5"><Text>正在切换账户，请重新打开笔记</Text></View>;
     }
-    return <DraftEditor key={user.id + ":" + (props.note?.id ?? "new")} {...props} owner={user.id} />;
+    if (!props.note) return <NewNoteEditor key={user.id + ":" + (props.draftKey ?? "new")} {...props} owner={user.id} />;
+    return <DraftEditor key={user.id + ":" + props.note.id} {...props} owner={user.id} />;
 }
 
 function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent = false, onCancel, onSaved, owner }: NoteEditorProps & { owner: number }) {
@@ -55,7 +59,7 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
         let committed = false;
         const onLocalSaved = () => {
             committed = true;
-            if (sessionCurrent()) banner.show({ id: noticeId, type: "success", title: "笔记已保存在本机" });
+            if (sessionCurrent()) banner.show({ id: noticeId, type: "success", title: "笔记已保存", message: "仅本机保存，正在尝试同步到云端。" });
         };
         try {
             const snapshot = await draft.beginSave();
@@ -72,7 +76,7 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
             if (sessionCurrent()) {
                 const notice = result.cloudState === "accepted"
                     ? { type: "success" as const, title: result.unchanged ? "内容未变化，笔记已同步" : "笔记已同步到云端" }
-                    : { type: "important" as const, title: "笔记已保存在本机，云端同步未完成", message: result.cloudState === "unknown" ? "云端接收结果未知，请稍后检查同步状态" : "云端未接受保存，请检查页面提示" };
+                    : { type: "important" as const, title: "笔记仅本机保存成功，云端同步未完成", message: result.cloudState === "unknown" ? "云端接收结果未知，请稍后检查同步状态" : "云端未接受保存，请检查页面提示" };
                 if (!banner.resolve(noticeId, { ...notice, lifetime: notice.type === "important" ? { mode: "persistent" } : { mode: "timed" } })) banner.show({ id: noticeId, ...notice });
             }
             if (!mounted.current) return;
@@ -93,7 +97,7 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
                     : "已保存到本地，云端未接受保存。草稿已保留，可稍后重新打开处理。");
         } catch (cause: unknown) {
             if (sessionCurrent()) {
-                const notice = { type: "important" as const, title: committed ? "本机已保存，后续处理未完成" : "保存失败，请保留当前编辑内容" };
+                const notice = { type: "important" as const, title: committed ? "仅本机已保存，后续处理未完成" : "保存失败，请保留当前编辑内容" };
                 if (!banner.update(noticeId, { ...notice, lifetime: { mode: "persistent" } })) banner.show({ id: noticeId, ...notice });
             }
             if (!mounted.current) return;
@@ -166,7 +170,7 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
             {!note && draft.resource.session.value.categoryId !== null &&
                 <Text>分类：{draft.resource.session.value.categoryId === categoryId ? categoryName : "#" + draft.resource.session.value.categoryId}</Text>}
             <Text accessibilityLiveRegion="polite">{labels[draft.state]}</Text>
-            {(draft.error || message) ? <Text accessibilityRole="alert">{draft.error || message}</Text> : null}
+            {(draft.error || message) ? <Text accessibilityRole="alert"><LocalOnlyText>{draft.error || message}</LocalOnlyText></Text> : null}
             {draft.resource.conflict && <Text>基础内容已变化，草稿保留中，保存已阻止。</Text>}
             {actions(<>
                 {draft.state === "error" && <Button label="重试写入草稿" onPress={draft.retry} />}
