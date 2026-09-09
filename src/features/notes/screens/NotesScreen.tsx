@@ -1,4 +1,8 @@
 import { createCategory, getCategories } from "../categories/api/categories.api";
+import { useApplicationDatabase } from "@/core/database";
+import { banner, captureNotificationSession } from "@/core/notifications";
+import { isServerConnectionUnavailable } from "@/core/notifications/server-connection-coordinator";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { getApiErrorMessage } from "@/shared/http/errors";
@@ -11,7 +15,13 @@ import NoteContextMenu from "../components/viewer/NoteContextMenu";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import { notifyCategoriesChanged, onCategoriesChanged } from "../categories/categories.events";
 import { onNotesChanged, onNotesRemovedByCategory } from "../notes.events";
-import { removeCachedNoteById, setCachedNotes } from "../notes.cache";
+import { removeCachedNoteById, setCachedNote, setCachedNotes } from "../notes.cache";
+import {
+  getLocalNotes,
+  reconcileServerNotes,
+  recoverInterruptedNoteSyncs,
+  removeLocalNote,
+} from "../data/note-local.repository";
 import type { Category } from "@/features/notes/categories/categories.types";
 import type { Note } from "@/features/notes/notes.types";
 import { useNotePin } from "../hooks/useNotePin";
@@ -40,6 +50,8 @@ import Animated, {
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
 export default function NotesScreen() {
+  const database = useApplicationDatabase();
+  const { user } = useAuth();
   const onNavigate = useDebouncedNavigation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -55,7 +67,9 @@ export default function NotesScreen() {
   const contextMenuNoteRef = useRef<Note | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRef = useRef<Note[]>([]);
-  const notesRequestRef = useRef<Promise<void> | null>(null);
+  const notesRequestRef = useRef<Promise<{ addedCount: number } | undefined> | null>(null);
+  const notesRequestOwnerIdRef = useRef<number | null>(null);
+  const recoveredSyncUserIdRef = useRef<number | null>(null);
   const categoriesRequestRef = useRef<Promise<void> | null>(null);
   const showScrollTopRef = useRef(false);
   const pinnedOrderRef = useRef(0);
@@ -68,18 +82,46 @@ export default function NotesScreen() {
     openedNoteIdRef.current = openedNoteId;
   }, [openedNoteId]);
 
-  const fetchNotes = useCallback(() => {
-    if (notesRequestRef.current) return notesRequestRef.current;
+  const applyNotes = useCallback((nextNotes: Note[]) => {
+    pinnedOrderRef.current = Math.max(
+      0,
+      ...nextNotes.map((note) => note.pinned_order ?? 0),
+    );
+    setNotes(nextNotes);
+    setCachedNotes(nextNotes);
+  }, []);
 
-    const request = (async () => {
+  const fetchNotes = useCallback(() => {
+    if (!user) return Promise.resolve();
+    if (
+      notesRequestRef.current &&
+      notesRequestOwnerIdRef.current === user.id
+    ) {
+      return notesRequestRef.current;
+    }
+
+    const ownerUserId = user.id;
+    let request: Promise<{ addedCount: number } | undefined> | undefined;
+    request = (async () => {
       try {
-        const nextNotes = withLocalOrder(await getNotes());
-        pinnedOrderRef.current = Math.max(
-          0,
-          ...nextNotes.map((note) => note.pinned_order ?? 0),
+        if (recoveredSyncUserIdRef.current !== ownerUserId) {
+          await recoverInterruptedNoteSyncs(database, ownerUserId);
+          recoveredSyncUserIdRef.current = ownerUserId;
+        }
+        const localNotes = withLocalOrder(
+          await getLocalNotes(database, ownerUserId),
         );
-        setNotes(nextNotes);
-        setCachedNotes(nextNotes);
+        if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+        applyNotes(localNotes);
+
+        const serverNotes = withLocalOrder(await getNotes());
+        let addedCount = 0;
+        const reconciledNotes = withLocalOrder(
+          await reconcileServerNotes(database, ownerUserId, serverNotes, stats => { addedCount = stats.addedCount; }),
+        );
+        if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+        applyNotes(reconciledNotes);
+        return { addedCount };
       } catch (err: any) {
         console.error(
           "获取笔记失败:",
@@ -87,13 +129,17 @@ export default function NotesScreen() {
           err.response?.data || err.message,
         );
       } finally {
-        notesRequestRef.current = null;
+        if (notesRequestRef.current === request) {
+          notesRequestRef.current = null;
+          notesRequestOwnerIdRef.current = null;
+        }
       }
     })();
 
     notesRequestRef.current = request;
+    notesRequestOwnerIdRef.current = ownerUserId;
     return request;
-  }, []);
+  }, [applyNotes, database, user]);
 
   const fetchCategories = useCallback(() => {
     if (categoriesRequestRef.current) return categoriesRequestRef.current;
@@ -117,6 +163,15 @@ export default function NotesScreen() {
   }, [notes]);
 
   useEffect(() => {
+    if (user) return;
+    // 微任务中清空，避免 effect 体内同步 setState 触发级联渲染。
+    void Promise.resolve().then(() => {
+      setNotes([]);
+      setCachedNotes([]);
+    });
+  }, [user]);
+
+  useEffect(() => {
     Promise.all([fetchNotes(), fetchCategories()]).finally(() =>
       setLoading(false),
     );
@@ -130,13 +185,37 @@ export default function NotesScreen() {
     return unsub;
   }, [fetchCategories]);
 
-  // 创建笔记返回后刷新
+  // 本地事务提交后直接增量覆盖列表，禁止再用整表请求覆盖刚保存的内容。
   useEffect(() => {
-    const unsub = onNotesChanged(() => {
-      fetchNotes();
+    const unsub = onNotesChanged((event) => {
+      if (!user) return;
+
+      if (event.type === "upsert" && event.note) {
+        const changedNote = event.note;
+        if (changedNote.user_id !== user.id) return;
+        setCachedNote(changedNote);
+        setNotes((currentNotes) => {
+          const index = currentNotes.findIndex(
+            (note) => note.id === changedNote.id,
+          );
+          if (index < 0) return [changedNote, ...currentNotes];
+
+          const nextNotes = [...currentNotes];
+          nextNotes[index] = changedNote;
+          return nextNotes;
+        });
+        return;
+      }
+
+      if (event.type === "remove" && event.noteId != null) {
+        removeCachedNoteById(event.noteId, user.id);
+        setNotes((currentNotes) =>
+          currentNotes.filter((note) => note.id !== event.noteId),
+        );
+      }
     });
     return unsub;
-  }, [fetchNotes]);
+  }, [user]);
 
   // 删除分类成功后，本地增量移除该分类下的笔记，避免重新拉取全部笔记。
   useEffect(() => {
@@ -153,10 +232,18 @@ export default function NotesScreen() {
   }, []);
 
   const handleRefresh = useCallback(async () => {
+    const current = captureNotificationSession();
+    const id = banner.show({ id: `notes-refresh:${user?.id}:${Date.now()}`, type: "neutral", title: "正在同步笔记…",
+      lifetime: { mode: "persistent" }, progress: { mode: "indeterminate" } });
     setRefreshing(true);
-    await fetchNotes();
+    const result = await fetchNotes();
+    if (current()) {
+      if (result) banner.resolve(id, { type: "success", title: result.addedCount ? `同步完成，本次新增 ${result.addedCount} 条` : "同步完成，暂无新内容" });
+      else if (isServerConnectionUnavailable()) banner.dismiss(id);
+      else banner.resolve(id, { type: "important", title: "同步未完成，请稍后重试", lifetime: { mode: "persistent" } });
+    }
     setRefreshing(false);
-  }, [fetchNotes]);
+  }, [fetchNotes, user?.id]);
 
   const updateNotesLocally = useCallback(
     (updater: (prev: Note[]) => Note[], shouldSort = false) => {
@@ -180,9 +267,16 @@ export default function NotesScreen() {
           text: "删除",
           style: "destructive",
           onPress: async () => {
+            if (!user) {
+              Alert.alert("提示", "当前登录信息不可用，请重新登录后再操作");
+              return;
+            }
             try {
-              await deleteNote(item.id);
-              removeCachedNoteById(item.id);
+              const serverId =
+                item.server_id ?? (item.id > 0 ? item.id : null);
+              if (serverId != null) await deleteNote(serverId);
+              await removeLocalNote(database, user.id, item.id);
+              removeCachedNoteById(item.id, user.id);
               updateNotesLocally((prev) =>
                 prev.filter((n) => n.id !== item.id),
               );
@@ -195,7 +289,7 @@ export default function NotesScreen() {
         },
       ]);
     },
-    [updateNotesLocally],
+    [database, updateNotesLocally, user],
   );
 
   const { togglePin: handleTogglePin } = useNotePin(

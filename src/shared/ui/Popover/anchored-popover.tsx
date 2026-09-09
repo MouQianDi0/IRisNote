@@ -1,6 +1,7 @@
+import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import type { PropsWithChildren, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { PopoverMotion } from "./popover-motion";
 import { PopoverSurface } from "./popover-surface";
 import { useAnchoredPopoverLayout } from "./use-anchored-popover-layout";

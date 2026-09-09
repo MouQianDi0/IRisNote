@@ -1,12 +1,16 @@
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, SquarePen } from "lucide-react-native";
 import { Text, TouchableOpacity, View } from "react-native";
 import { colors } from "@/shared/theme";
 
 type NoteViewerHeaderProps = {
   onBack: () => void;
+  onEdit: () => void;
 };
 
-export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
+export default function NoteViewerHeader({
+  onBack,
+  onEdit,
+}: NoteViewerHeaderProps) {
   return (
     <View className="flex-row items-center justify-between border-b border-border-soft px-[15px] pb-[15px]">
       <TouchableOpacity onPress={onBack} className="p-[10px]">
@@ -21,7 +25,14 @@ export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
         查看笔记
       </Text>
 
-      <View className="w-11" />
+      <TouchableOpacity
+        onPress={onEdit}
+        accessibilityRole="button"
+        accessibilityLabel="编辑笔记"
+        className="p-[10px]"
+      >
+        <SquarePen size={24} color={colors.primary} />
+      </TouchableOpacity>
     </View>
   );
 }

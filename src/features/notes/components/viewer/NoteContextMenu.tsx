@@ -1,3 +1,4 @@
+import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import {
   ChevronLeft,
   Copy,
@@ -13,7 +14,6 @@ import {
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import {
   Alert,
-  Modal,
   Platform,
   Pressable,
   Text,

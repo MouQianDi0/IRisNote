@@ -1,3 +1,4 @@
+import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import {
     ChevronRight,
     MoveHorizontal,
@@ -8,7 +9,6 @@ import {
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import {
-    Modal,
     Pressable,
     Text,
     TextInput,

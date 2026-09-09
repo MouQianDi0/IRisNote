@@ -12,6 +12,8 @@ import {
     type PropsWithChildren,
 } from "react";
 import { AuthContext } from "../auth.context";
+import { banner } from "@/core/notifications";
+import { resetConnectionSession } from "@/shared/http/connection-events";
 
 export function AuthProvider({
     children,
@@ -64,6 +66,8 @@ export function AuthProvider({
     );
 
     const logout = useCallback(async () => {
+        banner.clearSession();
+        resetConnectionSession();
         await AsyncStorage.removeItem(storageKeys.authToken);
         await AsyncStorage.removeItem(storageKeys.authUser);
         setUser(null);

@@ -1,4 +1,5 @@
 import { AppProviders } from "@/core/providers/AppProviders";
+import { OverlaySlot } from "@/shared/ui/Overlay/overlay-context";
 import { colors } from "@/shared/theme";
 import { Stack } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -32,6 +33,10 @@ export default function RootLayout() {
                             options={{ headerShown: false }}
                         />
                         <Stack.Screen
+                            name="pages/note/edit/[id]"
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
                             name="pages/user/settings"
                             options={{ headerShown: false }}
                         />
@@ -44,6 +49,7 @@ export default function RootLayout() {
                             options={{ headerShown: false }}
                         />
                     </Stack>
+                    <OverlaySlot />
                 </SafeAreaView>
         </AppProviders>
     );

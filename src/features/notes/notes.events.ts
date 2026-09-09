@@ -1,11 +1,19 @@
-type NotesListener = () => void;
+import type { Note } from "./notes.types";
+
+export type NotesChangedEvent = {
+    type: "upsert" | "remove";
+    note?: Note;
+    noteId?: number;
+};
+
+type NotesListener = (event: NotesChangedEvent) => void;
 type NotesRemovedByCategoryListener = (categoryId: number) => void;
 
 const notesListeners: NotesListener[] = [];
 const notesRemovedByCategoryListeners: NotesRemovedByCategoryListener[] = [];
 
-export const notifyNotesChanged = () => {
-    notesListeners.forEach((listener) => listener());
+export const notifyNotesChanged = (event: NotesChangedEvent) => {
+    notesListeners.forEach((listener) => listener(event));
 };
 
 export const onNotesChanged = (listener: NotesListener) => {

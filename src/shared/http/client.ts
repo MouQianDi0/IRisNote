@@ -1,6 +1,9 @@
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "axios";
+import { publishConnectionEvent, requestConnectionStamp } from "./connection-events";
+
+const connectionStamps = new WeakMap<object, ReturnType<typeof requestConnectionStamp>>();
 
 const DEFAULT_API_BASE_URL = "https://tech-mou.top/api";
 
@@ -46,6 +49,8 @@ const getDeviceId = async () => {
 
 // 请求拦截器：自动附加 token，并为验证码链路附加设备标识
 api.interceptors.request.use(async (config) => {
+    connectionStamps.set(config, requestConnectionStamp());
+    if (config.method === "get" && !config.timeout) config.timeout = 15000;
     const token = await AsyncStorage.getItem(storageKeys.authToken);
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -56,6 +61,21 @@ api.interceptors.request.use(async (config) => {
     }
 
     return config;
+});
+
+api.interceptors.response.use(response => {
+    const stamp = connectionStamps.get(response.config);
+    if (stamp) publishConnectionEvent({ ...stamp, outcome: "success" });
+    return response;
+}, (error: unknown) => {
+    const failure = error as { config?: object; code?: string; response?: { status: number } };
+    const stamp = failure.config && connectionStamps.get(failure.config);
+    if (stamp && failure.code !== "ERR_CANCELED") {
+        const status = failure.response?.status;
+        const unavailable = status === 502 || status === 503 || status === 504 || (!status && ["ERR_NETWORK", "ECONNABORTED", "ETIMEDOUT"].includes(failure.code ?? ""));
+        publishConnectionEvent({ ...stamp, outcome: unavailable ? "unavailable" : "reachable" });
+    }
+    return Promise.reject(error);
 });
 
 export default api;

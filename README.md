@@ -25,7 +25,7 @@ IRisNote 是一个基于 Expo SDK 56、React Native 和 Expo Router 开发的跨
 | 语言 | TypeScript，启用严格模式 |
 | 样式 | NativeWind 5、Tailwind CSS 4、共享 Theme Token |
 | 网络 | Axios |
-| 本地存储 | AsyncStorage |
+| 本地存储 | AsyncStorage、Expo SQLite 56（Android、iOS、Web） |
 | 动画 | React Native Reanimated 4 |
 | 手势 | React Native Gesture Handler |
 | 图标 | Lucide React Native |
@@ -81,6 +81,15 @@ npm run android
 # 仅在 macOS 上本地编译并运行 iOS
 npm run ios
 ```
+
+Web SQLite 依赖 WASM 和 `SharedArrayBuffer`。项目的 Metro 开发服务器与 EAS Hosting 配置已经加入以下跨源隔离响应头：
+
+```text
+Cross-Origin-Embedder-Policy: credentialless
+Cross-Origin-Opener-Policy: same-origin
+```
+
+部署到其他 Web 托管平台时，必须在该平台的服务器或反向代理中配置相同响应头。Expo SDK 56 的 Web SQLite 仍为 Alpha，正式发布前需要单独完成浏览器兼容性和持久化验证。
 
 ## 开发检查
 
