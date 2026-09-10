@@ -72,13 +72,16 @@ function draftSummary(entry: DraftEntry) {
     return { title, summary };
 }
 
-/** 浏览态单选列表：选中行浅蓝底 + 标题主色 + 行尾打勾（规格 §5）。 */
+/**
+ * 浏览态单选列表：默认无选中；点行选中、再点已选行取消（取消/切换由 onSelect
+ * 调用方处理）。选中行极浅蓝底 + 标题与摘要主色 + 行尾打勾（规格 §5）。
+ */
 export function DraftChoices({ entries, selected, onSelect, busy }: {
     entries: DraftEntry[]; selected?: string; onSelect: (key: string) => void; busy?: boolean;
 }) {
     // 圆角与底色放在滚动视口的裁切容器上：内容超限时在圆角内滚动，
     // 容器 4 个圆角恒在；300 ≈ 3.7 行（每行约 80dp），半行露出提示可滚动。
-    return <View className="overflow-hidden rounded-hyper-card bg-hyper-card">
+    return <View className="overflow-hidden rounded-hyper-card bg-hyper-list">
         <ScrollView nestedScrollEnabled style={{ maxHeight: 300 }}>
             {entries.map((entry) => {
                 const { title, summary } = draftSummary(entry);
@@ -107,7 +110,7 @@ export function DraftChoices({ entries, selected, onSelect, busy }: {
 export function DraftDeleteChoices({ entries, checked, onToggle }: {
     entries: DraftEntry[]; checked: ReadonlySet<string>; onToggle: (key: string) => void;
 }) {
-    return <View className="overflow-hidden rounded-hyper-card bg-hyper-card">
+    return <View className="overflow-hidden rounded-hyper-card bg-hyper-list">
         <ScrollView nestedScrollEnabled style={{ maxHeight: 300 }}>
             {entries.map((entry) => {
                 const { title, summary } = draftSummary(entry);

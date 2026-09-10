@@ -20,12 +20,8 @@ import {
     saveEditedNoteLocalFirst,
     saveNewNoteLocalFirst,
 } from "../../services/note-save.service";
-import {
-    DialogButton,
-    DraftDialog,
-    DraftLocalNotice,
-} from "./draft-dialog";
 import { DraftManagerDialog } from "../draft-manager-dialog";
+import { DialogButton, DraftDialog, DraftLocalNotice } from "./draft-dialog";
 
 type Props = {
   owner: number;
@@ -58,9 +54,9 @@ export default function NewNoteEditor({
   const [state, setState] = useState<DraftWriteState>("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [dialog, setDialog] = useState<
-    "recovery" | "leave" | "notice" | null
-  >(null);
+  const [dialog, setDialog] = useState<"recovery" | "leave" | "notice" | null>(
+    null,
+  );
   // 打开弹窗那一刻快照"是否已有输入"：弹窗期间编辑器被禁用，该值不会变化。
   const [hasInput, setHasInput] = useState(false);
   const [notice, setNotice] = useState("");
@@ -477,7 +473,7 @@ export default function NewNoteEditor({
         }}
         title={() => "草稿箱"}
         load={loadDrafts}
-        primaryLabel="继续编辑"
+        primaryLabel="加载草稿"
         onPrimary={(key) => void resume(key)}
         primaryDisabled={hasInput}
         primaryHint={
@@ -485,7 +481,7 @@ export default function NewNoteEditor({
             ? "当前已有输入，请先保存或清空当前内容，再恢复其他草稿。"
             : null
         }
-        secondaryLabel="新建笔记"
+        secondaryLabel="退出"
         onSecondary={() => {
           setDialog(null);
           setError("");
@@ -502,7 +498,7 @@ export default function NewNoteEditor({
           <Trash2 size={14} color={colors.hyperTextSecondary} />
           <Text
             numberOfLines={1}
-            className="flex-1 text-[13px] leading-[18px] text-hyper-text-secondary"
+            className="flex-1 text-[13px] .leading-[18px] text-hyper-text-secondary"
           >
             不保存将<Text className="font-bold">丢弃本次修改</Text>
             ；改动前的草稿仍会保留。
@@ -532,12 +528,6 @@ export default function NewNoteEditor({
               onPress={() => void leaveWith(true)}
             />
           </View>
-          <DialogButton
-            variant="tonal"
-            label="继续编辑"
-            disabled={busy}
-            onPress={keepEditing}
-          />
         </View>
       </DraftDialog>
       <DraftDialog

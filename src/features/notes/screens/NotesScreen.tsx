@@ -9,7 +9,6 @@ import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibilit
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { deleteNote, getNotes } from "../api/notes.api";
-import AddCategoryButton from "../categories/components/AddCategoryButton";
 import CreateCategoryModal from "../categories/components/CreateCategoryModal";
 import CategoryBar from "../categories/components/CategoryBar";
 import SwipeableNoteItem from "../components/card/SwipeableNoteItem";
@@ -514,9 +513,9 @@ export default function NotesScreen() {
   );
 
   return (
-    <View className="mt-10 bg-note-page-background h-full">
+    <View className="mt-[15px] bg-app-background flex-1">
       {draftListVisible && user && <DraftListModal key={user.id} owner={user.id} onClose={() => setDraftListVisible(false)} />}
-      <View className="flex-row h-full ">
+      <View className="flex-row flex-1">
         <View
           className="     relative
                                     w-[75px]
@@ -525,7 +524,7 @@ export default function NotesScreen() {
                                     rounded-floating
                                     items-center gap-[6px]"
         >
-          <CategoryBar onCategoryPress={setCurrentCategory} />
+          <CategoryBar onCategoryPress={setCurrentCategory} onAddCategory={() => setNoteClassMenu(true)} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="草稿"
@@ -537,9 +536,6 @@ export default function NotesScreen() {
               草稿
             </Text>
           </Pressable>
-          <View className="absolute bottom-21">
-            <AddCategoryButton onPress={() => setNoteClassMenu(true)} />
-          </View>
         </View>
         <View className="relative flex-1">
           <View className="bg-white rounded-tl-content p-4 h-[100%] border-[1px] border-note-page-border">

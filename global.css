@@ -54,6 +54,9 @@
      */
     --color-hyper-card: #f0f0f0;
     --color-hyper-card-selected: #eaf2ff;
+    /* 草稿弹窗选择列表：容器底与选中底成对，选中为极浅蓝 */
+    --color-hyper-list: #fbfbfb;
+    --color-hyper-list-selected: #f8fbff;
     --color-hyper-divider: #e0e0e0;
     --color-hyper-text-secondary: #8c93b0;
     --color-hyper-error: #e94634;

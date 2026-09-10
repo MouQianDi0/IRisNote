@@ -42,12 +42,12 @@ export const draftSummaryStyles = tv({
     },
 });
 
-/** 选择列表行（规格 §5）：仅浏览态选中行有浅蓝底，删除态不加底色。 */
+/** 选择列表行（规格 §5）：仅选中行有极浅蓝底（hyper-list-selected），与容器底 hyper-list 成对。 */
 export const draftRowStyles = tv({
     base: "min-h-[56px] flex-row items-center gap-3 px-4 py-3",
     variants: {
         selected: {
-            true: "bg-hyper-card-selected",
+            true: "bg-hyper-list-selected",
             false: "",
         },
     },

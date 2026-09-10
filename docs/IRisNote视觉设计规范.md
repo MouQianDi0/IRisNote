@@ -135,6 +135,14 @@ danger（红色强调）**只用于不可逆操作的最终确认步**——即�
 | 空状态 | 居中 `Inbox` 图标 28（hyperTextSecondary）+ `text-sm` 蓝灰文案，如"暂无草稿" |
 | 错误 | `text-sm text-hyper-error` + `accessibilityRole="alert"`；重试用 `text` 变体按钮 |
 
+## 新建分类表单与图标选择
+
+- 新建分类采用 §4 弹窗外壳：24dp 内边距与圆角、最大宽 440dp、可用区域最大高度 85%；标题左对齐、24sp 常规字重。键盘展开或高度不足时表单内容滚动，底部按钮固定在卡片内。
+- 分类名称标签 14sp 蓝灰，与输入框间隔 8dp；输入框高 48dp、浅灰 hyper-card 底、16dp 圆角、左右内边距 16dp、文字 17sp。
+- 输入框到图标展开行间隔 16dp；展开行高 48dp、宽度铺满内容区，整行可点击。「选择图标」与 24dp 深灰 Lucide 图标在左侧相邻排列，间距 4dp。每次打开默认折叠，使用 ChevronRight；展开使用 ChevronDown；收起保留已选图标。
+- 展开行到面板间隔 8dp；图标面板最高 240dp，按分组纵向滚动；分组标题 13sp 蓝灰，与图标间隔 8dp；组间距 12dp。图标块 48×48dp、圆角 14dp、图标 24dp，以 8dp 间距自动换行，取消组内横向滚动。未选中浅灰底灰图标，选中浅蓝 hyper-card-selected 底、主题蓝图标与 1dp 蓝色边框。
+- 面板或收起行到按钮间隔 16dp；取消在左、确定在右，等宽、高 48dp、间隔 10dp，采用 DialogButton secondary/primary 及其禁用样式。
+
 ## 8. 落地状态与迁移路线
 
 | 界面 | 状态 |
@@ -142,7 +150,8 @@ danger（红色强调）**只用于不可逆操作的最终确认步**——即�
 | 草稿箱弹窗（draft-list-modal） | ✅ 1.0 已落地（本规范首个实现） |
 | 新建笔记三个草稿弹窗（new-note-editor） | ✅ 1.0 随外壳一并落地 |
 | 编辑页 NoteEditor 恢复/放弃对话框 | ❌ 未迁移（仍是 @expo/ui Button + 旧样式） |
-| 分类三个弹窗（CreateCategoryModal 等） | ❌ 未迁移（旧 overlay 样式） |
+| 新建分类（CreateCategoryModal） | ✅ 已迁移，含图标选择面板展开/收起 |
+| 分类操作与删除弹窗 | ❌ 未迁移（旧 overlay 样式） |
 | 全局横幅通知 | ❌ 未迁移 |
 
 迁移原则：接触某弹窗时按本规范重写；新弹窗一律按本规范实现。深色模式、squircle（`react-native-figma-squircle`，需 dev build 重建）在 `TODO.md` §2 立项后另行推进。
