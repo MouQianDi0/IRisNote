@@ -8,11 +8,13 @@ import { DialogButton, DraftChoices, DraftDeleteChoices, DraftDialog, DraftLocal
 
 /**
  * 草稿选择弹窗的唯一实现：笔记页草稿箱与新建笔记编辑器共用。
- * 浏览态（选择 + 主操作）、删除态（勾选 + 2 秒旋转倒计时 + 打断取消）、
+ * 浏览态默认无选中、限单选（再点已选行取消）；垃圾桶切换到删除模式，
+ * 浏览态的选中项带入为默认勾选，退出删除模式回到草稿箱时一律无选中。
+ * 删除态保留 2 秒旋转倒计时，期间任何交互打断即取消且勾选保留。
  * 加载/错误重试/空态全部收敛在这里，调用方只提供数据读取与动作回调。
  */
 
-/** 删除草稿入口：弹窗标题行右侧垃圾桶（28dp 触控区、图标 20dp）。 */
+/** 删除草稿入口：弹窗标题行右侧垃圾桶（28dp 触控区、图标 20dp），浏览态始终可点。 */
 function DeleteDraftsEntry({ onPress }: { onPress: () => void }) {
     return <Pressable
         accessibilityRole="button"
@@ -65,6 +67,7 @@ type Props = {
 export function DraftManagerDialog({ db, owner, visible, onClose, title, load, primaryLabel, onPrimary,
     primaryDisabled = false, primaryHint, secondaryLabel, onSecondary, externalError = "" }: Props) {
     const [entries, setEntries] = useState<DraftEntry[]>([]);
+    // 浏览态单选：undefined = 无选中（打开弹窗的默认状态）。
     const [selected, setSelected] = useState<string>();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -87,15 +90,21 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
             if (!alive) return;
             setLoading(true);
             setError("");
+            // 每次打开或刷新列表都回到无选中的浏览态，不做默认选中。
+            setSelected(undefined);
+            setDeleting(false);
+            setChecked(new Set());
             load().then((items) => {
                 if (!alive) return;
                 setEntries(items);
-                setSelected((previous) => items.some((entry) => entry.key === previous) ? previous : items[0]?.key);
             }).catch(() => { if (alive) setError("读取草稿失败，原内容已保留，请重试"); })
                 .finally(() => { if (alive) setLoading(false); });
         });
         return () => { alive = false; };
     }, [visible, load, reload]);
+
+    // 单选语义：点已选行 = 取消选中，点其他行 = 切换选中。
+    const selectEntry = (key: string) => setSelected((previous) => previous === key ? undefined : key);
 
     const toggleChecked = (key: string) => setChecked((previous) => {
         if (deletingRef.current) return previous;
@@ -139,6 +148,16 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
         }, 2000);
     };
 
+    // 进入删除模式：浏览态选中项带入为默认勾选，浏览态选中随即清空。
+    const enterDeleting = () => {
+        if (deletingRef.current) return;
+        setMessage("");
+        setChecked(new Set(selected ? [selected] : []));
+        setSelected(undefined);
+        setDeleting(true);
+    };
+
+    // 退出删除模式：勾选清空，回到草稿箱时浏览态无选中。
     const exitDeleting = () => {
         cancelCountdown();
         if (deletingRef.current) return;
@@ -157,14 +176,14 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
             if (deleting) { exitDeleting(); return; }
             onClose();
         }}
-        headerExtra={listReady && !deleting ? <DeleteDraftsEntry onPress={() => { setDeleting(true); setChecked(new Set()); }} /> : undefined}
+        headerExtra={listReady && !deleting ? <DeleteDraftsEntry onPress={enterDeleting} /> : undefined}
     >
         {loading
             ? <ActivityIndicator className="my-8" color={colors.primary} />
             : deleting
                 ? <DraftDeleteChoices entries={entries} checked={checked}
                     onToggle={(key) => { cancelCountdown(); toggleChecked(key); }} />
-                : <DraftChoices entries={entries} selected={selected} onSelect={setSelected} />}
+                : <DraftChoices entries={entries} selected={selected} onSelect={selectEntry} />}
         {!loading && !error && entries.length === 0 && (
             <View className="my-6 items-center gap-2">
                 <Inbox size={28} color={colors.hyperTextSecondary} />

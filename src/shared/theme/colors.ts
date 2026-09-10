@@ -60,7 +60,8 @@ export const colors = {
     profileInactive: "#FF3B30",
 
     hyperCard: "#F0F0F0",
-    hyperCardSelected: "#EAF2FF",
+    hyperList: "#FBFBFB",
+    hyperListSelected: "#F8FBFF",
     hyperDivider: "#E0E0E0",
     hyperTextSecondary: "#8C93B0",
     hyperError: "#E94634",
