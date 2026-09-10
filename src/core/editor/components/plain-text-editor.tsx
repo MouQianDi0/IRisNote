@@ -37,6 +37,7 @@ export default function PlainTextEditor({
     onChange,
     onBlur,
     statusContent,
+    headerActions,
     onCancel,
     onSubmit,
 }: PlainTextEditorProps) {
@@ -50,7 +51,7 @@ export default function PlainTextEditor({
     const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
     const [keyboardOverlap, setKeyboardOverlap] = useState(0);
     const keyboardOpen = useRef(Keyboard.isVisible());
-    const keyboardTop = useRef<number | null>(Keyboard.metrics()?.screenY ?? null);
+    const keyboardTop = useRef<number | null>(Keyboard.metrics?.()?.screenY ?? null);
     const measurement = useRef(0);
     const alive = useRef(true);
     const focusLocked = useRef(false);
@@ -96,7 +97,7 @@ export default function PlainTextEditor({
         alive.current = true;
         const updateKeyboard = (visible: boolean, event?: KeyboardEvent) => {
             keyboardOpen.current = visible;
-            keyboardTop.current = visible ? event?.endCoordinates.screenY ?? Keyboard.metrics()?.screenY ?? null : null;
+            keyboardTop.current = visible ? event?.endCoordinates.screenY ?? Keyboard.metrics?.()?.screenY ?? null : null;
             setKeyboardVisible(visible);
             scroll.current = resetToolbarScroll(scroll.current.offset);
             floatingVisible.set(true);
@@ -164,23 +165,26 @@ export default function PlainTextEditor({
                     {screenTitle}
                 </Text>
 
-                <Pressable
-                    onPress={() => void onSubmit(latest.current)}
-                    disabled={controlsDisabled}
-                    accessibilityRole="button"
-                    accessibilityLabel="保存"
-                    accessibilityState={{ disabled: controlsDisabled }}
-                    className="p-2"
-                >
-                    {saving ? (
-                        <ActivityIndicator
-                            size="small"
-                            color={colors.primary}
-                        />
-                    ) : (
-                        <Check size={24} color={colors.primary} />
-                    )}
-                </Pressable>
+                <View className="flex-row items-center gap-1">
+                    {headerActions}
+                    <Pressable
+                        onPress={() => void onSubmit(latest.current)}
+                        disabled={controlsDisabled}
+                        accessibilityRole="button"
+                        accessibilityLabel="保存"
+                        accessibilityState={{ disabled: controlsDisabled }}
+                        className="p-2"
+                    >
+                        {saving ? (
+                            <ActivityIndicator
+                                size="small"
+                                color={colors.primary}
+                            />
+                        ) : (
+                            <Check size={24} color={colors.primary} />
+                        )}
+                    </Pressable>
+                </View>
             </View>
 
             {statusContent}

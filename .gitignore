@@ -48,3 +48,6 @@ example
 /android
 
 
+
+# mimosa 安全扫描插件的本地数据
+.mimosa/

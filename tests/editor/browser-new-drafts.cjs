@@ -80,8 +80,15 @@ const server = http.createServer((req, res) => {
     const button = (name) => page.getByRole('button', { name, exact: true });
     const selectDraft = async (title) => {
         await page.getByRole('button', { name: new RegExp(title) }).click();
-        await button('继续编辑').click();
+        if (await button('进入编辑').isVisible()) await button('进入编辑').click();
+        else await button('继续编辑').click();
     };
+    // 新建笔记编辑器的草稿入口：保存按钮左侧常驻按钮，点击后才弹草稿箱弹窗。
+    const openEditorDrafts = async () => {
+        await button('草稿').click();
+        await page.getByText('草稿箱', { exact: true }).waitFor();
+    };
+    const resumed = () => page.getByText('恢复副本已保存（仅本机）', { exact: true }).waitFor();
     const savedFiles = () => page.evaluate(async (owner) => {
         try {
             const root = await navigator.storage.getDirectory();
@@ -99,21 +106,54 @@ const server = http.createServer((req, res) => {
     try {
         await launch();
         await page.goto(origin + '/pages/note/create');
+        await input('标题').fill('删除验证保存稿');
+        await input('正文').fill('保存文件清理验证');
+        await button('返回').click(); await button('保存草稿').click();
+        await page.waitForURL((url) => !url.pathname.endsWith('/create'));
+        const listUrl = page.url();
+        await page.goto(origin + '/pages/note/create');
+        await input('标题').fill('删除验证恢复稿');
+        await input('正文').fill('恢复记录清理验证');
+        await page.getByText('恢复副本已保存（仅本机）', { exact: true }).waitFor();
+        await page.goto(listUrl);
+        await button('草稿').click();
+        await button('删除草稿').click();
+        assert.equal(await button('确认删除').isDisabled(), true);
+        await page.getByRole('button', { name: /删除验证保存稿/ }).click();
+        assert.equal(await button('确认删除').isDisabled(), false);
+        // 点击进入 2 秒旋转倒计时；再点一次打断则不删除。
+        await button('确认删除').click();
+        await page.getByText('删除中…', { exact: true }).waitFor();
+        await button('删除中…').click();
+        await page.waitForTimeout(2500);
+        assert.equal(await button('确认删除').count(), 1);
+        assert.equal((await savedFiles()).length, 1);
+        await page.getByRole('button', { name: /删除验证恢复稿/ }).click();
+        await button('确认删除').click();
+        await page.getByText('暂无草稿', { exact: true }).waitFor();
+        assert.equal((await savedFiles()).length, 0);
+        await button('关闭').click(); await page.reload(); await button('草稿').click();
+        await page.getByText('暂无草稿', { exact: true }).waitFor();
+        await page.screenshot({ path: path.join(output, 'deleted-empty.png'), fullPage: true });
+        await button('关闭').click();
+        check('倒计时打断不删除；倒计时走完执行删除；刷新后不复活');
+        await page.goto(origin + '/pages/note/create');
         await input('标题').fill('草稿A');
         await input('正文').fill('  第一行🙂\n第二行保留空白  ');
         await page.getByText('恢复副本已保存（仅本机）', { exact: true }).waitFor();
         assert.equal(posts, 0);
         check('新建输入自动落盘且没有云端请求');
         await page.reload();
-        await page.getByText('有一份未完成的草稿，是否继续编辑？', { exact: true }).waitFor();
+        assert.equal(await page.getByText(/未完成的草稿/).count(), 0);
+        await openEditorDrafts();
         assert.equal(await input('标题').inputValue(), '');
         await assertLocalBold();
         await page.screenshot({ path: path.join(output, 'recovery.png'), fullPage: true });
         await button('继续编辑').click();
+        await resumed();
         assert.equal(await input('正文').inputValue(), '  第一行🙂\n第二行保留空白  ');
-        check('页面刷新恢复完整原文');
+        check('进入不再自动弹窗，入口弹窗恢复完整原文');
         await page.reload();
-        await button('新建笔记').click();
         assert.equal(await input('正文').inputValue(), '');
         await input('标题').fill('草稿B');
         await input('正文').fill('主动保存版本一');
@@ -134,8 +174,11 @@ const server = http.createServer((req, res) => {
         await page.getByRole('button', { name: /草稿B/ }).waitFor();
         await page.screenshot({ path: path.join(output, 'draft-list.png'), fullPage: true });
         await selectDraft('草稿B');
-        await button('继续编辑').click();
+        // 带 draftKey 从草稿箱进入：静默直接恢复，全程无弹窗。
+        await resumed();
+        assert.equal(await button('继续编辑').count(), 0);
         assert.equal(await input('正文').inputValue(), '主动保存版本一');
+        check('草稿箱直进静默恢复原稿且不弹窗');
         await input('正文').fill('丢弃这次编辑');
         await button('返回').click();
         await button('不保存').click();
@@ -143,8 +186,17 @@ const server = http.createServer((req, res) => {
         assert.equal((await savedFiles())[0].content, '主动保存版本一');
         check('草稿列表找回原稿，放弃修改保留主动保存版本');
         await page.goto(origin + '/pages/note/create');
+        await openEditorDrafts();
         await selectDraft('草稿B');
+        await resumed();
         await input('正文').fill('主动保存版本二');
+        // 已有输入时打开入口：继续编辑置灰，正在编辑的这份不出现在候选里。
+        await openEditorDrafts();
+        await page.getByRole('button', { name: /草稿A/ }).waitFor();
+        assert.equal(await page.getByRole('button', { name: /草稿B/ }).count(), 0);
+        assert.equal(await button('继续编辑').isDisabled(), true);
+        await button('新建笔记').click();
+        check('已有输入时恢复置灰且不列出当前草稿');
         await button('返回').click(); await button('保存草稿').click();
         await page.waitForURL((url) => !url.pathname.endsWith('/create'));
         assert.equal((await savedFiles()).length, 1);
@@ -153,7 +205,9 @@ const server = http.createServer((req, res) => {
         await context.close();
         await launch();
         await page.goto(origin + '/pages/note/create');
+        await openEditorDrafts();
         await selectDraft('草稿B');
+        await resumed();
         assert.equal(await input('正文').inputValue(), '主动保存版本二');
         check('持久浏览器进程重启后恢复主动草稿文件');
         await button('保存').click();
@@ -161,14 +215,35 @@ const server = http.createServer((req, res) => {
         assert.equal(posts, 1);
         check('正式保存创建一次笔记');
         await page.goto(origin + '/pages/note/create');
+        await openEditorDrafts();
         await page.getByRole('button', { name: /草稿A/ }).waitFor();
         assert.equal(await page.getByRole('button', { name: /草稿B/ }).count(), 0);
         assert.equal((await savedFiles()).length, 0);
         await button('继续编辑').click();
+        await resumed();
         assert.equal(await input('正文').inputValue(), '  第一行🙂\n第二行保留空白  ');
         await button('返回').click(); await button('不保存').click();
         await page.waitForURL((url) => !url.pathname.endsWith('/create'));
         await page.goto(origin + '/pages/note/create');
+        await input('标题').waitFor();
+        // 编辑器草稿箱删除：标题行垃圾桶进入删除模式，2 秒倒计时走完执行。
+        await input('标题').fill('入口删除验证');
+        await button('返回').click(); await button('保存草稿').click();
+        await page.waitForURL((url) => !url.pathname.endsWith('/create'));
+        await page.goto(origin + '/pages/note/create');
+        await openEditorDrafts();
+        await button('删除草稿').click();
+        await page.getByRole('button', { name: /入口删除验证/ }).click();
+        await button('确认删除').click();
+        await page.getByText('暂无草稿', { exact: true }).waitFor();
+        assert.equal((await savedFiles()).length, 0);
+        await button('新建笔记').click();
+        check('编辑器草稿箱支持删除且删后清空');
+        await openEditorDrafts();
+        await page.getByText('暂无草稿', { exact: true }).waitFor();
+        await page.screenshot({ path: path.join(output, 'drafts-empty.png'), fullPage: true });
+        await button('新建笔记').click();
+        check('无草稿时入口显示空态弹窗');
         await input('标题').waitFor();
         await input('标题').fill('   ');
         await button('返回').click();
@@ -200,7 +275,9 @@ const server = http.createServer((req, res) => {
         await page.screenshot({ path: path.join(output, 'local-only.png'), fullPage: true });
         await page.getByRole('button', { name: '完成并返回', exact: true }).click();
         await page.goto(origin + '/pages/note/create');
+        await openEditorDrafts();
         await button('继续编辑').click();
+        await resumed();
         await input('正文').fill('再次编辑本地笔记');
         await page.getByRole('button', { name: '保存', exact: true }).click();
         await page.getByRole('button', { name: '完成并返回', exact: true }).waitFor();
