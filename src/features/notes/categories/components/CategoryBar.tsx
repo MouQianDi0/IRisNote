@@ -22,11 +22,13 @@ import { useCategoryStar } from "../hooks/useCategoryStar";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import CategoryActionModal from "./CategoryActionModal";
 import CategoryButton from "./CategoryButton";
+import AddCategoryButton from "./AddCategoryButton";
 
 type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
+    onAddCategory: () => void;
 };
-export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
+export default function FloatingBar({ onCategoryPress, onAddCategory }: FloatingBarProps) {
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
     const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
@@ -192,6 +194,7 @@ export default function FloatingBar({ onCategoryPress }: FloatingBarProps) {
                             }}
                         />
                     ))}
+                    <AddCategoryButton onPress={onAddCategory} />
                 </ScrollView>
                 <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
 

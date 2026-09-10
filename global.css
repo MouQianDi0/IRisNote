@@ -53,6 +53,7 @@
      * Light-mode only until dark mode is scoped in TODO.md §2.
      */
     --color-hyper-card: #f0f0f0;
+    --color-hyper-card-selected: #eaf2ff;
     /* 草稿弹窗选择列表：容器底与选中底成对，选中为极浅蓝 */
     --color-hyper-list: #fbfbfb;
     --color-hyper-list-selected: #f8fbff;
