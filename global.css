@@ -47,4 +47,29 @@
     --radius-floating: 18px;
     --radius-profile: 32px;
     --radius-content: 30px;
+
+    /*
+     * HyperOS visual tokens (docs/IRisNote视觉设计规范.md).
+     * Light-mode only until dark mode is scoped in TODO.md §2.
+     */
+    --color-hyper-card: #f0f0f0;
+    /* 草稿弹窗选择列表：容器底与选中底成对，选中为极浅蓝 */
+    --color-hyper-list: #fbfbfb;
+    --color-hyper-list-selected: #f8fbff;
+    --color-hyper-divider: #e0e0e0;
+    --color-hyper-text-secondary: #8c93b0;
+    --color-hyper-error: #e94634;
+    --color-hyper-outline: #d9d9d9;
+    --color-hyper-scrim: rgba(0, 0, 0, 0.3);
+
+    /* 按钮禁用态（视觉规范 1.3 §6.1，显式浅色 token） */
+    --color-hyper-primary-disabled: #c2d9ff;
+    --color-hyper-danger-disabled: #f8d7d2;
+    --color-hyper-secondary-disabled: #f7f7f7;
+    --color-hyper-label-disabled: #b2b2b2;
+    --color-hyper-primary-faded: #80bfff;
+
+    --radius-hyper-modal: 24px;
+    --radius-hyper-card: 16px;
+    --radius-hyper-control: 14px;
 }

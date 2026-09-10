@@ -58,6 +58,19 @@ export const colors = {
     profileSilver: "#c0c0c0",
     profilePurple: "#7B61FF",
     profileInactive: "#FF3B30",
+
+    hyperCard: "#F0F0F0",
+    hyperList: "#FBFBFB",
+    hyperListSelected: "#F8FBFF",
+    hyperDivider: "#E0E0E0",
+    hyperTextSecondary: "#8C93B0",
+    hyperError: "#E94634",
+    hyperOutline: "#D9D9D9",
+    hyperPrimaryDisabled: "#C2D9FF",
+    hyperDangerDisabled: "#F8D7D2",
+    hyperSecondaryDisabled: "#F7F7F7",
+    hyperLabelDisabled: "#B2B2B2",
+    hyperPrimaryFaded: "#80BFFF",
 } as const;
 
 export type ThemeColor = keyof typeof colors;
