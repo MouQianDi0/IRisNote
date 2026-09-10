@@ -3,11 +3,16 @@
 # dependencies
 node_modules/
 
+
 # Expo
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+
+
+CHANGELOG.md
+
 
 # Native
 .kotlin/
@@ -41,3 +46,8 @@ example
 # generated native folders
 /ios
 /android
+
+
+
+# mimosa 安全扫描插件的本地数据
+.mimosa/

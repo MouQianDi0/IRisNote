@@ -1,56 +1,131 @@
-# Welcome to your Expo app 👋
+# IRisNote
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+IRisNote 是一个基于 Expo SDK 56、React Native 和 Expo Router 开发的跨平台笔记应用。项目当前以笔记和笔记分类为主要业务，并包含用户认证、个人资料、待办、剪贴板摘录和设置页面。
 
-## Get started
+## 当前功能状态
 
-1. Install dependencies
+| 模块 | 状态 | 当前能力 |
+| --- | --- | --- |
+| 用户认证 | 已实现 | 邮箱验证码、密码登录、注册、会话恢复、退出登录 |
+| 笔记 | 已实现主要流程 | 列表、创建、详情、删除、分类筛选、置顶、标星、下拉刷新 |
+| 笔记分类 | 已实现 | 创建、改名、更换图标、置顶、标星、删除分类及其笔记 |
+| 个人资料 | 已实现主要流程 | 用户资料展示、相册或相机选择头像、头像上传、退出登录 |
+| 设置 | 占位页面 | 当前仅展示静态设置项 |
+| 待办 | 占位页面 | 当前仅有列表与创建页面骨架 |
+| 剪贴板摘录 | 占位页面 | 当前仅有列表与创建页面骨架 |
 
-   ```bash
-   npm install
-   ```
+> “占位页面”表示路由和页面入口已经存在，但尚未接入 API、表单、缓存或状态管理。
 
-2. Start the app
+## 技术栈
 
-   ```bash
-   npx expo start
-   ```
+| 类别 | 技术 |
+| --- | --- |
+| 应用框架 | Expo SDK 56、React Native 0.85、React 19 |
+| 路由 | Expo Router 56，启用 Typed Routes |
+| 语言 | TypeScript，启用严格模式 |
+| 样式 | NativeWind 5、Tailwind CSS 4、共享 Theme Token |
+| 网络 | Axios |
+| 本地存储 | AsyncStorage、Expo SQLite 56（Android、iOS、Web） |
+| 动画 | React Native Reanimated 4 |
+| 手势 | React Native Gesture Handler |
+| 图标 | Lucide React Native |
+| 图片 | Expo Image、Expo Image Picker |
 
-In the output, you'll find options to open the app in a
+## 环境要求
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Node.js 18 或更高版本。
+- npm。
+- 运行 Android 原生版本时需要 Android Studio 和 Android SDK。
+- 运行 iOS 原生版本时需要 macOS 和 Xcode。
+- 也可以使用 Expo Go 或 Web 模式进行开发预览。
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## 安装
 
 ```bash
-npm run reset-project
+npm install
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 环境变量
 
-### Other setup steps
+应用只读取 `EXPO_PUBLIC_BASE_URL` 作为 API 根地址。该地址应包含 `/api`，例如：
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```dotenv
+EXPO_PUBLIC_BASE_URL=https://example.com/api
+```
 
-## Learn more
+如果没有设置，应用会使用源码中的默认地址 `https://tech-mou.top/api`。
 
-To learn more about developing your project with Expo, look at the following resources:
+## 启动项目
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+启动 Expo 开发服务器：
 
-## Join the community
+```bash
+npm start
+```
 
-Join our community of developers creating universal apps.
+启动后可以在终端中：
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- 按 `w` 打开 Web 版本。
+- 按 `a` 打开 Android 模拟器或已连接设备。
+- 扫描二维码在 Expo Go 中打开。
+
+也可以直接运行：
+
+```bash
+# Web 开发模式
+npm run web
+
+# 本地编译并运行 Android
+npm run android
+
+# 仅在 macOS 上本地编译并运行 iOS
+npm run ios
+```
+
+Web SQLite 依赖 WASM 和 `SharedArrayBuffer`。项目的 Metro 开发服务器与 EAS Hosting 配置已经加入以下跨源隔离响应头：
+
+```text
+Cross-Origin-Embedder-Policy: credentialless
+Cross-Origin-Opener-Policy: same-origin
+```
+
+部署到其他 Web 托管平台时，必须在该平台的服务器或反向代理中配置相同响应头。Expo SDK 56 的 Web SQLite 仍为 Alpha，正式发布前需要单独完成浏览器兼容性和持久化验证。
+
+## 开发检查
+
+```bash
+# TypeScript 类型检查
+npx tsc --noEmit
+
+# ESLint 检查
+npm run lint
+
+# 验证 Web 生产导出
+npx expo export --platform web
+```
+
+## 后端服务
+
+配套后端为 [irisapi](https://github.com/MouQianDi0/irisapi)，使用 Express 和 PostgreSQL 提供认证、笔记、分类及用户资料接口。
+
+```text
+IRisNote（Expo App）
+    ↓ Axios HTTP 请求
+irisapi（Express API）
+    ↓ SQL 查询
+PostgreSQL
+```
+
+接口细节见 [API 文档](./docs/API.md) 和 [前后端连接说明](./docs/axios-express-postgresql（前端连接到数据库）.md)。
+
+## 开发文档
+
+- [项目架构与文件索引](./docs/项目架构与文件索引.md)：目录职责、路由映射和逐文件说明。
+- [业务模块与运行逻辑](./docs/业务模块与运行逻辑.md)：认证、笔记、分类、头像等业务的数据流与调用链。
+- [后续开发指南](./docs/后续开发指南.md)：新增页面、API、组件、Hook、类型和业务模块的具体方法。
+- [样式开发规范](./docs/样式开发规范.md)：NativeWind、Theme Token 和共享 UI 的使用规则。
+- [GitHub 团队开发指南](./docs/GitHub团队开发指南.md)：分支、提交和协作约定。
+
+## License
+
+本项目采用 [LICENSE](./LICENSE) 中声明的许可证。
