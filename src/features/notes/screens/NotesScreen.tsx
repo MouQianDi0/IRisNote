@@ -1,4 +1,10 @@
 import { createCategory, getCategories } from "../categories/api/categories.api";
+import { useApplicationDatabase } from "@/core/database";
+import { captureNotificationSession } from "@/core/notifications";
+import NotesSyncHeader from "../components/NotesSyncHeader";
+import DraftListModal from "../components/draft-list-modal";
+import { readNoteSyncTime, saveNoteSyncTime } from "../data/note-sync-history";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { getApiErrorMessage } from "@/shared/http/errors";
@@ -11,14 +17,20 @@ import NoteContextMenu from "../components/viewer/NoteContextMenu";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import { notifyCategoriesChanged, onCategoriesChanged } from "../categories/categories.events";
 import { onNotesChanged, onNotesRemovedByCategory } from "../notes.events";
-import { removeCachedNoteById, setCachedNotes } from "../notes.cache";
+import { removeCachedNoteById, setCachedNote, setCachedNotes } from "../notes.cache";
+import {
+  getLocalNotes,
+  reconcileServerNotes,
+  recoverInterruptedNoteSyncs,
+  removeLocalNote,
+} from "../data/note-local.repository";
 import type { Category } from "@/features/notes/categories/categories.types";
 import type { Note } from "@/features/notes/notes.types";
 import { useNotePin } from "../hooks/useNotePin";
 import { useNoteStar } from "../hooks/useNoteStar";
 import { colors } from "@/shared/theme";
 import { type Href } from "expo-router";
-import { ChevronUp } from "lucide-react-native";
+import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -40,11 +52,15 @@ import Animated, {
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
 export default function NotesScreen() {
+  const [draftListVisible, setDraftListVisible] = useState(false);
+  const database = useApplicationDatabase();
+  const { user } = useAuth();
   const onNavigate = useDebouncedNavigation();
   const [notes, setNotes] = useState<Note[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<{ userId: number; timestamp: number | null } | null>(null);
+  const scrollOffset = useSharedValue(0);
   const [currentCategory, setCurrentCategory] = useState(
     String(ALL_CATEGORY.id),
   );
@@ -55,7 +71,9 @@ export default function NotesScreen() {
   const contextMenuNoteRef = useRef<Note | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRef = useRef<Note[]>([]);
-  const notesRequestRef = useRef<Promise<void> | null>(null);
+  const notesRequestRef = useRef<Promise<{ addedCount: number } | undefined> | null>(null);
+  const notesRequestOwnerIdRef = useRef<number | null>(null);
+  const recoveredSyncUserIdRef = useRef<number | null>(null);
   const categoriesRequestRef = useRef<Promise<void> | null>(null);
   const showScrollTopRef = useRef(false);
   const pinnedOrderRef = useRef(0);
@@ -65,21 +83,64 @@ export default function NotesScreen() {
   const openedNoteIdRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!user) return;
+    const userId = user.id;
+    let active = true;
+    void readNoteSyncTime(userId).then(timestamp => {
+      if (!active) return;
+      setSyncHistory(current => current?.userId === userId && current.timestamp !== null
+        ? current : { userId, timestamp });
+    });
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
     openedNoteIdRef.current = openedNoteId;
   }, [openedNoteId]);
 
-  const fetchNotes = useCallback(() => {
-    if (notesRequestRef.current) return notesRequestRef.current;
+  const applyNotes = useCallback((nextNotes: Note[]) => {
+    pinnedOrderRef.current = Math.max(
+      0,
+      ...nextNotes.map((note) => note.pinned_order ?? 0),
+    );
+    setNotes(nextNotes);
+    setCachedNotes(nextNotes);
+  }, []);
 
-    const request = (async () => {
+  const fetchNotes = useCallback(() => {
+    if (!user) return Promise.resolve();
+    if (
+      notesRequestRef.current &&
+      notesRequestOwnerIdRef.current === user.id
+    ) {
+      return notesRequestRef.current;
+    }
+
+    const ownerUserId = user.id;
+    let request: Promise<{ addedCount: number } | undefined> | undefined;
+    request = (async () => {
       try {
-        const nextNotes = withLocalOrder(await getNotes());
-        pinnedOrderRef.current = Math.max(
-          0,
-          ...nextNotes.map((note) => note.pinned_order ?? 0),
+        if (recoveredSyncUserIdRef.current !== ownerUserId) {
+          await recoverInterruptedNoteSyncs(database, ownerUserId);
+          recoveredSyncUserIdRef.current = ownerUserId;
+        }
+        const localNotes = withLocalOrder(
+          await getLocalNotes(database, ownerUserId),
         );
-        setNotes(nextNotes);
-        setCachedNotes(nextNotes);
+        if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+        applyNotes(localNotes);
+
+        const serverNotes = withLocalOrder(await getNotes());
+        let addedCount = 0;
+        const reconciledNotes = withLocalOrder(
+          await reconcileServerNotes(database, ownerUserId, serverNotes, stats => { addedCount = stats.addedCount; }),
+        );
+        if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+        applyNotes(reconciledNotes);
+        const timestamp = Date.now();
+        setSyncHistory({ userId: ownerUserId, timestamp });
+        await saveNoteSyncTime(ownerUserId, timestamp);
+        return { addedCount };
       } catch (err: any) {
         console.error(
           "获取笔记失败:",
@@ -87,13 +148,17 @@ export default function NotesScreen() {
           err.response?.data || err.message,
         );
       } finally {
-        notesRequestRef.current = null;
+        if (notesRequestRef.current === request) {
+          notesRequestRef.current = null;
+          notesRequestOwnerIdRef.current = null;
+        }
       }
     })();
 
     notesRequestRef.current = request;
+    notesRequestOwnerIdRef.current = ownerUserId;
     return request;
-  }, []);
+  }, [applyNotes, database, user]);
 
   const fetchCategories = useCallback(() => {
     if (categoriesRequestRef.current) return categoriesRequestRef.current;
@@ -117,6 +182,15 @@ export default function NotesScreen() {
   }, [notes]);
 
   useEffect(() => {
+    if (user) return;
+    // 微任务中清空，避免 effect 体内同步 setState 触发级联渲染。
+    void Promise.resolve().then(() => {
+      setNotes([]);
+      setCachedNotes([]);
+    });
+  }, [user]);
+
+  useEffect(() => {
     Promise.all([fetchNotes(), fetchCategories()]).finally(() =>
       setLoading(false),
     );
@@ -130,13 +204,37 @@ export default function NotesScreen() {
     return unsub;
   }, [fetchCategories]);
 
-  // 创建笔记返回后刷新
+  // 本地事务提交后直接增量覆盖列表，禁止再用整表请求覆盖刚保存的内容。
   useEffect(() => {
-    const unsub = onNotesChanged(() => {
-      fetchNotes();
+    const unsub = onNotesChanged((event) => {
+      if (!user) return;
+
+      if (event.type === "upsert" && event.note) {
+        const changedNote = event.note;
+        if (changedNote.user_id !== user.id) return;
+        setCachedNote(changedNote);
+        setNotes((currentNotes) => {
+          const index = currentNotes.findIndex(
+            (note) => note.id === changedNote.id,
+          );
+          if (index < 0) return [changedNote, ...currentNotes];
+
+          const nextNotes = [...currentNotes];
+          nextNotes[index] = changedNote;
+          return nextNotes;
+        });
+        return;
+      }
+
+      if (event.type === "remove" && event.noteId != null) {
+        removeCachedNoteById(event.noteId, user.id);
+        setNotes((currentNotes) =>
+          currentNotes.filter((note) => note.id !== event.noteId),
+        );
+      }
     });
     return unsub;
-  }, [fetchNotes]);
+  }, [user]);
 
   // 删除分类成功后，本地增量移除该分类下的笔记，避免重新拉取全部笔记。
   useEffect(() => {
@@ -153,9 +251,10 @@ export default function NotesScreen() {
   }, []);
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchNotes();
-    setRefreshing(false);
+    const current = captureNotificationSession();
+    const result = await fetchNotes();
+    if (!current()) return;
+    return result || undefined;
   }, [fetchNotes]);
 
   const updateNotesLocally = useCallback(
@@ -180,9 +279,16 @@ export default function NotesScreen() {
           text: "删除",
           style: "destructive",
           onPress: async () => {
+            if (!user) {
+              Alert.alert("提示", "当前登录信息不可用，请重新登录后再操作");
+              return;
+            }
             try {
-              await deleteNote(item.id);
-              removeCachedNoteById(item.id);
+              const serverId =
+                item.server_id ?? (item.id > 0 ? item.id : null);
+              if (serverId != null) await deleteNote(serverId);
+              await removeLocalNote(database, user.id, item.id);
+              removeCachedNoteById(item.id, user.id);
               updateNotesLocally((prev) =>
                 prev.filter((n) => n.id !== item.id),
               );
@@ -195,7 +301,7 @@ export default function NotesScreen() {
         },
       ]);
     },
-    [updateNotesLocally],
+    [database, updateNotesLocally, user],
   );
 
   const { togglePin: handleTogglePin } = useNotePin(
@@ -312,6 +418,7 @@ export default function NotesScreen() {
       scheduleFloatingMenuRestore();
 
       const offsetY = event.nativeEvent.contentOffset.y;
+      scrollOffset.set(offsetY);
       const shouldShowScrollTop = offsetY > 300;
 
       if (showScrollTopRef.current !== shouldShowScrollTop) {
@@ -319,7 +426,7 @@ export default function NotesScreen() {
         setShowScrollTop(shouldShowScrollTop);
       }
     },
-    [scheduleFloatingMenuRestore],
+    [scheduleFloatingMenuRestore, scrollOffset],
   );
 
   // 滚动到顶部按钮的上下缓动动画
@@ -385,7 +492,7 @@ export default function NotesScreen() {
     ],
   );
 
-  const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10 }), []);
+  const listContentContainerStyle = useMemo(() => ({ paddingBottom: 10, flexGrow: 1 }), []);
 
   const listHeaderComponent = useMemo(
     () => (
@@ -408,6 +515,7 @@ export default function NotesScreen() {
 
   return (
     <View className="mt-10 bg-note-page-background h-full">
+      {draftListVisible && user && <DraftListModal key={user.id} owner={user.id} onClose={() => setDraftListVisible(false)} />}
       <View className="flex-row h-full ">
         <View
           className="     relative
@@ -418,33 +526,53 @@ export default function NotesScreen() {
                                     items-center gap-[6px]"
         >
           <CategoryBar onCategoryPress={setCurrentCategory} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="草稿"
+            onPress={() => setDraftListVisible(true)}
+            className="w-[50px] h-[60px] mb-[6px] rounded-control justify-center items-center pl-[6px] pr-[4px] py-[4px]"
+          >
+            <Archive size={30} color={colors.textSecondary} />
+            <Text numberOfLines={1} ellipsizeMode="tail" className="max-w-[44px] text-[10px] text-gray-400">
+              草稿
+            </Text>
+          </Pressable>
           <View className="absolute bottom-21">
             <AddCategoryButton onPress={() => setNoteClassMenu(true)} />
           </View>
         </View>
         <View className="relative flex-1">
           <View className="bg-white rounded-tl-content p-4 h-[100%] border-[1px] border-note-page-border">
-            <FlatList
-              ref={flatListRef}
-              className="rounded-card"
-              data={filteredNotes}
-              extraData={categoryNameMap}
-              keyExtractor={keyExtractor}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={listContentContainerStyle}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              ListHeaderComponent={listHeaderComponent}
-              refreshing={refreshing}
+            <NotesSyncHeader
+              key={user?.id ?? "signed-out"}
+              count={filteredNotes.length}
+              lastSyncTime={syncHistory?.userId === user?.id ? syncHistory?.timestamp ?? null : null}
+              enabled={!!user && !loading}
+              scrollOffset={scrollOffset}
               onRefresh={handleRefresh}
-              renderItem={renderNoteItem}
-              ListEmptyComponent={listEmptyComponent}
-              initialNumToRender={8}
-              maxToRenderPerBatch={6}
-              updateCellsBatchingPeriod={50}
-              windowSize={7}
-              removeClippedSubviews
-            />
+            >
+              <FlatList
+                ref={flatListRef}
+                className="rounded-card"
+                data={filteredNotes}
+                extraData={categoryNameMap}
+                keyExtractor={keyExtractor}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={listContentContainerStyle}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                ListHeaderComponent={listHeaderComponent}
+                bounces={false}
+                overScrollMode="never"
+                renderItem={renderNoteItem}
+                ListEmptyComponent={listEmptyComponent}
+                initialNumToRender={8}
+                maxToRenderPerBatch={6}
+                updateCellsBatchingPeriod={50}
+                windowSize={7}
+                removeClippedSubviews
+              />
+            </NotesSyncHeader>
           </View>
           {showScrollTop && (
             <Animated.View

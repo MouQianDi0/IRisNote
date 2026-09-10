@@ -1,7 +1,8 @@
+import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import { Text, TouchableWithoutFeedback, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Button, ModalPanel } from "@/shared/ui";
-import { Modal } from "react-native";
+
 
 type CategoryDeleteConfirmModalProps = {
     visible: boolean;

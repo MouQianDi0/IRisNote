@@ -1,5 +1,6 @@
+import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import { useState } from "react";
-import { Modal, Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
+import { Text, TextInput, TouchableWithoutFeedback, View } from "react-native";
 import { colors } from "@/shared/theme";
 import { Button, ModalPanel } from "@/shared/ui";
 import CategoryIconPicker from "./CategoryIconPicker";

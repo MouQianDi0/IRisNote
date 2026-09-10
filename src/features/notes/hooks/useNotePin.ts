@@ -25,6 +25,17 @@ export function useNotePin(
 ) {
     const togglePin = useCallback(
         async (item: Note) => {
+            const serverId =
+                item.server_id ?? (item.id > 0 ? item.id : null);
+            if (serverId == null) {
+                setOpenedNoteId(null);
+                Alert.alert(
+                    "提示",
+                    "这条笔记尚未获得云端 ID，当前阶段暂不执行置顶同步。笔记正文仍已保存在本地。",
+                );
+                return;
+            }
+
             const previousNotes = notesRef.current;
             const nextPinned = !item.is_pinned;
             const nextPinnedOrder = nextPinned
@@ -51,10 +62,10 @@ export function useNotePin(
             setOpenedNoteId(null);
 
             const payload = { is_pinned: nextPinned };
-            console.log("笔记置顶后端同步开始:", { id: item.id, payload });
+            console.log("笔记置顶后端同步开始:", { id: serverId, payload });
 
             try {
-                const data = await updateNote(item.id, payload);
+                const data = await updateNote(serverId, payload);
                 console.log("笔记置顶后端同步成功:", {
                     id: item.id,
                     is_pinned: nextPinned,
