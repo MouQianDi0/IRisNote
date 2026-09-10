@@ -3,16 +3,20 @@ import { ArrowLeft, Check } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Dimensions,
     Keyboard,
     Platform,
     Pressable,
     ScrollView,
+    StatusBar,
     Text,
     TextInput,
     View,
     type KeyboardEvent,
 } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { remainingKeyboardOverlap } from "../keyboard-layout";
 import EditorBottomToolbar, { FLOATING_BOTTOM, FLOATING_TOUCH_HEIGHT } from "./editor-bottom-toolbar";
 import { advanceToolbarScroll, EDIT_PRESS_INTERVAL_MS, FOCUS_TIMEOUT_MS, resetToolbarScroll } from "../toolbar-interaction";
 import type {
@@ -52,6 +56,11 @@ export default function PlainTextEditor({
     const [keyboardOverlap, setKeyboardOverlap] = useState(0);
     const keyboardOpen = useRef(Keyboard.isVisible());
     const keyboardTop = useRef<number | null>(Keyboard.metrics?.()?.screenY ?? null);
+    const keyboardHeight = useRef(Keyboard.metrics?.()?.height ?? 0);
+    const restingBottom = useRef<number | null>(null);
+    const insets = useSafeAreaInsets();
+    const bottomInset = useRef(insets.bottom);
+    const layoutFrame = useRef<number | null>(null);
     const measurement = useRef(0);
     const alive = useRef(true);
     const focusLocked = useRef(false);
@@ -74,9 +83,36 @@ export default function PlainTextEditor({
         container.current?.measureInWindow((_x, y, _width, height) => {
             if (!alive.current || request !== measurement.current) return;
             const top = keyboardTop.current;
-            setKeyboardOverlap(top === null ? 0 : Math.max(0, Math.min(height, y + height - top)));
+            const bottom = y + height;
+            if (!keyboardOpen.current) {
+                restingBottom.current = bottom;
+                setKeyboardOverlap(0);
+                return;
+            }
+            if (Platform.OS === "android" && keyboardHeight.current > 0) {
+                // 首次进入时键盘可能已打开。全面屏的窗口测量原点扣除了状态栏。
+                const baseline = restingBottom.current ?? Dimensions.get("screen").height
+                    - (StatusBar.currentHeight ?? 0) - bottomInset.current;
+                setKeyboardOverlap(remainingKeyboardOverlap(keyboardHeight.current, baseline, bottom, height));
+            } else {
+                setKeyboardOverlap(top === null ? 0 : Math.max(0, Math.min(height, bottom - top)));
+            }
         });
     }, []);
+
+    const scheduleKeyboardMeasurement = useCallback(() => {
+        measureKeyboardOverlap();
+        if (layoutFrame.current !== null) cancelAnimationFrame(layoutFrame.current);
+        layoutFrame.current = requestAnimationFrame(() => {
+            layoutFrame.current = null;
+            measureKeyboardOverlap();
+        });
+    }, [measureKeyboardOverlap]);
+
+    useEffect(() => {
+        bottomInset.current = insets.bottom;
+        scheduleKeyboardMeasurement();
+    }, [insets.bottom, scheduleKeyboardMeasurement]);
 
     const releaseFocusLock = () => {
         focusLocked.current = false;
@@ -98,24 +134,27 @@ export default function PlainTextEditor({
         const updateKeyboard = (visible: boolean, event?: KeyboardEvent) => {
             keyboardOpen.current = visible;
             keyboardTop.current = visible ? event?.endCoordinates.screenY ?? Keyboard.metrics?.()?.screenY ?? null : null;
+            keyboardHeight.current = visible ? event?.endCoordinates.height ?? Keyboard.metrics?.()?.height ?? 0 : 0;
             setKeyboardVisible(visible);
             scroll.current = resetToolbarScroll(scroll.current.offset);
             floatingVisible.set(true);
-            measureKeyboardOverlap();
+            scheduleKeyboardMeasurement();
             releaseFocusLock();
         };
         const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (event) => updateKeyboard(true, event));
-        const frame = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidChangeFrame", (event) => {
+        const frame = Platform.OS === "ios" ? Keyboard.addListener("keyboardWillChangeFrame", (event) => {
             if (keyboardOpen.current) updateKeyboard(true, event);
-        });
+        }) : null;
+        const dimensions = Dimensions.addEventListener("change", scheduleKeyboardMeasurement);
         const hide = Keyboard.addListener("keyboardDidHide", () => updateKeyboard(false));
-        measureKeyboardOverlap();
+        scheduleKeyboardMeasurement();
         return () => {
             alive.current = false;
-            show.remove(); hide.remove(); frame.remove(); releaseFocusLock();
+            show.remove(); hide.remove(); frame?.remove(); dimensions.remove(); releaseFocusLock();
+            if (layoutFrame.current !== null) cancelAnimationFrame(layoutFrame.current);
             if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
         };
-    }, [measureKeyboardOverlap, floatingVisible]);
+    }, [scheduleKeyboardMeasurement, floatingVisible]);
 
     const editContent = () => {
         const now = performance.now();
@@ -148,7 +187,7 @@ export default function PlainTextEditor({
     };
 
     return (
-        <View ref={container} collapsable={false} className="flex-1 bg-white" onLayout={measureKeyboardOverlap}>
+        <View ref={container} collapsable={false} className="flex-1 bg-white" onLayout={scheduleKeyboardMeasurement}>
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: keyboardOverlap }}>
             <View className="flex-row items-center justify-between border-b border-border-soft px-4 pb-3 pt-3">
                 <Pressable
