@@ -514,9 +514,9 @@ export default function NotesScreen() {
   );
 
   return (
-    <View className="mt-10 bg-note-page-background h-full">
+    <View className="mt-[15px] bg-app-background flex-1">
       {draftListVisible && user && <DraftListModal key={user.id} owner={user.id} onClose={() => setDraftListVisible(false)} />}
-      <View className="flex-row h-full ">
+      <View className="flex-row flex-1">
         <View
           className="     relative
                                     w-[75px]

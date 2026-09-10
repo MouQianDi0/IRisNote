@@ -221,10 +221,10 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
                 </>
             ) : (
                 <>
+                    <DialogButton variant="secondary" className="flex-1" label={secondaryLabel} onPress={onSecondary} />
                     {entries.length > 0 && <DialogButton className="flex-1" label={primaryLabel}
                         disabled={loading || !!error || !selected || primaryDisabled}
                         onPress={() => { if (selected) onPrimary(selected); }} />}
-                    <DialogButton variant="secondary" className="flex-1" label={secondaryLabel} onPress={onSecondary} />
                 </>
             )}
         </View>
