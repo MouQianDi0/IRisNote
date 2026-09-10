@@ -75,6 +75,54 @@ export async function removeExplicitDraft(owner: number, key: string) {
     await savedDraftFiles.remove(owner, key);
 }
 
+export type DraftDeleteResult = { deleted: string[]; failed: { key: string; message: string }[] };
+
+const sameDraft = (a: NoteDraft, b: NoteDraft) =>
+    (Object.keys(b) as (keyof NoteDraft)[]).every((field) => a[field] === b[field]);
+
+/** 草稿箱永久删除：先确保有持久恢复副本，再清文件，最后删除数据库记录。 */
+export async function deleteNewNoteDrafts(db: ApplicationDatabase, owner: number, entries: readonly DraftEntry[]): Promise<DraftDeleteResult> {
+    if (!Number.isSafeInteger(owner) || owner <= 0) throw new Error("草稿账户无效");
+    const result: DraftDeleteResult = { deleted: [], failed: [] };
+    for (const entry of new Map(entries.map((item) => [item.key, item])).values()) {
+        try {
+            if (!isNewDraftKey(entry.key) || entry.row.owner_user_id !== owner || entry.row.draft_key !== entry.key) {
+                throw new Error("草稿身份不匹配");
+            }
+            const conflict = () => new Error("草稿已变化，请核对刷新后的内容再删除");
+            await db.transaction(async (tx) => {
+                const recovery = await readNoteDraft(tx, owner, entry.key);
+                if (entry.kind === "recovery") {
+                    if (!recovery || !sameDraft(recovery, entry.row)) throw conflict();
+                    return;
+                }
+                if (recovery) throw conflict();
+                const text = await savedDraftFiles.read(owner, entry.key);
+                if (text === null || !sameDraft(parseSaved(text, owner, entry.key), entry.row)) throw conflict();
+                const row = entry.row;
+                // 独立提交副本：文件删除后即便下一事务提交失败，也仍能恢复内容。
+                await tx.run(`INSERT INTO note_drafts
+                    (owner_user_id, draft_key, session_id, note_id, base_snapshot, base_revision_id, title, content, category_id, sequence, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [owner, entry.key, row.session_id, row.note_id, row.base_snapshot, row.base_revision_id,
+                        row.title, row.content, row.category_id, row.sequence, row.updated_at]);
+            });
+            await db.transaction(async (tx) => {
+                const row = await readNoteDraft(tx, owner, entry.key);
+                if (!row || !sameDraft(row, entry.row)) throw conflict();
+                await savedDraftFiles.remove(owner, entry.key);
+                const removed = await tx.run("DELETE FROM note_drafts WHERE owner_user_id = ? AND draft_key = ? AND session_id = ? AND sequence = ?",
+                    [owner, entry.key, row.session_id, row.sequence]);
+                if (removed.changes !== 1) throw conflict();
+            });
+            result.deleted.push(entry.key);
+        } catch (cause) {
+            result.failed.push({ key: entry.key, message: cause instanceof Error ? cause.message : "删除失败，请重试" });
+        }
+    }
+    return result;
+}
+
 export async function discardNewRecovery(db: ApplicationDatabase, owner: number, commit: DraftCommit) {
     await db.transaction(async (tx) => {
         const row = await readNoteDraft(tx, owner, commit.key);

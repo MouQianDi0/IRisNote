@@ -496,3 +496,87 @@ test('draft survives a real SQLite close and reopen', async (t) => {
         assert.equal(row.sequence, 1);
     });
 });
+
+
+test('draft box deletes saved, recovery and dual copies without resurrecting or crossing accounts', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('saved')); await a.saveDraft(); await a.close();
+    const b = newSession(port); b.change(value('recovery')); await b.flush(); await b.close();
+    const c = newSession(port); c.change(value('dual')); await c.saveDraft(); await c.close();
+    const resumed = await NewNoteDraftSession.resume(port, 7, c.key, () => {});
+    await resumed.close();
+    const foreign = newSession(port, 8); foreign.change(value('private')); await foreign.saveDraft(); await foreign.close();
+    const list = await newDrafts.listNewNoteDrafts(port, 7);
+    const result = await newDrafts.deleteNewNoteDrafts(port, 7, [...list, list[0]]);
+    assert.equal(result.deleted.length, 3); assert.deepEqual(result.failed, []);
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 8)).length, 1);
+    const foreignEntry = (await newDrafts.listNewNoteDrafts(port, 8))[0];
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, [foreignEntry])).failed.length, 1);
+    assert.notEqual(await savedDraftFiles.read(8, foreign.key), null);
+});
+
+test('draft box rejects stale recovery and saved snapshots and invalid keys', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('first')); await a.flush();
+    const old = await newDrafts.listNewNoteDrafts(port, 7);
+    a.change(value('newer')); await a.flush();
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, old)).failed.length, 1);
+    await a.saveDraft(); await a.close();
+    const saved = await newDrafts.listNewNoteDrafts(port, 7);
+    const b = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, saved)).failed.length, 1);
+    b.change(value('latest')); await b.saveDraft(); await b.close();
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, saved)).failed.length, 1);
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, [{ ...saved[0], key: 'note:1' }])).failed.length, 1);
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 7))[0].row.content, 'latest');
+});
+
+test('draft box reports partial failure and permits retry after file removal fails', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('fail')); await a.saveDraft(); await a.close();
+    const b = newSession(port); b.change(value('ok')); await b.saveDraft(); await b.close();
+    const remove = savedDraftFiles.remove.bind(savedDraftFiles);
+    const mock = t.mock.method(savedDraftFiles, 'remove', async (owner, key) => {
+        if (key === a.key) throw new Error('file denied');
+        return remove(owner, key);
+    });
+    const result = await newDrafts.deleteNewNoteDrafts(port, 7, await newDrafts.listNewNoteDrafts(port, 7));
+    assert.deepEqual(result.deleted, [b.key]); assert.equal(result.failed[0].key, a.key);
+    assert.equal((await drafts.readNoteDraft(port, 7, a.key)).content, 'fail');
+    mock.mock.restore();
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, await newDrafts.listNewNoteDrafts(port, 7))).deleted.length, 1);
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+});
+
+test('draft box retains durable recovery after file deletion followed by database failure', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('survive')); await a.saveDraft(); await a.close();
+    const run = port.run.bind(port);
+    const mock = t.mock.method(port, 'run', async (sql, bindings) => {
+        if (sql.startsWith('DELETE FROM note_drafts')) throw new Error('database failed');
+        return run(sql, bindings);
+    });
+    const result = await newDrafts.deleteNewNoteDrafts(port, 7, await newDrafts.listNewNoteDrafts(port, 7));
+    assert.equal(result.failed.length, 1);
+    assert.equal(await savedDraftFiles.read(7, a.key), null);
+    assert.equal((await newDrafts.listNewNoteDrafts(port, 7))[0].row.content, 'survive');
+    mock.mock.restore();
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, await newDrafts.listNewNoteDrafts(port, 7))).deleted.length, 1);
+});
+
+test('draft box deletion preserves a linked formal note and rejects later writes', async (t) => {
+    fileMemory.clear();
+    const { port } = await database(t);
+    const a = newSession(port); a.change(value('formal')); const snap = await a.beginSave();
+    const saved = await saves.saveNewNoteLocalFirst(port, 7, payload('formal'), snap.commit);
+    a.finish(); await a.close();
+    assert.equal((await newDrafts.deleteNewNoteDrafts(port, 7, await newDrafts.listNewNoteDrafts(port, 7))).deleted.length, 1);
+    assert.equal((await notes.getLocalNotes(port, 7))[0].id, saved.note.id);
+    await assert.rejects(drafts.writeNoteDraft(port, 7, { ...snap.commit, sequence: snap.commit.sequence + 1 }, value('late')));
+    assert.deepEqual(await newDrafts.listNewNoteDrafts(port, 7), []);
+});

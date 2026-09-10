@@ -7,4 +7,7 @@ export const radius = {
     floating: 18,
     profile: 32,
     full: 9999,
+    hyperModal: 24,
+    hyperCard: 16,
+    hyperControl: 14,
 } as const;
