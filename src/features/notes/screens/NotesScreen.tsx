@@ -1,3 +1,4 @@
+import { saveEditedNoteLocalFirst, uploadNoteNow } from "../services/note-save.service";
 import { createCategory, getCategories } from "../categories/api/categories.api";
 import { useApplicationDatabase } from "@/core/database";
 import { captureNotificationSession } from "@/core/notifications";
@@ -9,6 +10,7 @@ import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibilit
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { deleteNote, getNotes } from "../api/notes.api";
+import DeleteConfirmDialog from "../components/editor/delete-confirm-dialog";
 import CreateCategoryModal from "../categories/components/CreateCategoryModal";
 import CategoryBar from "../categories/components/CategoryBar";
 import SwipeableNoteItem from "../components/card/SwipeableNoteItem";
@@ -32,7 +34,6 @@ import { type Href } from "expo-router";
 import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
   Text,
@@ -67,6 +68,11 @@ export default function NotesScreen() {
   const [NoteClassMenu, setNoteClassMenu] = useState(false);
   const [openedNoteId, setOpenedNoteId] = useState<number | null>(null);
   const [contextMenuNote, setContextMenuNote] = useState<Note | null>(null);
+  const [contextStatusBusy, setContextStatusBusy] = useState(false);
+  const contextStatusLock = useRef(false);
+  const activeContextNote = user && contextMenuNote
+    ? notes.find(note => note.id === contextMenuNote.id && note.user_id === user.id) ?? null
+    : null;
   const contextMenuNoteRef = useRef<Note | null>(null);
   const flatListRef = useRef<FlatList<Note>>(null);
   const notesRef = useRef<Note[]>([]);
@@ -270,38 +276,34 @@ export default function NotesScreen() {
     [],
   );
 
-  const handleDelete = useCallback(
-    (item: Note) => {
-      Alert.alert("删除笔记", `确定要删除「${item.title}」吗？`, [
-        { text: "取消", style: "cancel" },
-        {
-          text: "删除",
-          style: "destructive",
-          onPress: async () => {
-            if (!user) {
-              Alert.alert("提示", "当前登录信息不可用，请重新登录后再操作");
-              return;
-            }
-            try {
-              const serverId =
-                item.server_id ?? (item.id > 0 ? item.id : null);
-              if (serverId != null) await deleteNote(serverId);
-              await removeLocalNote(database, user.id, item.id);
-              removeCachedNoteById(item.id, user.id);
-              updateNotesLocally((prev) =>
-                prev.filter((n) => n.id !== item.id),
-              );
-              setOpenedNoteId(null);
-              console.log("笔记删除成功:", { id: item.id });
-            } catch (err: any) {
-              Alert.alert("提示", getApiErrorMessage(err, "删除失败"));
-            }
-          },
-        },
-      ]);
-    },
-    [database, updateNotesLocally, user],
-  );
+  const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
+
+  // 两条删除入口（列表左滑、长按菜单）统一改为打开规范确认弹窗。
+  const handleDelete = useCallback((item: Note) => {
+    setDeleteTarget(item);
+  }, []);
+
+  // 删除动作由确认弹窗在 2 秒倒计时后调用；失败抛错由弹窗红字展示。
+  const handleConfirmDelete = useCallback(async () => {
+    const item = deleteTarget;
+    if (!item) return;
+    if (!user) {
+      throw new Error("当前登录信息不可用，请重新登录后再操作");
+    }
+    try {
+      const serverId = item.server_id ?? (item.id > 0 ? item.id : null);
+      if (serverId != null) await deleteNote(serverId);
+      await removeLocalNote(database, user.id, item.id);
+      removeCachedNoteById(item.id, user.id);
+      updateNotesLocally((prev) =>
+        prev.filter((n) => n.id !== item.id),
+      );
+      setOpenedNoteId(null);
+      console.log("笔记删除成功:", { id: item.id });
+    } catch (err) {
+      throw new Error(getApiErrorMessage(err, "删除失败"));
+    }
+  }, [database, deleteTarget, updateNotesLocally, user]);
 
   const { togglePin: handleTogglePin } = useNotePin(
     notesRef,
@@ -315,6 +317,36 @@ export default function NotesScreen() {
     updateNotesLocally,
     setOpenedNoteId,
   );
+
+  // Existing hooks roll back a list snapshot, so serialize menu status writes.
+  const toggleContextStatus = async (toggle: (note: Note) => Promise<void>) => {
+    if (!activeContextNote || contextStatusLock.current) return;
+    contextStatusLock.current = true;
+    setContextStatusBusy(true);
+    try {
+      await toggle(activeContextNote);
+    } finally {
+      contextStatusLock.current = false;
+      setContextStatusBusy(false);
+    }
+  };
+
+  const runContextSave = async (title?: string): Promise<string> => {
+    if (!activeContextNote || !user) throw new Error("当前笔记不可用");
+    if (contextStatusLock.current) throw new Error("操作进行中，请稍后再试");
+    contextStatusLock.current = true;
+    setContextStatusBusy(true);
+    try {
+      const result = title === undefined
+        ? await uploadNoteNow(database, user.id, activeContextNote.id)
+        : await saveEditedNoteLocalFirst(database, user.id, activeContextNote, { title });
+      return result.cloudState === "accepted" ? (title === undefined ? "已同步" : "标题已保存并同步")
+        : (title === undefined ? "未同步：" : "标题已保存在本地，未同步：") + ("message" in result ? result.message : "请稍后重试");
+    } finally {
+      contextStatusLock.current = false;
+      setContextStatusBusy(false);
+    }
+  };
 
   const handleOpenNote = useCallback(
     (item: Note) => {
@@ -591,11 +623,24 @@ export default function NotesScreen() {
         onAdd={handleAddCategory}
       />
       <NoteContextMenu
-        visible={contextMenuNote !== null}
-        note={contextMenuNote}
+        visible={activeContextNote !== null}
+        note={activeContextNote}
+        isPinned={!!activeContextNote?.is_pinned}
+        isStarred={!!activeContextNote?.is_starred}
+        statusBusy={contextStatusBusy}
+        onRename={title => runContextSave(title)}
+        onSync={() => runContextSave()}
+        onTogglePin={() => void toggleContextStatus(handleTogglePin)}
+        onToggleStar={() => void toggleContextStatus(handleToggleStar)}
         onClose={handleCloseContextMenu}
         onEdit={handleEditFromContextMenu}
         onDelete={handleDeleteFromContextMenu}
+      />
+      <DeleteConfirmDialog
+        visible={deleteTarget !== null}
+        description={`删除后无法找回\n笔记“${deleteTarget?.title ?? ""}”将被永久删除`}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
       />
     </View>
   );

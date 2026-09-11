@@ -1,7 +1,5 @@
 import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import {
-    ChevronRight,
-    ChevronDown,
     MoveHorizontal,
     Pin,
     SquarePen,
@@ -139,8 +137,6 @@ function CategoryActionContent({
 
     const SelectedIcon = getCategoryIcon(selectedIcon);
 
-    const DisclosureIcon = iconPickerOpen ? ChevronDown : ChevronRight;
-
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
@@ -156,16 +152,25 @@ function CategoryActionContent({
                                 className="h-12 rounded-hyper-card bg-hyper-card px-4 text-[17px] text-black"
                                 maxLength={10} autoFocus onBlur={handleRename} onSubmitEditing={handleRename}
                             /> : <View className="flex-row items-center justify-between gap-3">
+                                <Pressable accessibilityRole="button" accessibilityLabel="更改图标"
+                                    accessibilityState={{ expanded: iconPickerOpen }}
+                                    onPress={() => setIconPickerOpen((open) => !open)}
+                                    style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
+                                    {createElement(SelectedIcon, { size: 24, color: colors.textPrimary })}
+                                </Pressable>
                                 <Text accessibilityRole="header" numberOfLines={2} className="flex-1 text-2xl leading-8 text-black">
                                     {categoryName}
                                 </Text>
                                 <Pressable accessibilityRole="button" accessibilityLabel="重命名分类"
-                                    onPress={() => setEditing(true)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
+                                    onPress={() => setEditing(true)} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
                                     <SquarePen size={24} color={colors.hyperTextSecondary} />
                                 </Pressable>
                             </View>}
                         </View>
                         <ScrollView style={{ flexShrink: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                            {iconPickerOpen && <View className="mb-2">
+                                <CategoryIconPicker variant="hyper" selectedIcon={selectedIcon} onChange={handleIconChange} />
+                            </View>}
                             <View style={{ flexDirection: "row", gap: 10 }}>
                                 {[
                                     { label: isPinned ? "已置顶" : "未置顶", active: isPinned, Icon: Pin, onPress: onPin },
@@ -180,17 +185,6 @@ function CategoryActionContent({
                                     <Text numberOfLines={1} style={{ fontSize: 17, flexShrink: 1, color: active ? colors.primary : colors.textPrimary }}>{label}</Text>
                                 </Pressable>)}
                             </View>
-                            <Pressable accessibilityRole="button" accessibilityLabel="更改图标"
-                                accessibilityState={{ expanded: iconPickerOpen }} onPress={() => setIconPickerOpen((open) => !open)}
-                                style={{ marginTop: 16, height: 48, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                <Text className="text-sm text-hyper-text-secondary">更改图标</Text>
-                                <View pointerEvents="none" style={{ width: 24, height: 24, flexShrink: 0 }}>
-                                    <DisclosureIcon size={24} color={colors.textSecondary} />
-                                </View>
-                            </Pressable>
-                            {iconPickerOpen && <View className="mt-2">
-                                <CategoryIconPicker variant="hyper" selectedIcon={selectedIcon} onChange={handleIconChange} />
-                            </View>}
                         </ScrollView>
                         <View className="mt-4">
                             {!deleteMode ? <DialogButton label="删除分类" variant="secondary" onPress={() => setDeleteMode(true)} /> : <View>

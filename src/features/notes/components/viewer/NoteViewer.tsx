@@ -1,3 +1,4 @@
+import { saveReadingProgress } from "../../data/note-reading-progress";
 import NoteViewerContent from "./NoteViewerContent";
 import NoteViewerHeader from "./NoteViewerHeader";
 import NoteViewerMeta from "./NoteViewerMeta";
@@ -17,6 +18,13 @@ type NoteViewerProps = {
 };
 
 export default function NoteViewer({ note, onBack, onEdit }: NoteViewerProps) {
+  const readingPercent = useRef(0);
+  useFocusEffect(useCallback(() => {
+    readingPercent.current = 0;
+    return () => {
+      if (note.user_id != null) void saveReadingProgress(note.user_id, note.id, readingPercent.current);
+    };
+  }, [note.id, note.user_id]));
   const scroll = useRef(resetToolbarScroll());
   const visible = useSharedValue(true);
   useFocusEffect(useCallback(() => {
@@ -35,6 +43,8 @@ export default function NoteViewer({ note, onBack, onEdit }: NoteViewerProps) {
         scrollEventThrottle={16}
         onScroll={(event) => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          const distance = contentSize.height - layoutMeasurement.height;
+          readingPercent.current = distance > 0 ? Math.max(0, Math.min(100, contentOffset.y / distance * 100)) : 100;
           const offset = Math.min(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height));
           const next = advanceToolbarScroll(scroll.current, offset, false);
           if (next.visible !== scroll.current.visible) visible.set(next.visible);

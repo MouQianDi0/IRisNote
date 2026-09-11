@@ -169,6 +169,7 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
     return <DraftDialog
         visible={visible}
         title={deleting ? "选择要删除的草稿" : title(entries.length)}
+        leading={<Inbox size={24} color={colors.textPrimary} />}
         onClose={() => {
             // 倒计时中点遮罩/返回键只打断删除，不关闭弹窗。
             if (counting) { cancelCountdown(); return; }
@@ -206,7 +207,7 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
         {!deleting && !!externalError && (
             <Text accessibilityRole="alert" numberOfLines={1} className="mt-3 text-sm text-hyper-error">{externalError}</Text>
         )}
-        <View className="mt-1 flex-row gap-2.5">
+        <View className="mt-3 flex-row gap-2.5">
             {deleting ? (
                 <>
                     <DialogButton variant="secondary" className="flex-1" label="退出删除" disabled={busy} onPress={exitDeleting} />

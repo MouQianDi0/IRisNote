@@ -12,7 +12,7 @@ import {
     Settings2,
     X,
 } from "lucide-react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
     Pressable,
     ScrollView,
@@ -27,6 +27,7 @@ type StatisticsMenuLevel = "summary" | "composition" | "settings";
 type NoteStatisticsPopoverProps = {
     noteId: number;
     content: string | null;
+    trigger?: ReactNode;
 };
 
 type StatisticsRowProps = {
@@ -178,6 +179,7 @@ function OptionRow({
 export default function NoteStatisticsPopover({
     noteId,
     content,
+    trigger,
 }: NoteStatisticsPopoverProps) {
     const anchorRef = useRef<View>(null);
     const [visible, setVisible] = useState(false);
@@ -256,15 +258,13 @@ export default function NoteStatisticsPopover({
                 accessibilityState={{ disabled: openLocked, expanded: visible }}
                 disabled={openLocked}
                 onPress={handleOpen}
-                className="rounded-full bg-blue-50 px-3 py-1"
+                className={trigger ? undefined : "rounded-full bg-blue-50 px-3 py-1"}
+                hitSlop={trigger ? { top: 12, bottom: 12 } : undefined}
                 style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
             >
-                <Text
-                    style={tabularNumberStyle}
-                    className="text-xs text-blue-500"
-                >
+                {trigger ?? <Text style={tabularNumberStyle} className="text-xs text-blue-500">
                     {formatNumber(statistics.totalCharacters)}字
-                </Text>
+                </Text>}
             </Pressable>
 
             <AnchoredPopover

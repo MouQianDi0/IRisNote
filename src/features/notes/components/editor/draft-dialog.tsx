@@ -17,9 +17,9 @@ import {
     type DialogButtonVariant,
 } from "./draft-dialog.styles";
 
-export function DraftDialog({ visible, title, onClose, children, headerExtra, closeOnScrimTap = true }: {
+export function DraftDialog({ visible, title, onClose, children, headerExtra, leading, closeOnScrimTap = true }: {
     visible: boolean; title: string; onClose: () => void; children: ReactNode;
-    headerExtra?: ReactNode; closeOnScrimTap?: boolean;
+    headerExtra?: ReactNode; leading?: ReactNode; closeOnScrimTap?: boolean;
 }) {
     return <AppModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View
@@ -29,6 +29,7 @@ export function DraftDialog({ visible, title, onClose, children, headerExtra, cl
         >
             <View accessibilityViewIsModal className={dialogCard} onStartShouldSetResponder={() => true}>
                 <View className="mb-3 flex-row items-center justify-between gap-3">
+                    {leading}
                     <Text accessibilityRole="header" className={dialogTitle}>{title}</Text>
                     {headerExtra}
                 </View>
@@ -57,6 +58,8 @@ export function DialogButton({ label, variant = "primary", disabled = false, onP
         onPress={onPress}
         onPressIn={() => setPressed(true)}
         onPressOut={() => setPressed(false)}
+        // 显式 dp 高度：h-12 类经 rem 换算在真机上渲染约 42dp，与原生 48dp 按钮不等高。
+        style={{ height: variant === "text" ? 44 : 48 }}
         className={dialogButtonStyles({ variant, disabled, pressed, class: className })}
     >
         <View className="flex-row items-center gap-2">
@@ -135,7 +138,7 @@ export function DraftDeleteChoices({ entries, checked, onToggle }: {
 }
 
 /** 共享提示区：单行图标行，蓝灰 13px（规格 §4）。不带任何外边距，
- *  间距全部由调用方提供：上方习惯 mt-3（12dp），距按钮统一 4dp 由页脚 mt-1 提供。 */
+ *  间距全部由调用方提供：上方习惯 mt-3（12dp），距按钮统一 12dp 由页脚 mt-3 提供。 */
 export function DraftLocalNotice({ className }: { className?: string }) {
     return <View className={`flex-row items-center gap-1.5 ${className ?? ""}`}>
         <CloudOff size={14} color={colors.hyperTextSecondary} />

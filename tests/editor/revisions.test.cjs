@@ -299,3 +299,27 @@ test('revisions are isolated per account', async (t) => {
         null,
     );
 });
+
+
+test('manual upload blocks uncertain creates and in-flight notes', async t => {
+    const { port } = await database(t);
+    const result = await saves.saveNewNoteLocalFirst(port, 1, payload('keep'));
+    const before = createCalls;
+    await assert.rejects(saves.uploadNoteNow(port, 1, result.note.id), /结果未知/);
+    assert.equal(createCalls, before);
+    await notes.markLocalNoteSyncing(port, 1, result.note.id);
+    await assert.rejects(saves.uploadNoteNow(port, 1, result.note.id), /正在同步/);
+    await assert.rejects(saves.uploadNoteNow(port, 2, result.note.id), /不存在/);
+    assert.equal(createCalls, before);
+});
+
+test('manual upload sends synced notes without creating a revision', async t => {
+    const { port } = await database(t);
+    const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(91, 'latest')]);
+    const before = updateCalls;
+    const result = await saves.uploadNoteNow(port, 1, note.id);
+    assert.equal(updateCalls, before + 1);
+    assert.equal(result.note.current_revision_id, note.current_revision_id);
+    assert.equal(result.cloudState, 'unknown');
+    assert.equal(result.note.content, 'latest');
+});

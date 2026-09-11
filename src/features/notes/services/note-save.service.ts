@@ -5,6 +5,7 @@ import { isAxiosError, type AxiosProgressEvent } from "axios";
 import { createNote, updateNote } from "../api/notes.api";
 import {
     acceptServerNote,
+    getLocalNoteByClientId,
     createPendingLocalNote,
     markLocalNoteSynced,
     markLocalNoteSyncFailed,
@@ -282,4 +283,15 @@ async function finishDraftSave(
         }
     }
     return saveResult;
+}
+
+/** Explicit retry uses the current local snapshot and never replays an uncertain create. */
+export async function uploadNoteNow(database: ApplicationDatabase, owner: number, id: number) {
+    const note = await getLocalNoteByClientId(database, owner, id);
+    if (!note) throw new Error("笔记已不存在");
+    if (note.sync_status === "syncing") throw new Error("笔记正在同步，请稍后再试");
+    if (note.server_id == null && note.sync_status === "unknown") {
+        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+    }
+    return syncPendingNote(database, owner, note);
 }

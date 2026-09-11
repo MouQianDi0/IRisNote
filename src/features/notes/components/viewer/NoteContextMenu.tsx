@@ -6,25 +6,26 @@ import {
   FileDown,
   FileText,
   Image as ImageIcon,
+  Pin,
   Settings,
   Share2,
   SquarePen,
+  Star,
   Trash2,
 } from "lucide-react-native";
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import { useRef, useState, type ComponentType } from "react";
 import {
   Alert,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   ToastAndroid,
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import {
-  copyNoteToClipboard,
-  type ShareableNote,
-} from "../NoteShare/CopyNoteToClipboard";
+import type { Note } from "../../notes.types";
+import { copyNoteToClipboard } from "../NoteShare/CopyNoteToClipboard";
 import {
   NoteShareFileGenerationError,
   NoteSharePresentationError,
@@ -40,6 +41,11 @@ import {
   NoteShareImageCard,
   noteShareImageHostStyle,
 } from "../NoteShare/NoteShareToImage";
+import { NoteOperationInfo, NoteRename } from "./note-operation-info";
+
+import { colors } from "@/shared/theme";
+import { DialogButton } from "../editor/draft-dialog";
+import { dialogCard, dialogScrim } from "../editor/draft-dialog.styles";
 
 type MenuIcon = ComponentType<{
   size?: number;
@@ -48,40 +54,81 @@ type MenuIcon = ComponentType<{
 
 type NoteContextMenuProps = {
   visible: boolean;
-  note: ShareableNote | null;
+  note: Note | null;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  isPinned: boolean;
+  isStarred: boolean;
+  statusBusy: boolean;
+  onTogglePin: () => void;
+  onToggleStar: () => void;
+  onRename: (title: string) => Promise<string>;
+  onSync: () => Promise<string>;
 };
 
 type MenuActionProps = {
   label: string;
   icon: MenuIcon;
   onPress: () => void;
-  destructive?: boolean;
   disabled?: boolean;
+  className?: string;
 };
 
 function MenuAction({
   label,
   icon: Icon,
   onPress,
-  destructive = false,
   disabled = false,
+  className,
 }: MenuActionProps) {
   return (
-    <Pressable
+    <DialogButton
+      label={label}
+      variant="secondary"
       onPress={onPress}
       disabled={disabled}
-      className={`flex-row items-center gap-3 rounded-[12px] px-4 py-3 ${
-        destructive ? "bg-red-50" : "bg-[#F5F5F5]"
-      } ${disabled ? "opacity-50" : ""}`}
+      className={className}
+      leading={
+        <Icon
+          size={20}
+          color={disabled ? colors.hyperLabelDisabled : colors.textPrimary}
+        />
+      }
+    />
+  );
+}
+
+function StatusAction({
+  label,
+  icon: Icon,
+  selected,
+  disabled,
+  onPress,
+}: MenuActionProps & { selected: boolean }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected, disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      className={`h-12 flex-1 flex-row items-center justify-center gap-2 rounded-hyper-control ${disabled ? "bg-hyper-secondary-disabled" : selected ? "bg-hyper-card-selected" : "bg-hyper-card"}`}
     >
-      <Icon size={21} color={destructive ? "#ef4444" : "#666"} />
+      <Icon
+        size={20}
+        color={
+          disabled
+            ? colors.hyperLabelDisabled
+            : selected
+              ? colors.primary
+              : colors.textPrimary
+        }
+      />
       <Text
-        className={`text-[15px] font-medium ${
-          destructive ? "text-red-500" : "text-gray-700"
-        }`}
+        numberOfLines={1}
+        className={`text-[17px] ${disabled ? "text-hyper-label-disabled" : selected ? "text-primary" : "text-black"}`}
       >
         {label}
       </Text>
@@ -99,25 +146,27 @@ function ImageShareAction({
   onSettings: () => void;
 }) {
   return (
-    <View className={`flex-row gap-2 ${disabled ? "opacity-50" : ""}`}>
-      <Pressable
+    <View className="flex-row gap-2.5">
+      <MenuAction
+        label="分享为图片"
+        icon={ImageIcon}
         onPress={onShare}
         disabled={disabled}
-        className="flex-1 flex-row items-center gap-3 rounded-[12px] bg-[#F5F5F5] px-4 py-3"
-      >
-        <ImageIcon size={21} color="#666" />
-        <Text className="text-[15px] font-medium text-gray-700">
-          分享为图片
-        </Text>
-      </Pressable>
+        className="flex-1"
+      />
       <Pressable
         onPress={onSettings}
         disabled={disabled}
         accessibilityRole="button"
         accessibilityLabel="图片分享设置"
-        className="w-12 items-center justify-center rounded-[12px] bg-[#F5F5F5]"
+        accessibilityState={{ disabled }}
+        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        className={`h-12 w-12 items-center justify-center rounded-hyper-control ${disabled ? "bg-hyper-secondary-disabled" : "bg-hyper-card"}`}
       >
-        <Settings size={21} color="#666" />
+        <Settings
+          size={20}
+          color={disabled ? colors.hyperLabelDisabled : colors.textPrimary}
+        />
       </Pressable>
     </View>
   );
@@ -129,18 +178,27 @@ export default function NoteContextMenu({
   onClose,
   onEdit,
   onDelete,
+  isPinned,
+  isStarred,
+  statusBusy,
+  onTogglePin,
+  onToggleStar,
+  onRename,
+  onSync,
 }: NoteContextMenuProps) {
   const [showShareFormats, setShowShareFormats] = useState(false);
   const [showImageSettings, setShowImageSettings] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const imageCardRef = useRef<View>(null);
 
-  useEffect(() => {
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (wasVisible !== visible) {
+    setWasVisible(visible);
     if (!visible) {
       setShowShareFormats(false);
       setShowImageSettings(false);
     }
-  }, [visible]);
+  }
 
   const runAction = (action: () => void) => {
     onClose();
@@ -226,116 +284,153 @@ export default function NoteContextMenu({
       onRequestClose={onClose}
     >
       <TouchableWithoutFeedback onPress={onClose}>
-        <View className="flex-1 bg-[rgba(0,0,0,0.4)] justify-center items-center">
+        <View className={dialogScrim}>
           <TouchableWithoutFeedback>
-            <View className="bg-white rounded-[16px] p-5 w-[320px] shadow-lg">
-              <Text className="text-[18px] font-semibold text-gray-800 text-center mb-2">
+            <View accessibilityViewIsModal className={dialogCard}>
+              <Text
+                accessibilityRole="header"
+                className="mb-3 text-2xl leading-8 text-black"
+              >
                 {showImageSettings
                   ? "图片分享设置"
                   : showShareFormats
                     ? "选择分享格式"
                     : "笔记操作"}
               </Text>
-              {!!note?.title && (
-                <Text
-                  className="mb-4 text-center text-[13px] text-gray-400"
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {note.title}
-                </Text>
-              )}
-              <View className="gap-3">
-                {showImageSettings ? (
-                  <>
-                    <View className="rounded-[12px] bg-[#F5F5F5] px-4 py-4">
-                      <Text className="text-[15px] font-medium text-gray-700">
-                        当前使用默认纸张样式
-                      </Text>
-                      <Text className="mt-2 text-[13px] leading-5 text-gray-400">
-                        主题、比例、字号与水印等自定义选项将在下一步加入。
-                      </Text>
-                    </View>
-                    <MenuAction
-                      label="返回分享格式"
-                      icon={ChevronLeft}
-                      disabled={isSharing}
-                      onPress={() => setShowImageSettings(false)}
-                    />
-                  </>
-                ) : showShareFormats ? (
-                  <>
-                    <ImageShareAction
-                      disabled={isSharing}
-                      onShare={() => void handleImageShare()}
-                      onSettings={() => setShowImageSettings(true)}
-                    />
-                    <MenuAction
-                      label="分享为 PDF 文件"
-                      icon={FileDown}
-                      disabled={isSharing}
-                      onPress={() => void handleShare("pdf")}
-                    />
-                    <MenuAction
-                      label="分享为 TXT 文件"
-                      icon={FileText}
-                      disabled={isSharing}
-                      onPress={() => void handleShare("txt")}
-                    />
-                    <MenuAction
-                      label="分享为 Markdown 文件"
-                      icon={FileCode2}
-                      disabled={isSharing}
-                      onPress={() => void handleShare("markdown")}
-                    />
-                    <MenuAction
-                      label="返回笔记操作"
-                      icon={ChevronLeft}
-                      disabled={isSharing}
-                      onPress={() => setShowShareFormats(false)}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <MenuAction
-                      label="编辑笔记"
-                      icon={SquarePen}
-                      onPress={() => runAction(onEdit)}
-                    />
-                    <MenuAction
-                      label="复制笔记"
-                      icon={Copy}
-                      onPress={handleCopy}
-                    />
-                    <MenuAction
-                      label="分享笔记"
-                      icon={Share2}
-                      onPress={() => setShowShareFormats(true)}
-                    />
-                    <MenuAction
-                      label="删除笔记"
-                      icon={Trash2}
-                      destructive
-                      onPress={() => runAction(onDelete)}
-                    />
-                  </>
-                )}
-              </View>
-              <Pressable
-                onPress={
-                  showImageSettings
-                    ? () => setShowImageSettings(false)
-                    : showShareFormats
-                      ? () => setShowShareFormats(false)
-                      : onClose
-                }
-                disabled={isSharing}
-                className="mt-4 py-3 rounded-[12px] bg-gray-100"
+              <ScrollView
+                style={{ flexShrink: 1 }}
+                keyboardShouldPersistTaps="handled"
               >
-                <Text className="text-center text-[14px] text-gray-600">
-                  {showImageSettings || showShareFormats ? "返回" : "取消"}
-                </Text>
-              </Pressable>
+                {!showShareFormats && !showImageSettings && note && (
+                  <NoteRename
+                    key={`rename-${visible}:${note.id}`}
+                    note={note}
+                    busy={statusBusy}
+                    onRename={onRename}
+                  />
+                )}
+                {!showShareFormats && !showImageSettings && note && (
+                  <NoteOperationInfo
+                    key={`info-${visible}:${note.id}`}
+                    note={note}
+                    busy={statusBusy}
+                    onSync={onSync}
+                  />
+                )}
+                {!showShareFormats && !showImageSettings && (
+                  <View className="mb-3 flex-row gap-2.5">
+                    <StatusAction
+                      label="置顶"
+                      icon={Pin}
+                      selected={isPinned}
+                      disabled={statusBusy || !note}
+                      onPress={onTogglePin}
+                    />
+                    <StatusAction
+                      label="标星"
+                      icon={Star}
+                      selected={isStarred}
+                      disabled={statusBusy || !note}
+                      onPress={onToggleStar}
+                    />
+                  </View>
+                )}
+                <View className="gap-2.5">
+                  {showImageSettings ? (
+                    <>
+                      <View className="rounded-hyper-card bg-hyper-card p-4">
+                        <Text className="text-[17px] text-black">
+                          当前使用默认纸张样式
+                        </Text>
+                        <Text className="mt-2 text-sm leading-5 text-hyper-text-secondary">
+                          主题、比例、字号与水印等自定义选项将在下一步加入。
+                        </Text>
+                      </View>
+                      <MenuAction
+                        label="返回分享格式"
+                        icon={ChevronLeft}
+                        disabled={isSharing}
+                        onPress={() => setShowImageSettings(false)}
+                      />
+                    </>
+                  ) : showShareFormats ? (
+                    <>
+                      <ImageShareAction
+                        disabled={isSharing}
+                        onShare={() => void handleImageShare()}
+                        onSettings={() => setShowImageSettings(true)}
+                      />
+                      <MenuAction
+                        label="分享为 PDF 文件"
+                        icon={FileDown}
+                        disabled={isSharing}
+                        onPress={() => void handleShare("pdf")}
+                      />
+                      <MenuAction
+                        label="分享为 TXT 文件"
+                        icon={FileText}
+                        disabled={isSharing}
+                        onPress={() => void handleShare("txt")}
+                      />
+                      <MenuAction
+                        label="分享为 Markdown 文件"
+                        icon={FileCode2}
+                        disabled={isSharing}
+                        onPress={() => void handleShare("markdown")}
+                      />
+                      <MenuAction
+                        label="返回笔记操作"
+                        icon={ChevronLeft}
+                        disabled={isSharing}
+                        onPress={() => setShowShareFormats(false)}
+                      />
+                    </>
+                  ) : (
+                    <View className="flex-row items-center rounded-hyper-card bg-hyper-card">
+                      {(
+                        [
+                          ["编辑", SquarePen, () => runAction(onEdit)],
+                          ["复制", Copy, handleCopy],
+                          ["分享", Share2, () => setShowShareFormats(true)],
+                          ["删除", Trash2, () => runAction(onDelete)],
+                        ] as const
+                      ).map(([label, Icon, action], index) => (
+                        <View
+                          key={label}
+                          className="flex-1 flex-row items-center"
+                        >
+                          {index > 0 && (
+                            <View className="h-5 w-px bg-hyper-divider" />
+                          )}
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={label}
+                            disabled={statusBusy || isSharing}
+                            accessibilityState={{
+                              disabled: statusBusy || isSharing,
+                            }}
+                            onPress={action}
+                            style={({ pressed }) => ({
+                              opacity: pressed ? 0.85 : 1,
+                            })}
+                            className="min-h-12 flex-1 items-center justify-center gap-2 px-2.5 py-3"
+                          >
+                            <Icon
+                              size={20}
+                              color={
+                                statusBusy
+                                  ? colors.hyperLabelDisabled
+                                  : colors.textPrimary
+                              }
+                            />
+                            <Text className="text-sm text-black">{label}</Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
             </View>
           </TouchableWithoutFeedback>
           {!!note && (
