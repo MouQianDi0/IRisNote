@@ -1,34 +1,37 @@
 import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
 import {
     ChevronRight,
+    ChevronDown,
     MoveHorizontal,
     Pin,
     SquarePen,
     Star,
     Trash2,
 } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { createElement, useState } from "react";
 import {
     Pressable,
     Text,
     TextInput,
-    TouchableWithoutFeedback,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
     View,
 } from "react-native";
 import {
     Gesture,
     GestureDetector,
-    GestureHandlerRootView,
+
 } from "react-native-gesture-handler";
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
     withSpring,
-    withTiming,
+
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { colors } from "@/shared/theme";
-import { ModalPanel } from "@/shared/ui";
+import { colors, radius } from "@/shared/theme";
+import { DialogButton } from "../../components/editor/draft-dialog";
 import { getCategoryIcon } from "../category-icons";
 import CategoryDeleteConfirmModal from "./CategoryDeleteConfirmModal";
 import CategoryIconPicker from "./CategoryIconPicker";
@@ -50,7 +53,12 @@ type CategoryActionModalProps = {
 const SWIPE_THRESHOLD = 50;
 const MAX_SWIPE = 100;
 
-export default function CategoryActionModal({
+export default function CategoryActionModal(props: CategoryActionModalProps) {
+    if (!props.visible) return null;
+    return <CategoryActionContent key={JSON.stringify([props.categoryName, props.categoryIcon])} {...props} />;
+}
+
+function CategoryActionContent({
     visible,
     onClose,
     onDelete,
@@ -74,24 +82,7 @@ export default function CategoryActionModal({
     const translateX = useSharedValue(0);
     const iconScale = useSharedValue(1);
     const trashScale = useSharedValue(1);
-    const iconRotation = useSharedValue(0);
 
-    useEffect(() => {
-        if (!visible) return;
-
-        setEditing(false);
-        setEditName(categoryName);
-        setSelectedIcon(categoryIcon);
-        setIconPickerOpen(false);
-        setDeleteMode(false);
-        setShowDeleteConfirm(false);
-        setIsOverTrash(false);
-        isOverTrashBackground.value = false;
-        translateX.value = 0;
-        iconScale.value = 1;
-        trashScale.value = 1;
-        iconRotation.value = 0;
-    }, [categoryIcon, categoryName, iconRotation, iconScale, isOverTrashBackground, trashScale, translateX, visible]);
 
     const handleRename = () => {
         const nextName = editName.trim();
@@ -140,18 +131,6 @@ export default function CategoryActionModal({
     const trashAnimatedStyle = useAnimatedStyle(() => ({
         transform: [{ scale: trashScale.value }],
     }));
-    const rotationAnimatedStyle = useAnimatedStyle(() => ({
-        transform: [{ rotate: `${iconRotation.value}deg` }],
-        backgroundColor: colors.transparent,
-    }));
-
-    const toggleIconPicker = () => {
-        iconRotation.value = withTiming(iconPickerOpen ? 0 : 90, {
-            duration: 200,
-        });
-        setIconPickerOpen((current) => !current);
-    };
-
     const handleDeleteConfirm = () => {
         onDelete();
         onClose();
@@ -160,135 +139,86 @@ export default function CategoryActionModal({
 
     const SelectedIcon = getCategoryIcon(selectedIcon);
 
+    const DisclosureIcon = iconPickerOpen ? ChevronDown : ChevronRight;
+
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <TouchableWithoutFeedback onPress={onClose}>
-                    <View className="flex-1 items-center justify-center bg-overlay-strong">
-                        <TouchableWithoutFeedback>
-                            <ModalPanel variant="actions">
-                                {editing ? (
-                                    <TextInput
-                                        value={editName}
-                                        onChangeText={setEditName}
-                                        placeholder="输入新名称"
-                                        maxLength={10}
-                                        autoFocus
-                                        onBlur={handleRename}
-                                        onSubmitEditing={handleRename}
-                                    />
-                                ) : (
-                                    <View className="mb-2 flex-row items-center justify-between">
-                                        <Text className="text-[18px] font-bold text-gray-800">
-                                            “{categoryName}”
-                                        </Text>
-                                        <Pressable onPress={() => setEditing(true)} className="p-1">
-                                            <SquarePen size={18} color={colors.textSecondary} />
-                                        </Pressable>
-                                    </View>
-                                )}
-
-                                <View className="flex-row gap-3 mb-4 mt-3">
-                                    <Pressable
-                                        onPress={onPin}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isPinned ? "bg-warning-surface" : "bg-surface-muted"}`}
-                                    >
-                                        <Pin
-                                            size={24}
-                                            color={isPinned ? colors.warning : colors.textSecondary}
-                                            fill={isPinned ? colors.warning : colors.transparent}
-                                        />
-                                        <Text className="text-[14px] text-gray-500">
-                                            {isPinned ? "已置顶" : "未置顶"}
-                                        </Text>
-                                    </Pressable>
-                                    <Pressable
-                                        onPress={onStar}
-                                        className={`flex-1 flex-row items-center justify-center gap-1 rounded-control py-2 ${isStarred ? "bg-warning-surface" : "bg-surface-muted"}`}
-                                    >
-                                        <Star
-                                            size={24}
-                                            color={isStarred ? colors.warning : colors.textSecondary}
-                                            fill={isStarred ? colors.warning : colors.transparent}
-                                        />
-                                        <Text className="text-[14px] text-gray-500">
-                                            {isStarred ? "已标星" : "未标星"}
-                                        </Text>
-                                    </Pressable>
-                                </View>
-
-                                <Pressable
-                                    className="flex-row items-center justify-between py-3 px-2 bg-surface-muted rounded-control mb-3"
-                                    onPress={toggleIconPicker}
-                                >
-                                    <Text className="text-[14px] text-gray-600">更改图标</Text>
-                                    <Animated.View style={rotationAnimatedStyle}>
-                                        <ChevronRight size={20} color={colors.textSecondary} />
-                                    </Animated.View>
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+                <View className="flex-1 items-center justify-center bg-hyper-scrim p-6">
+                    <Pressable accessibilityRole="button" accessibilityLabel="关闭分类操作" onPress={onClose}
+                        style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }} />
+                    <View accessibilityViewIsModal className="w-full max-w-[440px] rounded-hyper-modal bg-white p-6"
+                        style={{ maxHeight: "85%" }}>
+                        <View className="mb-3">
+                            {editing ? <TextInput
+                                accessibilityLabel="分类名称" value={editName} onChangeText={setEditName}
+                                placeholder="输入新名称" placeholderTextColor={colors.hyperTextSecondary}
+                                className="h-12 rounded-hyper-card bg-hyper-card px-4 text-[17px] text-black"
+                                maxLength={10} autoFocus onBlur={handleRename} onSubmitEditing={handleRename}
+                            /> : <View className="flex-row items-center justify-between gap-3">
+                                <Text accessibilityRole="header" numberOfLines={2} className="flex-1 text-2xl leading-8 text-black">
+                                    {categoryName}
+                                </Text>
+                                <Pressable accessibilityRole="button" accessibilityLabel="重命名分类"
+                                    onPress={() => setEditing(true)} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}>
+                                    <SquarePen size={24} color={colors.hyperTextSecondary} />
                                 </Pressable>
-                                {iconPickerOpen && (
-                                    <CategoryIconPicker
-                                        selectedIcon={selectedIcon}
-                                        onChange={handleIconChange}
-                                        showLabels={false}
-                                    />
-                                )}
-
-                                {!deleteMode ? (
-                                    <Pressable
-                                        onPress={() => setDeleteMode(true)}
-                                        className="mt-2 py-2 bg-red-50 rounded-control"
-                                    >
-                                        <Text className="text-center text-[14px] font-bold text-red-500">
-                                            删除分类
-                                        </Text>
-                                    </Pressable>
-                                ) : (
-                                    <View className="mt-2">
-                                        <View className="bg-red-50 rounded-control p-4">
-                                            <Text className="text-[12px] text-red-500 text-center font-bold mb-1">
-                                                此操作不可撤销
-                                            </Text>
-                                            <Text className="text-[12px] text-red-400 text-center mb-3">
-                                                按住图标右滑到垃圾桶确认删除
-                                            </Text>
-                                            <View className="flex-row items-center justify-center gap-4">
-                                                <GestureDetector gesture={panGesture}>
-                                                    <Animated.View
-                                                        style={iconAnimatedStyle}
-                                                        className="w-[30px] h-[30px] items-center justify-center rounded-indicator"
-                                                    >
-                                                        <SelectedIcon size={28} color={colors.textSecondary} />
-                                                    </Animated.View>
-                                                </GestureDetector>
-                                                <MoveHorizontal size={20} color={colors.textSubtle} />
-                                                <Animated.View style={trashAnimatedStyle}>
-                                                    <Trash2
-                                                        size={28}
-                                                        color={isOverTrash ? colors.dangerBright : colors.textSecondary}
-                                                    />
-                                                </Animated.View>
-                                            </View>
-                                        </View>
-                                        <Pressable
-                                            onPress={() => setDeleteMode(false)}
-                                            className="mt-3 py-3 bg-gray-100 rounded-control"
-                                        >
-                                            <Text className="text-center text-[14px] text-gray-500">取消</Text>
-                                        </Pressable>
+                            </View>}
+                        </View>
+                        <ScrollView style={{ flexShrink: 1 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                            <View style={{ flexDirection: "row", gap: 10 }}>
+                                {[
+                                    { label: isPinned ? "已置顶" : "未置顶", active: isPinned, Icon: Pin, onPress: onPin },
+                                    { label: isStarred ? "已标星" : "未标星", active: isStarred, Icon: Star, onPress: onStar },
+                                ].map(({ label, active, Icon, onPress }) => <Pressable key={label}
+                                    accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }}
+                                    onPress={onPress} style={({ pressed }) => ({ flex: 1, height: 48,
+                                        flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+                                        borderRadius: radius.hyperControl, backgroundColor: active ? colors.hyperCardSelected : colors.hyperCard,
+                                        opacity: pressed ? 0.85 : 1 })}>
+                                    <Icon size={24} color={active ? colors.primary : colors.textSecondary} />
+                                    <Text numberOfLines={1} style={{ fontSize: 17, flexShrink: 1, color: active ? colors.primary : colors.textPrimary }}>{label}</Text>
+                                </Pressable>)}
+                            </View>
+                            <Pressable accessibilityRole="button" accessibilityLabel="更改图标"
+                                accessibilityState={{ expanded: iconPickerOpen }} onPress={() => setIconPickerOpen((open) => !open)}
+                                style={{ marginTop: 16, height: 48, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                <Text className="text-sm text-hyper-text-secondary">更改图标</Text>
+                                <View pointerEvents="none" style={{ width: 24, height: 24, flexShrink: 0 }}>
+                                    <DisclosureIcon size={24} color={colors.textSecondary} />
+                                </View>
+                            </Pressable>
+                            {iconPickerOpen && <View className="mt-2">
+                                <CategoryIconPicker variant="hyper" selectedIcon={selectedIcon} onChange={handleIconChange} />
+                            </View>}
+                        </ScrollView>
+                        <View className="mt-4">
+                            {!deleteMode ? <DialogButton label="删除分类" variant="secondary" onPress={() => setDeleteMode(true)} /> : <View>
+                                <View className="rounded-hyper-card bg-hyper-card p-4">
+                                    <Text className="text-sm text-hyper-text-secondary text-center mb-1">此操作不可撤销</Text>
+                                    <Text className="text-[13px] text-hyper-text-secondary text-center mb-3">按住图标右滑到垃圾桶确认删除</Text>
+                                    <View className="flex-row items-center justify-center gap-4" style={{ minHeight: 56 }}>
+                                        <GestureDetector gesture={panGesture}>
+                                            <Animated.View style={iconAnimatedStyle}
+                                                accessibilityLabel="按住分类图标向右滑动以请求删除确认"
+                                                className="w-[44px] h-[44px] items-center justify-center">
+                                                {createElement(SelectedIcon, { size: 28, color: colors.textSecondary })}
+                                            </Animated.View>
+                                        </GestureDetector>
+                                        <MoveHorizontal size={20} color={colors.hyperTextSecondary} />
+                                        <Animated.View style={trashAnimatedStyle}>
+                                            <Trash2 size={28} color={isOverTrash ? colors.primary : colors.textSecondary} />
+                                        </Animated.View>
                                     </View>
-                                )}
-                            </ModalPanel>
-                        </TouchableWithoutFeedback>
+                                </View>
+                                <DialogButton label="取消" variant="secondary" className="mt-3" onPress={() => setDeleteMode(false)} />
+                            </View>}
+                        </View>
                     </View>
-                </TouchableWithoutFeedback>
-            </GestureHandlerRootView>
-            <CategoryDeleteConfirmModal
-                visible={showDeleteConfirm}
-                categoryName={categoryName}
-                onClose={() => setShowDeleteConfirm(false)}
-                onConfirm={handleDeleteConfirm}
-            />
+                </View>
+            </KeyboardAvoidingView>
+            <CategoryDeleteConfirmModal visible={showDeleteConfirm} categoryName={categoryName}
+                onClose={() => setShowDeleteConfirm(false)} onConfirm={handleDeleteConfirm} />
         </Modal>
     );
 }
