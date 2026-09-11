@@ -200,9 +200,11 @@ export default function PlainTextEditor({
                     <ArrowLeft size={24} color={colors.textPrimary} />
                 </Pressable>
 
-                <Text className="text-[18px] font-semibold text-gray-800">
-                    {screenTitle}
-                </Text>
+                <View pointerEvents="none" style={{ position: "absolute", left: 104, right: 104, top: 0, bottom: 0, justifyContent: "center" }}>
+                    <Text numberOfLines={1} className="text-center text-[18px] font-semibold text-gray-800">
+                        {screenTitle}
+                    </Text>
+                </View>
 
                 <View className="flex-row items-center gap-1">
                     {headerActions}

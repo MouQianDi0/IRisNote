@@ -12,24 +12,26 @@ export default function NoteViewerHeader({
   onEdit,
 }: NoteViewerHeaderProps) {
   return (
-    <View className="flex-row items-center justify-between border-b border-border-soft px-[15px] pb-[15px]">
-      <TouchableOpacity onPress={onBack} className="p-[10px]">
+    <View className="flex-row items-center justify-between border-b border-border-soft px-4 py-3">
+      <TouchableOpacity onPress={onBack} accessibilityRole="button" accessibilityLabel="返回" className="p-2">
         <ArrowLeft size={24} color={colors.textPrimary} />
       </TouchableOpacity>
 
-      <Text
-        className="max-w-[70%] text-center text-lg font-bold text-gray-900"
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        查看笔记
-      </Text>
+      <View pointerEvents="none" style={{ position: "absolute", left: 60, right: 60, top: 0, bottom: 0, justifyContent: "center" }}>
+        <Text
+          className="text-center text-[18px] font-semibold text-gray-800"
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          查看笔记
+        </Text>
+      </View>
 
       <TouchableOpacity
         onPress={onEdit}
         accessibilityRole="button"
         accessibilityLabel="编辑笔记"
-        className="p-[10px]"
+        className="p-2"
       >
         <SquarePen size={24} color={colors.primary} />
       </TouchableOpacity>

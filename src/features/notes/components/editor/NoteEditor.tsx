@@ -9,6 +9,8 @@ import { noteDraftValue } from "../../data/note-draft.repository";
 import { useNoteDraft } from "../../hooks/useNoteDraft";
 import NewNoteEditor from "./new-note-editor";
 import { LocalOnlyText } from "@/shared/ui/local-only-text";
+import { colors } from "@/shared/theme";
+import { History as RotateCcwClock } from "lucide-react-native";
 import type { Note } from "../../notes.types";
 import { saveEditedNoteLocalFirst, saveNewNoteLocalFirst } from "../../services/note-save.service";
 
@@ -154,7 +156,7 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
         </ScrollView>;
     }
 
-    const labels = { idle: "输入后自动保存本地草稿", pending: "草稿待写入", writing: "正在保存草稿…", saved: "草稿已保存到本地", error: "草稿写入失败" };
+    const hasStatus = draft.state === "error" || !!draft.error || !!message || !!draft.resource.conflict || !!savedResult;
     return <PlainTextEditor
         key={draft.resource.row.session_id}
         initialValue={draft.resource.session.value}
@@ -166,10 +168,20 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
         onBlur={draft.requestFlush}
         onCancel={onCancel}
         onSubmit={handleSave}
-        statusContent={<View className="px-5 py-2">
+        headerActions={<View
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="历史记录，暂未开放"
+            accessibilityState={{ disabled: true }}
+            className="p-2"
+        >
+            {/* 当前 Lucide 版本以 History 导出 rotate-ccw-clock 的相同路径。 */}
+            <RotateCcwClock size={24} color={colors.textPrimary} />
+        </View>}
+        statusContent={hasStatus ? <View className="px-5 py-2">
             {!note && draft.resource.session.value.categoryId !== null &&
                 <Text>分类：{draft.resource.session.value.categoryId === categoryId ? categoryName : "#" + draft.resource.session.value.categoryId}</Text>}
-            <Text accessibilityLiveRegion="polite">{labels[draft.state]}</Text>
+            {draft.state === "error" && <Text accessibilityLiveRegion="polite">草稿写入失败</Text>}
             {(draft.error || message) ? <Text accessibilityRole="alert"><LocalOnlyText>{draft.error || message}</LocalOnlyText></Text> : null}
             {draft.resource.conflict && <Text>基础内容已变化，草稿保留中，保存已阻止。</Text>}
             {actions(<>
@@ -177,6 +189,6 @@ function DraftEditor({ note, categoryId = null, categoryName, autoFocusContent =
                 {savedResult ? <Button label="完成并返回" onPress={() => onSaved(savedResult)} /> :
                     <Button label="查看草稿与已保存内容" variant="text" disabled={draft.saving} onPress={draft.showRecovery} />}
             </>)}
-        </View>}
+        </View> : null}
     />;
 }
