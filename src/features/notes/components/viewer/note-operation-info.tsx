@@ -1,4 +1,4 @@
-import { colors } from "@/shared/theme";
+import { colors, radius, spacing } from "@/shared/theme";
 import {
   CircleAlert,
   Clock,
@@ -7,9 +7,16 @@ import {
   CloudOff,
   CloudUpload,
   FileChartPie,
+  Save,
   SquarePen,
 } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { readReadingProgress } from "../../data/note-reading-progress";
 import {
@@ -17,60 +24,143 @@ import {
   getCachedNoteTextStatistics,
 } from "../../hooks/noteTextLength";
 import type { Note } from "../../notes.types";
-import { DialogButton } from "../editor/draft-dialog";
 import NoteStatisticsPopover from "./note-statistics-popover";
+
+type NoteRenameProps = {
+  note: Note;
+  busy: boolean;
+  onRename: (title: string) => Promise<string>;
+  onRegisterSave: (save: (() => Promise<boolean>) | null) => void;
+};
 
 export function NoteRename({
   note,
   busy,
   onRename,
-}: {
-  note: Note;
-  busy: boolean;
-  onRename: (title: string) => Promise<string>;
-}) {
+  onRegisterSave,
+}: NoteRenameProps) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [message, setMessage] = useState("");
-  const submit = async () => {
-    if (!title.trim() || busy) return;
-    try {
-      await onRename(title.trim());
-      setMessage("");
-      setEditing(false);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "修改标题失败");
+  const [focused, setFocused] = useState(false);
+  const titleRef = useRef(note.title);
+  const editingRef = useRef(false);
+  const savingRef = useRef<Promise<boolean> | null>(null);
+
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  const save = useCallback(async () => {
+    if (!editingRef.current) return true;
+    if (savingRef.current) return savingRef.current;
+
+    const nextTitle = titleRef.current.trim();
+    if (!nextTitle) {
+      setMessage("请输入笔记标题");
+      return false;
     }
-  };
+
+    const operation = (async () => {
+      try {
+        await onRename(nextTitle);
+        setMessage("");
+        editingRef.current = false;
+        setEditing(false);
+        setFocused(false);
+        return true;
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "修改标题失败");
+        return false;
+      }
+    })();
+    savingRef.current = operation;
+
+    try {
+      return await operation;
+    } finally {
+      if (savingRef.current === operation) savingRef.current = null;
+    }
+  }, [onRename]);
+
+  useEffect(() => {
+    onRegisterSave(save);
+    return () => onRegisterSave(null);
+  }, [onRegisterSave, save]);
+
   return (
     <View className="mb-4 gap-2">
       {editing ? (
-        <View className="gap-2">
-          <TextInput
-            accessibilityLabel="笔记标题"
-            autoFocus
-            value={title}
-            onChangeText={setTitle}
-            editable={!busy}
-            onSubmitEditing={() => void submit()}
-            returnKeyType="done"
-            className="h-12 rounded-hyper-card bg-hyper-card px-4 text-[17px] text-black"
-          />
-          <View className="flex-row gap-2.5">
-            <DialogButton
-              label="放弃修改"
-              variant="secondary"
-              className="flex-1"
-              disabled={busy}
-              onPress={() => setEditing(false)}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <View style={{ flex: 1, padding: spacing.xxs }}>
+            <TextInput
+              accessibilityLabel="笔记标题"
+              autoFocus
+              value={title}
+              onChangeText={(nextTitle) => {
+                titleRef.current = nextTitle;
+                setTitle(nextTitle);
+                if (nextTitle.trim()) setMessage("");
+              }}
+              editable={!busy}
+              onFocus={() => setFocused(true)}
+              onBlur={() => {
+                setFocused(false);
+                void save();
+              }}
+              onSubmitEditing={() => void save()}
+              returnKeyType="done"
+              selectionColor={colors.primary}
+              style={{
+                height: 48,
+                borderRadius: radius.hyperCard,
+                borderCurve: "continuous",
+                backgroundColor: colors.hyperCard,
+                paddingHorizontal: spacing.xl,
+                color: colors.textPrimary,
+                fontSize: 17,
+              }}
             />
-            <DialogButton
-              label="保存标题"
-              className="flex-1"
-              disabled={busy || !title.trim()}
-              onPress={() => void submit()}
-            />
+            {focused && (
+              <View
+                pointerEvents="none"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  left: 0,
+                  borderWidth: 2,
+                  borderColor: colors.primary,
+                  borderRadius: radius.hyperCard + spacing.xxs,
+                  borderCurve: "continuous",
+                }}
+              />
+            )}
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="保存"
+            accessibilityState={{ disabled: busy }}
+            disabled={busy}
+            onPress={() => void save()}
+            style={({ pressed }) => ({
+              width: 48,
+              // 覆盖输入框完整视觉高度：2dp 选中安全区 + 48dp 灰色本体 + 2dp 选中安全区。
+              height: 48 + spacing.xxs * 2,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: radius.hyperCard + spacing.xxs,
+              borderCurve: "continuous",
+              backgroundColor: busy ? colors.hyperSecondaryDisabled : colors.hyperCard,
+              opacity: pressed ? 0.85 : 1,
+            })}
+          >
+            <Save
+              size={20}
+              color={busy ? colors.hyperLabelDisabled : colors.primary}
+            />
+          </Pressable>
         </View>
       ) : (
         <View className="flex-row items-center gap-2">
@@ -82,8 +172,10 @@ export function NoteRename({
             accessibilityLabel="修改标题"
             disabled={busy}
             onPress={() => {
+              titleRef.current = note.title;
               setTitle(note.title);
               setMessage("");
+              editingRef.current = true;
               setEditing(true);
             }}
             className="h-11 w-11 items-center justify-center"
@@ -97,8 +189,9 @@ export function NoteRename({
       )}
       {!!message && (
         <Text
+          accessibilityRole="alert"
           accessibilityLiveRegion="polite"
-          className="text-sm text-hyper-text-secondary"
+          className="text-sm text-hyper-error"
         >
           {message}
         </Text>

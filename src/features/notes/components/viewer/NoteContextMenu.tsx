@@ -13,7 +13,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react-native";
-import { useRef, useState, type ComponentType } from "react";
+import { useCallback, useRef, useState, type ComponentType } from "react";
 import {
   Alert,
   Platform,
@@ -21,7 +21,6 @@ import {
   ScrollView,
   Text,
   ToastAndroid,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import type { Note } from "../../notes.types";
@@ -41,7 +40,10 @@ import {
   NoteShareImageCard,
   noteShareImageHostStyle,
 } from "../NoteShare/NoteShareToImage";
-import { NoteOperationInfo, NoteRename } from "./note-operation-info";
+import {
+  NoteOperationInfo,
+  NoteRename,
+} from "./note-operation-info";
 
 import { colors } from "@/shared/theme";
 import { DialogButton } from "../editor/draft-dialog";
@@ -190,6 +192,7 @@ export default function NoteContextMenu({
   const [showImageSettings, setShowImageSettings] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const imageCardRef = useRef<View>(null);
+  const [renameSave, setRenameSave] = useState<(() => Promise<boolean>) | null>(null);
 
   const [wasVisible, setWasVisible] = useState(visible);
   if (wasVisible !== visible) {
@@ -200,14 +203,30 @@ export default function NoteContextMenu({
     }
   }
 
-  const runAction = (action: () => void) => {
+  const registerRenameSave = useCallback(
+    (save: (() => Promise<boolean>) | null) => {
+      setRenameSave(() => save);
+    },
+    [],
+  );
+
+  const saveRename = async () => renameSave?.() ?? true;
+
+  const closeMenu = async () => {
+    if (!(await saveRename())) return false;
     onClose();
-    action();
+    return true;
+  };
+
+  const runAction = (action: () => void) => {
+    void (async () => {
+      if (await closeMenu()) action();
+    })();
   };
 
   const handleCopy = async () => {
     if (!note) return;
-    onClose();
+    if (!(await closeMenu())) return;
     try {
       await copyNoteToClipboard(note);
       if (Platform.OS === "android") {
@@ -222,8 +241,8 @@ export default function NoteContextMenu({
 
   const handleShare = async (format: NoteShareFormat) => {
     if (!note || isSharing) return;
+    if (!(await closeMenu())) return;
     setIsSharing(true);
-    onClose();
     try {
       await shareNote(note, format);
     } catch (error) {
@@ -243,6 +262,7 @@ export default function NoteContextMenu({
 
   const handleImageShare = async () => {
     if (!note || !imageCardRef.current || isSharing) return;
+    if (!(await saveRename())) return;
 
     if (isNoteShareImageContentTooLong(note.content)) {
       Alert.alert(
@@ -277,16 +297,26 @@ export default function NoteContextMenu({
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View className={dialogScrim}>
-          <TouchableWithoutFeedback>
-            <View accessibilityViewIsModal className={dialogCard}>
+      <Modal
+       visible={visible}
+       transparent
+       animationType="fade"
+       onRequestClose={() => {
+         void closeMenu();
+       }}
+     >
+      <View
+        className={dialogScrim}
+        onStartShouldSetResponder={() => true}
+        onResponderRelease={() => {
+          void closeMenu();
+        }}
+      >
+        <View
+          accessibilityViewIsModal
+          className={dialogCard}
+          onStartShouldSetResponder={() => true}
+        >
               <Text
                 accessibilityRole="header"
                 className="mb-3 text-2xl leading-8 text-black"
@@ -307,6 +337,7 @@ export default function NoteContextMenu({
                     note={note}
                     busy={statusBusy}
                     onRename={onRename}
+                    onRegisterSave={registerRenameSave}
                   />
                 )}
                 {!showShareFormats && !showImageSettings && note && (
@@ -431,15 +462,13 @@ export default function NoteContextMenu({
                   )}
                 </View>
               </ScrollView>
-            </View>
-          </TouchableWithoutFeedback>
-          {!!note && (
-            <View pointerEvents="none" style={noteShareImageHostStyle}>
-              <NoteShareImageCard ref={imageCardRef} note={note} />
-            </View>
-          )}
         </View>
-      </TouchableWithoutFeedback>
+        {!!note && (
+          <View pointerEvents="none" style={noteShareImageHostStyle}>
+            <NoteShareImageCard ref={imageCardRef} note={note} />
+          </View>
+        )}
+      </View>
     </Modal>
   );
 }

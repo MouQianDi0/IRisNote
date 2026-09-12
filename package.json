@@ -33,6 +33,7 @@
     "fontfaceobserver": "^2.3.0",
     "lucide-react-native": "^1.17.0",
     "metro-config": "^0.84.4",
+    "morphicons": "^1.7.1",
     "moti": "^0.30.0",
     "nativewind": "^5.0.0-preview.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
