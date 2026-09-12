@@ -3,57 +3,59 @@ import {
     loginWithPassword,
     sendVerificationCode,
 } from "@/features/auth/api/auth.api";
-import { Button, TextField } from "@/shared/ui";
+import { AuthButton } from "../components/AuthButton";
+import { AuthField } from "../components/AuthField";
+import { AuthScreenLayout } from "../components/AuthScreenLayout";
+import { banner } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
-import { colors } from "@/shared/theme";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { Eye, EyeOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
-import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    Text,
-    TextInput,
-    View,
-} from "react-native";
+import { Text, View } from "react-native";
 
 export default function LoginScreen() {
     const { refresh, syncProfile } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [code, setCode] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [sendingCode, setSendingCode] = useState(false);
     const [countdown, setCountdown] = useState(0);
     const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const emailCheck = useEmailValidation(email);
+    const [formError, setFormError] = useState("");
+    const requestRef = useRef(false);
+    const codeRequestRef = useRef(false);
+    const mountedRef = useRef(true);
 
     // 倒计时清理
     useEffect(() => {
+        mountedRef.current = true;
         return () => {
+            mountedRef.current = false;
             if (countdownRef.current) clearInterval(countdownRef.current);
         };
     }, []);
 
     const handleSendCode = async () => {
+        if (codeRequestRef.current || requestRef.current || countdown > 0)
+            return;
         if (!emailCheck.isValid) {
-            Alert.alert("提示", "请先输入有效的邮箱地址");
+            setFormError("请先输入有效的邮箱地址");
             return;
         }
+        codeRequestRef.current = true;
+        setFormError("");
         setSendingCode(true);
         try {
             await sendVerificationCode({
                 email: email.trim(),
                 type: "login",
             });
-            Alert.alert("提示", "验证码已发送，请查收邮件");
+            if (!mountedRef.current) return;
+            banner.show({ type: "success", title: "验证码已发送，请查收邮件" });
             setCountdown(60);
             countdownRef.current = setInterval(() => {
                 setCountdown((prev) => {
@@ -66,26 +68,30 @@ export default function LoginScreen() {
                 });
             }, 1000);
         } catch (err: unknown) {
-            Alert.alert("提示", getApiErrorMessage(err, "发送失败，请稍后再试"));
+            setFormError(getApiErrorMessage(err, "发送失败，请稍后再试"));
         } finally {
-            setSendingCode(false);
+            codeRequestRef.current = false;
+            if (mountedRef.current) setSendingCode(false);
         }
     };
 
     const handleLogin = async () => {
+        if (requestRef.current || codeRequestRef.current) return;
         if (!emailCheck.isValid) {
-            Alert.alert("提示", emailCheck.error || "请输入有效邮箱");
+            setFormError(emailCheck.error || "请输入有效邮箱");
             return;
         }
         if (!password.trim()) {
-            Alert.alert("提示", "请输入密码");
+            setFormError("请输入密码");
             return;
         }
         if (!code.trim()) {
-            Alert.alert("提示", "请输入邮箱验证码");
+            setFormError("请输入邮箱验证码");
             return;
         }
 
+        requestRef.current = true;
+        setFormError("");
         setLoading(true);
         try {
             const data = await loginWithPassword({
@@ -103,133 +109,104 @@ export default function LoginScreen() {
             await refresh();
             await syncProfile();
 
-            Alert.alert("成功", "登录成功", [
-                { text: "确定", onPress: () => router.replace("/(tabs)/user") },
-            ]);
+            router.replace("/(tabs)/user");
+            banner.show({ type: "success", title: "登录成功" });
         } catch (err: unknown) {
-            Alert.alert("提示", getApiErrorMessage(err, "登录失败，请稍后再试"));
+            setFormError(getApiErrorMessage(err, "登录失败，请稍后再试"));
         } finally {
-            setLoading(false);
+            requestRef.current = false;
+            if (mountedRef.current) setLoading(false);
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            className="flex-1 bg-white"
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        <AuthScreenLayout
+            title="登录"
+            subtitle="登录后继续记录你的想法"
+            footerPrompt="还没有账号？"
+            footerAction="立即注册"
+            onFooterPress={() => router.replace("/auth/register")}
+            busy={loading || sendingCode}
         >
-            {/* 表单区域 */}
-            <View className="flex-1 px-6 pt-8">
-                {/* 邮箱 */}
-                <Text className="text-sm text-gray-500 mb-2 ml-1">邮箱</Text>
-                <TextField
-                    className={`mb-1 ${
-                        emailCheck.error && email
-                            ? "border-red-400"
-                            : "border-gray-200"
-                    }`}
+            <View className="gap-7">
+                <AuthField
+                    label="邮箱"
                     placeholder="请输入邮箱"
-                    placeholderTextColor={colors.textMuted}
                     value={email}
-                    onChangeText={setEmail}
+                    editable={!loading && !sendingCode}
+                    onChangeText={(value) => {
+                        setEmail(value);
+                        setFormError("");
+                    }}
                     keyboardType="email-address"
-                    autoCapitalize="none"
+                    autoComplete="email"
+                    error={emailCheck.error}
                 />
-                {emailCheck.error && email ? (
-                    <Text className="text-xs text-red-500 mb-1 ml-1">
-                        {emailCheck.error}
+                <AuthField
+                    label="邮箱验证码"
+                    placeholder="请输入验证码"
+                    value={code}
+                    editable={!loading}
+                    onChangeText={(value) => {
+                        setCode(value);
+                        setFormError("");
+                    }}
+                    keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    action={
+                        <AuthButton
+                            className="w-[120px]"
+                            variant="tonal"
+                            label={
+                                sendingCode
+                                    ? "发送中…"
+                                    : countdown > 0
+                                      ? `${countdown}s`
+                                      : "发送验证码"
+                            }
+                            busy={sendingCode}
+                            disabled={
+                                !emailCheck.isValid || countdown > 0 || loading
+                            }
+                            onPress={handleSendCode}
+                        />
+                    }
+                />
+                <AuthField
+                    label="密码"
+                    placeholder="请输入密码"
+                    password
+                    value={password}
+                    editable={!loading}
+                    onChangeText={(value) => {
+                        setPassword(value);
+                        setFormError("");
+                    }}
+                    autoComplete="current-password"
+                />
+            </View>
+            <View className="mt-7">
+                {!!formError && (
+                    <Text
+                        accessibilityRole="alert"
+                        className="mb-3 text-sm text-hyper-error"
+                    >
+                        {formError}
                     </Text>
-                ) : null}
-
-                {/* 验证码 */}
-                <Text className="text-sm text-gray-500 mb-2 ml-1">
-                    邮箱验证码
-                </Text>
-                <View className="flex-row items-center mb-5">
-                    <TextField
-                        className="flex-1 border-gray-200"
-                        placeholder="请输入验证码"
-                        placeholderTextColor={colors.textMuted}
-                        value={code}
-                        onChangeText={setCode}
-                        keyboardType="number-pad"
-                        maxLength={6}
-                    />
-                    <Button
-                        className="ml-3 rounded-xl px-4 py-3.5"
-                        variant="primary"
-                        onPress={handleSendCode}
-                        disabled={
-                            !emailCheck.isValid || countdown > 0 || sendingCode
-                        }
-                    >
-                        {sendingCode ? (
-                            <ActivityIndicator
-                                size="small"
-                                color={colors.surface}
-                            />
-                        ) : (
-                            <Text className="text-white text-sm font-semibold whitespace-nowrap">
-                                {countdown > 0 ? `${countdown}s` : "发送验证码"}
-                            </Text>
-                        )}
-                    </Button>
-                </View>
-
-                {/* 密码 */}
-                <Text className="text-sm text-gray-500 mb-2 ml-1">密码</Text>
-                <View className="flex-row items-center border border-gray-200 rounded-xl bg-gray-50 mb-2">
-                    <TextInput
-                        className="flex-1 px-4 py-3.5 text-base"
-                        placeholder="请输入密码"
-                        placeholderTextColor={colors.textMuted}
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={!showPassword}
-                    />
-                    <Pressable
-                        className="px-3 py-3.5"
-                        onPress={() => setShowPassword(!showPassword)}
-                    >
-                        {showPassword ? (
-                            <EyeOff size={20} color={colors.textMuted} />
-                        ) : (
-                            <Eye size={20} color={colors.textMuted} />
-                        )}
-                    </Pressable>
-                </View>
-
-                {/* 登录按钮 */}
-                <Button
-                    className="rounded-xl py-3.5 mt-6 flex-row justify-center items-center"
-                    variant="primary"
-                    onPress={handleLogin}
+                )}
+                <AuthButton
+                    label={loading ? "登录中…" : "登录"}
+                    busy={loading}
                     disabled={
                         !emailCheck.isValid ||
                         !password.trim() ||
                         !code.trim() ||
-                        loading
+                        sendingCode
                     }
-                >
-                    {loading ? (
-                        <ActivityIndicator color={colors.surface} />
-                    ) : (
-                        <Text className="text-white text-center text-base font-semibold">
-                            登录
-                        </Text>
-                    )}
-                </Button>
-
-                {/* 跳转注册 */}
-                <View className="flex-row justify-center mt-6">
-                    <Text className="text-sm text-gray-500">还没有账号？</Text>
-                    <Pressable onPress={() => router.push("/auth/register")}>
-                        <Text className="text-sm text-primary ml-1">
-                            立即注册
-                        </Text>
-                    </Pressable>
-                </View>
+                    onPress={handleLogin}
+                />
             </View>
-        </KeyboardAvoidingView>
+        </AuthScreenLayout>
     );
 }

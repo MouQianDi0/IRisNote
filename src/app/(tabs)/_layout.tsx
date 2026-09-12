@@ -23,7 +23,7 @@ export default function TabsLayout() {
   }
 
   if (!isLoggedIn) {
-    return <Redirect href="/auth/login" />;
+    return <Redirect href="/auth/welcome" />;
   }
 
   return (

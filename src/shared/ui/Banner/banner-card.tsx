@@ -1,11 +1,4 @@
-import { useEffect } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-  useColorScheme,
-} from "react-native";
+import { bannerColors } from "@/shared/theme/banner";
 import {
   Check,
   CloudOff,
@@ -14,6 +7,14 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react-native";
+import { useEffect } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  useColorScheme,
+  View,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   cancelAnimation,
@@ -25,7 +26,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { bannerColors } from "@/shared/theme/banner";
 import { LocalOnlyText } from "../local-only-text";
 
 type Props = {

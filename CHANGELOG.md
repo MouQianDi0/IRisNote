@@ -2,6 +2,103 @@
 
 ---
 
+## 2026-09-12 11:28:07 | 优化代码
+
+- **欢迎与认证参考布局验证完成**
+    - TypeScript、相关页面及路由 ESLint、差异空白检查通过；Web 生产导出成功，包含欢迎页在内的 16 个路由。
+    - 浏览器确认欢迎页品牌居中和底部双按钮、登录/注册居中标题、返回入口及字段排版。
+    - 320×568 注册表单与 320×360 欢迎页可以滚动访问底部；1280×800 注册页宽屏居中正常。
+    - 验证欢迎页进入登录、登录与注册互相替换、表单返回欢迎页、直接打开注册后返回欢迎页，以及未登录从根路径进入欢迎页。
+    - 已恢复浏览器视口并停留欢迎页。浏览器工具不提供 --headed --persistent 参数，采用可见的现有浏览器会话。
+    - Android 系统返回、iOS 手势/键盘、真实认证及退出登录后的完整联调未进行，仍待真机与账户验收。
+- **修改文件列表**
+    - `CHANGELOG.md` - 记录检查结果与验证边界。
+
+---
+
+## 2026-09-12 11:23:50 | 新增功能 / 优化代码
+
+- **按参考图布局重构欢迎与认证页面**
+    - 新增欢迎页：复用 IRisNote 图标，品牌区居中，注册/登录双按钮置底，短屏可滚动。
+    - 登录注册新增 44dp 返回入口、居中标题与说明，表单边距改为 16dp，字段及主按钮间距改为 28dp。
+    - 未登录 Tabs 入口转向欢迎页；表单切换替换路由，返回欢迎页时支持无历史栈回退；Android 返回键同步处理。
+    - 沿用现有认证字段、接口、配色与错误反馈，未调整工作区中已有的横幅组件改动。
+- **修改文件列表**
+    - `src/features/auth/screens/WelcomeScreen.tsx`
+    - `src/app/auth/welcome.tsx`
+    - `src/features/auth/components/AuthScreenLayout.tsx`
+    - `src/features/auth/screens/LoginScreen.tsx`
+    - `src/features/auth/screens/RegisterScreen.tsx`
+    - `src/app/_layout.tsx`
+    - `src/app/(tabs)/_layout.tsx`
+    - `docs/项目架构与文件索引.md`
+    - `docs/业务模块与运行逻辑.md`
+    - `CHANGELOG.md`
+- **验证进度**：实施完成，静态检查与浏览器验证进行中。
+
+---
+
+## 2026-09-12 11:23:08 | 优化代码
+
+- **确认参考图布局适配规格**
+    - 新增欢迎页居中品牌区及底部双按钮规范；登录注册改为左上返回、居中标题、16dp 页边距和 28dp 字段间距。
+    - 保留 IRisNote 内容、配色和认证字段，记录欢迎入口与返回规则。
+- **修改文件列表**
+    - `docs/IRisNote视觉设计规范.md`
+    - `CHANGELOG.md`
+
+---
+
+## 2026-09-12 09:43:04 | 优化代码
+
+- **登录注册重构验证收口**
+    - `npx tsc --noEmit`、认证组件及页面 ESLint、`git diff --check` 均通过。
+    - `npx expo export --platform web --output-dir .expo/auth-web-export` 成功导出 15 个路由。
+    - 浏览器验证通过：初始禁用、邮箱失焦错误及修正、密码显隐、注册密码最短长度与一致性、修正后按钮启用、登录注册切换。
+    - 320×568 窄屏注册表单可滚动访问底部；1280×800 宽屏实测字段宽 440dp、左右居中。已恢复原视口并清空测试表单。
+    - 浏览器工具不提供 `--headed --persistent` 参数，实际复用并显示现有浏览器。
+    - 未发送真实验证码、未提交真实认证；接口成功/失败反馈、加载时序及 Android/iOS 键盘交互仍需联调与真机验收。
+    - 格式化通过直接调用项目 Prettier API 完成；现有 npx prettier 入口指向 jest-snapshot-prettier，未改动工具链。
+- **修改文件列表**
+    - `src/features/auth/components/AuthScreenLayout.tsx`
+    - `src/features/auth/components/AuthField.tsx`
+    - `src/features/auth/components/AuthButton.tsx`
+    - `src/features/auth/screens/LoginScreen.tsx`
+    - `src/features/auth/screens/RegisterScreen.tsx`
+    - `CHANGELOG.md`
+
+---
+
+## 2026-09-12 09:39:37 | 优化代码
+
+- **登录注册页面统一为 HyperOS 风格**
+    - 新增认证共用页面、字段和按钮组件，统一 440dp 内容宽度、48dp 控件、字体、圆角、间距及密码显隐触控区。
+    - 表单增加滚动、键盘避让、聚焦/失焦错误、明确的加载与禁用状态。
+    - 字段及接口错误就地展示，发送成功使用横幅，认证成功保存刷新会话后直接跳转用户页。
+    - 保留认证接口与字段，使用 Ref 锁防止重复请求；注册页面直接打开时提供登录路由回退。
+- **修改文件列表**
+    - `src/features/auth/components/AuthScreenLayout.tsx`
+    - `src/features/auth/components/AuthField.tsx`
+    - `src/features/auth/components/AuthButton.tsx`
+    - `src/features/auth/screens/LoginScreen.tsx`
+    - `src/features/auth/screens/RegisterScreen.tsx`
+    - `docs/项目架构与文件索引.md`
+    - `docs/业务模块与运行逻辑.md`
+    - `CHANGELOG.md`
+- **验证进度**：TypeScript 检查通过，相关 ESLint 与浏览器验证继续执行。
+
+---
+
+## 2026-09-12 09:37:01 | 优化代码
+
+- **确认登录注册 HyperOS 视觉规格**
+    - 记录已确认的页面布局、dp 间距、字段顺序、按钮层级及反馈方案，作为后续实现依据。
+- **修改文件列表**
+    - `docs/IRisNote视觉设计规范.md` - 新增登录注册页面规格。
+    - `CHANGELOG.md` - 记录已确认规格。
+
+---
+
 ## 2026-07-26 02:05:47 | 新增功能
 
 - **初始化 CodeGraph 项目索引**
