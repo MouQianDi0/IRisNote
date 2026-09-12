@@ -42,11 +42,14 @@ import {
 import { useKeyboardOverlap } from "@/core/editor/use-keyboard-overlap";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useApplicationDatabase } from "@/core/database";
-import { banner, captureNotificationSession } from "@/core/notifications";
 import { useReadingProgress } from "../../hooks/useReadingProgress";
-import { useNoteDraft } from "../../hooks/useNoteDraft";
-import { draftSnapshot, noteDraftValue, type NoteDraftValue } from "../../data/note-draft.repository";
-import { saveEditedNoteLocalFirst } from "../../services/note-save.service";
+import {
+  useNoteDraft,
+  type NoteDraftSaveSnapshot,
+} from "../../hooks/useNoteDraft";
+import { noteDraftValue, type NoteDraftValue } from "../../data/note-draft.repository";
+import { stageEditedNoteForSync } from "../../services/note-save.service";
+import { enqueueNoteExitSync } from "../../services/note-exit-sync-coordinator";
 import {
   clamp,
   readingPercent,
@@ -74,7 +77,6 @@ import { colors } from "@/shared/theme";
 type NoteViewerProps = {
   note: Note;
   onBack: () => void;
-  onNoteChange: (note: Note) => void;
   initialEdit?: boolean;
   navigationEntries?: readonly ReadingNavigationEntry[];
 };
@@ -95,12 +97,40 @@ export default function NoteViewer(props: NoteViewerProps) {
 
 function NoteViewerEditor(props: NoteViewerProps & { ownerId: number }) {
   const { note, ownerId } = props;
+  const database = useApplicationDatabase();
   const [initialEditPending, setInitialEditPending] = useState(props.initialEdit ?? false);
+  const beforeLeave = useCallback(async (snapshot: NoteDraftSaveSnapshot) => {
+    if (!snapshot.target) throw new Error("原笔记已不存在，草稿已保留");
+    if (!snapshot.value.title.trim()) throw new Error("请输入笔记标题");
+    const staged = await stageEditedNoteForSync(
+      database,
+      ownerId,
+      snapshot.target,
+      {
+        title: snapshot.value.title.trim(),
+        content: snapshot.value.content.trim(),
+        category_id: snapshot.value.categoryId,
+      },
+      snapshot.commit,
+    );
+    return staged.shouldUpload
+      ? {
+          afterLeave: () =>
+            enqueueNoteExitSync(
+              database,
+              ownerId,
+              staged.note.id,
+              snapshot.commit,
+            ),
+        }
+      : undefined;
+  }, [database, ownerId]);
   const draft = useNoteDraft(
     ownerId,
     `note:${note.id}`,
     note,
     noteDraftValue(note),
+    { beforeLeave },
   );
 
   if (!draft.resource) {
@@ -148,7 +178,6 @@ type NoteDraftController = ReturnType<typeof useNoteDraft>;
 function NoteViewerSession({
   note,
   onBack,
-  onNoteChange,
   initialEdit = false,
   ownerId,
   navigationEntries = EMPTY_ENTRIES,
@@ -161,12 +190,8 @@ function NoteViewerSession({
   initialValue: NoteDraftValue;
   onInitialEditHandled: () => void;
 }) {
-  const database = useApplicationDatabase();
   const [value, setValue] = useState(initialValue);
   const latestValue = useRef(initialValue);
-  const dirty = useRef(draftSnapshot(initialValue) !== draftSnapshot(noteDraftValue(note)));
-  const submitting = useRef(false);
-  const savePromise = useRef<Promise<boolean> | null>(null);
   const mounted = useRef(true);
   const titleInput = useRef<TextInput>(null);
   const contentInput = useRef<TextInput>(null);
@@ -189,7 +214,6 @@ function NoteViewerSession({
     handleKeyboardEvent,
   } = useKeyboardOverlap();
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
-  const [message, setMessage] = useState("");
 
   useEffect(() => {
     mounted.current = true;
@@ -210,110 +234,9 @@ function NoteViewerSession({
 
   const changeValue = useCallback((next: NoteDraftValue) => {
     latestValue.current = next;
-    dirty.current = true;
     setValue(next);
-    setMessage("");
     draft.change(next);
   }, [draft]);
-
-  const save = useCallback(() => {
-    if (!dirty.current) {
-      draft.requestFlush();
-      return Promise.resolve(true);
-    }
-    if (submitting.current) return savePromise.current ?? Promise.resolve(false);
-    const current = latestValue.current;
-    if (!current.title.trim()) {
-      setMessage("请输入笔记标题");
-      return Promise.resolve(false);
-    }
-    if (draft.resource?.conflict) {
-      setMessage("本地草稿基于旧版本，请先确认使用本地草稿");
-      return Promise.resolve(false);
-    }
-
-    submitting.current = true;
-    const task = (async () => {
-      const sessionCurrent = captureNotificationSession();
-      const noticeId = `note-save:${ownerId}:${Date.now()}`;
-      let committed = false;
-      try {
-        const snapshot = await draft.beginSave();
-        if (!snapshot.target) throw new Error("原笔记已不存在，草稿已保留");
-        const result = await saveEditedNoteLocalFirst(
-          database,
-          ownerId,
-          snapshot.target,
-          {
-            title: snapshot.value.title.trim(),
-            content: snapshot.value.content.trim(),
-            category_id: snapshot.value.categoryId,
-          },
-          snapshot.commit,
-          () => {
-            committed = true;
-            if (sessionCurrent()) {
-              banner.show({
-                id: noticeId,
-                type: "success",
-                title: "笔记已保存",
-                message: "仅本机保存，正在尝试同步到云端。",
-              });
-            }
-          },
-        );
-
-        if (sessionCurrent()) {
-          const notice = result.cloudState === "accepted"
-            ? { type: "success" as const, title: result.unchanged ? "内容未变化，笔记已同步" : "笔记已同步到云端" }
-            : {
-                type: "important" as const,
-                title: "笔记仅本机保存成功，云端同步未完成",
-                message: result.cloudState === "unknown"
-                  ? "云端接收结果未知，请稍后检查同步状态"
-                  : "云端未接受保存，请检查页面提示",
-              };
-          if (!banner.resolve(noticeId, {
-            ...notice,
-            lifetime: notice.type === "important" ? { mode: "persistent" } : { mode: "timed" },
-          })) banner.show({ id: noticeId, ...notice });
-        }
-
-        dirty.current = false;
-        draft.endSave(result.cloudState === "accepted");
-        onNoteChange(result.note);
-        if (mounted.current) {
-          setMessage(result.cloudState === "accepted" ? "" : "已保存到本地，云端同步未完成");
-        }
-        return true;
-      } catch (cause: unknown) {
-        if (sessionCurrent()) {
-          const notice = {
-            type: "important" as const,
-            title: committed ? "仅本机已保存，后续处理未完成" : "保存失败，请保留当前编辑内容",
-          };
-          if (!banner.update(noticeId, { ...notice, lifetime: { mode: "persistent" } })) {
-            banner.show({ id: noticeId, ...notice });
-          }
-        }
-        draft.endSave(false);
-        if (mounted.current) {
-          setMessage(cause instanceof Error ? cause.message : "保存失败，草稿已保留，请重试");
-        }
-        return false;
-      } finally {
-        submitting.current = false;
-        savePromise.current = null;
-      }
-    })();
-    savePromise.current = task;
-    return task;
-  }, [database, draft, onNoteChange, ownerId]);
-
-  const saveLatest = useRef(save);
-  useEffect(() => {
-    saveLatest.current = save;
-  }, [save]);
 
   const fieldInput = useCallback(
     (field: InlineEditField) => field === "title" ? titleInput.current : contentInput.current,
@@ -368,7 +291,6 @@ function NoteViewerSession({
       titleInput.current?.blur();
       contentInput.current?.blur();
       draft.requestFlush();
-      void saveLatest.current();
     });
     return () => {
       shown.remove();
@@ -408,25 +330,23 @@ function NoteViewerSession({
       webBlurTimer.current = null;
       if (!titleInput.current?.isFocused() && !contentInput.current?.isFocused()) {
         setKeyboardAllowed(false);
-        void saveLatest.current();
       }
     }, 0);
   }, [draft]);
 
-  const handleBack = useCallback(async () => {
+  const handleBack = useCallback(() => {
     if (keyboardVisible || Keyboard.isVisible()) {
       Keyboard.dismiss();
       return;
     }
     titleInput.current?.blur();
     contentInput.current?.blur();
-    if (await save()) onBack();
-  }, [keyboardVisible, onBack, save]);
+    onBack();
+  }, [keyboardVisible, onBack]);
 
   const confirmConflict = useCallback(async () => {
     try {
       await draft.confirmConflict();
-      if (mounted.current) setMessage("");
     } catch {
       // useNoteDraft 已保留错误文案与草稿。
     }
@@ -708,12 +628,12 @@ function NoteViewerSession({
   }));
   const inputsEditable = !draft.saving;
   const showSoftInput = keyboardAllowed || screenReaderEnabled;
-  const statusMessage = draft.error || message;
+  const statusMessage = draft.error;
   return (
     <View ref={stableContainer} collapsable={false} className="flex-1 bg-white" onLayout={onStableLayout}>
       <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: keyboardOverlap }}>
       <NoteViewerHeader
-        onBack={() => void handleBack()}
+        onBack={handleBack}
       />
 
       {(draft.resource?.conflict || statusMessage) && (

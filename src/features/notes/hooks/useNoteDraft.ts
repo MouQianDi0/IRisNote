@@ -18,11 +18,33 @@ type DraftResource = {
     conflict: boolean;
 };
 
+export type NoteDraftSaveSnapshot = {
+    value: NoteDraftValue;
+    sequence: number;
+    target: Note | undefined;
+    commit: {
+        key: string;
+        sessionId: string;
+        sequence: number;
+    };
+};
+
+export type NoteDraftLeaveResult = {
+    afterLeave?: () => void;
+};
+
+type NoteDraftOptions = {
+    beforeLeave?: (
+        snapshot: NoteDraftSaveSnapshot,
+    ) => Promise<NoteDraftLeaveResult | void>;
+};
+
 export function useNoteDraft(
     owner: number,
     key: string,
     note: Note | undefined,
     initial: NoteDraftValue,
+    options: NoteDraftOptions = {},
 ) {
     const database = useApplicationDatabase();
     const navigation = useNavigation();
@@ -117,23 +139,7 @@ export function useNoteDraft(
         };
     }, [navigation, requestFlush]);
 
-    usePreventRemove(resource !== null, ({ data }) => {
-        if (complete.current) { navigation.dispatch(data.action); return; }
-        const current = active.current;
-        if (!current || busy.current) return;
-        busy.current = true;
-        setSaving(true);
-        void current.session.beginSave().then(() => {
-            navigation.dispatch(data.action);
-        }).catch((cause: unknown) => {
-            current.session.endSave();
-            busy.current = false;
-            setSaving(false);
-            setError(cause instanceof Error ? cause.message : "离开前写入失败，请重试");
-        });
-    });
-
-    const beginSave = async () => {
+    const beginSave = async (): Promise<NoteDraftSaveSnapshot> => {
         const current = active.current;
         if (!current || busy.current) throw new Error("草稿会话尚未准备完成");
         if (current.conflict) throw new Error("已保存内容发生变化，草稿已保留，请先核对内容");
@@ -198,6 +204,26 @@ export function useNoteDraft(
             setSaving(false);
         }
     };
+
+    usePreventRemove(resource !== null, ({ data }) => {
+        if (complete.current) { navigation.dispatch(data.action); return; }
+        if (!active.current || busy.current) return;
+        void beginSave().then(async (snapshot) => {
+            const result = await options.beforeLeave?.(snapshot);
+            complete.current = true;
+            active.current?.session.abandon();
+            active.current = null;
+            busy.current = false;
+            setSaving(false);
+            navigation.dispatch(data.action);
+            if (result?.afterLeave) setTimeout(result.afterLeave, 0);
+        }).catch((cause: unknown) => {
+            active.current?.session.endSave();
+            busy.current = false;
+            setSaving(false);
+            setError(cause instanceof Error ? cause.message : "离开前保存失败，请重试");
+        });
+    });
 
     return {
         resource, state, error, saving, beginSave, endSave, confirmConflict,

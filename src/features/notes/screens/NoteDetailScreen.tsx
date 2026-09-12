@@ -130,7 +130,6 @@ export default function NoteDetailScreen() {
       <NoteViewer
         note={note}
         onBack={handleBack}
-        onNoteChange={setNote}
         initialEdit={initialEdit}
       />
     );
