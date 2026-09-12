@@ -424,8 +424,8 @@ export default function NotesScreen() {
     if (!contextMenuNote) return;
 
     onNavigate({
-      pathname: "/pages/note/edit/[id]",
-      params: { id: String(contextMenuNote.id) },
+      pathname: "/pages/note/[id]",
+      params: { id: String(contextMenuNote.id), edit: "1" },
     } as unknown as Href);
   }, [contextMenuNote, onNavigate]);
 

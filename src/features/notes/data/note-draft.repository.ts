@@ -97,6 +97,24 @@ export async function writeNoteDraft(
     }
 }
 
+/** 用户在合并编辑页确认采用冲突草稿后，将当前已保存版本设为新的提交基础。 */
+export async function rebaseNoteDraft(
+    db: ApplicationDatabase,
+    owner: number,
+    commit: DraftCommit,
+    current: Note,
+) {
+    const result = await db.run(
+        `UPDATE note_drafts SET base_snapshot = ?, base_revision_id = ?, updated_at = ?
+         WHERE owner_user_id = ? AND draft_key = ? AND session_id = ? AND sequence = ?`,
+        [draftSnapshot(noteDraftValue(current)), current.current_revision_id ?? null,
+            new Date().toISOString(), owner, commit.key, commit.sessionId, commit.sequence],
+    );
+    if (result.changes !== 1) {
+        throw new Error("草稿已变化，未确认覆盖，请重新打开后检查");
+    }
+}
+
 export async function deleteNoteDraft(db: ApplicationDatabase, owner: number, commit: DraftCommit) {
     if (commit.beforeDelete) {
         return db.transaction(async (tx) => {

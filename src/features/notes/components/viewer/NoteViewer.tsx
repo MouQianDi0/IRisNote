@@ -3,7 +3,17 @@ import NoteViewerHeader from "./NoteViewerHeader";
 import NoteViewerMeta from "./NoteViewerMeta";
 import NoteViewerTitle from "./NoteViewerTitle";
 import type { Note } from "@/features/notes/notes.types";
-import { Platform, ScrollView, View } from "react-native";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import Animated, {
@@ -22,14 +32,25 @@ import EditorBottomToolbar, {
 import {
   advanceToolbarScroll,
   resetToolbarScroll,
+  TOOLBAR_RESTORE_DELAY_MS,
 } from "@/core/editor/toolbar-interaction";
+import {
+  resolveInlineEditPress,
+  type InlineEditField,
+  type InlineEditPress,
+} from "@/core/editor";
+import { useKeyboardOverlap } from "@/core/editor/use-keyboard-overlap";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useApplicationDatabase } from "@/core/database";
+import { banner, captureNotificationSession } from "@/core/notifications";
 import { useReadingProgress } from "../../hooks/useReadingProgress";
+import { useNoteDraft } from "../../hooks/useNoteDraft";
+import { draftSnapshot, noteDraftValue, type NoteDraftValue } from "../../data/note-draft.repository";
+import { saveEditedNoteLocalFirst } from "../../services/note-save.service";
 import {
   clamp,
   readingPercent,
   readingRange,
-  textVersion,
   type ReadingGeometry,
   type ReadingPosition,
   type TextRow,
@@ -47,11 +68,14 @@ import {
   BUBBLE_HIDE_MS,
   shouldHideReadingControls,
 } from "../../reading/reading-interaction";
+import { CircleAlert, RefreshCw } from "lucide-react-native";
+import { colors } from "@/shared/theme";
 
 type NoteViewerProps = {
   note: Note;
   onBack: () => void;
-  onEdit: () => void;
+  onNoteChange: (note: Note) => void;
+  initialEdit?: boolean;
   navigationEntries?: readonly ReadingNavigationEntry[];
 };
 
@@ -61,22 +85,355 @@ export default function NoteViewer(props: NoteViewerProps) {
   if (!user || (props.note.user_id != null && props.note.user_id !== user.id))
     return null;
   return (
-    <NoteViewerSession
-      key={`${user.id}:${props.note.id}:${textVersion(props.note.content ?? "")}`}
+    <NoteViewerEditor
+      key={`${user.id}:${props.note.id}`}
       {...props}
       ownerId={user.id}
     />
   );
 }
 
+function NoteViewerEditor(props: NoteViewerProps & { ownerId: number }) {
+  const { note, ownerId } = props;
+  const [initialEditPending, setInitialEditPending] = useState(props.initialEdit ?? false);
+  const draft = useNoteDraft(
+    ownerId,
+    `note:${note.id}`,
+    note,
+    noteDraftValue(note),
+  );
+
+  if (!draft.resource) {
+    return (
+      <View className="flex-1 bg-white">
+        <NoteViewerHeader onBack={props.onBack} />
+        <View className="flex-1 items-center justify-center gap-3 px-5">
+          {draft.error ? (
+            <>
+              <Text accessibilityRole="alert" className="text-center text-hyper-error">
+                {draft.error}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="重试读取草稿"
+                onPress={draft.retry}
+                className="h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-hyper-card px-4"
+              >
+                <RefreshCw size={18} color={colors.primary} />
+                <Text className="text-primary">重试</Text>
+              </Pressable>
+            </>
+          ) : (
+            <ActivityIndicator color={colors.primary} />
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <NoteViewerSession
+      key={draft.resource.row.session_id}
+      {...props}
+      initialEdit={initialEditPending}
+      onInitialEditHandled={() => setInitialEditPending(false)}
+      draft={draft}
+      initialValue={draft.resource.session.value}
+    />
+  );
+}
+
+type NoteDraftController = ReturnType<typeof useNoteDraft>;
+
 function NoteViewerSession({
   note,
   onBack,
-  onEdit,
+  onNoteChange,
+  initialEdit = false,
   ownerId,
   navigationEntries = EMPTY_ENTRIES,
-}: NoteViewerProps & { ownerId: number }) {
+  draft,
+  initialValue,
+  onInitialEditHandled,
+}: NoteViewerProps & {
+  ownerId: number;
+  draft: NoteDraftController;
+  initialValue: NoteDraftValue;
+  onInitialEditHandled: () => void;
+}) {
+  const database = useApplicationDatabase();
+  const [value, setValue] = useState(initialValue);
+  const latestValue = useRef(initialValue);
+  const dirty = useRef(draftSnapshot(initialValue) !== draftSnapshot(noteDraftValue(note)));
+  const submitting = useRef(false);
+  const savePromise = useRef<Promise<boolean> | null>(null);
+  const mounted = useRef(true);
+  const titleInput = useRef<TextInput>(null);
+  const contentInput = useRef<TextInput>(null);
+  const activeField = useRef<InlineEditField | null>(null);
+  const lastPress = useRef<InlineEditPress | null>(null);
+  const selections = useRef({
+    title: { start: initialValue.title.length, end: initialValue.title.length },
+    content: { start: initialValue.content.length, end: initialValue.content.length },
+  });
+  const pendingKeyboardField = useRef<InlineEditField | null>(null);
+  const openingKeyboard = useRef(false);
+  const openingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const webBlurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [keyboardAllowed, setKeyboardAllowed] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
+  const {
+    keyboardOverlap,
+    stableContainer,
+    onStableLayout,
+    handleKeyboardEvent,
+  } = useKeyboardOverlap();
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    mounted.current = true;
+    void AccessibilityInfo.isScreenReaderEnabled().then((enabled) => {
+      if (mounted.current) setScreenReaderEnabled(enabled);
+    });
+    const accessibility = AccessibilityInfo.addEventListener(
+      "screenReaderChanged",
+      setScreenReaderEnabled,
+    );
+    return () => {
+      mounted.current = false;
+      accessibility.remove();
+      if (openingTimer.current !== null) clearTimeout(openingTimer.current);
+      if (webBlurTimer.current !== null) clearTimeout(webBlurTimer.current);
+    };
+  }, []);
+
+  const changeValue = useCallback((next: NoteDraftValue) => {
+    latestValue.current = next;
+    dirty.current = true;
+    setValue(next);
+    setMessage("");
+    draft.change(next);
+  }, [draft]);
+
+  const save = useCallback(() => {
+    if (!dirty.current) {
+      draft.requestFlush();
+      return Promise.resolve(true);
+    }
+    if (submitting.current) return savePromise.current ?? Promise.resolve(false);
+    const current = latestValue.current;
+    if (!current.title.trim()) {
+      setMessage("请输入笔记标题");
+      return Promise.resolve(false);
+    }
+    if (draft.resource?.conflict) {
+      setMessage("本地草稿基于旧版本，请先确认使用本地草稿");
+      return Promise.resolve(false);
+    }
+
+    submitting.current = true;
+    const task = (async () => {
+      const sessionCurrent = captureNotificationSession();
+      const noticeId = `note-save:${ownerId}:${Date.now()}`;
+      let committed = false;
+      try {
+        const snapshot = await draft.beginSave();
+        if (!snapshot.target) throw new Error("原笔记已不存在，草稿已保留");
+        const result = await saveEditedNoteLocalFirst(
+          database,
+          ownerId,
+          snapshot.target,
+          {
+            title: snapshot.value.title.trim(),
+            content: snapshot.value.content.trim(),
+            category_id: snapshot.value.categoryId,
+          },
+          snapshot.commit,
+          () => {
+            committed = true;
+            if (sessionCurrent()) {
+              banner.show({
+                id: noticeId,
+                type: "success",
+                title: "笔记已保存",
+                message: "仅本机保存，正在尝试同步到云端。",
+              });
+            }
+          },
+        );
+
+        if (sessionCurrent()) {
+          const notice = result.cloudState === "accepted"
+            ? { type: "success" as const, title: result.unchanged ? "内容未变化，笔记已同步" : "笔记已同步到云端" }
+            : {
+                type: "important" as const,
+                title: "笔记仅本机保存成功，云端同步未完成",
+                message: result.cloudState === "unknown"
+                  ? "云端接收结果未知，请稍后检查同步状态"
+                  : "云端未接受保存，请检查页面提示",
+              };
+          if (!banner.resolve(noticeId, {
+            ...notice,
+            lifetime: notice.type === "important" ? { mode: "persistent" } : { mode: "timed" },
+          })) banner.show({ id: noticeId, ...notice });
+        }
+
+        dirty.current = false;
+        draft.endSave(result.cloudState === "accepted");
+        onNoteChange(result.note);
+        if (mounted.current) {
+          setMessage(result.cloudState === "accepted" ? "" : "已保存到本地，云端同步未完成");
+        }
+        return true;
+      } catch (cause: unknown) {
+        if (sessionCurrent()) {
+          const notice = {
+            type: "important" as const,
+            title: committed ? "仅本机已保存，后续处理未完成" : "保存失败，请保留当前编辑内容",
+          };
+          if (!banner.update(noticeId, { ...notice, lifetime: { mode: "persistent" } })) {
+            banner.show({ id: noticeId, ...notice });
+          }
+        }
+        draft.endSave(false);
+        if (mounted.current) {
+          setMessage(cause instanceof Error ? cause.message : "保存失败，草稿已保留，请重试");
+        }
+        return false;
+      } finally {
+        submitting.current = false;
+        savePromise.current = null;
+      }
+    })();
+    savePromise.current = task;
+    return task;
+  }, [database, draft, onNoteChange, ownerId]);
+
+  const saveLatest = useRef(save);
+  useEffect(() => {
+    saveLatest.current = save;
+  }, [save]);
+
+  const fieldInput = useCallback(
+    (field: InlineEditField) => field === "title" ? titleInput.current : contentInput.current,
+    [],
+  );
+
+  const requestKeyboard = useCallback((field: InlineEditField) => {
+    if (draft.saving) return;
+    activeField.current = field;
+    if (keyboardAllowed || keyboardVisible) {
+      fieldInput(field)?.focus();
+      return;
+    }
+    pendingKeyboardField.current = field;
+    openingKeyboard.current = true;
+    setKeyboardAllowed(true);
+  }, [draft.saving, fieldInput, keyboardAllowed, keyboardVisible]);
+
+  useEffect(() => {
+    if (!keyboardAllowed || pendingKeyboardField.current === null) return;
+    const field = pendingKeyboardField.current;
+    pendingKeyboardField.current = null;
+    const input = fieldInput(field);
+    const selection = selections.current[field];
+    input?.blur();
+    const frame = requestAnimationFrame(() => {
+      input?.focus();
+      requestAnimationFrame(() => input?.setNativeProps({ selection }));
+    });
+    if (openingTimer.current !== null) clearTimeout(openingTimer.current);
+    openingTimer.current = setTimeout(() => {
+      openingKeyboard.current = false;
+      openingTimer.current = null;
+    }, 1200);
+    return () => cancelAnimationFrame(frame);
+  }, [fieldInput, keyboardAllowed]);
+
+  useEffect(() => {
+    const shown = Keyboard.addListener("keyboardDidShow", (event) => {
+      openingKeyboard.current = false;
+      if (openingTimer.current !== null) clearTimeout(openingTimer.current);
+      openingTimer.current = null;
+      setKeyboardVisible(true);
+      handleKeyboardEvent(true, event);
+    });
+    const hidden = Keyboard.addListener("keyboardDidHide", () => {
+      openingKeyboard.current = false;
+      setKeyboardVisible(false);
+      setKeyboardAllowed(false);
+      lastPress.current = null;
+      handleKeyboardEvent(false);
+      titleInput.current?.blur();
+      contentInput.current?.blur();
+      draft.requestFlush();
+      void saveLatest.current();
+    });
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [draft, handleKeyboardEvent]);
+
+  useEffect(() => {
+    if (!initialEdit) return;
+    const frame = requestAnimationFrame(() => {
+      onInitialEditHandled();
+      requestKeyboard("content");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialEdit, onInitialEditHandled, requestKeyboard]);
+
+  const pressInput = useCallback((field: InlineEditField) => {
+    activeField.current = field;
+    if (screenReaderEnabled) {
+      requestKeyboard(field);
+      return;
+    }
+    const result = resolveInlineEditPress(lastPress.current, field, performance.now());
+    lastPress.current = result.next;
+    if (result.openKeyboard) requestKeyboard(field);
+  }, [requestKeyboard, screenReaderEnabled]);
+
+  const focusInput = useCallback((field: InlineEditField) => {
+    activeField.current = field;
+  }, []);
+
+  const blurInput = useCallback(() => {
+    draft.requestFlush();
+    if (Platform.OS !== "web" || openingKeyboard.current) return;
+    if (webBlurTimer.current !== null) clearTimeout(webBlurTimer.current);
+    webBlurTimer.current = setTimeout(() => {
+      webBlurTimer.current = null;
+      if (!titleInput.current?.isFocused() && !contentInput.current?.isFocused()) {
+        setKeyboardAllowed(false);
+        void saveLatest.current();
+      }
+    }, 0);
+  }, [draft]);
+
+  const handleBack = useCallback(async () => {
+    if (keyboardVisible || Keyboard.isVisible()) {
+      Keyboard.dismiss();
+      return;
+    }
+    titleInput.current?.blur();
+    contentInput.current?.blur();
+    if (await save()) onBack();
+  }, [keyboardVisible, onBack, save]);
+
+  const confirmConflict = useCallback(async () => {
+    try {
+      await draft.confirmConflict();
+      if (mounted.current) setMessage("");
+    } catch {
+      // useNoteDraft 已保留错误文案与草稿。
+    }
+  }, [draft]);
+
   const scroll = useRef(resetToolbarScroll());
+  const toolbarRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visible = useSharedValue(true);
   const scrollRef = useAnimatedRef<ScrollView>();
   const container = useRef<View>(null);
@@ -234,6 +591,16 @@ function NoteViewerSession({
       const next = advanceToolbarScroll(scroll.current, value, false);
       if (next.visible !== scroll.current.visible) visible.set(next.visible);
       scroll.current = next;
+      if (toolbarRestoreTimer.current !== null) clearTimeout(toolbarRestoreTimer.current);
+      if (!Keyboard.isVisible()) {
+        toolbarRestoreTimer.current = setTimeout(() => {
+          toolbarRestoreTimer.current = null;
+          if (!Keyboard.isVisible()) {
+            scroll.current = resetToolbarScroll(scroll.current.offset);
+            visible.set(true);
+          }
+        }, TOOLBAR_RESTORE_DELAY_MS);
+      }
     },
     [session, visible],
   );
@@ -323,8 +690,12 @@ function NoteViewerSession({
   useFocusEffect(
     useCallback(() => {
       scroll.current = resetToolbarScroll(scroll.current.offset);
+      if (toolbarRestoreTimer.current !== null) clearTimeout(toolbarRestoreTimer.current);
+      toolbarRestoreTimer.current = null;
       visible.set(true);
       return () => {
+        if (toolbarRestoreTimer.current !== null) clearTimeout(toolbarRestoreTimer.current);
+        toolbarRestoreTimer.current = null;
         bar.set(false);
         bubble.set(false);
         dragging.set(false);
@@ -335,9 +706,35 @@ function NoteViewerSession({
   const toolbarStyle = useAnimatedStyle(() => ({
     display: visible.get() ? "flex" : "none",
   }));
+  const inputsEditable = !draft.saving;
+  const showSoftInput = keyboardAllowed || screenReaderEnabled;
+  const statusMessage = draft.error || message;
   return (
-    <View className="flex-1 bg-white">
-      <NoteViewerHeader onBack={onBack} onEdit={onEdit} />
+    <View ref={stableContainer} collapsable={false} className="flex-1 bg-white" onLayout={onStableLayout}>
+      <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: keyboardOverlap }}>
+      <NoteViewerHeader
+        onBack={() => void handleBack()}
+      />
+
+      {(draft.resource?.conflict || statusMessage) && (
+        <View className="mx-5 mt-2 flex-row items-center gap-2 rounded-2xl bg-red-50 px-3 py-2">
+          <CircleAlert size={18} color={colors.hyperError} />
+          <Text accessibilityRole="alert" className="flex-1 text-sm text-hyper-error">
+            {statusMessage || "本地草稿基于旧版本，请核对后确认使用"}
+          </Text>
+          {draft.resource?.conflict && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="使用本地草稿"
+              disabled={draft.saving}
+              onPress={() => void confirmConflict()}
+              className="min-h-11 justify-center px-2"
+            >
+              <Text className="text-sm font-semibold text-primary">使用本地草稿</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
 
       <View
         ref={container}
@@ -358,7 +755,7 @@ function NoteViewerSession({
           contentContainerStyle={{
             paddingHorizontal: 20,
             paddingTop: 18,
-            paddingBottom: FLOATING_TOUCH_HEIGHT + FLOATING_BOTTOM + 12,
+            paddingBottom: keyboardVisible ? 12 : FLOATING_TOUCH_HEIGHT + FLOATING_BOTTOM + 12,
           }}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
@@ -374,11 +771,21 @@ function NoteViewerSession({
             : {})}
         >
           <NoteViewerTitle
-            title={note.title}
+            title={value.title}
+            inputRef={titleInput}
+            editable={inputsEditable}
+            showSoftInputOnFocus={showSoftInput}
+            onChangeText={(title) => changeValue({ ...latestValue.current, title })}
+            onPressIn={() => pressInput("title")}
+            onFocus={() => focusInput("title")}
+            onBlur={blurInput}
+            onSelectionChange={(event) => {
+              selections.current.title = event.nativeEvent.selection;
+            }}
             renderMeta={(titleControls) => (
               <NoteViewerMeta
                 noteId={note.id}
-                content={note.content}
+                content={value.content}
                 categoryId={note.category_id}
                 createdAt={note.created_at}
                 isTitleExpandable={titleControls.isTitleExpandable}
@@ -388,12 +795,22 @@ function NoteViewerSession({
             )}
           />
           <NoteViewerContent
-            content={note.content}
+            content={value.content}
+            inputRef={contentInput}
+            editable={inputsEditable}
+            showSoftInputOnFocus={showSoftInput}
+            onChangeText={(content) => changeValue({ ...latestValue.current, content })}
+            onPressIn={() => pressInput("content")}
+            onFocus={() => focusInput("content")}
+            onBlur={blurInput}
+            onSelectionChange={(event) => {
+              selections.current.content = event.nativeEvent.selection;
+            }}
             onBodyLayout={onBodyLayout}
             onRows={onRows}
           />
         </Animated.ScrollView>
-        {!panel && shown.bar && (
+        {!keyboardVisible && !panel && shown.bar && (
           <ReadingScrollbar
             scrollRef={scrollRef}
             offset={offset}
@@ -411,7 +828,7 @@ function NoteViewerSession({
             onEnd={end}
           />
         )}
-        {!panel && shown.bubble && (
+        {!keyboardVisible && !panel && shown.bubble && (
           <ProgressBubble
             finger={finger}
             percent={percent}
@@ -427,19 +844,23 @@ function NoteViewerSession({
           />
         )}
       </View>
-      <Animated.View
-        pointerEvents="box-none"
-        style={[
-          {
-            position: "absolute",
-            bottom: FLOATING_BOTTOM,
-            alignSelf: "center",
-          },
-          toolbarStyle,
-        ]}
-      >
-        <EditorBottomToolbar docked={false} disabled={false} onEdit={onEdit} />
-      </Animated.View>
+      {keyboardVisible ? (
+        <EditorBottomToolbar docked disabled={draft.saving} onEdit={() => requestKeyboard("content")} />
+      ) : (
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            {
+              position: "absolute",
+              bottom: FLOATING_BOTTOM,
+              alignSelf: "center",
+            },
+            toolbarStyle,
+          ]}
+        >
+          <EditorBottomToolbar docked={false} disabled={draft.saving} onEdit={() => requestKeyboard("content")} />
+        </Animated.View>
+      )}
       <ReadingNavigationPanel
         visible={panel}
         entries={entries}
@@ -450,6 +871,7 @@ function NoteViewerSession({
           session.jump(entry.line, entry.character ?? 0);
         }}
       />
+      </View>
     </View>
   );
 }

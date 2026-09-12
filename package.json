@@ -31,6 +31,7 @@
     "expo-system-ui": "~56.0.5",
     "expo-web-browser": "~56.0.6",
     "fontfaceobserver": "^2.3.0",
+    "lucide": "^1.17.0",
     "lucide-react-native": "^1.17.0",
     "metro-config": "^0.84.4",
     "morphicons": "^1.7.1",

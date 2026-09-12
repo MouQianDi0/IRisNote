@@ -1,164 +1,77 @@
+import { colors } from "@/shared/theme";
+import { useState, type ReactNode, type RefObject } from "react";
 import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
-import type { LayoutChangeEvent } from "react-native";
-import { Pressable, Text, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+  Text,
+  TextInput,
+  View,
+  type LayoutChangeEvent,
+  type TextInputProps,
+} from "react-native";
 
 export type NoteViewerTitleControls = {
   isTitleExpandable: boolean;
-  chevronAnimatedStyle: ComponentProps<typeof Animated.View>["style"];
+  chevronAnimatedStyle: { transform: { rotate: string }[] };
   onToggleTitleExpanded: () => void;
 };
 
 type NoteViewerTitleProps = {
   title: string;
+  inputRef: RefObject<TextInput | null>;
+  editable: boolean;
+  showSoftInputOnFocus: boolean;
+  onChangeText: (value: string) => void;
+  onPressIn: NonNullable<TextInputProps["onPressIn"]>;
+  onFocus: NonNullable<TextInputProps["onFocus"]>;
+  onBlur: NonNullable<TextInputProps["onBlur"]>;
+  onSelectionChange: NonNullable<TextInputProps["onSelectionChange"]>;
   renderMeta: (controls: NoteViewerTitleControls) => ReactNode;
 };
 
-const TITLE_ANIMATION_DURATION = 240;
 const TITLE_HEIGHT_EPSILON = 1;
 
 export default function NoteViewerTitle({
   title,
+  inputRef,
+  editable,
+  showSoftInputOnFocus,
+  onChangeText,
+  onPressIn,
+  onFocus,
+  onBlur,
+  onSelectionChange,
   renderMeta,
 }: NoteViewerTitleProps) {
   const [titleExpanded, setTitleExpanded] = useState(false);
-  const [showFullTitle, setShowFullTitle] = useState(false);
   const [collapsedTitleHeight, setCollapsedTitleHeight] = useState(0);
   const [expandedTitleHeight, setExpandedTitleHeight] = useState(0);
-  const [titleAnimationReady, setTitleAnimationReady] = useState(false);
-  const titleCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const titleHeight = useSharedValue(0);
-  const titleChevronRotation = useSharedValue(0);
+  const isTitleExpandable = expandedTitleHeight > collapsedTitleHeight + TITLE_HEIGHT_EPSILON;
+  const visibleHeight = isTitleExpandable && !titleExpanded
+    ? collapsedTitleHeight
+    : expandedTitleHeight;
 
-  const isTitleMeasured = collapsedTitleHeight > 0 && expandedTitleHeight > 0;
-  const isTitleExpandable =
-    titleAnimationReady &&
-    expandedTitleHeight > collapsedTitleHeight + TITLE_HEIGHT_EPSILON;
-
-  const clearTitleCollapseTimer = useCallback(() => {
-    if (titleCollapseTimerRef.current == null) {
-      return;
-    }
-
-    clearTimeout(titleCollapseTimerRef.current);
-    titleCollapseTimerRef.current = null;
-  }, []);
-
-  useLayoutEffect(() => {
-    clearTitleCollapseTimer();
-    setTitleExpanded(false);
-    setShowFullTitle(false);
-    setCollapsedTitleHeight(0);
-    setExpandedTitleHeight(0);
-    setTitleAnimationReady(false);
-    titleHeight.value = 0;
-    titleChevronRotation.value = 0;
-  }, [clearTitleCollapseTimer, title, titleChevronRotation, titleHeight]);
-
-  useEffect(() => {
-    if (!isTitleMeasured || titleAnimationReady) {
-      return;
-    }
-
-    const titleCanExpand =
-      expandedTitleHeight > collapsedTitleHeight + TITLE_HEIGHT_EPSILON;
-    titleHeight.value = titleCanExpand
-      ? collapsedTitleHeight
-      : expandedTitleHeight;
-    titleChevronRotation.value = 0;
-    setShowFullTitle(!titleCanExpand);
-    setTitleAnimationReady(true);
-  }, [
-    collapsedTitleHeight,
-    expandedTitleHeight,
-    isTitleMeasured,
-    titleAnimationReady,
-    titleChevronRotation,
-    titleHeight,
-  ]);
-
-  useEffect(() => {
-    return () => {
-      clearTitleCollapseTimer();
-    };
-  }, [clearTitleCollapseTimer]);
-
-  const titleAnimatedStyle = useAnimatedStyle(() => ({
-    height: titleHeight.value,
-  }));
-
-  const titleChevronAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${titleChevronRotation.value}deg` }],
-  }));
-
-  const handleCollapsedTitleLayout = (event: LayoutChangeEvent) => {
-    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
-
-    if (nextHeight <= 0) {
-      return;
-    }
-
-    setCollapsedTitleHeight((currentHeight) =>
-      currentHeight === nextHeight ? currentHeight : nextHeight,
-    );
-  };
-
-  const handleExpandedTitleLayout = (event: LayoutChangeEvent) => {
-    const nextHeight = Math.ceil(event.nativeEvent.layout.height);
-
-    if (nextHeight <= 0) {
-      return;
-    }
-
-    setExpandedTitleHeight((currentHeight) =>
-      currentHeight === nextHeight ? currentHeight : nextHeight,
-    );
+  const updateHeight = (
+    event: LayoutChangeEvent,
+    setter: (height: number) => void,
+  ) => {
+    const height = Math.ceil(event.nativeEvent.layout.height);
+    if (height > 0) setter(height);
   };
 
   const toggleTitleExpanded = () => {
-    if (!isTitleExpandable) {
-      return;
-    }
+    if (isTitleExpandable) setTitleExpanded((expanded) => !expanded);
+  };
 
-    clearTitleCollapseTimer();
-
-    if (titleExpanded) {
-      setTitleExpanded(false);
-      titleHeight.value = withTiming(collapsedTitleHeight, {
-        duration: TITLE_ANIMATION_DURATION,
-      });
-      titleChevronRotation.value = withTiming(0, {
-        duration: TITLE_ANIMATION_DURATION,
-      });
-      titleCollapseTimerRef.current = setTimeout(() => {
-        setShowFullTitle(false);
-        titleCollapseTimerRef.current = null;
-      }, TITLE_ANIMATION_DURATION);
-      return;
-    }
-
-    setShowFullTitle(true);
+  const handleFocus: NonNullable<TextInputProps["onFocus"]> = (event) => {
     setTitleExpanded(true);
-    titleHeight.value = withTiming(expandedTitleHeight, {
-      duration: TITLE_ANIMATION_DURATION,
-    });
-    titleChevronRotation.value = withTiming(180, {
-      duration: TITLE_ANIMATION_DURATION,
-    });
+    onFocus(event);
+  };
+
+  const controls: NoteViewerTitleControls = {
+    isTitleExpandable,
+    chevronAnimatedStyle: {
+      transform: [{ rotate: titleExpanded ? "180deg" : "0deg" }],
+    },
+    onToggleTitleExpanded: toggleTitleExpanded,
   };
 
   return (
@@ -167,43 +80,40 @@ export default function NoteViewerTitle({
         <Text
           className="text-2xl font-bold text-gray-900"
           numberOfLines={3}
-          ellipsizeMode="tail"
-          onLayout={handleCollapsedTitleLayout}
+          onLayout={(event) => updateHeight(event, setCollapsedTitleHeight)}
         >
-          {title}
+          {title || " "}
         </Text>
         <Text
           className="text-2xl font-bold text-gray-900"
-          onLayout={handleExpandedTitleLayout}
+          onLayout={(event) => updateHeight(event, setExpandedTitleHeight)}
         >
-          {title}
+          {title || " "}
         </Text>
       </View>
 
-      <Animated.View
-        style={
-          titleAnimationReady
-            ? [{ overflow: "hidden" }, titleAnimatedStyle]
-            : undefined
-        }
-      >
-        <Pressable disabled={!isTitleExpandable} onPress={toggleTitleExpanded}>
-          <Text
-            selectable
-            className="text-2xl font-bold text-gray-900"
-            numberOfLines={showFullTitle ? undefined : 3}
-            ellipsizeMode="tail"
-          >
-            {title}
-          </Text>
-        </Pressable>
-      </Animated.View>
+      <View style={visibleHeight > 0 ? { height: visibleHeight, overflow: "hidden" } : undefined}>
+        <TextInput
+          ref={inputRef}
+          value={title}
+          editable={editable}
+          multiline
+          scrollEnabled={false}
+          showSoftInputOnFocus={showSoftInputOnFocus}
+          selectionColor={colors.primary}
+          underlineColorAndroid="transparent"
+          accessibilityLabel="笔记标题"
+          onChangeText={onChangeText}
+          onPressIn={onPressIn}
+          onFocus={handleFocus}
+          onBlur={onBlur}
+          onSelectionChange={onSelectionChange}
+          className="text-2xl font-bold text-gray-900"
+          style={{ height: visibleHeight || undefined, padding: 0 }}
+        />
+      </View>
 
-      {renderMeta({
-        isTitleExpandable,
-        chevronAnimatedStyle: titleChevronAnimatedStyle,
-        onToggleTitleExpanded: toggleTitleExpanded,
-      })}
+      {renderMeta(controls)}
     </>
   );
 }

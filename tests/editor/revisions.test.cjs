@@ -277,6 +277,26 @@ test('stale base revision blocks draft save without deleting the draft', async (
     assert.equal((await revisions.listNoteRevisions(port, 1, created.note.id)).length, 2);
 });
 
+test('explicit conflict confirmation rebases only the active draft before saving', async (t) => {
+    const { port } = await database(t);
+    const created = await notes.createPendingLocalNote(port, 1, payload('基线'));
+    const key = 'note:' + created.note.id;
+    const commit = { key, sessionId: 'active', sequence: 1 };
+    await drafts.openNoteDraft(port, 1, key, 'active', created.note.id,
+        drafts.noteDraftValue(created.note), created.note.current_revision_id);
+    await drafts.writeNoteDraft(port, 1, commit, { title: '标题', content: '本地草稿', categoryId: 3 });
+
+    const elsewhere = await notes.updatePendingLocalNote(port, 1, created.note, payload('他处改动'));
+    await drafts.rebaseNoteDraft(port, 1, commit, elsewhere.note);
+    const saved = await notes.updatePendingLocalNote(
+        port, 1, elsewhere.note, payload('本地草稿'), commit);
+
+    assert.equal(saved.note.content, '本地草稿');
+    assert.equal((await revisions.listNoteRevisions(port, 1, created.note.id)).length, 3);
+    assert.equal((await drafts.readNoteDraft(port, 1, key)).base_revision_id,
+        saved.note.current_revision_id);
+});
+
 test('removing a note deletes its revisions', async (t) => {
     const { port } = await database(t);
     const { note } = await notes.createPendingLocalNote(port, 1, payload('待删除'));
