@@ -84,10 +84,10 @@ export function AuthScreenLayout({
                                 />
                             </Pressable>
                         </View>
-                        <View className="mb-8 gap-3">
+                        <View className="mb-8 gap-4">
                             <Text
                                 accessibilityRole="header"
-                                className="text-center text-2xl text-black"
+                                className="text-center text-4xl text-black"
                             >
                                 {title}
                             </Text>

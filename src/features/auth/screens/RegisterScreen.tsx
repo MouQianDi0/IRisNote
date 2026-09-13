@@ -1,16 +1,16 @@
-import { register, sendVerificationCode } from "@/features/auth/api/auth.api";
-import { getApiErrorMessage } from "@/shared/http/errors";
-import { AuthButton } from "../components/AuthButton";
-import { AuthField } from "../components/AuthField";
-import { AuthScreenLayout } from "../components/AuthScreenLayout";
 import { banner } from "@/core/notifications";
+import { register, sendVerificationCode } from "@/features/auth/api/auth.api";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
+import { AuthButton } from "../components/AuthButton";
+import { AuthField } from "../components/AuthField";
+import { AuthScreenLayout } from "../components/AuthScreenLayout";
 
 export default function RegisterScreen() {
     const { refresh, syncProfile } = useAuth();
@@ -140,7 +140,7 @@ export default function RegisterScreen() {
             onFooterPress={() => router.replace("/auth/login")}
             busy={loading || sendingCode}
         >
-            <View className="gap-7">
+            <View className="gap-4">
                 <AuthField
                     label="用户名"
                     placeholder="请输入用户名"

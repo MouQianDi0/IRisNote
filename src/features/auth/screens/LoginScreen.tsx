@@ -1,19 +1,19 @@
-import { getApiErrorMessage } from "@/shared/http/errors";
+import { banner } from "@/core/notifications";
 import {
     loginWithPassword,
     sendVerificationCode,
 } from "@/features/auth/api/auth.api";
-import { AuthButton } from "../components/AuthButton";
-import { AuthField } from "../components/AuthField";
-import { AuthScreenLayout } from "../components/AuthScreenLayout";
-import { banner } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
+import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
+import { AuthButton } from "../components/AuthButton";
+import { AuthField } from "../components/AuthField";
+import { AuthScreenLayout } from "../components/AuthScreenLayout";
 
 export default function LoginScreen() {
     const { refresh, syncProfile } = useAuth();
@@ -128,7 +128,7 @@ export default function LoginScreen() {
             onFooterPress={() => router.replace("/auth/register")}
             busy={loading || sendingCode}
         >
-            <View className="gap-7">
+            <View className="gap-4">
                 <AuthField
                     label="邮箱"
                     placeholder="请输入邮箱"
