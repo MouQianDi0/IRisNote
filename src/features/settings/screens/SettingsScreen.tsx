@@ -8,7 +8,6 @@ import {
     ArrowLeft,
     Bell,
     BookOpenText,
-    Camera,
     CircleHelp,
     Cloud,
     Database,
@@ -21,7 +20,6 @@ import {
 import { useState } from "react";
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -136,8 +134,8 @@ export default function SettingsScreen() {
         );
     }
 
-    const displayName = user.nickname?.trim() || user.email.split("@")[0];
-    const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
+    // const displayName = user.nickname?.trim() || user.email.split("@")[0];
+    // const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
 
     return (
         <Screen className="bg-app-background">
@@ -149,7 +147,7 @@ export default function SettingsScreen() {
                 <View className="w-full max-w-[560px] self-center px-4">
                     <SettingsHeader onBack={returnToUser} />
 
-                    <Card
+                    {/* <Card
                         className="flex-row items-center rounded-hyper-card p-4"
                         style={cardStyle}
                     >
@@ -206,7 +204,7 @@ export default function SettingsScreen() {
                         >
                             <Camera size={18} color={colors.primary} />
                         </Pressable>
-                    </Card>
+                    </Card> */}
 
                     <Card
                         accessible

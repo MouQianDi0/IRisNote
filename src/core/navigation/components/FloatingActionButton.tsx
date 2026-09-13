@@ -13,7 +13,7 @@ export default function FloatingActionButton() {
     const onNavigate = useDebouncedNavigation();
     const action = getMainAction(pathname);
 
-    const { icon: ActionIcon } = action;
+    const { icon: ActionIcon, label } = action;
     const { gesture: longPress, animatedStyle } = useLongPressNavigation(
         action.route as Href,
     );
@@ -22,6 +22,8 @@ export default function FloatingActionButton() {
         <Animated.View style={animatedStyle}>
             <GestureDetector gesture={longPress}>
                 <Pressable
+                    accessibilityLabel={label}
+                    accessibilityRole="button"
                     className="size-[66] items-center justify-center rounded-floating bg-action shadow-md"
                     style={({ pressed }) =>
                         pressed

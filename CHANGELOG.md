@@ -2,6 +2,60 @@
 
 ---
 
+## 2026-09-14 03:51:06 | 优化代码
+
+- **用户页改为移动端横纵全屏布局**
+    - 移除 560dp 最大宽度、屏幕宽度检测、380dp 紧凑账户样式、760dp 悬浮导航避让和底部 150dp 预留；用户页不再为了规避 Tab 栏而压缩内容。
+    - 滚动内容与内部布局均使用 `flexGrow: 1` 占满手机可用高度；账户与概览位于顶部、继续阅读位于中部、我的内容位于底部，三区使用弹性间距铺满一屏，内容超高时自然滚动。
+    - 内容区使用全宽布局和四周 16dp 内边距；头像固定 64×64dp、昵称固定 20sp，不再针对 320dp 超小视口压缩组件。
+- **将用户页验收标准切换为移动端**
+    - 基准视觉尺寸调整为 390×844 与 412×915，只验收 Android/iOS 移动端的安全区、全屏宽高、滚动、触控和状态表现。
+    - Web 宽屏、桌面居中和 320×568 不再作为用户页设计与视觉验收条件；当前阶段明确将 Tab 栏遮挡排除在用户页变更范围外。
+    - TypeScript、相关 ESLint、差异空白检查和 110 项 Node 测试通过；Android 与 iOS Hermes Bundle 均成功导出。
+    - 本轮未执行 Web 宽屏验收，也未连接 Android/iOS 真机；移动端视觉效果、安全区和头像权限仍由真机验收确认。
+- **修改文件列表**
+    - `src/features/profile/screens/ProfileScreen.tsx`
+    - `docs/IRisNote视觉设计规范.md`
+    - `docs/项目架构与文件索引.md`
+    - `design-qa.md`
+    - `README.md`
+    - `CHANGELOG.md`
+
+---
+
+## 2026-09-14 03:32:18 | 新增功能 / 优化代码
+
+- **将用户页重构为无顶栏的个人工作台**
+    - 移除蓝色资料头图、顶部标题栏、静态深色模式/隐私/反馈菜单和重复退出入口，页面从安全区下方 16dp 直接进入账户卡片。
+    - 新增笔记、分类、标星三项真实概览；本地未同步笔记优先覆盖同一服务端笔记，服务端独有项只用于补足，避免重复计数。
+    - 新增“继续阅读”卡片，从当前账号的结构化阅读记录中选择仍未读完的最新笔记；无记录时展示可进入笔记页的明确空状态。
+    - 新增全部笔记、星标笔记和草稿箱三个真实快捷入口；笔记页支持 `view=starred` 筛选及 `drafts=1` 打开草稿箱，并在关闭草稿箱后清除一次性参数。
+    - 用户 Tab 的悬浮主按钮由闪电图标改为设置齿轮，并补充可访问名称；窄于 760dp 时为右侧悬浮导航预留独立轨道，避免 320dp 屏幕遮挡内容。
+    - 账户与概览加载、头像上传、未登录、长文本截断和数据暂不可用均有明确状态；未新增后端接口或依赖。
+- **验证结果**
+    - Expo SDK 56 版本化文档已核对；TypeScript、相关 ESLint、差异空白检查和 Expo Web 生产导出通过，仍输出 16 个静态路由。
+    - 110 项 Node 测试全部通过，新增概览合并、继续阅读选择及分账号阅读记录枚举覆盖。
+    - 可见 Chrome 命名会话完成宽屏、390×844、320×568 验收，并验证设置、星标筛选和草稿箱真实入口；合成账户与模拟数字仅用于视觉验收，完成后已从源码移除。
+    - 浏览器控制接口不提供字面量 `--headed --persistent` 参数，实际使用可见且持续复用的 Chrome 命名会话，并在结束前恢复默认视口。
+- **修改文件列表**
+    - `src/features/profile/screens/ProfileScreen.tsx`
+    - `src/features/profile/hooks/useProfileOverview.ts`
+    - `src/features/profile/profile-overview.ts`
+    - `src/features/notes/screens/NotesScreen.tsx`
+    - `src/features/notes/reading/reading-progress-store.ts`
+    - `src/core/navigation/navigation.constants.ts`
+    - `src/core/navigation/navigation.types.ts`
+    - `src/core/navigation/components/FloatingActionButton.tsx`
+    - `tests/profile/profile-overview.test.cjs`
+    - `tests/reading/reading.test.cjs`
+    - `docs/IRisNote视觉设计规范.md`
+    - `docs/项目架构与文件索引.md`
+    - `docs/业务模块与运行逻辑.md`
+    - `README.md`
+    - `CHANGELOG.md`
+
+---
+
 ## 2026-09-14 02:58:10 | 优化代码
 
 - **设置首页验证收口**
