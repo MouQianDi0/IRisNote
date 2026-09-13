@@ -1,4 +1,5 @@
 import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
+import { InputSave } from "@/shared/ui";
 import {
     MoveHorizontal,
     Pin,
@@ -6,11 +7,10 @@ import {
     Star,
     Trash2,
 } from "lucide-react-native";
-import { createElement, useState } from "react";
+import { createElement, useRef, useState } from "react";
 import {
     Pressable,
     Text,
-    TextInput,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -82,7 +82,12 @@ function CategoryActionContent({
     const trashScale = useSharedValue(1);
 
 
+    // 一次性提交锁：Android 上点保存按钮会先触发 blur 再触发 press，防止重命名被调用两次
+    const renameLockRef = useRef(false);
+
     const handleRename = () => {
+        if (renameLockRef.current) return;
+        renameLockRef.current = true;
         const nextName = editName.trim();
         if (nextName && nextName !== categoryName) onRename(nextName);
         setEditing(false);
@@ -146,11 +151,12 @@ function CategoryActionContent({
                     <View accessibilityViewIsModal className="w-full max-w-[440px] rounded-hyper-modal bg-white p-6"
                         style={{ maxHeight: "85%" }}>
                         <View className="mb-3">
-                            {editing ? <TextInput
+                            {editing ? <InputSave
                                 accessibilityLabel="分类名称" value={editName} onChangeText={setEditName}
-                                placeholder="输入新名称" placeholderTextColor={colors.hyperTextSecondary}
-                                className="h-12 rounded-hyper-card bg-hyper-card px-4 text-[17px] text-black"
+                                placeholder="输入新名称" containerClassName="w-full"
+                                inputClassName="web:outline-none"
                                 maxLength={10} autoFocus onBlur={handleRename} onSubmitEditing={handleRename}
+                                onSave={handleRename}
                             /> : <View className="flex-row items-center justify-between gap-3">
                                 <Pressable accessibilityRole="button" accessibilityLabel="更改图标"
                                     accessibilityState={{ expanded: iconPickerOpen }}
@@ -162,7 +168,10 @@ function CategoryActionContent({
                                     {categoryName}
                                 </Text>
                                 <Pressable accessibilityRole="button" accessibilityLabel="重命名分类"
-                                    onPress={() => setEditing(true)} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
+                                    onPress={() => {
+                                        renameLockRef.current = false;
+                                        setEditing(true);
+                                    }} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
                                     <SquarePen size={24} color={colors.hyperTextSecondary} />
                                 </Pressable>
                             </View>}

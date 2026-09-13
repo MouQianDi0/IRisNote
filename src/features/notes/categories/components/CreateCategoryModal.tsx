@@ -1,7 +1,8 @@
 import { AppModal } from "@/shared/ui/Overlay/app-modal";
+import { InputSave } from "@/shared/ui";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { colors } from "@/shared/theme";
 import { DialogButton } from "../../components/editor/draft-dialog";
 import CategoryIconPicker from "./CategoryIconPicker";
@@ -39,12 +40,15 @@ export default function CreateCategoryModal({ visible, onClose, onAdd }: CreateC
                         <Text accessibilityRole="header" className="text-2xl leading-8 text-black mb-3">新建分类</Text>
                         <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                             <Text className="text-sm text-hyper-text-secondary mb-2">分类名称</Text>
-                            <TextInput
+                            <InputSave
                                 accessibilityLabel="分类名称"
-                                className="h-12 rounded-hyper-card bg-hyper-card px-4 text-[17px] text-black"
+                                containerClassName="w-full"
+                                inputClassName="web:outline-none"
                                 placeholder="请输入分类名称"
-                                placeholderTextColor={colors.hyperTextSecondary}
                                 value={name} onChangeText={setName} maxLength={10}
+                                returnKeyType="done"
+                                onSubmitEditing={handleSubmit}
+                                onSave={handleSubmit}
                             />
                             <Pressable accessibilityRole="button" accessibilityLabel="选择图标"
                                 accessibilityState={{ expanded: iconsExpanded }}
