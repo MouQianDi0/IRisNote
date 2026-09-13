@@ -2,6 +2,56 @@
 
 ---
 
+## 2026-09-14 02:58:10 | 优化代码
+
+- **设置首页验证收口**
+    - 107 项 Node 测试全部通过；设置页面及组件 ESLint、差异空白检查通过。
+    - Expo Web 生产导出成功，输出包含 `/pages/user/settings` 在内的 16 个静态路由。
+    - 可见浏览器完成宽屏、390×844 和 320×568 验收；确认账户卡、四格概览、分组设置、禁用态和底部滚动布局，浏览器无 error/warning 日志。
+    - 用于合成账户的本地预览路由已删除，未调用真实登录、头像上传、退出登录或同步接口。
+    - 全量 TypeScript 仍被实施前已有的 `(tabs)/_layout.tsx` 与 `AuthScreenLayout.tsx` 两处 `/auth/welcome` typed-route 错误阻断，本次设置文件未新增类型错误。
+    - 浏览器工具不提供 `--headed --persistent` 参数，实际使用可见的 Codex 应用内浏览器并恢复默认视口。
+- **修改文件列表**
+    - `CHANGELOG.md`
+    - `design-qa.md`
+
+---
+
+## 2026-09-14 02:54:47 | 新增功能
+
+- **新增 IRisNote 设置首页 UI**
+    - 将静态占位页重构为账户卡片、四格状态概览和三组设置卡片，使用项目既有 `#007AFF` 主色、浅色背景与 HyperOS 圆角层级。
+    - 复用认证与头像能力，支持头像入口、登录信息、加入时间、版本号、返回与退出登录；加载和未登录直达均有明确状态。
+    - 主题、编辑阅读、通知、全局同步、数据与隐私、帮助反馈等未接入能力统一显示为「规划中」禁用态，不提供虚假跳转。
+    - 完全移除参考图中的会员、购买、套餐、容量和轮播语义；未新增依赖、设置持久化或后端接口。
+    - 390×844、320×568 与宽屏浏览器结构检查通过，窄屏可以滚动到底部；浏览器没有 error/warning 日志。
+- **修改文件列表**
+    - `src/features/settings/screens/SettingsScreen.tsx`
+    - `src/features/settings/components/SettingsOverviewItem.tsx`
+    - `src/features/settings/components/SettingsRow.tsx`
+    - `docs/IRisNote视觉设计规范.md`
+    - `docs/项目架构与文件索引.md`
+    - `README.md`
+    - `TODO.md`
+    - `design-qa.md`
+    - `CHANGELOG.md`
+- **验证进度**：设置相关 ESLint 与 Expo Web 导出通过；全量 TypeScript 仍被本次修改前已有的两处 `/auth/welcome` typed-route 错误阻断，未越权修改认证文件。
+
+---
+
+## 2026-09-14 02:44:25 | 优化代码
+
+- **确认设置首页参考布局与真实能力边界**
+    - 采用账户信息、四格状态概览和分组设置卡片的纵向结构，沿用 IRisNote `#007AFF` 品牌主色与浅色 HyperOS Token。
+    - 明确排除会员中心、购买入口、容量套餐、容量进度条和轮播圆点。
+    - 规定尚未接入的主题、编辑阅读、通知、同步、数据及隐私能力显示为「规划中」禁用态，避免虚假交互。
+    - 固化页面、卡片、设置行、顶栏、头像、退出入口及窄屏滚动的尺寸和间距。
+- **修改文件列表**
+    - `docs/IRisNote视觉设计规范.md`
+    - `CHANGELOG.md`
+
+---
+
 ## 2026-09-12 11:28:07 | 优化代码
 
 - **欢迎与认证参考布局验证完成**
