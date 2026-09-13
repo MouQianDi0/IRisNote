@@ -37,7 +37,13 @@ export function SettingsRow({
             {label}
           </Text>
           {value ? (
-            <Text className="shrink text-[13px] text-text-secondary">
+            <Text
+              className={
+                disabled
+                  ? "shrink text-[13px] text-text-muted"
+                  : "shrink text-[13px] text-text-secondary"
+              }
+            >
               {value}
             </Text>
           ) : null}
@@ -65,7 +71,7 @@ export function SettingsRow({
           accessibilityState={{ disabled }}
           disabled={disabled}
           onPress={onPress}
-          className="min-h-14 flex-row items-center gap-3 px-4 py-4 active:bg-surface-muted"
+          className="min-h-14 flex-row items-center gap-3 px-4 py-4 active:bg-surface-muted active:opacity-[0.85]"
         >
           {content}
         </Pressable>

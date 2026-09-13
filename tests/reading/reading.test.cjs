@@ -297,6 +297,20 @@ test("account separation and positive server ID enforcement", async () => {
   assert.equal((await store.listPending(1)).length, 1);
   assert.equal((await store.listPending(2)).length, 0);
 });
+test("reading record listing returns structured records for one account only", async () => {
+  const storage = memory();
+  storage.map.set("irisnote:reading:1:9", "35");
+  const store = new ReadingProgressStore(storage);
+  const text = new ReadingText(content);
+  await store.save(1, 2, 2, text.position(10, 20));
+  await store.save(1, -3, null, text.position(20, 40));
+  await store.save(2, 4, 4, text.position(30, 60));
+
+  assert.deepEqual(
+    (await store.list(1)).map((item) => item.noteId).sort((a, b) => a - b),
+    [-3, 2],
+  );
+});
 test("malformed or mismatched record is preserved rather than overwritten", async () => {
   const storage = memory();
   storage.map.set("irisnote:reading:1:2", "{bad");

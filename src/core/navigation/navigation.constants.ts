@@ -1,8 +1,8 @@
 import {
-    Bolt,
     ClipboardPenLine,
     Notebook,
     PencilLine,
+    Settings,
     SquareCheckBig,
     Sticker,
 } from "lucide-react-native";
@@ -89,12 +89,28 @@ export const getActiveTabKey = (path: string): TabKey => {
 export const getMainAction = (path: string): MainAction => {
     switch (getActiveTabKey(path)) {
         case "note":
-            return { icon: PencilLine, route: "/pages/note/create" };
+            return {
+                icon: PencilLine,
+                label: "新建笔记",
+                route: "/pages/note/create",
+            };
         case "todo":
-            return { icon: SquareCheckBig, route: "/pages/todo/create" };
+            return {
+                icon: SquareCheckBig,
+                label: "新建待办",
+                route: "/pages/todo/create",
+            };
         case "excerpt":
-            return { icon: ClipboardPenLine, route: "/pages/excerpt/create" };
+            return {
+                icon: ClipboardPenLine,
+                label: "新建剪贴",
+                route: "/pages/excerpt/create",
+            };
         case "user":
-            return { icon: Bolt, route: "/pages/user/settings" };
+            return {
+                icon: Settings,
+                label: "打开设置",
+                route: "/pages/user/settings",
+            };
     }
 };

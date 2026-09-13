@@ -127,19 +127,23 @@ export class ReadingProgressStore {
       if (this.pending.get(key) === record) this.pending.delete(key);
     });
   }
-  async listPending(owner: number): Promise<ReadingRecord[]> {
-    const keys = new Set([
+  async list(owner: number): Promise<ReadingRecord[]> {
+    const ownerPrefix = `${prefix}${owner}:`;
+    const keys = [...new Set([
       ...(await this.storage.getAllKeys()),
       ...this.pending.keys(),
-    ]);
-    const records: ReadingRecord[] = [];
-    for (const key of keys) {
-      if (!key.startsWith(`${prefix}${owner}:`)) continue;
-      const id = Number(key.slice(`${prefix}${owner}:`.length));
-      const record = await this.read(owner, id);
-      if (record && "pendingSync" in record && record.pendingSync)
-        records.push(record);
-    }
-    return records;
+    ])].filter((key) => key.startsWith(ownerPrefix));
+    const records = await Promise.all(
+      keys.map(async (key) => {
+        const note = Number(key.slice(ownerPrefix.length));
+        if (!Number.isInteger(note)) return null;
+        const record = await this.read(owner, note);
+        return record && "updatedAt" in record ? record : null;
+      }),
+    );
+    return records.filter((record): record is ReadingRecord => record !== null);
+  }
+  async listPending(owner: number): Promise<ReadingRecord[]> {
+    return (await this.list(owner)).filter((record) => record.pendingSync);
   }
 }
