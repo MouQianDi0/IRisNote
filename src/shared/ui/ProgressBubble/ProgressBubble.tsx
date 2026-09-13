@@ -12,7 +12,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { Bookmark } from "lucide-react-native";
-import { colors } from "@/shared/theme";
+import { colors, radii } from "@/shared/theme";
 import { bubblePosition } from "./progress-bubble-position";
 
 const AnimatedInput = Animated.createAnimatedComponent(TextInput);
@@ -84,7 +84,7 @@ export default function ProgressBubble({
           paddingVertical: 8,
           minHeight: 44,
           justifyContent: "center",
-          borderRadius: 14,
+          borderRadius: radii.progressBubble,
           borderCurve: "continuous",
           borderWidth: 1,
           borderColor: colors.hyperDivider,

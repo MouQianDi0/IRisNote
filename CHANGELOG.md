@@ -2,6 +2,165 @@
 
 ---
 
+## 2026-09-14 04:30:43 | 新增功能
+
+- **「真机布局实测验收」固化为规范强制步骤**
+    - 将已验证的 uiautomator dump → px/dp 对账流程写入四份规范文档顶部（§0）：截图判读、提出修改要求、验证改动三个场景必须先真机实测再下结论；无 adb 环境跳过实测，但不得编造数值。
+    - 判读规则随文档固化：px 须除以「密度/160」换算 dp；文本 bounds 非触摸热区；原生树经 RN 扁平化看不到组件名与 padding 来源，定位原因须回源码；clickable 计数天然多于 RN 触摸组件数。
+- **修改文件列表**
+    - `scripts/ui-dump-parse.mjs` - 新增一键实测脚本：自动读密度（Override 优先）→ uiautomator dump → 解析输出每个元素的 class/文本/无障碍描述与 px、dp 边界，`--serial` 指定多设备目标机。
+    - `docs/IRisNote视觉设计规范.md` - 顶部新增 §0，版本 1.11 → 1.12。
+    - `docs/公共组件规范.md` - 顶部新增 §0，版本 1.4 → 1.5。
+    - `docs/公共组件审计基线.md` - 顶部新增 §0（作为 `design:audit` 静态扫描的真机复核手段）。
+    - `docs/样式开发规范.md` - 顶部新增 §0。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - 脚本真机实跑通过（PLQ110，476dpi，1dp=2.975px），输出格式与预期一致；`npx eslint --no-cache --no-warn-ignored scripts/ui-dump-parse.mjs` 通过（0 警告）。
+    - 文档为纯 Markdown 变更，不涉及代码逻辑；§0 正文与落稿范围（含《样式开发规范》、无 adb 跳过条款）均经用户确认。
+
+---
+
+## 2026-09-14 04:27:39 | 优化代码
+
+- **登录/注册页"发送验证码"按钮迁移为公共 AppButton**
+    - 登录页与注册页的"发送验证码"按钮调用点由 `AuthButton`（薄封装）改为直接使用公共 `AppButton`（`variant="tonal"` 显式声明），与组件库统一迁移方向一致。
+    - 属性同步：`busy` → `loading`（AppButton 原生命名）；`className="w-[120px]"`、label 三态（发送中…/倒计时/发送验证码）、disabled 逻辑（邮箱无效/倒计时中/提交中）全部保持不变，布局与视觉零变化（120×48dp、surfaceControl 底、16dp 连续圆角）。
+    - `AuthButton` 组件本身保留：登录主按钮、注册主按钮、WelcomeScreen 仍在使用，迁移去留待后续决策。
+- **修改文件列表**
+    - `src/features/auth/screens/LoginScreen.tsx` - "发送验证码"改用 `AppButton`，新增 import。
+    - `src/features/auth/screens/RegisterScreen.tsx` - 同款同步迁移，新增 import。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - `npx tsc --noEmit` 通过（exit 0）；两文件 `npx eslint --no-cache --no-warn-ignored` 通过（0 警告）。
+    - 未运行测试/构建；按钮三态（默认/禁用/发送中）视觉与交互由用户在设备上验收（需重新构建后查看，旧构建显示为纯文字样式）。
+
+---
+
+## 2026-09-14 04:00:30 | 优化代码
+
+- **分类弹窗名称输入框升级为公共 InputSave**
+    - 分类操作弹窗（重命名）与新建分类弹窗的名称输入框由公共 `Input` 迁移到公共 `InputSave`（52dp 输入框 + 52×52dp tonal 保存按钮，Save 图标 20dp），与笔记详情页 `NoteRename` 的保存输入约定统一。
+    - 分类操作弹窗：保留自动聚焦、10 字限制、失焦/键盘提交保存；新增保存按钮点击保存（`onSave`），三路保存共用 `handleRename`。
+    - 新增一次性提交锁 `renameLockRef`：Android 上点保存按钮会先触发输入框 blur 再触发 press，锁可防止重命名被重复调用；锁在每次进入编辑态时复位。
+    - 新建分类弹窗：保存按钮与键盘"完成"均触发 `handleSubmit`（沿用空名称拦截）；底部"确定"按钮及其禁用态保持不变；未使用 `disabled` 属性（`InputSave.disabled` 会连同输入框一起禁用，空名称时会锁死输入），空名称由 `handleSubmit` 拦截。
+    - 编辑态标题行高度 48dp → 52dp（进入编辑瞬间微增高，与 `NoteRename` 一致）。
+- **修改文件列表**
+    - `src/features/notes/categories/components/CategoryActionModal.tsx` - 重命名输入改用 `InputSave`，新增提交锁。
+    - `src/features/notes/categories/components/CreateCategoryModal.tsx` - 名称输入改用 `InputSave`，接 `onSave`/`onSubmitEditing`。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - `npx tsc --noEmit` 通过（exit 0）；两文件 `npx eslint --no-cache --no-warn-ignored` 通过（0 警告）。
+    - 未运行测试/构建/设备验收；保存按钮视觉与交互由用户验收。
+
+---
+
+## 2026-09-14 03:25:46 | 优化代码
+
+- **分类新建与重命名输入框接入公共 Input**
+    - 将分类操作弹窗的重命名输入框和新建分类弹窗的名称输入框从私有 `TextInput` 样式迁移到公共 `Input`。
+    - 两处字段统一使用 48dp 高度、`radii.field = 16dp`、1dp 常驻边框、主题表面色、17sp 文字和聚焦主色边框；页面不再重复声明输入框身份颜色、圆角和字号。
+    - 保留分类名称 10 字限制、输入值、自动聚焦、失焦保存、键盘提交、空名称拦截和分类接口逻辑不变。
+    - 同步公共组件待办、设计审计迁移状态和架构索引。
+- **修改文件列表**
+    - `src/features/notes/categories/components/CreateCategoryModal.tsx` - 新建分类名称字段改用公共 `Input`。
+    - `src/features/notes/categories/components/CategoryActionModal.tsx` - 分类重命名字段改用公共 `Input`。
+    - `待办事项.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md` - 更新分类输入迁移状态和审计快照。
+    - `CHANGELOG.md` - 记录本次分类输入框迁移。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、两个分类组件与公共 Input 的目标 Expo ESLint、`npm run theme:check`、`npm run design:audit` 通过。
+    - 设计审计中直接包含 `TextInput` 的文件由阶段 0 的 11 个降至 9 个；主题目录外固定颜色 14、裸字号 19，均未增加。
+    - 未运行测试、构建、导出、浏览器或设备验收；输入框自动聚焦、键盘和视觉效果由用户主动验收。
+
+---
+
+## 2026-09-14 03:04:36 | 新增功能 / 优化代码
+
+- **推进公共组件阶段 2 并完成认证域首批接入**
+    - 新增 `AppText`、`AppButton`、`IconButton`、`BackButton`、`Input` 五个公共基础组件，并统一从 `@/shared/ui` 导出；颜色读取语义 Token/组件配方，圆角读取用途 Token，页面只保留布局扩展入口。
+    - `AppButton` 实现 primary/secondary/tonal/danger/text、44/48dp 尺寸、加载锁定、显式禁用配色和 16dp 圆角；危险禁用态保持浅红背景 `#F8D7D2` 与红色内容 `#E94634`。
+    - `IconButton` 实现 ghost/tonal/selected、40/48dp 尺寸、紧凑触控补偿、加载/选中/禁用无障碍状态；`BackButton` 统一 24dp ArrowLeft，并保留纯图标和带文字模式。
+    - `Input` 实现单行 48dp、多行最小 96dp、16dp 圆角、常驻 1dp 边框，以及聚焦/错误/禁用/只读、前后内容、清空、原生 ref、键盘和自动填充属性透传。
+    - 认证域的按钮、字段、密码显隐和返回入口已接入公共组件；`AuthButton`、`AuthField` 保留为业务薄适配，认证校验、接口、系统返回与键盘逻辑不变。旧 `Button`、`TextField` 继续作为迁移兼容入口。
+    - 依据 Expo SDK 56 文档评估 `@expo/ui` Universal API；普通输入为保持现有受控字符串和原生 TextInput 契约使用 React Native 原语封装，后续 Picker/Switch/BottomSheet 仍优先评估 `@expo/ui`。
+    - 同步待办、公共组件规范、审计基线、架构索引；记录用户已完成此前浮动工具栏 16dp 圆角验收。
+- **修改文件列表**
+    - `src/shared/ui/AppText/*`、`AppButton/*`、`IconButton/*`、`BackButton/*`、`Input/*`、`src/shared/ui/index.ts` - 新增阶段 2 基础组件、类型与公共出口。
+    - `src/features/auth/components/AuthButton.tsx`、`AuthField.tsx`、`AuthScreenLayout.tsx` - 将认证视觉接入公共组件，保留业务适配和返回流程。
+    - `待办事项.md`、`docs/公共组件规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`docs/项目编辑器进度.md` - 更新接口、技术选型、迁移状态、审计快照和用户验收记录。
+    - `CHANGELOG.md` - 记录本次阶段 2 变更。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、新增组件及认证适配文件的 Expo ESLint、`npm run theme:check`、`npm run design:audit` 通过。
+    - 审计快照为 242 个源码文件、18,490 行；主题目录外固定颜色 14、裸字号 19，均未因本批增加。
+    - `npx prettier --write` 因项目当前命令解析到 `jest-snapshot-prettier` 并报 `getPlugin() requires astFormat to be set`，未改写源码；已以目标 ESLint 和手工格式复核替代，未新增格式化依赖或修改锁文件。
+    - 未运行测试、构建、导出、浏览器或设备验收；阶段 2 新组件的视觉与交互仍由用户主动验收。
+
+---
+
+## 2026-09-14 02:25:12 | 优化代码
+
+- **浮动编辑器工具栏圆角调整为 16dp**
+    - 将无键盘浮动工具栏从复用旧 `radius.hyperControl = 14dp` 改为独立语义 Token `radii.editorToolbar = 16dp`，避免继续与按钮圆角耦合。
+    - 保持浮动工具栏 225×48dp、底部 40dp 间距、白色背景、阴影、滚动显隐和点击逻辑不变；键盘期 43.2dp 通栏仍为 0dp 圆角并紧贴输入法。
+    - 同步默认主题预设、生成后的 CSS Token、公共组件规范、视觉规范、审计基线、架构索引、编辑器进度和公共化待办。
+- **修改文件列表**
+    - `src/core/editor/components/editor-bottom-toolbar.tsx` - 接入独立 16dp 工具栏圆角 Token。
+    - `src/shared/theme/presets/default-light.json`、`src/shared/theme/theme.types.ts`、`global.css` - 新增并同步 `editorToolbar` 圆角。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`docs/项目编辑器进度.md`、`待办事项.md` - 更新当前规格、状态与实施记录。
+    - `CHANGELOG.md` - 记录本次圆角调整。
+- **验证结果**
+    - `npx tsc --noEmit`、目标文件 Expo ESLint、`npm run theme:check` 和 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收；视觉效果由用户主动验收。
+
+---
+
+## 2026-09-14 02:20:22 | 优化代码
+
+- **完成公共组件阶段 0 审计与阶段 1 主题基座首批实施**
+    - 新增默认浅色主题预设，将原始色板、语义颜色、组件状态配方、圆角、间距、字号和动效值集中到单一来源；保留旧 `colors`、`radius` 导出作为渐进迁移兼容层。
+    - 新增 NativeWind CSS Token 同步与一致性检查脚本，以及可重复执行的设计系统审计脚本；记录 232 个源码文件、18,009 行源码和主要漂移位置的审计基线。
+    - 按已确认规范将现有 HyperOS 按钮、有底状态控件、图标选择单元和阅读进度气泡接入 16dp 语义圆角；编辑器浮动工具栏继续使用兼容 14dp，避免旧 `hyperControl` 复用造成连带变化。
+    - 危险按钮禁用背景与内容分别由 `destructiveDisabled = #F8D7D2`、`onDestructiveDisabled = #E94634` 统一提供，组件配方不再硬编码状态颜色。
+    - 同步公共组件规范、视觉规范、样式开发规范和公共化待办状态；当前尚未开始 AppButton、Input、AppDialog 等组件本体及业务调用方迁移。
+- **修改文件列表**
+    - `src/shared/theme/presets/default-light.json` - 新增默认主题唯一原始值来源及 CSS 映射表。
+    - `src/shared/theme/palette.ts`、`semantic-colors.ts`、`component-recipes.ts`、`theme-preset.ts`、`theme-typography.ts`、`theme.types.ts` - 新增主题解析、类型和组件配方。
+    - `src/shared/theme/colors.ts`、`radius.ts`、`spacing.ts`、`typography.ts`、`index.ts` - 接入主题预设并保留旧调用方兼容导出。
+    - `global.css`、`package.json`、`scripts/sync-theme-css.mjs`、`scripts/audit-design-system.mjs` - 增加 CSS 托管区块、同步命令和审计命令。
+    - `src/features/notes/categories/components/CategoryActionModal.tsx`、`CategoryIconPicker.tsx`、`src/shared/ui/ProgressBubble/ProgressBubble.tsx` - 接入 16dp 语义圆角。
+    - `docs/公共组件审计基线.md`、`docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/样式开发规范.md`、`待办事项.md` - 记录审计基线、主题来源、圆角规范与推进状态。
+- **验证结果**
+    - `npx tsc --noEmit` 通过。
+    - 受影响 TypeScript、TSX 与脚本的 Expo ESLint 检查通过。
+    - `npm run theme:check`、`npm run design:audit`、脚本语法检查和 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收；交互与视觉验收仍由用户主动发起。
+
+---
+
+## 2026-09-14 02:01:38 | 优化代码
+
+- **建立公共组件公共化实施待办**
+    - 汇总聊天中确认的按钮、返回入口、输入框、图标选择器、弹窗、状态与列表组件需求，并结合当前项目重复实现和主题 Token 漂移情况形成实施基线。
+    - 将公共化工作拆分为主题基座、基础组件、组合组件、状态组件、调用方迁移、治理验收六个阶段；每项补充现状来源、实施步骤、依赖关系、迁移范围、排除项和完成标准。
+    - 按已确认目标记录普通按钮、有底图标按钮、图标选择单元和阅读进度气泡统一为 16dp 圆角；输入框新增独立 16dp 字段圆角，并要求先拆分旧 `hyperControl` 语义以避免连带修改。
+    - 固化危险按钮禁用背景 `#F8D7D2`、文字与图标 `#E94634`，并补充可替换主题、Web/原生映射、一致性检查和用户验收边界。
+- **修改文件列表**
+    - `待办事项.md` - 新增公共组件公共化的分阶段详细实施方案。
+    - `CHANGELOG.md` - 记录本次文档规划变更。
+
+---
+
+## 2026-09-14 01:14:41 | 优化代码
+
+- **建立可替换主题的公共组件规范**
+    - 新增公共组件目标规范，明确按钮、图标按钮、返回按钮、输入框、表单字段、图标选择器和弹窗的形状、尺寸、颜色映射、状态优先级、无障碍及 TypeScript 接口。
+    - 建立 ThemePreset、基础色板、语义颜色和组件配方三层契约；规定后期手动修改主题时集中替换主题预设，页面不得逐项覆盖组件身份色。
+    - 明确当前源码尚未完成公共组件迁移，保留 `global.css` 与 `src/shared/theme` 双向同步边界，并记录后续单一主题源及一致性检查目标。
+    - 按用户确认，将危险按钮禁用态固定为浅红背景 `#F8D7D2`、红色文字与图标 `#E94634`。
+- **修改文件列表**
+    - `docs/公共组件规范.md` - 新增公共组件、主题、状态、接口和迁移规范。
+    - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
+    - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
+    - `CHANGELOG.md` - 记录本次规范变更。
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**

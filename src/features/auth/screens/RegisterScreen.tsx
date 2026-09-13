@@ -9,6 +9,7 @@ import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { AuthButton } from "../components/AuthButton";
+import { AppButton } from "@/shared/ui";
 import { AuthField } from "../components/AuthField";
 import { AuthScreenLayout } from "../components/AuthScreenLayout";
 
@@ -183,7 +184,7 @@ export default function RegisterScreen() {
                     autoComplete="one-time-code"
                     maxLength={6}
                     action={
-                        <AuthButton
+                        <AppButton
                             className="w-[120px]"
                             variant="tonal"
                             label={
@@ -193,7 +194,7 @@ export default function RegisterScreen() {
                                       ? `${countdown}s`
                                       : "发送验证码"
                             }
-                            busy={sendingCode}
+                            loading={sendingCode}
                             disabled={
                                 !emailCheck.isValid || countdown > 0 || loading
                             }
