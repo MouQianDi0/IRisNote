@@ -1,6 +1,5 @@
-import { colors } from "@/shared/theme";
+import { BackButton } from "@/shared/ui";
 import { router, useFocusEffect } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
 import { useCallback, type PropsWithChildren } from "react";
 import {
     BackHandler,
@@ -66,23 +65,11 @@ export function AuthScreenLayout({
                 <View className="flex-1 items-center px-4 pb-6 pt-3">
                     <View className="w-full max-w-[440px]">
                         <View className="mb-2 h-11 flex-row items-center">
-                            <Pressable
-                                accessibilityRole="button"
+                            <BackButton
                                 accessibilityLabel="返回欢迎页"
-                                accessibilityState={{ disabled: busy }}
                                 disabled={busy}
                                 onPress={returnToWelcome}
-                                className="h-11 w-11 items-center justify-center active:opacity-85"
-                            >
-                                <ArrowLeft
-                                    size={24}
-                                    color={
-                                        busy
-                                            ? colors.hyperLabelDisabled
-                                            : colors.textPrimary
-                                    }
-                                />
-                            </Pressable>
+                            />
                         </View>
                         <View className="mb-8 gap-4">
                             <Text

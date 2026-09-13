@@ -1,4 +1,5 @@
-import { colors, radius, spacing } from "@/shared/theme";
+import { colors } from "@/shared/theme";
+import { InputSave } from "@/shared/ui";
 import {
   CircleAlert,
   Clock,
@@ -7,7 +8,6 @@ import {
   CloudOff,
   CloudUpload,
   FileChartPie,
-  Save,
   SquarePen,
 } from "lucide-react-native";
 import {
@@ -17,7 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { readReadingProgress } from "../../data/note-reading-progress";
 import {
   DEFAULT_NOTE_STATISTICS_OPTIONS,
@@ -42,7 +42,6 @@ export function NoteRename({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(note.title);
   const [message, setMessage] = useState("");
-  const [focused, setFocused] = useState(false);
   const titleRef = useRef(note.title);
   const editingRef = useRef(false);
   const savingRef = useRef<Promise<boolean> | null>(null);
@@ -67,7 +66,6 @@ export function NoteRename({
         setMessage("");
         editingRef.current = false;
         setEditing(false);
-        setFocused(false);
         return true;
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "修改标题失败");
@@ -91,77 +89,22 @@ export function NoteRename({
   return (
     <View className="mb-4 gap-2">
       {editing ? (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <View style={{ flex: 1, padding: spacing.xxs }}>
-            <TextInput
-              accessibilityLabel="笔记标题"
-              autoFocus
-              value={title}
-              onChangeText={(nextTitle) => {
-                titleRef.current = nextTitle;
-                setTitle(nextTitle);
-                if (nextTitle.trim()) setMessage("");
-              }}
-              editable={!busy}
-              onFocus={() => setFocused(true)}
-              onBlur={() => {
-                setFocused(false);
-                void save();
-              }}
-              onSubmitEditing={() => void save()}
-              returnKeyType="done"
-              selectionColor={colors.primary}
-              style={{
-                height: 48,
-                borderRadius: radius.hyperCard,
-                borderCurve: "continuous",
-                backgroundColor: colors.hyperCard,
-                paddingHorizontal: spacing.xl,
-                color: colors.textPrimary,
-                fontSize: 17,
-              }}
-            />
-            {focused && (
-              <View
-                pointerEvents="none"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  left: 0,
-                  borderWidth: 2,
-                  borderColor: colors.primary,
-                  borderRadius: radius.hyperCard + spacing.xxs,
-                  borderCurve: "continuous",
-                }}
-              />
-            )}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="保存"
-            accessibilityState={{ disabled: busy }}
-            disabled={busy}
-            onPress={() => void save()}
-            style={({ pressed }) => ({
-              width: 48,
-              // 覆盖输入框完整视觉高度：2dp 选中安全区 + 48dp 灰色本体 + 2dp 选中安全区。
-              height: 48 + spacing.xxs * 2,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: radius.hyperCard + spacing.xxs,
-              borderCurve: "continuous",
-              backgroundColor: busy ? colors.hyperSecondaryDisabled : colors.hyperCard,
-              opacity: pressed ? 0.85 : 1,
-            })}
-          >
-            <Save
-              size={20}
-              color={busy ? colors.hyperLabelDisabled : colors.primary}
-            />
-          </Pressable>
-        </View>
+        <InputSave
+          accessibilityLabel="笔记标题"
+          autoFocus
+          value={title}
+          invalid={!!message}
+          disabled={busy}
+          onChangeText={(nextTitle) => {
+            titleRef.current = nextTitle;
+            setTitle(nextTitle);
+            if (nextTitle.trim()) setMessage("");
+          }}
+          onBlur={() => void save()}
+          onSubmitEditing={() => void save()}
+          returnKeyType="done"
+          onSave={() => void save()}
+        />
       ) : (
         <View className="flex-row items-center gap-2">
           <Text numberOfLines={2} className="flex-1 text-[17px] text-black">

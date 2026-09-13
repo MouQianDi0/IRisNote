@@ -1,4 +1,4 @@
-import { colors, radius } from "@/shared/theme";
+import { colors, radii } from "@/shared/theme";
 import { CircleCheck, CirclePlus, Keyboard, KeyboardOff, Mic } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
@@ -39,7 +39,7 @@ export default function EditorBottomToolbar({
           top: 0,
           bottom: 0,
           backgroundColor: colors.surface,
-          borderRadius: docked ? 0 : radius.hyperControl,
+          borderRadius: docked ? 0 : radii.editorToolbar,
           borderTopWidth: docked ? 1 : 0,
           borderColor: colors.borderSoft,
           boxShadow: docked ? undefined : "0 6px 24px rgba(0,0,0,0.14)",
