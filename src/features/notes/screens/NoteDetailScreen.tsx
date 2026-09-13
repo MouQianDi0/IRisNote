@@ -13,23 +13,21 @@ import NoteDetailStateView, {
 import { getCachedNoteById, setCachedNotes } from "../notes.cache";
 import type { Note } from "@/features/notes/notes.types";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EDIT_PRESS_INTERVAL_MS } from "@/core/editor/toolbar-interaction";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type LoadState = "loading" | "ready" | "error" | "not-found";
 
 export default function NoteDetailScreen() {
   const database = useApplicationDatabase();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    edit?: string | string[];
+  }>();
   const [note, setNote] = useState<Note | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
-  const editLocked = useRef(false);
-  const lastEditPress = useRef(-Infinity);
-  useFocusEffect(useCallback(() => {
-    editLocked.current = false;
-  }, []));
+  const initialEdit = (Array.isArray(params.edit) ? params.edit[0] : params.edit) === "1";
 
   const numericNoteId = useMemo(() => {
     const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -127,25 +125,13 @@ export default function NoteDetailScreen() {
     router.replace("/note");
   }, []);
 
-  const handleEdit = useCallback(() => {
-    const now = performance.now();
-    if (numericNoteId == null || editLocked.current || now - lastEditPress.current < EDIT_PRESS_INTERVAL_MS) return;
-    editLocked.current = true;
-    lastEditPress.current = now;
-    try {
-      router.push({
-        pathname: "/pages/note/edit/[id]",
-        params: { id: String(numericNoteId), focusContent: "1" },
-      });
-    } catch (error) {
-      editLocked.current = false;
-      throw error;
-    }
-  }, [numericNoteId]);
-
   if (loadState === "ready" && note) {
     return (
-      <NoteViewer note={note} onBack={handleBack} onEdit={handleEdit} />
+      <NoteViewer
+        note={note}
+        onBack={handleBack}
+        initialEdit={initialEdit}
+      />
     );
   }
 

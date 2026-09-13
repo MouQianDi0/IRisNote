@@ -31,6 +31,15 @@ export type NoteSaveResult = {
     message?: string;
 };
 
+export type StagedEditedNoteResult = {
+    note: Note;
+    shouldUpload: boolean;
+    cloudState?: NoteCloudSaveState;
+    unchanged: boolean;
+    draftCleanupPending?: boolean;
+    message?: string;
+};
+
 function publishNote(note: Note) {
     setCachedNote(note);
     notifyNotesChanged({ type: "upsert", note });
@@ -119,6 +128,7 @@ async function syncPendingNote(
             ownerUserId,
             note.id,
             serverNote,
+            note.current_revision_id ?? null,
         );
         if (!acceptedNote) {
             throw new Error("[Note sync] Accepted note could not be reloaded.");
@@ -141,6 +151,7 @@ async function syncPendingNote(
             note.id,
             cloudState,
             message,
+            note.current_revision_id ?? null,
         );
         if (!failedNote) throw error;
 
@@ -189,6 +200,42 @@ export async function saveEditedNoteLocalFirst(
     draft?: DraftCommit,
     onLocalSaved?: (note: Note) => void,
 ) {
+    const staged = await stageEditedNoteForSync(
+        database,
+        ownerUserId,
+        note,
+        payload,
+        draft,
+        onLocalSaved,
+    );
+    if (!staged.shouldUpload) {
+        return {
+            note: staged.note,
+            cloudState: staged.cloudState ?? "accepted",
+            unchanged: staged.unchanged,
+            draftCleanupPending: staged.draftCleanupPending,
+            message: staged.message,
+        } satisfies NoteSaveResult;
+    }
+
+    return finishDraftSave(
+        database,
+        ownerUserId,
+        staged.note,
+        draft,
+        staged.unchanged,
+    );
+}
+
+/** 退出页面前只提交本地稳定版本；网络上传由页面退出后的协调器触发。 */
+export async function stageEditedNoteForSync(
+    database: ApplicationDatabase,
+    ownerUserId: number,
+    note: Note,
+    payload: UpdateNotePayload,
+    draft?: DraftCommit,
+    onLocalSaved?: (note: Note) => void,
+): Promise<StagedEditedNoteResult> {
     const { note: localNote, revisionCreated } = await updatePendingLocalNote(
         database,
         ownerUserId,
@@ -224,7 +271,8 @@ export async function saveEditedNoteLocalFirst(
         });
         return {
             note: unknownNote,
-            cloudState: "unknown" as const,
+            shouldUpload: false,
+            cloudState: "unknown",
             unchanged: !revisionCreated,
             message,
         };
@@ -245,7 +293,7 @@ export async function saveEditedNoteLocalFirst(
         }
         publishNote(syncedNote);
         let draftCleanupPending = false;
-        if (draft?.beforeDelete) {
+        if (draft) {
             try { await deleteNoteDraft(database, ownerUserId, draft); }
             catch {
                 draftCleanupPending = true;
@@ -255,16 +303,20 @@ export async function saveEditedNoteLocalFirst(
         console.info("[Note save] 内容未变化，未创建新版本", {
             clientId: syncedNote.id,
         });
-        return { note: syncedNote, cloudState: "accepted", unchanged: true, draftCleanupPending };
+        return {
+            note: syncedNote,
+            shouldUpload: false,
+            cloudState: "accepted",
+            unchanged: true,
+            draftCleanupPending,
+        };
     }
 
-    return finishDraftSave(
-        database,
-        ownerUserId,
-        localNote,
-        draft,
-        !revisionCreated,
-    );
+    return {
+        note: localNote,
+        shouldUpload: true,
+        unchanged: !revisionCreated,
+    };
 }
 
 async function finishDraftSave(
@@ -294,4 +346,25 @@ export async function uploadNoteNow(database: ApplicationDatabase, owner: number
         throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
     }
     return syncPendingNote(database, owner, note);
+}
+
+/** 上传退出前已提交的本地版本；仅云端确认后条件清理对应草稿。 */
+export async function uploadStagedNoteAfterExit(
+    database: ApplicationDatabase,
+    owner: number,
+    id: number,
+    draft: DraftCommit,
+) {
+    const result = await uploadNoteNow(database, owner, id);
+    if (result.cloudState === "accepted") {
+        try {
+            await deleteNoteDraft(database, owner, draft);
+        } catch {
+            // 重新打开页面会接管草稿会话；旧上传不得删除新会话内容。
+            console.info("[Note draft] 退出上传已完成，草稿已由新会话接管", {
+                clientId: id,
+            });
+        }
+    }
+    return result;
 }

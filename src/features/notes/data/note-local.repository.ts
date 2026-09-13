@@ -405,16 +405,33 @@ export async function markLocalNoteSyncFailed(
     clientId: number,
     status: Extract<NoteSyncStatus, "rejected" | "unknown">,
     message: string,
+    expectedRevisionId?: string | null,
 ) {
     await database.run(
         `UPDATE local_notes
-         SET sync_status = $syncStatus, last_sync_error = $lastSyncError
+         SET sync_status = CASE
+                 WHEN $protectRevision = 0 OR current_revision_id IS $expectedRevisionId
+                     THEN $syncStatus
+                 ELSE 'pending'
+             END,
+             sync_operation = CASE
+                 WHEN $protectRevision = 1 AND current_revision_id IS NOT $expectedRevisionId
+                     THEN 'update'
+                 ELSE sync_operation
+             END,
+             last_sync_error = CASE
+                 WHEN $protectRevision = 0 OR current_revision_id IS $expectedRevisionId
+                     THEN $lastSyncError
+                 ELSE last_sync_error
+             END
          WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
         {
             $ownerUserId: ownerUserId,
             $clientId: clientId,
             $syncStatus: status,
             $lastSyncError: message,
+            $protectRevision: expectedRevisionId === undefined ? 0 : 1,
+            $expectedRevisionId: expectedRevisionId ?? null,
         },
     );
     return getLocalNoteByClientId(database, ownerUserId, clientId);
@@ -425,21 +442,32 @@ export async function acceptServerNote(
     ownerUserId: number,
     clientId: number,
     serverNote: Note,
+    expectedRevisionId: string | null,
 ) {
     // 上传刚提交的本地内容是权威；响应正文不再反向覆盖正文字段，
     // 服务器数据统一由 reconcileServerNotes 对账，防止旧响应回滚用户输入。
     await database.run(
         `UPDATE local_notes
          SET server_id = $serverId,
-             sync_status = 'synced',
-             sync_operation = NULL,
+             sync_status = CASE
+                 WHEN current_revision_id IS $expectedRevisionId THEN 'synced'
+                 ELSE 'pending'
+             END,
+             sync_operation = CASE
+                 WHEN current_revision_id IS $expectedRevisionId THEN NULL
+                 ELSE 'update'
+             END,
              last_sync_error = NULL,
-             local_updated_at = $localUpdatedAt
+             local_updated_at = CASE
+                 WHEN current_revision_id IS $expectedRevisionId THEN $localUpdatedAt
+                 ELSE local_updated_at
+             END
          WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
         {
             $ownerUserId: ownerUserId,
             $clientId: clientId,
             $serverId: serverNote.server_id ?? serverNote.id,
+            $expectedRevisionId: expectedRevisionId,
             $localUpdatedAt: new Date().toISOString(),
         },
     );

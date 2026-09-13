@@ -7,7 +7,7 @@ import { Button, Host } from "@expo/ui";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
 import { Archive, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform, Pressable, Text, View } from "react-native";
+import { AppState, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
 import {
     hasDraftContent,
     listNewNoteDrafts,
@@ -419,7 +419,10 @@ export default function NewNoteEditor({
     </Pressable>
   );
   return (
-    <View style={{ flex: 1 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <PlainTextEditor
         key={editorKey}
         initialValue={initial}
@@ -546,7 +549,7 @@ export default function NewNoteEditor({
             if (saved) onSaved(saved);
           }}
         />
-      </DraftDialog>
-    </View>
+        </DraftDialog>
+    </KeyboardAvoidingView>
   );
 }

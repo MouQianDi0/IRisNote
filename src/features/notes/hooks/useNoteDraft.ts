@@ -3,7 +3,7 @@ import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import {
-    deleteNoteDraft, draftSnapshot, draftValue, noteDraftValue, openNoteDraft,
+    draftSnapshot, draftValue, noteDraftValue, openNoteDraft, rebaseNoteDraft,
     readNoteDraft, writeNoteDraft, type NoteDraft, type NoteDraftValue,
 } from "../data/note-draft.repository";
 import { getLocalNoteByClientId } from "../data/note-local.repository";
@@ -18,13 +18,39 @@ type DraftResource = {
     conflict: boolean;
 };
 
-export function useNoteDraft(owner: number, key: string, note: Note | undefined, initial: NoteDraftValue) {
+export type NoteDraftSaveSnapshot = {
+    value: NoteDraftValue;
+    sequence: number;
+    target: Note | undefined;
+    commit: {
+        key: string;
+        sessionId: string;
+        sequence: number;
+    };
+};
+
+export type NoteDraftLeaveResult = {
+    afterLeave?: () => void;
+};
+
+type NoteDraftOptions = {
+    beforeLeave?: (
+        snapshot: NoteDraftSaveSnapshot,
+    ) => Promise<NoteDraftLeaveResult | void>;
+};
+
+export function useNoteDraft(
+    owner: number,
+    key: string,
+    note: Note | undefined,
+    initial: NoteDraftValue,
+    options: NoteDraftOptions = {},
+) {
     const database = useApplicationDatabase();
     const navigation = useNavigation();
     // 调用方按账户和笔记 ID 设置 key；输入或分类变化不能重新初始化会话。
     const [seed] = useState({ owner, key, note, initial });
     const [resource, setResource] = useState<DraftResource | null>(null);
-    const [recovery, setRecovery] = useState(false);
     const [state, setState] = useState<DraftWriteState>("idle");
     const [error, setError] = useState("");
     const [saving, setSaving] = useState(false);
@@ -69,7 +95,6 @@ export function useNoteDraft(owner: number, key: string, note: Note | undefined,
             setError("");
             setState(row.sequence > 0 ? "saved" : "idle");
             setSaving(false);
-            setRecovery(row.sequence > 0 || conflict);
             setResource(next);
         }
         void initialize().catch((cause: unknown) => {
@@ -114,25 +139,9 @@ export function useNoteDraft(owner: number, key: string, note: Note | undefined,
         };
     }, [navigation, requestFlush]);
 
-    usePreventRemove(resource !== null, ({ data }) => {
-        if (complete.current) { navigation.dispatch(data.action); return; }
+    const beginSave = async (): Promise<NoteDraftSaveSnapshot> => {
         const current = active.current;
-        if (!current || busy.current) return;
-        busy.current = true;
-        setSaving(true);
-        void current.session.beginSave().then(() => {
-            navigation.dispatch(data.action);
-        }).catch((cause: unknown) => {
-            current.session.endSave();
-            busy.current = false;
-            setSaving(false);
-            setError(cause instanceof Error ? cause.message : "离开前写入失败，请重试");
-        });
-    });
-
-    const beginSave = async () => {
-        const current = active.current;
-        if (!current || busy.current || recovery) throw new Error("请先完成草稿恢复");
+        if (!current || busy.current) throw new Error("草稿会话尚未准备完成");
         if (current.conflict) throw new Error("已保存内容发生变化，草稿已保留，请先核对内容");
         busy.current = true;
         setSaving(true);
@@ -153,38 +162,71 @@ export function useNoteDraft(owner: number, key: string, note: Note | undefined,
 
     const endSave = (saved: boolean) => {
         complete.current = saved;
-        // 保存成功后等导航卸载，避免清理完成后再产生新输入。
-        if (!saved) {
-            active.current?.session.endSave();
+        if (saved) {
+            // 正式保存已清理当前草稿；合并编辑页继续停留时重新建立空会话。
+            active.current?.session.abandon();
+            active.current = null;
+            busy.current = false;
+            setSaving(false);
+            setResource(null);
+            setReload((value) => value + 1);
+            return;
+        }
+        active.current?.session.endSave();
+        busy.current = false;
+        setSaving(false);
+    };
+
+    const confirmConflict = async () => {
+        const current = active.current;
+        if (!current || !current.conflict || busy.current) return;
+        busy.current = true;
+        setSaving(true);
+        try {
+            await current.session.flush();
+            const latestNote = current.row.note_id === null ? null
+                : await getLocalNoteByClientId(database, owner, current.row.note_id);
+            if (!latestNote) throw new Error("原笔记已不存在，草稿仍已保留");
+            await rebaseNoteDraft(database, owner, {
+                key,
+                sessionId: current.row.session_id,
+                sequence: current.session.sequence,
+            }, latestNote);
+            const next = { ...current, conflict: false, current: noteDraftValue(latestNote) };
+            active.current = next;
+            setResource(next);
+            setError("");
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "确认本地草稿失败");
+            throw cause;
+        } finally {
             busy.current = false;
             setSaving(false);
         }
     };
 
-    const discard = async () => {
-        const current = active.current;
-        if (!current || busy.current) return;
-        busy.current = true; setSaving(true);
-        try {
-            const snapshot = await current.session.beginSave();
-            await deleteNoteDraft(database, owner,
-                { key, sessionId: current.row.session_id, sequence: snapshot.sequence });
-            console.info("[Note draft] 用户确认放弃草稿", { owner, key });
-            await current.session.close();
+    usePreventRemove(resource !== null, ({ data }) => {
+        if (complete.current) { navigation.dispatch(data.action); return; }
+        if (!active.current || busy.current) return;
+        void beginSave().then(async (snapshot) => {
+            const result = await options.beforeLeave?.(snapshot);
+            complete.current = true;
+            active.current?.session.abandon();
             active.current = null;
-            setResource(null);
-            setRecovery(false);
-            setReload((value) => value + 1);
-        } catch (cause) {
-            current.session.endSave(); busy.current = false; setSaving(false);
-            setError(cause instanceof Error ? cause.message : "放弃草稿失败");
-        }
-    };
+            busy.current = false;
+            setSaving(false);
+            navigation.dispatch(data.action);
+            if (result?.afterLeave) setTimeout(result.afterLeave, 0);
+        }).catch((cause: unknown) => {
+            active.current?.session.endSave();
+            busy.current = false;
+            setSaving(false);
+            setError(cause instanceof Error ? cause.message : "离开前保存失败，请重试");
+        });
+    });
 
     return {
-        resource, recovery, state, error, saving, beginSave, endSave, discard,
-        continueDraft: () => setRecovery(false),
-        showRecovery: () => setRecovery(true),
+        resource, state, error, saving, beginSave, endSave, confirmConflict,
         change: (value: NoteDraftValue) => active.current?.session.change(value),
         requestFlush,
         retry: () => {

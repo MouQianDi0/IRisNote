@@ -1,5 +1,5 @@
-import { colors } from "@/shared/theme";
-import { CircleCheck, CirclePlus, Mic, PencilLine } from "lucide-react-native";
+import { colors, radius } from "@/shared/theme";
+import { CircleCheck, CirclePlus, Keyboard, KeyboardOff, Mic } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
 type Props = {
@@ -8,11 +8,9 @@ type Props = {
   onEdit: () => void;
 };
 
-const TOOLBAR_HEIGHT = 43.2;
-const FLOATING_HEIGHT = 46.4;
+const TOOLBAR_HEIGHT = 48;
 export const FLOATING_TOUCH_HEIGHT = 48;
 export const FLOATING_BOTTOM = 40;
-const FLOATING_INSET = (FLOATING_TOUCH_HEIGHT - FLOATING_HEIGHT) / 2;
 
 /** 自定义四区工具栏；后三项仅展示预留入口。 */
 export default function EditorBottomToolbar({
@@ -20,6 +18,8 @@ export default function EditorBottomToolbar({
   disabled,
   onEdit,
 }: Props) {
+  const PrimaryIcon = docked ? KeyboardOff : Keyboard;
+
   return (
     <View
       style={{
@@ -36,10 +36,10 @@ export default function EditorBottomToolbar({
           position: "absolute",
           left: 0,
           right: 0,
-          top: docked ? 0 : FLOATING_INSET,
-          bottom: docked ? 0 : FLOATING_INSET,
+          top: 0,
+          bottom: 0,
           backgroundColor: colors.surface,
-          borderRadius: docked ? 0 : FLOATING_HEIGHT / 2,
+          borderRadius: docked ? 0 : radius.hyperControl,
           borderTopWidth: docked ? 1 : 0,
           borderColor: colors.borderSoft,
           boxShadow: docked ? undefined : "0 6px 24px rgba(0,0,0,0.14)",
@@ -59,7 +59,7 @@ export default function EditorBottomToolbar({
           opacity: disabled ? 0.4 : pressed ? 0.6 : 1,
         })}
       >
-        <PencilLine size={18} strokeWidth={1.7} color={colors.textSecondary} />
+        <PrimaryIcon size={18} strokeWidth={1.7} color={colors.textSecondary} />
       </Pressable>
       {[
         { label: "待办，暂未开放", Icon: CircleCheck },

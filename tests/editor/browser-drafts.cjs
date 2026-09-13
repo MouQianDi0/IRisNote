@@ -112,21 +112,16 @@ const server = http.createServer((req, res) => {
         await input('标题').waitFor();
         assert.equal(await input('标题').inputValue(), '');
         check('成功保存后新建入口不重复恢复已提交草稿');
-        // 新建笔记的客户端 ID 稳定为负数，不能用云端 ID 构造本地路由。
-        await page.goto(origin + '/pages/note/edit/-1');
-        await input('正文').fill('编辑草稿与已保存正文不同');
-        await page.getByText('草稿已保存到本地', { exact: true }).waitFor();
+        // 新建笔记的客户端 ID 稳定为负数，合并页继续使用客户端 ID。
+        await page.goto(origin + '/pages/note/-1?edit=1');
+        const mergedContent = input('笔记正文');
+        await mergedContent.fill('编辑草稿与已保存正文不同');
+        await page.waitForTimeout(1000);
         await page.reload();
-        await page.getByRole('button', { name: '查看已保存内容', exact: true }).click();
-        await page.getByText('快速返回前的最后输入', { exact: true }).waitFor();
-        await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
-        await page.getByRole('button', { name: '保留草稿', exact: true }).click();
-        await page.getByText('发现本地草稿', { exact: true }).waitFor();
-        await page.getByRole('button', { name: '放弃草稿', exact: true }).click();
-        await page.getByRole('button', { name: '确认永久放弃此草稿', exact: true }).click();
-        await input('正文').waitFor();
-        assert.equal(await input('正文').inputValue(), '快速返回前的最后输入');
-        check('编辑草稿对照及二次确认放弃');
+        await mergedContent.waitFor();
+        assert.equal(await mergedContent.inputValue(), '编辑草稿与已保存正文不同');
+        assert.equal(await page.getByText('发现本地草稿', { exact: true }).count(), 0);
+        check('编辑草稿直接恢复且不显示发现提示');
         await page.goto(origin + '/pages/note/create');
         await input('标题').fill('未知请求恢复');
         await input('正文').fill('不能重复 POST');

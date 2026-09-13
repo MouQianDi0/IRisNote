@@ -180,6 +180,84 @@ test('unchanged edit on a synced note skips upload and stays synced', async (t) 
     assert.equal((await notes.getLocalNoteByClientId(port, 1, note.id)).sync_status, 'synced');
 });
 
+test('exit staging commits the draft locally without starting cloud upload', async (t) => {
+    const { port } = await database(t);
+    createCalls = 0; updateCalls = 0;
+    const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(22, '稳定正文')]);
+    const key = `note:${note.id}`;
+    const commit = { key, sessionId: 'exit-session', sequence: 1 };
+    await drafts.openNoteDraft(port, 1, key, commit.sessionId, note.id,
+        drafts.noteDraftValue(note), note.current_revision_id);
+    await drafts.writeNoteDraft(port, 1, commit,
+        { title: '标题', content: '退出正文', categoryId: 3 });
+
+    const staged = await saves.stageEditedNoteForSync(
+        port, 1, note, payload('退出正文'), commit);
+
+    assert.equal(staged.shouldUpload, true);
+    assert.equal(staged.note.content, '退出正文');
+    assert.equal(staged.note.sync_status, 'pending');
+    assert.equal(createCalls + updateCalls, 0);
+    assert.equal((await drafts.readNoteDraft(port, 1, key)).base_revision_id,
+        staged.note.current_revision_id);
+});
+
+test('exit upload deletes only the staged draft after cloud acceptance', async (t) => {
+    const { port } = await database(t);
+    const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(24, '稳定正文')]);
+    const key = `note:${note.id}`;
+    const commit = { key, sessionId: 'accepted-exit', sequence: 1 };
+    await drafts.openNoteDraft(port, 1, key, commit.sessionId, note.id,
+        drafts.noteDraftValue(note), note.current_revision_id);
+    await drafts.writeNoteDraft(port, 1, commit,
+        { title: '标题', content: '退出上传正文', categoryId: 3 });
+    const staged = await saves.stageEditedNoteForSync(
+        port, 1, note, payload('退出上传正文'), commit);
+    t.mock.method(api, 'updateNote', async (id, body) => serverNote(id, body.content));
+
+    const result = await saves.uploadStagedNoteAfterExit(
+        port, 1, staged.note.id, commit);
+
+    assert.equal(result.cloudState, 'accepted');
+    assert.equal(await drafts.readNoteDraft(port, 1, key), null);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, note.id)).sync_status, 'synced');
+});
+
+test('an old cloud response cannot mark a newer local revision synced', async (t) => {
+    const { port } = await database(t);
+    const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(23, 'V1')]);
+    const uploadingRevision = note.current_revision_id;
+    await notes.markLocalNoteSyncing(port, 1, note.id);
+    const { note: newer } = await notes.updatePendingLocalNote(
+        port, 1, note, payload('V2'));
+
+    const accepted = await notes.acceptServerNote(
+        port, 1, note.id, serverNote(23, 'V1'), uploadingRevision);
+
+    assert.equal(accepted.content, 'V2');
+    assert.equal(accepted.current_revision_id, newer.current_revision_id);
+    assert.equal(accepted.sync_status, 'pending');
+    assert.equal(accepted.sync_operation, 'update');
+});
+
+test('an old cloud failure cannot mark a newer local revision failed', async (t) => {
+    const { port } = await database(t);
+    const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(25, 'V1')]);
+    const uploadingRevision = note.current_revision_id;
+    await notes.markLocalNoteSyncing(port, 1, note.id);
+    const { note: newer } = await notes.updatePendingLocalNote(
+        port, 1, note, payload('V2'));
+
+    const failed = await notes.markLocalNoteSyncFailed(
+        port, 1, note.id, 'rejected', '旧版本上传失败', uploadingRevision);
+
+    assert.equal(failed.content, 'V2');
+    assert.equal(failed.current_revision_id, newer.current_revision_id);
+    assert.equal(failed.sync_status, 'pending');
+    assert.equal(failed.sync_operation, 'update');
+    assert.equal(failed.last_sync_error, null);
+});
+
 test('revision insert failure rolls back note and keeps draft', async (t) => {
     const { port } = await database(t);
     const created = await notes.createPendingLocalNote(port, 1, payload('基线'));
@@ -275,6 +353,26 @@ test('stale base revision blocks draft save without deleting the draft', async (
         port, 1, created.note, payload('草稿正文'), commit), /发生变化/);
     assert.equal((await drafts.readNoteDraft(port, 1, key)).content, '草稿正文');
     assert.equal((await revisions.listNoteRevisions(port, 1, created.note.id)).length, 2);
+});
+
+test('explicit conflict confirmation rebases only the active draft before saving', async (t) => {
+    const { port } = await database(t);
+    const created = await notes.createPendingLocalNote(port, 1, payload('基线'));
+    const key = 'note:' + created.note.id;
+    const commit = { key, sessionId: 'active', sequence: 1 };
+    await drafts.openNoteDraft(port, 1, key, 'active', created.note.id,
+        drafts.noteDraftValue(created.note), created.note.current_revision_id);
+    await drafts.writeNoteDraft(port, 1, commit, { title: '标题', content: '本地草稿', categoryId: 3 });
+
+    const elsewhere = await notes.updatePendingLocalNote(port, 1, created.note, payload('他处改动'));
+    await drafts.rebaseNoteDraft(port, 1, commit, elsewhere.note);
+    const saved = await notes.updatePendingLocalNote(
+        port, 1, elsewhere.note, payload('本地草稿'), commit);
+
+    assert.equal(saved.note.content, '本地草稿');
+    assert.equal((await revisions.listNoteRevisions(port, 1, created.note.id)).length, 3);
+    assert.equal((await drafts.readNoteDraft(port, 1, key)).base_revision_id,
+        saved.note.current_revision_id);
 });
 
 test('removing a note deletes its revisions', async (t) => {
