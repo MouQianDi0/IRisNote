@@ -28,7 +28,7 @@ import Animated, {
 
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { colors, radius } from "@/shared/theme";
+import { colors, radii } from "@/shared/theme";
 import { DialogButton } from "../../components/editor/draft-dialog";
 import { getCategoryIcon } from "../category-icons";
 import CategoryDeleteConfirmModal from "./CategoryDeleteConfirmModal";
@@ -179,7 +179,7 @@ function CategoryActionContent({
                                     accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }}
                                     onPress={onPress} style={({ pressed }) => ({ flex: 1, height: 48,
                                         flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
-                                        borderRadius: radius.hyperControl, backgroundColor: active ? colors.hyperCardSelected : colors.hyperCard,
+                                        borderRadius: radii.iconControl, backgroundColor: active ? colors.hyperCardSelected : colors.hyperCard,
                                         opacity: pressed ? 0.85 : 1 })}>
                                     <Icon size={24} color={active ? colors.primary : colors.textSecondary} />
                                     <Text numberOfLines={1} style={{ fontSize: 17, flexShrink: 1, color: active ? colors.primary : colors.textPrimary }}>{label}</Text>

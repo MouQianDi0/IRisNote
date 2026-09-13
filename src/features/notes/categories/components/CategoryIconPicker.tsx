@@ -1,5 +1,5 @@
 import { categoryIconGroups, getCategoryIcon } from "../category-icons";
-import { colors, radius } from "@/shared/theme";
+import { colors, radii } from "@/shared/theme";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 type CategoryIconPickerProps = {
@@ -34,7 +34,7 @@ export default function CategoryIconPicker({
                                     style={({ pressed }) => ({
                                         width: 48, height: 48, flexShrink: 0,
                                         alignItems: "center", justifyContent: "center",
-                                        borderRadius: radius.hyperControl, borderWidth: 1,
+                                        borderRadius: radii.iconCell, borderWidth: 1,
                                         borderColor: selected ? colors.primary : colors.transparent,
                                         backgroundColor: selected ? colors.hyperCardSelected : colors.hyperCard,
                                         opacity: pressed ? 0.85 : 1,
@@ -74,7 +74,7 @@ export default function CategoryIconPicker({
                                     accessibilityLabel={iconName}
                                     accessibilityState={{ selected }}
                                     onPress={() => onChange(iconName)}
-                                    className={`w-[48px] h-[48px] items-center justify-center rounded-control ${selected ? "bg-primary" : "bg-surface-muted"}`}
+                                    className={`w-[48px] h-[48px] items-center justify-center rounded-icon-cell ${selected ? "bg-primary" : "bg-surface-muted"}`}
                                 >
                                     <Icon size={24} color={selected ? colors.surface : colors.textSecondary} />
                                 </Pressable>

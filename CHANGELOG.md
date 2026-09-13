@@ -2,6 +2,74 @@
 
 ---
 
+## 2026-09-14 02:25:12 | 优化代码
+
+- **浮动编辑器工具栏圆角调整为 16dp**
+    - 将无键盘浮动工具栏从复用旧 `radius.hyperControl = 14dp` 改为独立语义 Token `radii.editorToolbar = 16dp`，避免继续与按钮圆角耦合。
+    - 保持浮动工具栏 225×48dp、底部 40dp 间距、白色背景、阴影、滚动显隐和点击逻辑不变；键盘期 43.2dp 通栏仍为 0dp 圆角并紧贴输入法。
+    - 同步默认主题预设、生成后的 CSS Token、公共组件规范、视觉规范、审计基线、架构索引、编辑器进度和公共化待办。
+- **修改文件列表**
+    - `src/core/editor/components/editor-bottom-toolbar.tsx` - 接入独立 16dp 工具栏圆角 Token。
+    - `src/shared/theme/presets/default-light.json`、`src/shared/theme/theme.types.ts`、`global.css` - 新增并同步 `editorToolbar` 圆角。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`docs/项目编辑器进度.md`、`待办事项.md` - 更新当前规格、状态与实施记录。
+    - `CHANGELOG.md` - 记录本次圆角调整。
+- **验证结果**
+    - `npx tsc --noEmit`、目标文件 Expo ESLint、`npm run theme:check` 和 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收；视觉效果由用户主动验收。
+
+---
+
+## 2026-09-14 02:20:22 | 优化代码
+
+- **完成公共组件阶段 0 审计与阶段 1 主题基座首批实施**
+    - 新增默认浅色主题预设，将原始色板、语义颜色、组件状态配方、圆角、间距、字号和动效值集中到单一来源；保留旧 `colors`、`radius` 导出作为渐进迁移兼容层。
+    - 新增 NativeWind CSS Token 同步与一致性检查脚本，以及可重复执行的设计系统审计脚本；记录 232 个源码文件、18,009 行源码和主要漂移位置的审计基线。
+    - 按已确认规范将现有 HyperOS 按钮、有底状态控件、图标选择单元和阅读进度气泡接入 16dp 语义圆角；编辑器浮动工具栏继续使用兼容 14dp，避免旧 `hyperControl` 复用造成连带变化。
+    - 危险按钮禁用背景与内容分别由 `destructiveDisabled = #F8D7D2`、`onDestructiveDisabled = #E94634` 统一提供，组件配方不再硬编码状态颜色。
+    - 同步公共组件规范、视觉规范、样式开发规范和公共化待办状态；当前尚未开始 AppButton、Input、AppDialog 等组件本体及业务调用方迁移。
+- **修改文件列表**
+    - `src/shared/theme/presets/default-light.json` - 新增默认主题唯一原始值来源及 CSS 映射表。
+    - `src/shared/theme/palette.ts`、`semantic-colors.ts`、`component-recipes.ts`、`theme-preset.ts`、`theme-typography.ts`、`theme.types.ts` - 新增主题解析、类型和组件配方。
+    - `src/shared/theme/colors.ts`、`radius.ts`、`spacing.ts`、`typography.ts`、`index.ts` - 接入主题预设并保留旧调用方兼容导出。
+    - `global.css`、`package.json`、`scripts/sync-theme-css.mjs`、`scripts/audit-design-system.mjs` - 增加 CSS 托管区块、同步命令和审计命令。
+    - `src/features/notes/categories/components/CategoryActionModal.tsx`、`CategoryIconPicker.tsx`、`src/shared/ui/ProgressBubble/ProgressBubble.tsx` - 接入 16dp 语义圆角。
+    - `docs/公共组件审计基线.md`、`docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/样式开发规范.md`、`待办事项.md` - 记录审计基线、主题来源、圆角规范与推进状态。
+- **验证结果**
+    - `npx tsc --noEmit` 通过。
+    - 受影响 TypeScript、TSX 与脚本的 Expo ESLint 检查通过。
+    - `npm run theme:check`、`npm run design:audit`、脚本语法检查和 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收；交互与视觉验收仍由用户主动发起。
+
+---
+
+## 2026-09-14 02:01:38 | 优化代码
+
+- **建立公共组件公共化实施待办**
+    - 汇总聊天中确认的按钮、返回入口、输入框、图标选择器、弹窗、状态与列表组件需求，并结合当前项目重复实现和主题 Token 漂移情况形成实施基线。
+    - 将公共化工作拆分为主题基座、基础组件、组合组件、状态组件、调用方迁移、治理验收六个阶段；每项补充现状来源、实施步骤、依赖关系、迁移范围、排除项和完成标准。
+    - 按已确认目标记录普通按钮、有底图标按钮、图标选择单元和阅读进度气泡统一为 16dp 圆角；输入框新增独立 16dp 字段圆角，并要求先拆分旧 `hyperControl` 语义以避免连带修改。
+    - 固化危险按钮禁用背景 `#F8D7D2`、文字与图标 `#E94634`，并补充可替换主题、Web/原生映射、一致性检查和用户验收边界。
+- **修改文件列表**
+    - `待办事项.md` - 新增公共组件公共化的分阶段详细实施方案。
+    - `CHANGELOG.md` - 记录本次文档规划变更。
+
+---
+
+## 2026-09-14 01:14:41 | 优化代码
+
+- **建立可替换主题的公共组件规范**
+    - 新增公共组件目标规范，明确按钮、图标按钮、返回按钮、输入框、表单字段、图标选择器和弹窗的形状、尺寸、颜色映射、状态优先级、无障碍及 TypeScript 接口。
+    - 建立 ThemePreset、基础色板、语义颜色和组件配方三层契约；规定后期手动修改主题时集中替换主题预设，页面不得逐项覆盖组件身份色。
+    - 明确当前源码尚未完成公共组件迁移，保留 `global.css` 与 `src/shared/theme` 双向同步边界，并记录后续单一主题源及一致性检查目标。
+    - 按用户确认，将危险按钮禁用态固定为浅红背景 `#F8D7D2`、红色文字与图标 `#E94634`。
+- **修改文件列表**
+    - `docs/公共组件规范.md` - 新增公共组件、主题、状态、接口和迁移规范。
+    - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
+    - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
+    - `CHANGELOG.md` - 记录本次规范变更。
+
+---
+
 ## 2026-09-12 11:28:07 | 优化代码
 
 - **欢迎与认证参考布局验证完成**
