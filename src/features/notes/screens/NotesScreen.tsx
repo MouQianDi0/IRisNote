@@ -30,7 +30,7 @@ import type { Note } from "@/features/notes/notes.types";
 import { useNotePin } from "../hooks/useNotePin";
 import { useNoteStar } from "../hooks/useNoteStar";
 import { colors } from "@/shared/theme";
-import { type Href } from "expo-router";
+import { router, type Href, useLocalSearchParams } from "expo-router";
 import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -51,8 +51,20 @@ import Animated, {
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
+const firstSearchParam = (value?: string | string[]) =>
+  Array.isArray(value) ? value[0] : value;
+
 export default function NotesScreen() {
+  const searchParams = useLocalSearchParams<{
+    view?: string | string[];
+    drafts?: string | string[];
+  }>();
+  const contentView = firstSearchParam(searchParams.view) === "starred"
+    ? "starred"
+    : "all";
+  const draftIntent = firstSearchParam(searchParams.drafts);
   const [draftListVisible, setDraftListVisible] = useState(false);
+  const isDraftListVisible = draftListVisible || draftIntent === "1";
   const database = useApplicationDatabase();
   const { user } = useAuth();
   const onNavigate = useDebouncedNavigation();
@@ -477,12 +489,16 @@ export default function NotesScreen() {
 
   const filteredNotes = useMemo(() => {
     const nextNotes =
-      currentCategory === String(ALL_CATEGORY.id)
+      contentView === "starred" || currentCategory === String(ALL_CATEGORY.id)
         ? notes
         : notes.filter((note) => String(note.category_id) === currentCategory);
 
-    return sortNotesByPinned(nextNotes);
-  }, [currentCategory, notes]);
+    return sortNotesByPinned(
+      contentView === "starred"
+        ? nextNotes.filter((note) => note.is_starred)
+        : nextNotes,
+    );
+  }, [contentView, currentCategory, notes]);
 
   const keyExtractor = useCallback((item: Note) => String(item.id), []);
 
@@ -546,7 +562,16 @@ export default function NotesScreen() {
 
   return (
     <View className="mt-[15px] bg-app-background flex-1">
-      {draftListVisible && user && <DraftListModal key={user.id} owner={user.id} onClose={() => setDraftListVisible(false)} />}
+      {isDraftListVisible && user && (
+        <DraftListModal
+          key={user.id}
+          owner={user.id}
+          onClose={() => {
+            setDraftListVisible(false);
+            if (draftIntent === "1") router.setParams({ drafts: undefined });
+          }}
+        />
+      )}
       <View className="flex-row flex-1">
         <View
           className="     relative

@@ -64,11 +64,12 @@
 
 ## 3. 业务功能接入（三个 Tab 均为占位页）
 
-源码核实：`todos` / `excerpts` / `settings` 三个 Feature 仅有 Screen 骨架，无 API、数据层和状态管理。
+源码核实：`todos` / `excerpts` 仍只有 Screen 骨架；`settings` 已完成首页 UI 与现有账户能力接线，但仍无设置数据层和状态管理。
 
 - [ ] **Todo**：明确字段与 API → 类型与 API 层 → 创建表单 → 列表 loading/error/empty → 完成状态乐观更新与失败回滚（后续开发指南 §12）
 - [ ] **Excerpt**：剪贴板服务 `clipboard.service.ts`、`excerpts.api.ts`、粘贴预览与保存（后续开发指南 §13）
-- [ ] **Settings**：设置项组件、本地存储服务、类型定义；确认需求后再评估 Provider/Store（后续开发指南 §14）
+- [x] **Settings 首页 UI**：账户卡片、四格状态概览、分组设置、头像入口、版本信息与退出登录（2026-09-14）
+- [ ] **Settings 功能接入**：主题、编辑阅读、通知、同步、数据与隐私设置的类型、本地存储服务与子页面；确认实时共享需求后再评估 Provider/Store（后续开发指南 §14）
 
 ---
 

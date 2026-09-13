@@ -9,6 +9,7 @@ export default function RootLayout() {
     return (
         <AppProviders>
                 <SafeAreaView
+                    edges={["top", "left", "right"]}
                     style={{ flex: 1, backgroundColor: colors.appBackground }}
                 >
                     <Stack screenOptions={{ animation: "fade_from_bottom" }}>
