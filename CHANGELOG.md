@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-09-15 01:53:36 | 修复问题
+
+- **修复连接聚合测试对异步横幅发布的过时假设**
+    - 服务器连接协调器自同步队列提交（454da44）起，故障横幅发布改为异步 `publishFault`（先取暂存任务摘要），并新增后台（inactive）不发布的守卫；原测试在事件发出后的同一 tick 内同步断言横幅已存在，且以 `setActive(false)` 运行协调器，与现行设计不符导致测试失败。
+    - 测试改为 async，在断言前用 `setImmediate` 冲刷微任务队列等待 `publishFault` 完成；`setActive(false)` 改为 `setActive(true)` 并注释说明前台语义；用例验证逻辑本身（失败聚合、恢复解析、陈旧事件不误报）未改动。
+    - 功能代码零修改；已核实横幅收回/恢复真实运行路径无缺陷，本次为纯测试适配。
+- **修改文件列表**
+    - `tests/notifications/banner.test.cjs` - 适配异步发布与前台激活假设。
+    - `CHANGELOG.md` - 记录本次测试修复。
+- **验证结果**
+    - `node --test tests/notifications/banner.test.cjs` 14/14 通过；全量套件 55 过 2 挂，剩余失败为 drafts/revisions 两文件在 Node 24 下因 node_modules 内裸 `.ts` 类型剥离限制无法加载，与代码无关（kroos 原版同样失败）。
+    - `npx eslint --no-cache --no-warn-ignored tests/notifications/banner.test.cjs` 报告 1 个既有 `no-undef __dirname`（第 7 行原有代码，非本次引入），未处理以避免扩大确认范围。
+    - 未运行 tsc（未触碰 `.ts`/`.tsx` 源码）、构建、导出或设备验收。
+
+---
+
 ## 2026-09-15 00:00:50 | 新增功能
 
 - **同步队列支持自适应列表与保留历史的任务删除**

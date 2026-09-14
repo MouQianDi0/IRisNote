@@ -125,17 +125,21 @@ test('old action completion does not unlock a new action using the same ID', asy
 const events = require('../../src/shared/http/connection-events.ts');
 const { banner, notificationStore } = require('../../src/core/notifications/notification.service.ts');
 const { startConnectionCoordinator } = require('../../src/core/notifications/server-connection-coordinator.ts');
-test('connection failures aggregate, recovery resolves, stale and business failures do not create faults', () => {
+test('connection failures aggregate, recovery resolves, stale and business failures do not create faults', async () => {
   banner.clearSession(); events.resetConnectionSession();
   const coordinator = startConnectionCoordinator(async () => {});
-  coordinator.setActive(false);
+  // 协调器自 454da44 起 publishFault 为异步（先取暂存摘要），且后台（inactive）不发布横幅；本用例验证前台聚合行为。
+  coordinator.setActive(true);
+  const flush = () => new Promise(resolve => setImmediate(resolve));
   const emit = outcome => events.publishConnectionEvent({ ...events.requestConnectionStamp(), outcome });
   emit('reachable'); assert.equal(notificationStore.getSnapshot().length, 0);
   emit('unavailable'); assert.equal(notificationStore.getSnapshot().length, 0);
-  emit('unavailable'); assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
+  emit('unavailable'); await flush();
+  assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
   const stale = events.requestConnectionStamp(); emit('success');
   events.publishConnectionEvent({ ...stale, outcome: 'unavailable' });
   assert.equal(notificationStore.getSnapshot()[0].title, '服务器连接已恢复');
-  emit('unavailable'); emit('unavailable'); assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
+  emit('unavailable'); emit('unavailable'); await flush();
+  assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
   coordinator.stop(); banner.clearSession();
 });
