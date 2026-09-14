@@ -1,5 +1,6 @@
 import { colors } from "@/shared/theme";
-import { ArrowLeft, Check } from "lucide-react-native";
+import { BackButton } from "@/shared/ui";
+import { Check } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -164,15 +165,11 @@ export default function PlainTextEditor({
         <View ref={stableContainer} collapsable={false} className="flex-1 bg-white" onLayout={onStableLayout}>
         <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: keyboardOverlap }}>
             <View className="flex-row items-center justify-between border-b border-border-soft px-4 pb-3 pt-3">
-                <Pressable
+                <BackButton
                     onPress={onCancel}
                     disabled={controlsDisabled}
-                    accessibilityRole="button"
                     accessibilityLabel="返回"
-                    className="p-2"
-                >
-                    <ArrowLeft size={24} color={colors.textPrimary} />
-                </Pressable>
+                />
 
                 <View pointerEvents="none" style={{ position: "absolute", left: 104, right: 104, top: 0, bottom: 0, justifyContent: "center" }}>
                     <Text numberOfLines={1} className="text-center text-[18px] font-semibold text-gray-800">

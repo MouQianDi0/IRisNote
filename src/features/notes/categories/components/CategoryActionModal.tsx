@@ -1,5 +1,5 @@
 import { AppModal as Modal } from "@/shared/ui/Overlay/app-modal";
-import { InputSave } from "@/shared/ui";
+import { InputSave, StatusToggle } from "@/shared/ui";
 import {
     MoveHorizontal,
     Pin,
@@ -28,7 +28,7 @@ import Animated, {
 
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { colors, radii } from "@/shared/theme";
+import { colors } from "@/shared/theme";
 import { DialogButton } from "../../components/editor/draft-dialog";
 import { getCategoryIcon } from "../category-icons";
 import CategoryDeleteConfirmModal from "./CategoryDeleteConfirmModal";
@@ -181,18 +181,20 @@ function CategoryActionContent({
                                 <CategoryIconPicker variant="hyper" selectedIcon={selectedIcon} onChange={handleIconChange} />
                             </View>}
                             <View style={{ flexDirection: "row", gap: 10 }}>
-                                {[
-                                    { label: isPinned ? "已置顶" : "未置顶", active: isPinned, Icon: Pin, onPress: onPin },
-                                    { label: isStarred ? "已标星" : "未标星", active: isStarred, Icon: Star, onPress: onStar },
-                                ].map(({ label, active, Icon, onPress }) => <Pressable key={label}
-                                    accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: active }}
-                                    onPress={onPress} style={({ pressed }) => ({ flex: 1, height: 48,
-                                        flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
-                                        borderRadius: radii.iconControl, backgroundColor: active ? colors.hyperCardSelected : colors.hyperCard,
-                                        opacity: pressed ? 0.85 : 1 })}>
-                                    <Icon size={24} color={active ? colors.primary : colors.textSecondary} />
-                                    <Text numberOfLines={1} style={{ fontSize: 17, flexShrink: 1, color: active ? colors.primary : colors.textPrimary }}>{label}</Text>
-                                </Pressable>)}
+                                <StatusToggle
+                                    label={isPinned ? "已置顶" : "未置顶"}
+                                    icon={Pin}
+                                    selected={isPinned}
+                                    onPress={onPin}
+                                    className="flex-1"
+                                />
+                                <StatusToggle
+                                    label={isStarred ? "已标星" : "未标星"}
+                                    icon={Star}
+                                    selected={isStarred}
+                                    onPress={onStar}
+                                    className="flex-1"
+                                />
                             </View>
                         </ScrollView>
                         <View className="mt-4">
