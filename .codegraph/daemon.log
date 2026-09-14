@@ -211,3 +211,8 @@
 [CodeGraph MCP] Auto-synced 1 file(s) in 36ms
 [CodeGraph MCP] Auto-synced 1 file(s) in 54ms
 [CodeGraph MCP] Auto-synced 1 file(s) in 30ms
+[CodeGraph] v1.6.0 is available (this server is running v1.5.0). Update with `codegraph upgrade`.
+[CodeGraph daemon] Listening on \\.\pipe\codegraph-53ef3389ab444e0d (pid 97940, v1.5.0). Idle timeout 300000ms.
+[CodeGraph MCP] File watcher active — graph will auto-sync on changes
+[CodeGraph MCP] Query pool: up to 16 worker thread(s) for concurrent reads.
+[CodeGraph MCP] Auto-synced 1 file(s) in 1222ms
