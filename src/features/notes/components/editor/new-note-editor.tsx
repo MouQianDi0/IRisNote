@@ -2,10 +2,11 @@ import { useApplicationDatabase } from "@/core/database";
 import { PlainTextEditor } from "@/core/editor";
 import { banner, captureNotificationSession } from "@/core/notifications";
 import { colors } from "@/shared/theme";
+import { InlineHint } from "@/shared/ui";
 import { LocalOnlyText } from "@/shared/ui/local-only-text";
 import { Button, Host } from "@expo/ui";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
-import { Archive, Trash2 } from "lucide-react-native";
+import { Archive, CloudOff, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
@@ -28,7 +29,7 @@ import {
   saveNewNoteLocalFirst,
 } from "../../services/note-save.service";
 import { DraftManagerDialog } from "../draft-manager-dialog";
-import { DialogButton, DraftDialog, DraftLocalNotice } from "./draft-dialog";
+import { DialogButton, DraftDialog } from "./draft-dialog";
 
 type Props = {
   owner: number;
@@ -324,6 +325,8 @@ export default function NewNoteEditor({
       completed.current = true;
       const localNotice = result.draftCleanupPending
         ? "笔记已同步到云端。仅本机草稿清理未完成，内容仍保留，可从草稿入口再次打开并保存以重试清理。"
+        : result.cloudState === "queued"
+          ? "笔记已保存到本机并加入暂存队列，服务器可用时将自动同步。"
         : result.cloudState === "unknown"
           ? "笔记已保存，仅本机确认保存成功，云端接收结果未知。草稿和恢复副本已保留。"
           : "笔记已保存，仅本机保存成功，云端同步未完成。草稿和恢复副本已保留。";
@@ -335,7 +338,13 @@ export default function NewNoteEditor({
                 title: "笔记已同步到云端",
                 message: "",
               }
-            : {
+            : result.cloudState === "queued"
+              ? {
+                  type: "special" as const,
+                  title: "已加入暂存队列",
+                  message: "服务器可用时将自动同步。",
+                }
+              : {
                 type: "important" as const,
                 title: result.draftCleanupPending
                   ? "笔记已同步，草稿清理未完成"
@@ -354,7 +363,10 @@ export default function NewNoteEditor({
           banner.show({ id, ...content });
       }
       if (!mounted.current) return;
-      if (result.cloudState === "accepted" && !result.draftCleanupPending) {
+      if (
+        (result.cloudState === "accepted" || result.cloudState === "queued") &&
+        !result.draftCleanupPending
+      ) {
         onSaved(result.note);
         return;
       }
@@ -502,7 +514,11 @@ export default function NewNoteEditor({
         title="是否将内容保存为草稿？"
         onClose={keepEditing}
       >
-        <DraftLocalNotice className="mb-3" />
+        <InlineHint
+          icon={CloudOff}
+          message="草稿仅本机保存，不会同步到云端。"
+          className="mb-3"
+        />
         <View className="mb-3 flex-row items-center gap-1.5">
           <Trash2 size={14} color={colors.hyperTextSecondary} />
           <Text

@@ -716,6 +716,139 @@ export async function restoreLocalNoteToRevision(
     });
 }
 
+export type NoteQueueRollbackAvailability =
+    | { allowed: true }
+    | { allowed: false; reason: string };
+
+/** 删除暂存任务前的只读检查；版本指针不匹配时禁止覆盖更新后的内容。 */
+export async function getNoteQueueRollbackAvailability(
+    database: ApplicationDatabase,
+    ownerUserId: number,
+    clientId: number,
+    expectedRevisionId: string,
+): Promise<NoteQueueRollbackAvailability> {
+    const current = await getCurrentNoteRevision(
+        database,
+        ownerUserId,
+        clientId,
+    );
+    if (!current) {
+        return { allowed: false, reason: "笔记没有可回滚的本地版本" };
+    }
+    if (current.revision_id !== expectedRevisionId) {
+        return { allowed: false, reason: "笔记内容已变化，请等待队列刷新" };
+    }
+    if (!current.parent_revision_id) {
+        return { allowed: false, reason: "没有上一个版本，无法回滚" };
+    }
+    return { allowed: true };
+}
+
+/**
+ * 在调用方事务内回滚队列对应的当前版本。
+ * 当前版本不会删除，而是以其为父节点创建 origin=restore 的新版本。
+ */
+export async function rollbackQueuedLocalNoteToPreviousRevision(
+    transaction: ApplicationDatabaseTransaction,
+    ownerUserId: number,
+    clientId: number,
+    expectedRevisionId: string,
+    uploadAttempted: boolean,
+) {
+    const existing = await readNoteByClientId(
+        transaction,
+        ownerUserId,
+        clientId,
+    );
+    if (!existing) {
+        throw new Error("[Note rollback] 本地笔记不存在，无法回滚");
+    }
+
+    const current = await getCurrentNoteRevision(
+        transaction,
+        ownerUserId,
+        clientId,
+    );
+    if (!current || current.revision_id !== expectedRevisionId) {
+        throw new Error("[Note rollback] 笔记内容已变化，请刷新后重试");
+    }
+    if (!current.parent_revision_id) {
+        throw new Error("[Note rollback] 没有上一个版本，无法回滚");
+    }
+
+    const previous = await getNoteRevisionById(
+        transaction,
+        ownerUserId,
+        current.parent_revision_id,
+    );
+    if (!previous || previous.client_id !== clientId) {
+        throw new Error("[Note rollback] 上一个版本不存在或不属于这篇笔记");
+    }
+
+    const nextRevisionId = await insertNoteRevision(
+        transaction,
+        ownerUserId,
+        clientId,
+        {
+            parentId: current.revision_id,
+            title: previous.title,
+            content: previous.content,
+            categoryId: previous.category_id,
+            origin: "restore",
+        },
+    );
+    const hasServerCopy = existing.server_id != null;
+    const syncStatus: NoteSyncStatus = uploadAttempted
+        ? "unknown"
+        : hasServerCopy
+          ? "synced"
+          : "pending";
+    const syncOperation: NoteSyncOperation | null =
+        syncStatus === "synced"
+            ? null
+            : hasServerCopy
+              ? "update"
+              : "create";
+    const lastSyncError = uploadAttempted
+        ? "已取消自动上传；云端接收状态未知，请在笔记页核对后同步。"
+        : hasServerCopy
+          ? null
+          : "已取消自动上传；本地笔记尚未同步，可在笔记页重新同步。";
+
+    await transaction.run(
+        `UPDATE local_notes
+         SET title = $title,
+             content = $content,
+             category_id = $categoryId,
+             current_revision_id = $revisionId,
+             sync_status = $syncStatus,
+             sync_operation = $syncOperation,
+             last_sync_error = $lastSyncError,
+             local_updated_at = $localUpdatedAt
+         WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
+        {
+            $title: previous.title,
+            $content: previous.content,
+            $categoryId: previous.category_id,
+            $revisionId: nextRevisionId,
+            $syncStatus: syncStatus,
+            $syncOperation: syncOperation,
+            $lastSyncError: lastSyncError,
+            $localUpdatedAt: new Date().toISOString(),
+            $ownerUserId: ownerUserId,
+            $clientId: clientId,
+        },
+    );
+
+    const note = await readNoteByClientId(
+        transaction,
+        ownerUserId,
+        clientId,
+    );
+    if (!note) throw new Error("[Note rollback] 回滚后无法重新读取笔记");
+    return note;
+}
+
 export async function removeLocalNote(
     database: ApplicationDatabase,
     ownerUserId: number,

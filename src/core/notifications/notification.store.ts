@@ -176,8 +176,14 @@ export class NotificationStore {
       )
     )
       return false;
+    return this.withdraw(id);
+  };
+  /** Presentation-only removal. Callers must preserve and restore unresolved state. */
+  withdraw = (id: string) => {
+    if (!this.items.some((item) => item.id === id)) return false;
     this.items = this.items.filter((item) => item.id !== id);
     this.paused.delete(id);
+    this.visible.delete(id);
     this.emit();
     return true;
   };

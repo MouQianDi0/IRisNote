@@ -5,6 +5,10 @@ import { captureNotificationSession } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import type { Category } from "@/features/notes/categories/categories.types";
 import type { Note } from "@/features/notes/notes.types";
+import {
+    applyQueuedCategoryChanges,
+    enqueueCategoryCreate,
+} from "@/features/sync";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { colors } from "@/shared/theme";
 import { router, useLocalSearchParams, type Href } from "expo-router";
@@ -26,10 +30,7 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { deleteNote, getNotes } from "../api/notes.api";
-import {
-    createCategory,
-    getCategories,
-} from "../categories/api/categories.api";
+import { getCategories } from "../categories/api/categories.api";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import {
     notifyCategoriesChanged,
@@ -58,8 +59,8 @@ import {
 } from "../notes.cache";
 import { onNotesChanged, onNotesRemovedByCategory } from "../notes.events";
 import {
+    queueNoteUploadNow,
     saveEditedNoteLocalFirst,
-    uploadNoteNow,
 } from "../services/note-save.service";
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
@@ -173,7 +174,16 @@ export default function NotesScreen() {
                 );
                 if (notesRequestOwnerIdRef.current !== ownerUserId) return;
                 applyNotes(localNotes);
+            } catch (err: any) {
+                console.error(
+                    "加载本地笔记失败:",
+                    err.response?.status,
+                    err.response?.data || err.message,
+                );
+                return;
+            }
 
+            try {
                 const serverNotes = withLocalOrder(await getNotes());
                 let addedCount = 0;
                 const reconciledNotes = withLocalOrder(
@@ -193,8 +203,8 @@ export default function NotesScreen() {
                 await saveNoteSyncTime(ownerUserId, timestamp);
                 return { addedCount };
             } catch (err: any) {
-                console.error(
-                    "获取笔记失败:",
+                console.warn(
+                    "云端笔记同步失败，继续使用本地数据:",
                     err.response?.status,
                     err.response?.data || err.message,
                 );
@@ -216,7 +226,16 @@ export default function NotesScreen() {
 
         const request = (async () => {
             try {
-                setCategories(await getCategories());
+                const remoteCategories = await getCategories();
+                setCategories(
+                    user
+                        ? await applyQueuedCategoryChanges(
+                              database,
+                              user.id,
+                              remoteCategories,
+                          )
+                        : remoteCategories,
+                );
             } catch (err: any) {
                 console.error("获取分类失败:", err.message);
             } finally {
@@ -226,7 +245,7 @@ export default function NotesScreen() {
 
         categoriesRequestRef.current = request;
         return request;
-    }, []);
+    }, [database, user]);
 
     useEffect(() => {
         notesRef.current = notes;
@@ -386,7 +405,7 @@ export default function NotesScreen() {
         try {
             const result =
                 title === undefined
-                    ? await uploadNoteNow(
+                    ? await queueNoteUploadNow(
                           database,
                           user.id,
                           activeContextNote.id,
@@ -401,10 +420,14 @@ export default function NotesScreen() {
                 ? title === undefined
                     ? "已同步"
                     : "标题已保存并同步"
-                : (title === undefined
-                      ? "未同步："
-                      : "标题已保存在本地，未同步：") +
-                      ("message" in result ? result.message : "请稍后重试");
+                : result.cloudState === "queued"
+                  ? title === undefined
+                      ? "已加入暂存队列"
+                      : "标题已保存，等待自动同步"
+                  : (title === undefined
+                        ? "未同步："
+                        : "标题已保存在本地，未同步：") +
+                    ("message" in result ? result.message : "请稍后重试");
         } finally {
             contextStatusLock.current = false;
             setContextStatusBusy(false);
@@ -423,15 +446,16 @@ export default function NotesScreen() {
 
     const handleAddCategory = useCallback(
         async (name: string, icon: string) => {
+            if (!user) return;
             try {
-                await createCategory({ name, icon });
+                await enqueueCategoryCreate(database, user.id, { name, icon });
                 notifyCategoriesChanged();
                 setNoteClassMenu(false);
             } catch (err: any) {
                 console.error("创建分类失败:", err.message);
             }
         },
-        [],
+        [database, user],
     );
 
     const handleScrollToTop = useCallback(() => {
