@@ -87,6 +87,72 @@
     - `sdkmanager --version` 返回 `22.0`，`sdkmanager.bat` 与 `avdmanager.bat` 均存在。
     - Build Tools 35.0.0 的 `aapt.exe`、`aapt2.exe`、`d8.bat`、`zipalign.exe`、`apksigner.bat`、`source.properties` 与 `package.xml` 全部存在，`Pkg.Revision=35.0.0`。
     - Android Studio 已绕过第一层失效 VM 配置，但内置 JBR 继续报 `sun.nio.fs` 模块访问错误；安装目录 VM 参数修复尚未实施，待用户单独确认。
+## 2026-09-14 19:16:38 | 优化代码
+
+- **笔记查看与编辑器返回入口接入公共 BackButton**
+    - `NoteViewerHeader` 与 `PlainTextEditor` 的私有 `Pressable + ArrowLeft` 实现改为公共 `BackButton`；保持 40×40dp 视觉尺寸、透明 ghost 背景、24dp 图标，并由公共组件提供布局外 2dp hitSlop。
+    - 两处原有 `onBack` / `onCancel` 回调原样保留；未调整键盘收起、草稿落盘、同步、页面退出或保存按钮逻辑。
+    - 同步阶段 2 待办、视觉规范、审计基线和架构索引，记录阅读与编辑器返回入口已迁移。
+- **修改文件列表**
+    - `src/features/notes/components/viewer/NoteViewerHeader.tsx` - 改用公共 `BackButton`。
+    - `src/core/editor/components/plain-text-editor.tsx` - 改用公共 `BackButton`，保留编辑器取消回调。
+    - `待办事项.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md` - 更新迁移状态与尺寸契约。
+    - `CHANGELOG.md` - 记录本次迁移。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、两个改动文件的 Expo ESLint、`npm run design:audit` 与 `git diff --check` 通过。
+    - `npm run theme:check` 未通过：当前 `global.css` 与默认主题预设不同步；本批未改主题文件，未执行会写入生成文件的 `npm run theme:sync`。
+    - 未运行测试、构建、导出、浏览器或设备验收；返回后键盘收起、草稿保存和页面退出时序仍由用户主动验收。
+
+---
+
+## 2026-09-14 19:16:06 | 修复问题
+
+- **修复验证码公共按钮在登录与注册页丢失胶囊外观的问题**
+    - `AppButton` 将调用方 `className` 移至外层容器；验证码按钮的 `w-[120px]` 现在只决定占用宽度，不再与内部 `Pressable` 的主题样式合并冲突。
+    - 内部按钮显式拉伸至容器宽度，继续负责 48dp 高度、16dp 圆角、主题背景、横向内容、加载与禁用态；验证码发送、倒计时及禁用逻辑不变。
+    - 该修复同时适用于其他向 `AppButton` 传入布局类名的调用方；`AuthButton` 仍是无行为变更的兼容封装。
+- **修改文件列表**
+    - `src/shared/ui/AppButton/AppButton.tsx` - 分离外层布局与内部胶囊视觉样式。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**
+    - 已完成源码与差异复核；依照当前授权边界，未运行测试、构建或设备/浏览器验收。
+    - 请在设备上确认登录与注册页的「发送验证码」为 120×48dp 浅蓝胶囊，并检查默认、禁用、发送中与倒计时状态。
+
+---
+
+## 2026-09-14 19:11:49 | 修复问题
+
+- **修复公共状态胶囊按钮在分类操作弹窗中竖向渲染的问题**
+    - `StatusToggle` 将调用方布局类名从内部可点击节点移至外层容器；`className="flex-1"` 现在仅负责两个状态按钮的等宽分配，不再参与内部样式合并。
+    - 内部 `Pressable` 显式拉伸至外层宽度，并保持图标与文字横向排列、48dp 高度、16dp 圆角、8dp 图文间距、主题背景与按压态。
+    - 笔记操作与分类操作继续复用同一公共组件；置顶/标星的业务回调、文案、选中态和禁用态均未改动。
+- **修改文件列表**
+    - `src/shared/ui/StatusToggle/StatusToggle.tsx` - 分离外层宽度布局与内部胶囊视觉布局。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**
+    - 已完成源码与差异复核；依照当前授权边界，未运行测试、构建或设备/浏览器验收。
+    - 请在设备上确认图标与文字横向排列、两个按钮等宽，以及默认/选中状态外观。
+
+---
+
+## 2026-09-14 18:36:03 | 优化代码
+
+- **置顶/标星状态按钮抽取为公共组件 `StatusToggle`**
+    - 将笔记操作弹窗内的局部组件 `StatusAction`（置顶/标星胶囊按钮）与分类操作弹窗内的内联实现，统一抽取为全局公共组件 `StatusToggle`（`src/shared/ui/StatusToggle/`），两处调用点改为复用同一实现，消除样式分叉。
+    - 组件规格：高 48dp、图标 20 + 间距 8dp + 文字 17 号常规（`AppText variant="control"`）、圆角 16dp（`radii.control`，continuous）、水平内边距 16dp；配色复用 `componentRecipes.iconButton` 三态（默认 surfaceControl/#F0F0F0、选中 surfaceSelected/#EAF2FF + brandPrimary/#007AFF、禁用 secondaryDisabled/#F7F7F7 + textDisabled/#B2B2B2），按压透明度走 motion 预设；a11y `role=button` + `state={selected, disabled}`；宽度不写死，由调用方传 `className="flex-1"`。
+    - 笔记操作弹窗：删除局部 `StatusAction`，视觉除圆角 14→16dp（legacy token 向语义 token 对齐）外像素级不变，文案保持静态「置顶/标星」。
+    - 分类操作弹窗：内联 map 替换为两个 `StatusToggle`，动态文案「已置顶/未置顶」「已标星/未标星」按用户决策保留（文案 A 方案）；图标 24→20、图标与文字间距 4→8dp，与笔记弹窗参数收敛一致。
+- **修改文件列表**
+    - `src/shared/ui/StatusToggle/StatusToggle.tsx` - 新建公共组件。
+    - `src/shared/ui/StatusToggle/index.ts` - 新建导出文件。
+    - `src/shared/ui/index.ts` - 新增 `StatusToggle` 导出。
+    - `src/features/notes/components/viewer/NoteContextMenu.tsx` - 删除局部 `StatusAction`（36 行），调用点改用 `StatusToggle`。
+    - `src/features/notes/categories/components/CategoryActionModal.tsx` - 内联按钮实现（14 行）替换为 `StatusToggle`，移除未再使用的 `radii` 导入。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - `npx tsc --noEmit` 通过（exit 0）；5 个改动文件 `npx eslint --no-cache --no-warn-ignored` 通过（0 警告）。
+    - 7 个 node 测试文件（editor×4 / notifications / profile / reading）全部通过。
+    - 两弹窗的按钮三态视觉与交互由用户在设备上验收。
 
 ---
 
