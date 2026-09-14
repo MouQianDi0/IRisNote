@@ -8,13 +8,22 @@ import {
 import { AccessibilityInfo, AppState } from "react-native";
 import { OverlayProvider } from "@/shared/ui/Overlay/overlay-context";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useApplicationDatabase } from "@/core/database";
+import {
+  openDeviceNetworkSettings,
+  readUploadQueueSummary,
+  startUploadQueueCoordinator,
+} from "@/core/sync";
+import { executeUploadTask } from "@/features/sync";
 import { banner, notificationStore } from "./notification.service";
 import { NotificationHost } from "./notification-host";
 import api from "@/shared/http/client";
 import { resetConnectionSession } from "@/shared/http/connection-events";
 import { startConnectionCoordinator } from "./server-connection-coordinator";
+import { router } from "expo-router";
 
 export function NotificationProvider({ children }: PropsWithChildren) {
+  const database = useApplicationDatabase();
   const { user, loading } = useAuth();
   const owner = useRef<number | null | undefined>(undefined);
   const announced = useRef(new Set<string>());
@@ -42,18 +51,35 @@ export function NotificationProvider({ children }: PropsWithChildren) {
   }, [user?.id, loading]);
   useEffect(() => {
     if (!user?.id || loading) return;
+    const openQueue = () => router.push("/pages/user/sync-queue");
     const coordinator = startConnectionCoordinator((signal) =>
       api.get("/user/profile", { signal, timeout: 8000 }),
+      {
+        getPendingSummary: () => readUploadQueueSummary(database, user.id),
+        openQueue,
+      },
     );
+    const uploadCoordinator = startUploadQueueCoordinator({
+      database,
+      ownerUserId: user.id,
+      probe: (signal) => api.get("/user/profile", { signal, timeout: 8000 }),
+      execute: (task) => executeUploadTask(database, task),
+      openQueue,
+      openNetworkSettings: openDeviceNetworkSettings,
+    });
     coordinator.setActive(AppState.currentState === "active");
-    const subscription = AppState.addEventListener("change", (state) =>
-      coordinator.setActive(state === "active"),
-    );
+    uploadCoordinator.setActive(AppState.currentState === "active");
+    const subscription = AppState.addEventListener("change", (state) => {
+      const active = state === "active";
+      coordinator.setActive(active);
+      uploadCoordinator.setActive(active);
+    });
     return () => {
       coordinator.stop();
+      uploadCoordinator.stop();
       subscription.remove();
     };
-  }, [user?.id, loading]);
+  }, [database, user?.id, loading]);
   useEffect(() => {
     notificationStore.setActive(AppState.currentState === "active");
     const appState = AppState.addEventListener("change", (state) =>

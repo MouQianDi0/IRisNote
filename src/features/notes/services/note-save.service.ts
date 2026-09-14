@@ -19,8 +19,9 @@ import type {
     Note,
     UpdateNotePayload,
 } from "../notes.types";
+import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 
-export type NoteCloudSaveState = "accepted" | "rejected" | "unknown";
+export type NoteCloudSaveState = "accepted" | "queued" | "rejected" | "unknown";
 
 export type NoteSaveResult = {
     draftCleanupPending?: boolean;
@@ -29,6 +30,8 @@ export type NoteSaveResult = {
     /** true 表示内容与当前版本一致，本次保存没有创建新版本。 */
     unchanged?: boolean;
     message?: string;
+    httpStatus?: number;
+    retryable?: boolean;
 };
 
 export type StagedEditedNoteResult = {
@@ -38,6 +41,8 @@ export type StagedEditedNoteResult = {
     unchanged: boolean;
     draftCleanupPending?: boolean;
     message?: string;
+    httpStatus?: number;
+    retryable?: boolean;
 };
 
 function publishNote(note: Note) {
@@ -66,7 +71,7 @@ function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
 
 function classifyCloudFailure(error: unknown): Exclude<
     NoteCloudSaveState,
-    "accepted"
+    "accepted" | "queued"
 > {
     return isAxiosError(error) && error.response ? "rejected" : "unknown";
 }
@@ -75,6 +80,7 @@ async function syncPendingNote(
     database: ApplicationDatabase,
     ownerUserId: number,
     note: Note,
+    onUploadProgress?: (event: AxiosProgressEvent) => void,
 ): Promise<NoteSaveResult> {
     const syncingNote = await markLocalNoteSyncing(
         database,
@@ -93,7 +99,10 @@ async function syncPendingNote(
         let responseStatus: number | undefined;
         const uploadOptions = {
             onUploadProgress: (event: AxiosProgressEvent) =>
-                logUploadProgress(note.id, event),
+                {
+                    logUploadProgress(note.id, event);
+                    onUploadProgress?.(event);
+                },
             onResponse: (status: number) => {
                 responseStatus = status;
                 console.log("[Note sync] 已收到云端响应", {
@@ -144,6 +153,12 @@ async function syncPendingNote(
         return { note: acceptedNote, cloudState: "accepted" };
     } catch (error: unknown) {
         const cloudState = classifyCloudFailure(error);
+        const httpStatus = isAxiosError(error) ? error.response?.status : undefined;
+        const retryable =
+            httpStatus == null ||
+            httpStatus === 408 ||
+            httpStatus === 429 ||
+            httpStatus >= 500;
         const message = getApiErrorMessage(error, "云端同步失败");
         const failedNote = await markLocalNoteSyncFailed(
             database,
@@ -166,7 +181,7 @@ async function syncPendingNote(
                 message,
             },
         );
-        return { note: failedNote, cloudState, message };
+        return { note: failedNote, cloudState, message, httpStatus, retryable };
     }
 }
 
@@ -323,29 +338,47 @@ async function finishDraftSave(
     database: ApplicationDatabase, owner: number, note: Note, draft?: DraftCommit,
     unchanged = false,
 ) {
-    const result = await syncPendingNote(database, owner, note);
-    const saveResult: NoteSaveResult = { ...result, unchanged };
-    if (draft && result.cloudState === "accepted") {
-        try {
-            await deleteNoteDraft(database, owner, draft);
-        } catch {
-            if (draft.beforeDelete) saveResult.draftCleanupPending = true;
-            // 云端保存成功不能因草稿清理失败被误报为保存失败，也不能删除新会话内容。
-            console.warn("[Note draft] 保存已完成，草稿清理未完成", { clientId: note.id });
-        }
-    }
-    return saveResult;
+    await enqueueNoteUpload(database, owner, note, draft);
+    return {
+        note,
+        cloudState: "queued",
+        unchanged,
+        message: "已加入本地暂存队列，服务器可用时将自动同步",
+    } satisfies NoteSaveResult;
 }
 
-/** Explicit retry uses the current local snapshot and never replays an uncertain create. */
-export async function uploadNoteNow(database: ApplicationDatabase, owner: number, id: number) {
+/** 手动同步也先写入持久队列，由全局协调器探测服务器并串行上传。 */
+export async function queueNoteUploadNow(
+    database: ApplicationDatabase,
+    owner: number,
+    id: number,
+) {
     const note = await getLocalNoteByClientId(database, owner, id);
     if (!note) throw new Error("笔记已不存在");
-    if (note.sync_status === "syncing") throw new Error("笔记正在同步，请稍后再试");
     if (note.server_id == null && note.sync_status === "unknown") {
         throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
     }
-    return syncPendingNote(database, owner, note);
+    await enqueueNoteUpload(database, owner, note);
+    return {
+        note,
+        cloudState: "queued",
+        message: "已加入本地暂存队列",
+    } satisfies NoteSaveResult;
+}
+
+/** Explicit retry uses the current local snapshot and never replays an uncertain create. */
+export async function uploadNoteNow(
+    database: ApplicationDatabase,
+    owner: number,
+    id: number,
+    onUploadProgress?: (event: AxiosProgressEvent) => void,
+) {
+    const note = await getLocalNoteByClientId(database, owner, id);
+    if (!note) throw new Error("笔记已不存在");
+    if (note.server_id == null && note.sync_status === "unknown") {
+        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+    }
+    return syncPendingNote(database, owner, note, onUploadProgress);
 }
 
 /** 上传退出前已提交的本地版本；仅云端确认后条件清理对应草稿。 */

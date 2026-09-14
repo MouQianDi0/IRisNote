@@ -325,6 +325,8 @@ export default function NewNoteEditor({
       completed.current = true;
       const localNotice = result.draftCleanupPending
         ? "笔记已同步到云端。仅本机草稿清理未完成，内容仍保留，可从草稿入口再次打开并保存以重试清理。"
+        : result.cloudState === "queued"
+          ? "笔记已保存到本机并加入暂存队列，服务器可用时将自动同步。"
         : result.cloudState === "unknown"
           ? "笔记已保存，仅本机确认保存成功，云端接收结果未知。草稿和恢复副本已保留。"
           : "笔记已保存，仅本机保存成功，云端同步未完成。草稿和恢复副本已保留。";
@@ -336,7 +338,13 @@ export default function NewNoteEditor({
                 title: "笔记已同步到云端",
                 message: "",
               }
-            : {
+            : result.cloudState === "queued"
+              ? {
+                  type: "special" as const,
+                  title: "已加入暂存队列",
+                  message: "服务器可用时将自动同步。",
+                }
+              : {
                 type: "important" as const,
                 title: result.draftCleanupPending
                   ? "笔记已同步，草稿清理未完成"
@@ -355,7 +363,10 @@ export default function NewNoteEditor({
           banner.show({ id, ...content });
       }
       if (!mounted.current) return;
-      if (result.cloudState === "accepted" && !result.draftCleanupPending) {
+      if (
+        (result.cloudState === "accepted" || result.cloudState === "queued") &&
+        !result.draftCleanupPending
+      ) {
         onSaved(result.note);
         return;
       }

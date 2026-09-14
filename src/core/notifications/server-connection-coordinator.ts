@@ -3,14 +3,23 @@ import {
   onConnectionReset,
 } from "@/shared/http/connection-events";
 import { banner, captureNotificationSession, notificationStore } from "./notification.service";
+import {
+  isServerConnectionBannerSuppressed,
+  onServerConnectionBannerSuppressionChanged,
+  SERVER_CONNECTION_BANNER_ID,
+} from "./server-connection-banner-visibility";
 
-const id = "server-connection";
+const id = SERVER_CONNECTION_BANNER_ID;
 export function isServerConnectionUnavailable() {
   return notificationStore.getSnapshot().some(item => item.id === id && item.lifetime.mode === "until-resolved");
 }
 /** A single read-only probe, exponential retry, and no automatic write replay. */
 export function startConnectionCoordinator(
   probe: (signal: AbortSignal) => Promise<unknown>,
+  options?: {
+    getPendingSummary?: () => Promise<{ count: number; estimatedBytes: number }>;
+    openQueue?: () => void;
+  },
 ) {
   let latest = 0;
   let failures = 0;
@@ -20,6 +29,12 @@ export function startConnectionCoordinator(
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let request: AbortController | undefined;
+  const formatBytes = (bytes: number) =>
+    bytes < 1024
+      ? `${Math.max(0, Math.round(bytes))} B`
+      : bytes < 1024 * 1024
+        ? `${(bytes / 1024).toFixed(1)} KB`
+        : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   const cancel = () => {
     clearTimeout(timer);
     timer = undefined;
@@ -54,6 +69,30 @@ export function startConnectionCoordinator(
       }
     }
   };
+  const publishFault = async () => {
+    const summary = await options?.getPendingSummary?.().catch(() => undefined);
+    if (
+      !active ||
+      stopped ||
+      !fault ||
+      isServerConnectionBannerSuppressed()
+    ) return;
+    const hasPending = Boolean(summary?.count);
+    const content = {
+      title: "无法连接服务器，正在重连",
+      message: hasPending
+        ? `${summary!.count} 项暂存任务 · 预计上传 ${formatBytes(summary!.estimatedBytes)}`
+        : undefined,
+      type: "important" as const,
+      priority: "critical" as const,
+      lifetime: { mode: "until-resolved" as const },
+      icon: "cloud-off" as const,
+      action: hasPending && options?.openQueue
+        ? { label: "查看暂存", onPress: options.openQueue }
+        : { label: "重试", onPress: retry },
+    };
+    if (!banner.update(id, content)) banner.show({ id, ...content });
+  };
   const remove = onConnectionEvent((event) => {
     if (event.sequence < latest || stopped) return;
     latest = event.sequence;
@@ -84,18 +123,14 @@ export function startConnectionCoordinator(
     failures++;
     if (failures >= 2) {
       fault = true;
-      const content = {
-        title: "无法连接服务器，正在重连",
-        type: "important" as const,
-        priority: "critical" as const,
-        lifetime: { mode: "until-resolved" as const },
-        icon: "cloud-off" as const,
-        action: { label: "重试", onPress: retry },
-      };
-      if (!banner.update(id, content)) banner.show({ id, ...content });
+      void publishFault();
     }
     schedule();
   });
+  const releaseSuppressionListener =
+    onServerConnectionBannerSuppressionChanged((suppressed) => {
+      if (!suppressed && fault) void publishFault();
+    });
   const reset = onConnectionReset(() => {
     cancel();
     failures = 0;
@@ -114,6 +149,7 @@ export function startConnectionCoordinator(
       cancel();
       remove();
       reset();
+      releaseSuppressionListener();
     },
   };
 }

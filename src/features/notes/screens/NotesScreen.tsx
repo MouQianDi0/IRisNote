@@ -1,5 +1,5 @@
-import { saveEditedNoteLocalFirst, uploadNoteNow } from "../services/note-save.service";
-import { createCategory, getCategories } from "../categories/api/categories.api";
+import { queueNoteUploadNow, saveEditedNoteLocalFirst } from "../services/note-save.service";
+import { getCategories } from "../categories/api/categories.api";
 import { useApplicationDatabase } from "@/core/database";
 import { captureNotificationSession } from "@/core/notifications";
 import NotesSyncHeader from "../components/NotesSyncHeader";
@@ -50,6 +50,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
+import { applyQueuedCategoryChanges, enqueueCategoryCreate } from "@/features/sync";
 
 const firstSearchParam = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -146,7 +147,16 @@ export default function NotesScreen() {
         );
         if (notesRequestOwnerIdRef.current !== ownerUserId) return;
         applyNotes(localNotes);
+      } catch (err: any) {
+        console.error(
+          "加载本地笔记失败:",
+          err.response?.status,
+          err.response?.data || err.message,
+        );
+        return;
+      }
 
+      try {
         const serverNotes = withLocalOrder(await getNotes());
         let addedCount = 0;
         const reconciledNotes = withLocalOrder(
@@ -159,8 +169,8 @@ export default function NotesScreen() {
         await saveNoteSyncTime(ownerUserId, timestamp);
         return { addedCount };
       } catch (err: any) {
-        console.error(
-          "获取笔记失败:",
+        console.warn(
+          "云端笔记同步失败，继续使用本地数据:",
           err.response?.status,
           err.response?.data || err.message,
         );
@@ -182,7 +192,10 @@ export default function NotesScreen() {
 
     const request = (async () => {
       try {
-        setCategories(await getCategories());
+        const remoteCategories = await getCategories();
+        setCategories(user
+          ? await applyQueuedCategoryChanges(database, user.id, remoteCategories)
+          : remoteCategories);
       } catch (err: any) {
         console.error("获取分类失败:", err.message);
       } finally {
@@ -192,7 +205,7 @@ export default function NotesScreen() {
 
     categoriesRequestRef.current = request;
     return request;
-  }, []);
+  }, [database, user]);
 
   useEffect(() => {
     notesRef.current = notes;
@@ -350,9 +363,10 @@ export default function NotesScreen() {
     setContextStatusBusy(true);
     try {
       const result = title === undefined
-        ? await uploadNoteNow(database, user.id, activeContextNote.id)
+        ? await queueNoteUploadNow(database, user.id, activeContextNote.id)
         : await saveEditedNoteLocalFirst(database, user.id, activeContextNote, { title });
       return result.cloudState === "accepted" ? (title === undefined ? "已同步" : "标题已保存并同步")
+        : result.cloudState === "queued" ? (title === undefined ? "已加入暂存队列" : "标题已保存，等待自动同步")
         : (title === undefined ? "未同步：" : "标题已保存在本地，未同步：") + ("message" in result ? result.message : "请稍后重试");
     } finally {
       contextStatusLock.current = false;
@@ -371,14 +385,15 @@ export default function NotesScreen() {
   );
 
   const handleAddCategory = useCallback(async (name: string, icon: string) => {
+    if (!user) return;
     try {
-      await createCategory({ name, icon });
+      await enqueueCategoryCreate(database, user.id, { name, icon });
       notifyCategoriesChanged();
       setNoteClassMenu(false);
     } catch (err: any) {
       console.error("创建分类失败:", err.message);
     }
-  }, []);
+  }, [database, user]);
 
   const handleScrollToTop = useCallback(() => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
