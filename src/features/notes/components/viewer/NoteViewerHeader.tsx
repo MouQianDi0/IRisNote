@@ -1,14 +1,12 @@
-import { ArrowLeft } from "lucide-react-native";
-import { Text, TouchableOpacity, View } from "react-native";
 import { colors } from "@/shared/theme";
+import { ArrowLeft } from "lucide-react-native";
+import { TouchableOpacity, View } from "react-native";
 
 type NoteViewerHeaderProps = {
   onBack: () => void;
 };
 
-export default function NoteViewerHeader({
-  onBack,
-}: NoteViewerHeaderProps) {
+export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
   return (
     <View className="h-16 flex-row items-center justify-between border-b border-border-soft px-4">
       <TouchableOpacity
@@ -20,7 +18,7 @@ export default function NoteViewerHeader({
         <ArrowLeft size={24} color={colors.textPrimary} />
       </TouchableOpacity>
 
-      <View pointerEvents="none" style={{ position: "absolute", left: 60, right: 60, top: 0, bottom: 0, justifyContent: "center" }}>
+      {/* <View pointerEvents="none" style={{ position: "absolute", left: 60, right: 60, top: 0, bottom: 0, justifyContent: "center" }}>
         <Text
           className="text-center text-[18px] font-semibold text-gray-800"
           numberOfLines={1}
@@ -30,7 +28,7 @@ export default function NoteViewerHeader({
         </Text>
       </View>
 
-      <View pointerEvents="none" className="h-10 w-10" />
+      <View pointerEvents="none" className="h-10 w-10" /> */}
     </View>
   );
 }
