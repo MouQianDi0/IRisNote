@@ -2,6 +2,91 @@
 
 ---
 
+## 2026-09-14 22:24:15 | 新增功能
+
+- **悬浮导航背景模糊及 15dp 顶部渐变**
+    - 新增 expo-blur 与渐变蒙版依赖，按当前标签页选择 Android BlurTargetView，采样实际页面内容。
+    - 模糊覆盖屏幕底部全宽 101dp，顶部 15dp 通过透明度蒙版平滑显现；按钮高 66dp、底部 20dp、左右 16dp 和控件间隔 15dp 保持不变。
+    - 模糊与按钮共用 300ms 位移动画，隐藏距离覆盖渐变区域和阴影；背景不拦截触摸。
+- **修改文件列表**
+    - package.json、package-lock.json - 添加原生模糊和蒙版依赖。
+    - src/app/(tabs)/_layout.tsx - 按场景提供背景采样目标。
+    - src/core/navigation/components/FloatingMenu.tsx - 背景模糊、渐变蒙版及整组隐藏。
+    - CHANGELOG.md - 记录本次已确认功能和验收结果。
+- **验证结果**
+    - TypeScript、目标文件 ESLint、差异检查通过；Android x86_64 开发客户端构建成功并安装至 Pixel_9_Pro_XL 模拟器。
+    - 截图确认底部真实模糊、15dp 顶部透明度渐变、按钮清晰；持续滚动时整组移出底边，停止后恢复，切换用户/笔记后的采样正常。
+    - 从两按钮间隙滑动可滚动底下的列表；13 秒切页及滑动观测窗口内 JavaScript 警告/错误为 0。
+    - 本机 Java 回环连接异常使用仅当前构建进程的 jdk.net.unixdomain.tmpdir 参数规避。原 Metro 未识别新增 expo-blur，验收使用独立的 8082 Metro；未停止或重启原 8081 服务。
+    - 本次完成 Android 模拟器验收，未进行 iOS 实机验收。
+
+---
+
+## 2026-09-14 21:22:35 | 修复问题
+
+- **修复悬浮导航在组件渲染期间读取 Reanimated 共享值的警告**
+    - 将 FloatingMenu 的共享值访问统一为 get()/set()，保持访问位于 Effect、事件及动画回调内，避免 React Compiler 将 hiddenOffsetY.value 提取为渲染阶段的缓存依赖。
+    - 保留当前布局、配色、300ms 动画和导航交互。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 替换共享值属性读写方式。
+    - CHANGELOG.md - 记录本次已确认修复。
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、git diff --check 通过。
+    - 检查模拟器实际加载的编译结果：缓存依赖只比较 hiddenOffsetY 和 translateY 对象，渲染阶段不再读取 hiddenOffsetY.value。
+    - Android 模拟器连续切换用户/笔记并滚动列表，14 秒观测窗口内 Reanimated 警告为 0；截图确认滚动期间导航隐藏、停止后恢复。
+
+---
+
+## 2026-09-14 20:00:45 | 优化代码
+
+- **悬浮导航向下隐藏、对称外边距及左右滑动切页**
+    - 整组左右外边距均为 16dp，白色 Tab 栏弹性填满剩余宽度，四项等宽分配；两侧控件高 66dp，白栏内边距 8dp、项目高 50dp，主按钮间隔从 15dp 增至 24dp。
+    - 隐藏方向改为向屏幕底部移动，位移按实际高度加底部偏移 50dp 与阴影余量 16dp 计算，保留现有触发时机和 600ms 动画。
+    - 切页手势仅绑定白色 Tab 栏：左滑下一页、右滑上一页，按笔记/待办/剪贴/用户的可见顺序循环；横向主导且位移超过 30dp 才切页，上下滑动不切页。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 布局尺寸、纵向隐藏动画及手势绑定范围。
+    - src/core/navigation/hooks/useSwipeTab.ts - 左右滑动判定与可见顺序切页。
+    - CHANGELOG.md - 记录本次已确认变更。
+- **验证结果**
+    - TypeScript、两文件 ESLint 通过；移除手势 hook 原有渲染阶段 ref 写入，直接使用当前路由。
+    - 模拟器验证：左滑从笔记进入待办、右滑返回笔记，上滑白栏未切页；列表滑动期间整组隐藏，停止后恢复。
+    - 已截图核对加长白栏与对称外边距的整体效果；控件树仍因无法进入空闲状态而读取失败，精确 dp 未完成原生树实测。尺寸使用明确数值类名，避免 rem 换算偏差。
+
+---
+
+## 2026-09-14 19:41:26 | 优化代码
+
+- **悬浮 Tab 栏横排并与主操作按钮等高**
+    - 白色 Tab 栏移至蓝色主操作按钮左侧，四个入口横排；白栏高 66dp、每项 50×50dp、四周内边距 8dp，与 66×66dp 主按钮间隔 15dp。
+    - 整组保留右边距 16dp、底部偏移 50dp；沿用颜色、按压反馈、Tab 路由、上下滑动切换与主按钮操作。
+    - 隐藏动画按实际布局宽度加 32dp（右边距与阴影余量）计算位移，避免横排后仅隐藏右侧部分。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 横向布局、等高尺寸及自适应隐藏位移。
+    - CHANGELOG.md - 记录本次已确认的 UI 变更。
+
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、目标文件 git diff --check 均通过。
+    - 模拟器刷新后开发客户端出现 Unable to load script；重新连接现有 Metro 后仍报告局域网地址 unexpected end of stream，未完成新布局截图、dp 实测及交互验收。
+    - 现有开发服务未停止或重启，未修改环境配置。
+
+---
+
+## 2026-09-14 14:47:43 | 修复问题
+
+- **恢复 Android Studio 启动前置与 Android SDK 工具链完整性**
+    - 移除指向不存在 `studio.vmoptions` 文件的用户级 `STUDIO_VM_OPTIONS` 环境变量，恢复 Android Studio 使用安装目录内置 VM 配置的前置条件。
+    - 清理用户 `PATH` 中已不存在的旧 SDK `adb.exe` 路径，保留有效的 `D:\AndroidSDK` 配置。
+    - 从 Google Android 官方源安装 Command-line Tools 22.0 到 `D:\AndroidSDK\cmdline-tools\latest`，官方 SHA-256 校验通过；将其 `bin` 目录加入用户 `PATH`。
+    - 将仅含安装占位文件的 Build Tools 35.0.0 残缺目录移至 `D:\AndroidSDK\.repair-backup-20260914-144157`，通过本机代理重新安装官方 `build-tools;35.0.0`。
+- **修改文件列表**
+    - `CHANGELOG.md` - 记录本次 Android Studio / Android SDK 本机环境修复。
+    - `D:\AndroidSDK\cmdline-tools\latest\**` - 新增 Android SDK 命令行工具。
+    - `D:\AndroidSDK\build-tools\35.0.0\**` - 重新安装完整的 Build Tools 35.0.0。
+    - 用户环境变量 - 移除失效 `STUDIO_VM_OPTIONS` 和旧 SDK PATH 项，新增 Command-line Tools `bin` PATH 项。
+- **验证结果**
+    - `sdkmanager --version` 返回 `22.0`，`sdkmanager.bat` 与 `avdmanager.bat` 均存在。
+    - Build Tools 35.0.0 的 `aapt.exe`、`aapt2.exe`、`d8.bat`、`zipalign.exe`、`apksigner.bat`、`source.properties` 与 `package.xml` 全部存在，`Pkg.Revision=35.0.0`。
+    - Android Studio 已绕过第一层失效 VM 配置，但内置 JBR 继续报 `sun.nio.fs` 模块访问错误；安装目录 VM 参数修复尚未实施，待用户单独确认。
 ## 2026-09-14 19:16:38 | 优化代码
 
 - **笔记查看与编辑器返回入口接入公共 BackButton**
