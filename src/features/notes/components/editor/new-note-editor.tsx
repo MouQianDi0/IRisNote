@@ -7,18 +7,25 @@ import { Button, Host } from "@expo/ui";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
 import { Archive, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, KeyboardAvoidingView, Platform, Pressable, Text, View } from "react-native";
 import {
-    hasDraftContent,
-    listNewNoteDrafts,
+  AppState,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
+import {
+  hasDraftContent,
+  listNewNoteDrafts,
 } from "../../data/new-note-draft.repository";
 import type { NoteDraftValue } from "../../data/note-draft.repository";
 import type { Note } from "../../notes.types";
 import { NewNoteDraftSession } from "../../services/new-note-draft-session";
 import type { DraftWriteState } from "../../services/note-draft-session";
 import {
-    saveEditedNoteLocalFirst,
-    saveNewNoteLocalFirst,
+  saveEditedNoteLocalFirst,
+  saveNewNoteLocalFirst,
 } from "../../services/note-save.service";
 import { DraftManagerDialog } from "../draft-manager-dialog";
 import { DialogButton, DraftDialog, DraftLocalNotice } from "./draft-dialog";
@@ -426,7 +433,6 @@ export default function NewNoteEditor({
       <PlainTextEditor
         key={editorKey}
         initialValue={initial}
-        screenTitle="新建笔记"
         autoFocusContent={autoFocusContent}
         saving={busy}
         disabled={saved !== null || dialog !== null}
@@ -549,7 +555,7 @@ export default function NewNoteEditor({
             if (saved) onSaved(saved);
           }}
         />
-        </DraftDialog>
+      </DraftDialog>
     </KeyboardAvoidingView>
   );
 }

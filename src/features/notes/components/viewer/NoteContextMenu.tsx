@@ -46,6 +46,7 @@ import {
 } from "./note-operation-info";
 
 import { colors } from "@/shared/theme";
+import { StatusToggle } from "@/shared/ui";
 import { DialogButton } from "../editor/draft-dialog";
 import { dialogCard, dialogScrim } from "../editor/draft-dialog.styles";
 
@@ -98,43 +99,6 @@ function MenuAction({
         />
       }
     />
-  );
-}
-
-function StatusAction({
-  label,
-  icon: Icon,
-  selected,
-  disabled,
-  onPress,
-}: MenuActionProps & { selected: boolean }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected, disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-      className={`h-12 flex-1 flex-row items-center justify-center gap-2 rounded-hyper-control ${disabled ? "bg-hyper-secondary-disabled" : selected ? "bg-hyper-card-selected" : "bg-hyper-card"}`}
-    >
-      <Icon
-        size={20}
-        color={
-          disabled
-            ? colors.hyperLabelDisabled
-            : selected
-              ? colors.primary
-              : colors.textPrimary
-        }
-      />
-      <Text
-        numberOfLines={1}
-        className={`text-[17px] ${disabled ? "text-hyper-label-disabled" : selected ? "text-primary" : "text-black"}`}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -350,19 +314,21 @@ export default function NoteContextMenu({
                 )}
                 {!showShareFormats && !showImageSettings && (
                   <View className="mb-3 flex-row gap-2.5">
-                    <StatusAction
+                    <StatusToggle
                       label="置顶"
                       icon={Pin}
                       selected={isPinned}
                       disabled={statusBusy || !note}
                       onPress={onTogglePin}
+                      className="flex-1"
                     />
-                    <StatusAction
+                    <StatusToggle
                       label="标星"
                       icon={Star}
                       selected={isStarred}
                       disabled={statusBusy || !note}
                       onPress={onToggleStar}
+                      className="flex-1"
                     />
                   </View>
                 )}

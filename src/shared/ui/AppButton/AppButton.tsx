@@ -8,6 +8,7 @@ import {
     ActivityIndicator,
     Pressable,
     type PressableProps,
+    View,
     type ViewStyle,
 } from "react-native";
 import { AppText, type AppTextTone } from "../AppText";
@@ -85,42 +86,44 @@ export function AppButton({
     const visibleLabel = loading ? (loadingLabel ?? label) : label;
 
     return (
-        <Pressable
-            {...props}
-            accessibilityRole="button"
-            accessibilityLabel={accessibilityLabel ?? label}
-            accessibilityState={{
-                ...accessibilityState,
-                busy: loading,
-                disabled: unavailable,
-            }}
-            disabled={unavailable}
-            className={className}
-            style={({ pressed }) => [
-                baseStyle,
-                {
-                    backgroundColor: recipe.background,
-                    height: BUTTON_HEIGHTS[size],
-                    opacity:
-                        pressed && !unavailable
-                            ? defaultThemePreset.motion.pressedOpacity
-                            : 1,
-                },
-            ]}
-        >
-            {loading ? (
-                <ActivityIndicator size="small" color={recipe.content} />
-            ) : (
-                leading
-            )}
-            <AppText
-                variant="control"
-                tone={tone}
-                numberOfLines={1}
-                className="shrink"
+        <View className={className}>
+            <Pressable
+                {...props}
+                accessibilityRole="button"
+                accessibilityLabel={accessibilityLabel ?? label}
+                accessibilityState={{
+                    ...accessibilityState,
+                    busy: loading,
+                    disabled: unavailable,
+                }}
+                disabled={unavailable}
+                style={({ pressed }) => [
+                    baseStyle,
+                    {
+                        alignSelf: "stretch",
+                        backgroundColor: recipe.background,
+                        height: BUTTON_HEIGHTS[size],
+                        opacity:
+                            pressed && !unavailable
+                                ? defaultThemePreset.motion.pressedOpacity
+                                : 1,
+                    },
+                ]}
             >
-                {visibleLabel}
-            </AppText>
-        </Pressable>
+                {loading ? (
+                    <ActivityIndicator size="small" color={recipe.content} />
+                ) : (
+                    leading
+                )}
+                <AppText
+                    variant="control"
+                    tone={tone}
+                    numberOfLines={1}
+                    className="shrink"
+                >
+                    {visibleLabel}
+                </AppText>
+            </Pressable>
+        </View>
     );
 }
