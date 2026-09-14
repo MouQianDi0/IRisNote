@@ -1,5 +1,5 @@
 import { colors } from "@/shared/theme";
-import { InputSave } from "@/shared/ui";
+import { InlineHint, InputSave } from "@/shared/ui";
 import {
   CircleAlert,
   Clock,
@@ -230,25 +230,17 @@ export function NoteOperationInfo({
     <View className="mb-3">
       <View className="gap-3">
         <View className="flex-row items-center">
-          <Pressable
-            accessibilityRole="button"
+          <InlineHint
+            icon={Icon}
+            message={label}
+            tone={failed ? "important" : "neutral"}
+            size="standard"
             accessibilityLabel={`云同步：${label}`}
-            accessibilityState={{ disabled: busy || syncing || closed }}
             disabled={busy || syncing || closed}
             onPress={() => void upload()}
             hitSlop={{ top: 12, bottom: 12 }}
-            className="flex-row items-center gap-1"
-          >
-            <Icon
-              size={20}
-              color={failed ? colors.hyperError : colors.hyperTextSecondary}
-            />
-            <Text
-              className={`flex-shrink text-sm ${failed ? "text-hyper-error" : "text-hyper-text-secondary"}`}
-            >
-              {label}
-            </Text>
-          </Pressable>
+            accessibilityState={{ busy: syncing }}
+          />
           <View className="h-5 w-5 items-center justify-center">
             <View className="h-5 w-px bg-hyper-divider" />
           </View>

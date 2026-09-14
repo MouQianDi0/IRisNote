@@ -66,6 +66,7 @@ export type ComponentRecipes = {
         "default" | "focused" | "invalid" | "disabled" | "readOnly",
         ComponentStateColors
     >;
+    inlineHint: Record<"neutral" | "important", ComponentStateColors>;
     iconPickerCell: Record<
         "default" | "selected" | "disabled",
         ComponentStateColors

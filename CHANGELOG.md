@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-09-14 19:56:29 | 优化代码
+
+- **InlineHint 支持按需点击并接入云同步状态行**
+    - `InlineHint` 保持未传事件时的静态单行提示行为；传入 `onPress` 后才渲染可点击容器，支持禁用、无障碍标签、状态和触控热区。
+    - 新增 `standard` 尺寸（20dp 图标、4dp 间距）用于云同步；默认 `compact` 草稿说明不变。可点击态按压时显示 85% 不透明度，禁用时不触发事件。
+    - 笔记操作的云同步行改用公共 `InlineHint`，保留原有上传、防重复、同步中锁定、无账号关闭、失败红色与上下各 12dp 触控热区；业务上传逻辑未迁入公共组件。
+    - 更新组件接口、视觉规范、审计基线、架构索引和待办；新建笔记离开确认的富文本丢弃提示记为后续候选，避免丢失局部加粗语义。
+- **修改文件列表**
+    - `src/shared/ui/InlineHint/InlineHint.tsx`、`src/shared/ui/InlineHint/index.ts`、`src/shared/ui/index.ts` - 扩展可选点击接口、尺寸与导出。
+    - `src/features/notes/components/viewer/note-operation-info.tsx` - 云同步状态行接入公共组件。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`待办事项.md` - 同步契约、状态和迁移记录。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、目标文件 Expo ESLint、`npm run design:audit` 与 `git diff --check` 通过。
+    - 审计为 252 个源码文件、19,659 行；主题目录外固定颜色 14、裸字号 17、裸圆角 15，均未因本批增加。
+    - 未运行测试、构建、导出、浏览器或设备验收；云同步点击、上传时锁定、错误文案单行截断与按压反馈仍由用户主动验收。
+
+---
+
+## 2026-09-14 19:47:57 | 优化代码
+
+- **补充 Codex 会话的 ChatGPT 模型建议规则**
+    - 在项目根目录 `AGENTS.md` 新增 Codex 专用模型建议章节，要求涉及编码、修复、重构、UI 或持久指令变更时强制考虑 ChatGPT 模型及思考强度。
+    - 明确即使宿主未展示完整模型列表，也必须给出具体推荐并说明实际切换能力以当前界面为准；同时保留 ZCode 专用调度规则的适用边界。
+- **修改文件列表**
+    - `AGENTS.md` - 新增 Codex / ChatGPT 模型建议与 ZCode 规则边界。
+    - `CHANGELOG.md` - 记录本次持久文档变更。
+- **验证结果**
+    - 已检查新增章节位置、Markdown 结构与规则内容；未涉及代码、测试、构建、导出或设备验收。
+
+---
+
+## 2026-09-14 19:34:01 | 新增功能 / 优化代码
+
+- **新增公共单行补充说明 InlineHint**
+    - 新增 `InlineHint` 公共组件，固定为 14dp 左侧图标、6dp 间距、13sp 单行尾部省略文本；组件不提供点击、按压、禁用、加载或业务状态接口。
+    - 新增 `neutral` 与 `important` 主题配方：普通说明图标和文本使用 `textSecondary` 灰蓝，重要提示使用 `destructive` 红色；两者均为 transparent 背景，不含边框或圆角。
+    - 删除草稿弹窗的私有 `DraftLocalNotice`，草稿管理弹窗与新建笔记离开确认直接接入公共 `InlineHint`；本机草稿说明保留灰蓝样式，删除草稿不可恢复提示改为重要红色样式，调用方继续负责 12dp 外部间距。
+    - 同步公共组件接口、视觉规范、待办、审计基线与架构索引，明确 `InlineHint` 与后续可操作 `InlineMessage` 的职责边界。
+- **修改文件列表**
+    - `src/shared/ui/InlineHint/InlineHint.tsx`、`src/shared/ui/InlineHint/index.ts`、`src/shared/ui/index.ts` - 新增并导出公共补充说明组件。
+    - `src/shared/theme/component-recipes.ts`、`src/shared/theme/theme.types.ts` - 新增 `inlineHint` 的普通与重要语义配方。
+    - `src/features/notes/components/editor/draft-dialog.tsx`、`src/features/notes/components/draft-manager-dialog.tsx`、`src/features/notes/components/editor/new-note-editor.tsx` - 移除私有草稿提示并迁移为公共组件。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`待办事项.md` - 更新组件契约、尺寸、颜色、迁移状态与审计快照。
+    - `CHANGELOG.md` - 记录本次公共组件新增。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、目标文件 Expo ESLint、`npm run design:audit`、`git diff --check` 通过。
+    - 审计为 252 个源码文件、19,616 行；主题目录外固定颜色 14、裸字号 17、裸圆角 15，均未因本批增加。
+    - `npm run theme:check` 仍提示当前 `global.css` 与默认主题预设不同步；本批未修改主题生成源，也未执行会写入生成文件的 `npm run theme:sync`。
+    - 未运行测试、构建、导出、浏览器或设备验收；单行截断、灰蓝/红色呈现与弹窗布局由用户主动验收。
+
+---
+
 ## 2026-09-14 19:16:38 | 优化代码
 
 - **笔记查看与编辑器返回入口接入公共 BackButton**

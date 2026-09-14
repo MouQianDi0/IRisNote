@@ -2,10 +2,11 @@ import { useApplicationDatabase } from "@/core/database";
 import { PlainTextEditor } from "@/core/editor";
 import { banner, captureNotificationSession } from "@/core/notifications";
 import { colors } from "@/shared/theme";
+import { InlineHint } from "@/shared/ui";
 import { LocalOnlyText } from "@/shared/ui/local-only-text";
 import { Button, Host } from "@expo/ui";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
-import { Archive, Trash2 } from "lucide-react-native";
+import { Archive, CloudOff, Trash2 } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
@@ -28,7 +29,7 @@ import {
   saveNewNoteLocalFirst,
 } from "../../services/note-save.service";
 import { DraftManagerDialog } from "../draft-manager-dialog";
-import { DialogButton, DraftDialog, DraftLocalNotice } from "./draft-dialog";
+import { DialogButton, DraftDialog } from "./draft-dialog";
 
 type Props = {
   owner: number;
@@ -502,7 +503,11 @@ export default function NewNoteEditor({
         title="是否将内容保存为草稿？"
         onClose={keepEditing}
       >
-        <DraftLocalNotice className="mb-3" />
+        <InlineHint
+          icon={CloudOff}
+          message="草稿仅本机保存，不会同步到云端。"
+          className="mb-3"
+        />
         <View className="mb-3 flex-row items-center gap-1.5">
           <Trash2 size={14} color={colors.hyperTextSecondary} />
           <Text
