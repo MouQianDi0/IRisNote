@@ -1,10 +1,11 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { Trash2, Inbox } from "lucide-react-native";
+import { CloudOff, Trash2, Inbox } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { colors } from "@/shared/theme";
+import { InlineHint } from "@/shared/ui";
 import { deleteNewNoteDrafts, type DraftDeleteResult, type DraftEntry } from "../data/new-note-draft.repository";
-import { DialogButton, DraftChoices, DraftDeleteChoices, DraftDialog, DraftLocalNotice } from "./editor/draft-dialog";
+import { DialogButton, DraftChoices, DraftDeleteChoices, DraftDialog } from "./editor/draft-dialog";
 
 /**
  * 草稿选择弹窗的唯一实现：笔记页草稿箱与新建笔记编辑器共用。
@@ -24,14 +25,6 @@ function DeleteDraftsEntry({ onPress }: { onPress: () => void }) {
     >
         <Trash2 size={20} color={colors.hyperTextSecondary} />
     </Pressable>;
-}
-
-/** 删除警示行：列表与按钮容器之间，上间距 12dp。 */
-function DraftDeleteWarning() {
-    return <View className="mt-3 flex-row items-center gap-1.5">
-        <Trash2 size={14} color={colors.hyperError} />
-        <Text numberOfLines={1} className="flex-1 text-[13px] leading-[18px] text-hyper-error">删除草稿不可恢复</Text>
-    </View>;
 }
 
 function deleteMessage(result: DraftDeleteResult, entries: readonly DraftEntry[]) {
@@ -199,8 +192,8 @@ export function DraftManagerDialog({ db, owner, visible, onClose, title, load, p
         )}
         {!!message && <Text accessibilityRole="alert" className="my-3 text-sm text-hyper-error">{message}</Text>}
         {deleting
-            ? <DraftDeleteWarning />
-            : <DraftLocalNotice className="mt-3" />}
+            ? <InlineHint icon={Trash2} message="删除草稿不可恢复" tone="important" className="mt-3" />
+            : <InlineHint icon={CloudOff} message="草稿仅本机保存，不会同步到云端。" className="mt-3" />}
         {!deleting && primaryHint && (
             <Text numberOfLines={1} className="mt-3 text-[13px] leading-[18px] text-hyper-text-secondary">{primaryHint}</Text>
         )}

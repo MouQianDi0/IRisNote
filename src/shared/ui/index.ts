@@ -6,6 +6,12 @@ export { Card } from "./Card";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Input, type InputProps } from "./Input";
 export { InputSave, type InputSaveProps } from "./InputSave";
+export {
+    InlineHint,
+    type InlineHintProps,
+    type InlineHintSize,
+    type InlineHintTone,
+} from "./InlineHint";
 export { ModalPanel } from "./ModalPanel";
 export { AnchoredPopover, type AnchoredPopoverProps } from "./Popover";
 export { Screen } from "./Screen";

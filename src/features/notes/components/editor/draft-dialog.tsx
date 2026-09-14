@@ -1,6 +1,5 @@
 import { AppModal } from "@/shared/ui/Overlay/app-modal";
-import { LocalOnlyText } from "@/shared/ui/local-only-text";
-import { Check, CloudOff } from "lucide-react-native";
+import { Check } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { colors } from "@/shared/theme";
@@ -134,16 +133,5 @@ export function DraftDeleteChoices({ entries, checked, onToggle }: {
                 </Pressable>;
             })}
         </ScrollView>
-    </View>;
-}
-
-/** 共享提示区：单行图标行，蓝灰 13px（规格 §4）。不带任何外边距，
- *  间距全部由调用方提供：上方习惯 mt-3（12dp），距按钮统一 12dp 由页脚 mt-3 提供。 */
-export function DraftLocalNotice({ className }: { className?: string }) {
-    return <View className={`flex-row items-center gap-1.5 ${className ?? ""}`}>
-        <CloudOff size={14} color={colors.hyperTextSecondary} />
-        <Text className="flex-1 text-[13px] leading-[18px] text-hyper-text-secondary">
-            <LocalOnlyText>草稿仅本机保存，不会同步到云端。</LocalOnlyText>
-        </Text>
     </View>;
 }

@@ -2,6 +2,155 @@
 
 ---
 
+## 2026-09-15 00:00:50 | 新增功能
+
+- **同步队列支持自适应列表与保留历史的任务删除**
+    - 暂存任务列表卡改为按内容自动增高；移除强制撑满页面的 `flexGrow: 1`，内容超过剩余视口时才在 16dp 圆角容器内滚动。
+    - 每行新增公共 `IconButton compact` 删除入口；正在上传及没有上一 Revision 的笔记任务禁用，并显示不能回滚的原因。
+    - 删除笔记任务前显示“确认回滚？”二次确认弹窗；执行期间显示“回滚中…”，锁定重复提交、返回和遮罩关闭，失败原因保留在弹窗内。
+    - 队列删除与笔记回滚合并到同一个 SQLite 事务；从父 Revision 内容创建新的 `origin=restore` 当前版本，被取消的版本继续保留在版本历史中。
+    - 上传协调器改用 `status=queued` 条件认领任务，消除页面删除与自动上传之间的竞争窗口；已被认领的任务不会并发回滚。
+    - 未尝试且已有服务端副本的笔记回滚后恢复已同步状态；无服务端副本保留待同步；已尝试上传则标为云端状态未知，要求用户核对后再同步。
+- **修改文件列表**
+    - `src/core/sync/upload-queue.repository.ts`、`src/core/sync/upload-queue-coordinator.ts` - 新增原子取消入口及条件任务认领。
+    - `src/features/notes/data/note-local.repository.ts` - 新增回滚可用性检查与保留版本历史的事务内回滚。
+    - `src/features/sync/upload-task-cancellation.ts`、`src/features/sync/index.ts` - 编排任务取消、笔记缓存更新及分类视图刷新。
+    - `src/features/sync/components/sync-task-delete-dialog.tsx` - 新增删除/回滚二次确认弹窗。
+    - `src/features/sync/screens/SyncQueueScreen.tsx` - 接入自适应列表、删除组件、禁用原因和确认流程。
+    - `docs/自动上传队列开发约定.md`、`docs/IRisNote视觉设计规范.md`、`docs/项目架构与文件索引.md` - 记录删除事务、Revision 语义、UI 尺寸和模块职责。
+    - `CHANGELOG.md` - 记录本次功能。
+- **验证结果**
+    - 目标代码 Expo ESLint 与 `git diff --check` 通过。
+    - 已获授权的只读 ADB 布局导出当时未停留在同步队列页，因此未把其他页面的控件数据冒充为本页实测；未点击或改变设备状态。
+    - 按约定未运行测试、TypeScript 构建检查、构建、导出、浏览器或设备交互验收；列表真实高度、禁用态、回滚结果和弹窗交互仍由用户主动验收。
+
+---
+
+## 2026-09-14 23:36:52 | 优化代码
+
+- **进入同步队列页后自动收回服务器未连接横幅**
+    - 同步队列页获得焦点后立即收回 `server-connection` 全局横幅，并在页面聚焦期间阻止服务器连接协调器和上传队列协调器重新发布同一横幅。
+    - 页面失焦后解除展示抑制；服务器故障或设备离线仍存在时重新显示横幅，已恢复时不产生旧通知。
+    - 收回只影响服务器未连接横幅，不伪造“服务器已恢复”，也不隐藏上传进度、上传暂停或任务阻断横幅。
+- **修改文件列表**
+    - `src/core/notifications/notification.store.ts` - 增加仅供受控展示生命周期使用的强制收回能力，普通关键通知仍不能由用户关闭。
+    - `src/core/notifications/server-connection-banner-visibility.ts` - 新增引用计数式页面聚焦抑制与状态订阅。
+    - `src/core/notifications/server-connection-coordinator.ts`、`src/core/sync/upload-queue-coordinator.ts` - 发布前检查抑制状态，并在解除抑制后按真实故障状态恢复横幅。
+    - `src/core/notifications/index.ts`、`src/features/sync/screens/SyncQueueScreen.tsx` - 导出并接入页面焦点生命周期。
+    - `docs/自动上传队列开发约定.md`、`docs/IRisNote视觉设计规范.md`、`docs/全局横幅通知设计与调用规范.md`、`docs/项目架构与文件索引.md` - 记录展示边界、页面行为和模块职责。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**
+    - 目标代码 Expo ESLint 与 `git diff --check` 通过。
+    - 按约定未运行测试、TypeScript 构建检查、构建、导出、浏览器、ADB 或设备验收；横幅收回、页面停留期间不重现及离页恢复仍由用户主动验收。
+
+---
+
+## 2026-09-14 22:57:40 | 新增功能
+
+- **新增服务器恢复自动上传队列**
+    - 新增按账号隔离的 SQLite 持久上传任务表；笔记和分类在本地保存后先入队，由全局协调器监听前台 Wi-Fi／移动数据变化、探测服务器并串行执行。
+    - 可恢复故障最多自动重试 10 次，并以稳定横幅原位更新任务序号和尝试次数；达到上限后暂停，等待一次离线到在线变化再恢复。401／403、业务校验、未知创建结果及缺少适配器会安全阻断并改用“查看暂存”提醒，避免无效请求、重复创建或错误引导到网络设置。
+    - 按 UTF-8 JSON 请求体估算所需上传量，并记录可观测的上传字节；估算值明确不包含 HTTP/TLS、响应和网络协议开销。
+    - 服务器未连接且存在任务时，全局横幅显示任务数、预计上传量及“查看暂存”；连续失败横幅提供系统“网络设置”动作。暂存列表不在设置页增加入口。
+    - 新增同步队列页面，展示网络类型、任务状态、预计流量、尝试次数和最近错误；设置同步预留标准入队函数及执行适配器注册口，当前未虚构设置后端服务。
+- **修改文件列表**
+    - `src/core/database/migrations/0005-create-upload-queue.ts`、`src/core/database/migrations/index.ts` - 新增结构版本 5 上传队列表及迁移登记。
+    - `src/core/sync/*` - 新增队列契约、持久仓库、事件、运行时状态、网络监听协调器、流量估算及系统网络设置跳转。
+    - `src/features/sync/*` - 新增笔记／分类／设置入队适配层、任务执行器及暂存列表页面。
+    - `src/core/notifications/notification-provider.tsx`、`src/core/notifications/server-connection-coordinator.ts` - 启动上传协调器，并让服务器故障横幅按队列状态切换为“查看暂存”。
+    - `src/features/notes/services/note-save.service.ts`、`src/features/notes/services/note-exit-sync-coordinator.ts`、`src/features/notes/components/editor/new-note-editor.tsx`、`src/features/notes/screens/NotesScreen.tsx` - 笔记保存、退出和手动同步改为先写持久队列。
+    - `src/features/notes/categories/components/CategoryBar.tsx`、`src/features/notes/categories/hooks/useCategory*.ts` - 分类创建、更新和删除接入持久队列并叠加待处理本地视图。
+    - `src/app/pages/user/sync-queue.tsx`、`src/app/_layout.tsx` - 注册暂存列表路由。
+    - `package.json`、`package-lock.json` - 增加 Expo SDK 56 匹配的 `expo-network` 与 `expo-intent-launcher`。
+    - `docs/自动上传队列开发约定.md`、`docs/项目架构与文件索引.md`、`docs/IRisNote视觉设计规范.md`、`docs/全局横幅通知设计与调用规范.md` - 记录状态机、接入契约、UI 尺寸、风险和当前限制。
+    - `CHANGELOG.md` - 记录本次功能变更。
+- **验证结果**
+    - 目标代码 Expo ESLint 与 `git diff --check` 通过。
+    - 按约定未运行测试、TypeScript 构建检查、构建、导出、浏览器或设备验收；数据库迁移、网络切换、系统设置跳转和横幅层级仍由用户主动验收。
+
+---
+
+## 2026-09-14 21:22:54 | 修复问题
+
+- **笔记列表改为本地数据优先，云端 401 不再中断展示**
+    - 首页笔记列表完成本地 SQLite 读取后立即应用数据；云端同步请求与本地读取使用独立错误边界。
+    - 云端请求返回 401 或其他失败时保留本地笔记列表，并以“云端笔记同步失败，继续使用本地数据”记录警告；仅本地读取失败才报加载失败。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 分离本地加载与云端同步的错误处理。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**
+    - 目标文件 Expo ESLint 与 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收。
+
+---
+
+## 2026-09-14 20:40:11 | 修复问题
+
+- **修复编辑器工具栏“收起键盘”按钮无动作**
+    - 键盘显示时，公共编辑器工具栏第一区改为调用 `Keyboard.dismiss()`；键盘隐藏时仍调用既有“编辑正文”回调。
+    - 无障碍标签随状态切换为“收起键盘”或“编辑正文”，视觉样式、尺寸和预留按钮均未调整。
+- **修改文件列表**
+    - `src/core/editor/components/editor-bottom-toolbar.tsx` - 绑定收起键盘动作并更新状态化无障碍文案。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**
+    - 目标文件 Expo ESLint 与 `git diff --check` 通过。
+    - 未运行测试、构建、导出、浏览器或设备验收；真机收起键盘与重新进入编辑的交互仍由用户验收。
+
+---
+
+## 2026-09-14 19:56:29 | 优化代码
+
+- **InlineHint 支持按需点击并接入云同步状态行**
+    - `InlineHint` 保持未传事件时的静态单行提示行为；传入 `onPress` 后才渲染可点击容器，支持禁用、无障碍标签、状态和触控热区。
+    - 新增 `standard` 尺寸（20dp 图标、4dp 间距）用于云同步；默认 `compact` 草稿说明不变。可点击态按压时显示 85% 不透明度，禁用时不触发事件。
+    - 笔记操作的云同步行改用公共 `InlineHint`，保留原有上传、防重复、同步中锁定、无账号关闭、失败红色与上下各 12dp 触控热区；业务上传逻辑未迁入公共组件。
+    - 更新组件接口、视觉规范、审计基线、架构索引和待办；新建笔记离开确认的富文本丢弃提示记为后续候选，避免丢失局部加粗语义。
+- **修改文件列表**
+    - `src/shared/ui/InlineHint/InlineHint.tsx`、`src/shared/ui/InlineHint/index.ts`、`src/shared/ui/index.ts` - 扩展可选点击接口、尺寸与导出。
+    - `src/features/notes/components/viewer/note-operation-info.tsx` - 云同步状态行接入公共组件。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`待办事项.md` - 同步契约、状态和迁移记录。
+    - `CHANGELOG.md` - 记录本次变更。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、目标文件 Expo ESLint、`npm run design:audit` 与 `git diff --check` 通过。
+    - 审计为 252 个源码文件、19,659 行；主题目录外固定颜色 14、裸字号 17、裸圆角 15，均未因本批增加。
+    - 未运行测试、构建、导出、浏览器或设备验收；云同步点击、上传时锁定、错误文案单行截断与按压反馈仍由用户主动验收。
+
+---
+
+## 2026-09-14 19:47:57 | 优化代码
+
+- **补充 Codex 会话的 ChatGPT 模型建议规则**
+    - 在项目根目录 `AGENTS.md` 新增 Codex 专用模型建议章节，要求涉及编码、修复、重构、UI 或持久指令变更时强制考虑 ChatGPT 模型及思考强度。
+    - 明确即使宿主未展示完整模型列表，也必须给出具体推荐并说明实际切换能力以当前界面为准；同时保留 ZCode 专用调度规则的适用边界。
+- **修改文件列表**
+    - `AGENTS.md` - 新增 Codex / ChatGPT 模型建议与 ZCode 规则边界。
+    - `CHANGELOG.md` - 记录本次持久文档变更。
+- **验证结果**
+    - 已检查新增章节位置、Markdown 结构与规则内容；未涉及代码、测试、构建、导出或设备验收。
+
+---
+
+## 2026-09-14 19:34:01 | 新增功能 / 优化代码
+
+- **新增公共单行补充说明 InlineHint**
+    - 新增 `InlineHint` 公共组件，固定为 14dp 左侧图标、6dp 间距、13sp 单行尾部省略文本；组件不提供点击、按压、禁用、加载或业务状态接口。
+    - 新增 `neutral` 与 `important` 主题配方：普通说明图标和文本使用 `textSecondary` 灰蓝，重要提示使用 `destructive` 红色；两者均为 transparent 背景，不含边框或圆角。
+    - 删除草稿弹窗的私有 `DraftLocalNotice`，草稿管理弹窗与新建笔记离开确认直接接入公共 `InlineHint`；本机草稿说明保留灰蓝样式，删除草稿不可恢复提示改为重要红色样式，调用方继续负责 12dp 外部间距。
+    - 同步公共组件接口、视觉规范、待办、审计基线与架构索引，明确 `InlineHint` 与后续可操作 `InlineMessage` 的职责边界。
+- **修改文件列表**
+    - `src/shared/ui/InlineHint/InlineHint.tsx`、`src/shared/ui/InlineHint/index.ts`、`src/shared/ui/index.ts` - 新增并导出公共补充说明组件。
+    - `src/shared/theme/component-recipes.ts`、`src/shared/theme/theme.types.ts` - 新增 `inlineHint` 的普通与重要语义配方。
+    - `src/features/notes/components/editor/draft-dialog.tsx`、`src/features/notes/components/draft-manager-dialog.tsx`、`src/features/notes/components/editor/new-note-editor.tsx` - 移除私有草稿提示并迁移为公共组件。
+    - `docs/公共组件规范.md`、`docs/IRisNote视觉设计规范.md`、`docs/公共组件审计基线.md`、`docs/项目架构与文件索引.md`、`待办事项.md` - 更新组件契约、尺寸、颜色、迁移状态与审计快照。
+    - `CHANGELOG.md` - 记录本次公共组件新增。
+- **验证结果**
+    - `npx tsc --noEmit --pretty false`、目标文件 Expo ESLint、`npm run design:audit`、`git diff --check` 通过。
+    - 审计为 252 个源码文件、19,616 行；主题目录外固定颜色 14、裸字号 17、裸圆角 15，均未因本批增加。
+    - `npm run theme:check` 仍提示当前 `global.css` 与默认主题预设不同步；本批未修改主题生成源，也未执行会写入生成文件的 `npm run theme:sync`。
+    - 未运行测试、构建、导出、浏览器或设备验收；单行截断、灰蓝/红色呈现与弹窗布局由用户主动验收。
+
+---
+
 ## 2026-09-14 22:24:15 | 新增功能
 
 - **悬浮导航背景模糊及 15dp 顶部渐变**
@@ -87,6 +236,9 @@
     - `sdkmanager --version` 返回 `22.0`，`sdkmanager.bat` 与 `avdmanager.bat` 均存在。
     - Build Tools 35.0.0 的 `aapt.exe`、`aapt2.exe`、`d8.bat`、`zipalign.exe`、`apksigner.bat`、`source.properties` 与 `package.xml` 全部存在，`Pkg.Revision=35.0.0`。
     - Android Studio 已绕过第一层失效 VM 配置，但内置 JBR 继续报 `sun.nio.fs` 模块访问错误；安装目录 VM 参数修复尚未实施，待用户单独确认。
+
+---
+
 ## 2026-09-14 19:16:38 | 优化代码
 
 - **笔记查看与编辑器返回入口接入公共 BackButton**

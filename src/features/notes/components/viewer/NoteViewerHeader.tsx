@@ -7,11 +7,8 @@ type NoteViewerHeaderProps = {
 
 export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
   return (
-    <View className="h-16 flex-row items-center justify-between border-b border-border-soft px-4">
-      <BackButton
-        onPress={onBack}
-        accessibilityLabel="返回"
-      />
+    <View className="h-16 flex-row items-center justify-between ">
+      <BackButton onPress={onBack} accessibilityLabel="返回" />
 
       {/* <View pointerEvents="none" style={{ position: "absolute", left: 60, right: 60, top: 0, bottom: 0, justifyContent: "center" }}>
         <Text
