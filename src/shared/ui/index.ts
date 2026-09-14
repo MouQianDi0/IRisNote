@@ -9,4 +9,5 @@ export { InputSave, type InputSaveProps } from "./InputSave";
 export { ModalPanel } from "./ModalPanel";
 export { AnchoredPopover, type AnchoredPopoverProps } from "./Popover";
 export { Screen } from "./Screen";
+export { StatusToggle, type StatusToggleProps } from "./StatusToggle";
 export { TextField } from "./TextField";
