@@ -1,3 +1,5 @@
+import { colors } from "@/shared/theme";
+import { pulse } from "@/shared/theme/motion";
 import { type Href, usePathname, useRouter } from "expo-router";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import { useEffect } from "react";
@@ -11,48 +13,56 @@ import {
     getFloatingMenuHidden,
     onFloatingMenuVisibilityChanged,
 } from "../floating-menu-visibility";
-import { TAB_MENU_ITEMS } from "../navigation.constants";
 import { useSwipeTab } from "../hooks/useSwipeTab";
-import { pulse } from "@/shared/theme/motion";
-import { colors } from "@/shared/theme";
+import { TAB_MENU_ITEMS } from "../navigation.constants";
 import FloatingActionButton from "./FloatingActionButton";
 
-const hiddenOffsetX = 130;
+const initialHiddenOffsetY = 66 + 50 + 16;
 
 export default function FloatingMenu({ state }: BottomTabBarProps) {
     const router = useRouter();
     const pathname = usePathname();
     const activeTab = state.routes[state.index]?.name ?? "note";
     const panHandlers = useSwipeTab(pathname);
-    const translateX = useSharedValue(
-        getFloatingMenuHidden() ? hiddenOffsetX : 0,
+    const hiddenOffsetY = useSharedValue(initialHiddenOffsetY);
+    const translateY = useSharedValue(
+        getFloatingMenuHidden() ? initialHiddenOffsetY : 0,
     );
 
     useEffect(() => {
         const unsubscribe = onFloatingMenuVisibilityChanged((hidden) => {
-            translateX.value = withTiming(hidden ? hiddenOffsetX : 0, {
-                duration: 600,
+            translateY.value = withTiming(hidden ? hiddenOffsetY.value : 0, {
+                duration: 300,
             });
         });
 
         return unsubscribe;
-    }, [translateX]);
+    }, [hiddenOffsetY, translateY]);
 
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ translateX: translateX.value }],
+        transform: [{ translateY: translateY.value }],
     }));
 
     return (
         <Animated.View
-            className="absolute bottom-[50] right-4 items-end flex"
+            className="absolute bottom-[20] left-[16] right-[16] flex-row items-center gap-[15]"
             style={animatedStyle}
-            {...panHandlers}
+            onLayout={({ nativeEvent }) => {
+                // Include the bottom offset and shadow clearance when sliding offscreen.
+                hiddenOffsetY.set(nativeEvent.layout.height + 50);
+                if (getFloatingMenuHidden()) {
+                    translateY.set(hiddenOffsetY.get());
+                }
+            }}
         >
-            <View className="mb-[15] rounded-floating bg-floating-surface px-2 py-[10] shadow-md">
+            <View
+                className="h-[66] min-w-0 flex-1 flex-row items-center rounded-floating bg-floating-surface p-[8] shadow-md"
+                {...panHandlers}
+            >
                 {TAB_MENU_ITEMS.map((item, index) => (
                     <Pressable
                         key={index}
-                        className={`my-[5] size-[50] items-center justify-center rounded-full ${
+                        className={`h-[50] min-w-0 flex-1 items-center justify-center rounded-full ${
                             activeTab === item.key
                                 ? "opacity-100"
                                 : "opacity-70"
@@ -79,10 +89,7 @@ export default function FloatingMenu({ state }: BottomTabBarProps) {
                                 />
                             </Animated.View>
                         ) : (
-                            <item.icon
-                                size={24}
-                                color={colors.textSecondary}
-                            />
+                            <item.icon size={24} color={colors.textSecondary} />
                         )}
                         <Text className="top-[3] text-center text-xs text-text-secondary opacity-100">
                             {item.name}

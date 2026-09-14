@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-09-14 20:00:45 | 优化代码
+
+- **悬浮导航向下隐藏、对称外边距及左右滑动切页**
+    - 整组左右外边距均为 16dp，白色 Tab 栏弹性填满剩余宽度，四项等宽分配；两侧控件高 66dp，白栏内边距 8dp、项目高 50dp，主按钮间隔从 15dp 增至 24dp。
+    - 隐藏方向改为向屏幕底部移动，位移按实际高度加底部偏移 50dp 与阴影余量 16dp 计算，保留现有触发时机和 600ms 动画。
+    - 切页手势仅绑定白色 Tab 栏：左滑下一页、右滑上一页，按笔记/待办/剪贴/用户的可见顺序循环；横向主导且位移超过 30dp 才切页，上下滑动不切页。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 布局尺寸、纵向隐藏动画及手势绑定范围。
+    - src/core/navigation/hooks/useSwipeTab.ts - 左右滑动判定与可见顺序切页。
+    - CHANGELOG.md - 记录本次已确认变更。
+- **验证结果**
+    - TypeScript、两文件 ESLint 通过；移除手势 hook 原有渲染阶段 ref 写入，直接使用当前路由。
+    - 模拟器验证：左滑从笔记进入待办、右滑返回笔记，上滑白栏未切页；列表滑动期间整组隐藏，停止后恢复。
+    - 已截图核对加长白栏与对称外边距的整体效果；控件树仍因无法进入空闲状态而读取失败，精确 dp 未完成原生树实测。尺寸使用明确数值类名，避免 rem 换算偏差。
+
+---
+
+## 2026-09-14 19:41:26 | 优化代码
+
+- **悬浮 Tab 栏横排并与主操作按钮等高**
+    - 白色 Tab 栏移至蓝色主操作按钮左侧，四个入口横排；白栏高 66dp、每项 50×50dp、四周内边距 8dp，与 66×66dp 主按钮间隔 15dp。
+    - 整组保留右边距 16dp、底部偏移 50dp；沿用颜色、按压反馈、Tab 路由、上下滑动切换与主按钮操作。
+    - 隐藏动画按实际布局宽度加 32dp（右边距与阴影余量）计算位移，避免横排后仅隐藏右侧部分。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 横向布局、等高尺寸及自适应隐藏位移。
+    - CHANGELOG.md - 记录本次已确认的 UI 变更。
+
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、目标文件 git diff --check 均通过。
+    - 模拟器刷新后开发客户端出现 Unable to load script；重新连接现有 Metro 后仍报告局域网地址 unexpected end of stream，未完成新布局截图、dp 实测及交互验收。
+    - 现有开发服务未停止或重启，未修改环境配置。
+
+---
+
+## 2026-09-14 14:47:43 | 修复问题
+
+- **恢复 Android Studio 启动前置与 Android SDK 工具链完整性**
+    - 移除指向不存在 `studio.vmoptions` 文件的用户级 `STUDIO_VM_OPTIONS` 环境变量，恢复 Android Studio 使用安装目录内置 VM 配置的前置条件。
+    - 清理用户 `PATH` 中已不存在的旧 SDK `adb.exe` 路径，保留有效的 `D:\AndroidSDK` 配置。
+    - 从 Google Android 官方源安装 Command-line Tools 22.0 到 `D:\AndroidSDK\cmdline-tools\latest`，官方 SHA-256 校验通过；将其 `bin` 目录加入用户 `PATH`。
+    - 将仅含安装占位文件的 Build Tools 35.0.0 残缺目录移至 `D:\AndroidSDK\.repair-backup-20260914-144157`，通过本机代理重新安装官方 `build-tools;35.0.0`。
+- **修改文件列表**
+    - `CHANGELOG.md` - 记录本次 Android Studio / Android SDK 本机环境修复。
+    - `D:\AndroidSDK\cmdline-tools\latest\**` - 新增 Android SDK 命令行工具。
+    - `D:\AndroidSDK\build-tools\35.0.0\**` - 重新安装完整的 Build Tools 35.0.0。
+    - 用户环境变量 - 移除失效 `STUDIO_VM_OPTIONS` 和旧 SDK PATH 项，新增 Command-line Tools `bin` PATH 项。
+- **验证结果**
+    - `sdkmanager --version` 返回 `22.0`，`sdkmanager.bat` 与 `avdmanager.bat` 均存在。
+    - Build Tools 35.0.0 的 `aapt.exe`、`aapt2.exe`、`d8.bat`、`zipalign.exe`、`apksigner.bat`、`source.properties` 与 `package.xml` 全部存在，`Pkg.Revision=35.0.0`。
+    - Android Studio 已绕过第一层失效 VM 配置，但内置 JBR 继续报 `sun.nio.fs` 模块访问错误；安装目录 VM 参数修复尚未实施，待用户单独确认。
+
+---
+
 ## 2026-09-14 04:30:43 | 新增功能
 
 - **「真机布局实测验收」固化为规范强制步骤**
