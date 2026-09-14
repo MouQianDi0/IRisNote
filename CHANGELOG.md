@@ -2,6 +2,41 @@
 
 ---
 
+## 2026-09-14 22:24:15 | 新增功能
+
+- **悬浮导航背景模糊及 15dp 顶部渐变**
+    - 新增 expo-blur 与渐变蒙版依赖，按当前标签页选择 Android BlurTargetView，采样实际页面内容。
+    - 模糊覆盖屏幕底部全宽 101dp，顶部 15dp 通过透明度蒙版平滑显现；按钮高 66dp、底部 20dp、左右 16dp 和控件间隔 15dp 保持不变。
+    - 模糊与按钮共用 300ms 位移动画，隐藏距离覆盖渐变区域和阴影；背景不拦截触摸。
+- **修改文件列表**
+    - package.json、package-lock.json - 添加原生模糊和蒙版依赖。
+    - src/app/(tabs)/_layout.tsx - 按场景提供背景采样目标。
+    - src/core/navigation/components/FloatingMenu.tsx - 背景模糊、渐变蒙版及整组隐藏。
+    - CHANGELOG.md - 记录本次已确认功能和验收结果。
+- **验证结果**
+    - TypeScript、目标文件 ESLint、差异检查通过；Android x86_64 开发客户端构建成功并安装至 Pixel_9_Pro_XL 模拟器。
+    - 截图确认底部真实模糊、15dp 顶部透明度渐变、按钮清晰；持续滚动时整组移出底边，停止后恢复，切换用户/笔记后的采样正常。
+    - 从两按钮间隙滑动可滚动底下的列表；13 秒切页及滑动观测窗口内 JavaScript 警告/错误为 0。
+    - 本机 Java 回环连接异常使用仅当前构建进程的 jdk.net.unixdomain.tmpdir 参数规避。原 Metro 未识别新增 expo-blur，验收使用独立的 8082 Metro；未停止或重启原 8081 服务。
+    - 本次完成 Android 模拟器验收，未进行 iOS 实机验收。
+
+---
+
+## 2026-09-14 21:22:35 | 修复问题
+
+- **修复悬浮导航在组件渲染期间读取 Reanimated 共享值的警告**
+    - 将 FloatingMenu 的共享值访问统一为 get()/set()，保持访问位于 Effect、事件及动画回调内，避免 React Compiler 将 hiddenOffsetY.value 提取为渲染阶段的缓存依赖。
+    - 保留当前布局、配色、300ms 动画和导航交互。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 替换共享值属性读写方式。
+    - CHANGELOG.md - 记录本次已确认修复。
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、git diff --check 通过。
+    - 检查模拟器实际加载的编译结果：缓存依赖只比较 hiddenOffsetY 和 translateY 对象，渲染阶段不再读取 hiddenOffsetY.value。
+    - Android 模拟器连续切换用户/笔记并滚动列表，14 秒观测窗口内 Reanimated 警告为 0；截图确认滚动期间导航隐藏、停止后恢复。
+
+---
+
 ## 2026-09-14 20:00:45 | 优化代码
 
 - **悬浮导航向下隐藏、对称外边距及左右滑动切页**
