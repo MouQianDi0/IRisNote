@@ -23,7 +23,11 @@ APK 更新由自有 `/api/releases` 接口提供；本功能不是 EAS Update �
 2. 核对已有正式 APK 包名、最高构建号和签名证书，初始化序列高于所有已分发构建。
 3. 在自有机器配置 Node.js（满足当前 Expo SDK 要求）、JDK、Android SDK、build-tools、
    Git、tar。Windows 使用 Gradle，不调用 Windows 不支持的 EAS local build。
-4. 通过环境变量配置 `docs/release.env.example` 中的参数；不要提交密钥或密码。
+4. 将 `docs/release.env.example` 复制为项目根目录的 `.env.release.local` 并填写参数；
+   发布工具会自动读取此文件，终端或 CI 中已有的环境变量优先（包括空值）。
+   文件不存在时仍可只使用终端环境变量；文件读取失败会停止命令。
+   删除不用的空配置项，含 `#` 或空格的值加引号，Windows 路径建议用单引号。
+   `.env.release.local` 已被 Git 忽略，不要提交密钥或密码；发布工具不读取应用的 `.env.local`。
    EAS 云端凭据需预先配置同一正式签名，发布工具不会自动导出或替换签名密钥。
 5. 提交应用源码及工具；构建会从指定 Git 提交导出到独立临时目录。
    工作区的未提交源码、忽略的 `.env.local` 和旧 `android/` 不会进入构建。
