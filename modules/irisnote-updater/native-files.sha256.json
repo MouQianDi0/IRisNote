@@ -1,0 +1,7 @@
+{
+  "android/src/main/java/com/github/sisong/HPatch.java": "4db2723e27a8074df4ba92f6769e114000f9b5a5e0d3bf68f9625ad4bb9e0cee",
+  "android/src/main/jniLibs/arm64-v8a/libhpatchz.so": "8215479e70f4b6945cee608d92e21f8205b6963f9de439ad35ef1e67533cb98f",
+  "android/src/main/jniLibs/armeabi-v7a/libhpatchz.so": "9df77c7a6af5ed01042d79265892ae3d1a118559a17236fa4af36e602b2868e8",
+  "android/src/main/jniLibs/x86/libhpatchz.so": "21df7178031185f95d7f279aae4b52ba5265169fd5b6acbf16b0bd8abdbe8b8e",
+  "android/src/main/jniLibs/x86_64/libhpatchz.so": "a0598bcbfa4b25b32494786045fd866b414c42a493e065659907bdf00a121e9b"
+}

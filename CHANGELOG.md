@@ -2,6 +2,148 @@
 
 ---
 
+## 2026-09-15 16:44:52 | 修复问题：项目构建入口的 Gradle 回环错误
+
+- 文件：scripts/android/gradle-env.mjs、scripts/android/run.mjs、package.json、scripts/release/cli.mjs、tests/releases/gradle-env.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- Windows 构建通过子进程 JAVA_TOOL_OPTIONS 指定原项目 .expo 目录作为 Unix 域套接字目录，覆盖 Gradle 启动器、daemon 和编译子进程。默认用户 Temp 的 Unix 域连接失败，项目目录的实际连接与 Selector 创建成功。
+- npm run android 和新增 npm run gradle 接入统一入口，自有发布构建使用同一环境；Gradle 命令默认 --no-daemon。保留已有 JVM 参数及父进程环境，Linux/macOS 不注入设置。
+- 验证：新修复与发布流程共 14 项测试通过（含真实 JDK Selector）；定向 ESLint、Node 语法检查、git diff --check 通过；Expo run:android --help 参数转发成功；npm run gradle -- help 实际 BUILD SUCCESSFUL，33 tasks，耗时约 1 分钟。
+- 原生编译验证：npm run gradle -- :irisnote-updater:compileDebugKotlin 已越过回环和配置阶段，后续等待 react-android-0.86.3-debug.aar（279001319 字节）下载，临时文件停在 62620736 字节数分钟无增长，主动结束本次验证。日志：.expo/gradle-updater-build.log。不能据此声称原生编译或 APK 构建通过。
+- 范围：直接 android/gradlew.bat 与 Android Studio 直接同步未接入项目启动入口，仍需单独设置；未修改全局 JDK、TEMP、网络或防火墙，未部署或发布。
+
+---
+
+## 2026-09-15 16:35:58 | 修复问题：Windows Gradle 回环连接（验证中）
+
+- 文件：scripts/android/gradle-env.mjs、scripts/android/run.mjs、package.json、scripts/release/cli.mjs、tests/releases/gradle-env.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- 已获用户确认。Windows 构建入口通过进程级 JAVA_TOOL_OPTIONS 指定原项目 .expo 套接字目录，覆盖 Gradle daemon 与编译子进程；Linux/macOS 不注入。自有发布构建使用原项目目录，避免独立 checkout 的用户 Temp 路径。
+- 保留已有 JVM 参数，不修改父进程或全局环境；新增 npm run gradle，npm run android 接入统一环境。
+- 临时验证已通过 NIO Selector 和 Gradle 握手，持久入口验证进行中。
+
+---
+
+## 2026-09-15 16:08:26 | 新增功能 / 修复问题：按主次补丁版本实行完整与差量更新
+
+- 文件：src/features/updates/release.ts、update-store.ts、UpdateDialog.tsx；scripts/release/cli.mjs、delta.mjs；modules/irisnote-updater/（Expo 模块声明、Kotlin 模块、HPatch.java、四 ABI 原生库、Gradle/ProGuard 配置、SHA-256 清单及上游许可）；tests/releases/releases.test.cjs、delta-roundtrip.mjs；package.json、docs/android-releases.md、docs/release.env.example、CHANGELOG.md。
+- 主版本不同使用完整 APK；同主版本的功能/补丁更新要求匹配的差量包。客户端核对真实安装构建、版本、旧 APK 摘要及补丁算法，缺少补丁不静默回退全量。
+- Android 合并使用固定 HDiffPatch 5.1.3 官方库。读取已安装 sourceDir，校验旧包/补丁/目标摘要及新包签名、版本、包名；禁止跨缓存路径和拆分 APK 差量。失败清理输出，安装前再次校验。
+- 发布工具支持 setup-delta 与 patches；上传完整目标后自动为历史同主版本生成补丁、实际还原验证并上传，恢复操作跳过已完成补丁。工具归档与原生文件摘要固定，构建前同时核对工作区和归档代码里的原生库。
+- 界面新增完整/差量类型与实际下载大小，新增“正在合并更新”及无匹配补丁状态。
+- 验证：客户端/工具 11 项测试、后端版本规则 4 项测试通过；全量 lint、theme:check、后端 TypeScript 检查通过；Android Hermes 导出通过（4137 modules，dist/delta-update-validation）。Expo 自动链接识别 irisnote-updater；四 ABI ELF LOAD 均为 0x4000 对齐，JNI 导出符号存在。
+- 真实差量工具验收：独立签名的合成测试 APK 各 1057116 字节，补丁 2240 字节；还原后完整 SHA-256 与目标一致，并通过 apksigner 与 aapt 校验。错误旧摘要和损坏补丁被拒绝。记录：.expo/delta-tests/signed-apk-bXPcAZ/result.json。该体积不代表正式 IRisNote 更新效果。
+- 未通过环境验收：Gradle 原生模块编译在进入编译前报 Unable to establish loopback connection / Could not receive a message from the daemon；仅对本次进程尝试 Unix-domain/IPv4 参数，无全局环境变更，仍失败。adb 无设备。原有三处 draftCleanupPending 类型错误仍存在。
+- 尚未完成原生模块编译、真机合并及覆盖安装、真实数据库发布验证。未运行迁移、未部署、未提交 EAS 构建或发布版本。
+
+---
+
+## 2026-09-15 15:56:10 | 新增功能：差量更新（实施中，用户已确认）
+
+- 新增 HDiffPatch 5.1.3 原生合并模块及固定摘要库、差量生成/实际还原校验、版本规则和补丁接口。
+- 主版本变化使用完整包；同主版本必须匹配差量包，不静默退回完整下载。
+- 代码实施中，尚未运行数据库迁移或实际发布。
+
+---
+
+## 2026-09-15 15:27:24 | 新增功能 / 修复问题：双渠道构建、包名统一与 App 内更新
+
+- 文件：app.json、app.config.ts、eas.json、package.json、package-lock.json、.gitignore、README.md、docs/android-releases.md、docs/release.env.example、plugins/with-release-signing.js、scripts/release/cli.mjs、scripts/release/lib.mjs、src/features/updates/release.ts、update-store.ts、UpdateDialog.tsx、src/features/settings/screens/SettingsScreen.tsx、src/core/providers/AppProviders.tsx、tests/releases/releases.test.cjs、CHANGELOG.md。
+- 本地生成工程：android/app/build.gradle、android/app/src/main/AndroidManifest.xml、res/values/strings.xml、java/com/mouqiandi/irisNote/MainActivity.kt 和 MainApplication.kt；旧 NextNote 两个入口迁移到新包目录。android 仍按项目约定忽略，新 checkout 通过 app.config 和插件重新生成。
+- 新包名统一为 com.mouqiandi.irisNote，显示名 IRisNote，scheme 为 irisnote。旧包名属于另一应用，不自动迁移数据。
+- EAS 保留；版本来源改为 local，由发布工具注入服务分配的构建号。保留 EAS AAB production 构建；APK 自有构建在独立 Git 提交目录执行。
+- 发布命令支持 doctor/reserve/build/inspect/upload/status/publish/withdraw，构建、上传草稿和发布分离。校验真实包名、版本、单一签名证书与 SHA-256。正式 Gradle 构建禁止回退到调试签名。
+- App 新增六小时自动检查和手动检查、更新说明、下载进度/取消/重试、分块 SHA-256 校验、安装前复核、系统安装和安装权限入口。进程被杀后的后台下载不在当前保证范围。
+- 依赖新增 expo-application ~57.0.3、@noble/hashes ^2.0.1。修复构建工具在 Windows 下的批处理引号及 npm.cmd 绝对路径解析。
+- 验证：新增客户端/工具 8 项测试全部通过；全量 lint、theme:check 通过；Android Hermes 导出通过（4136 modules，dist/releases-validation）；Expo 配置注入实测包名正确，示例版本 1.2.3 / 构建号 44。doctor 与 npm.cmd 实际调用通过。
+- 项目既有阻塞：类型检查仍有 new-note-editor.tsx 三处 draftCleanupPending 错误；全量测试执行时 61 通过、3 失败（drafts/revisions 原生模块加载和 banner lifetime），之后新增的第 8 项工具测试亦通过。未修改这些既有问题，构建前置检查会阻断正式打包。
+- 未验收：正式 APK/AAB 构建、EAS 凭据、真实 PostgreSQL 发布事务、HTTPS 下载及设备覆盖升级；adb 无已连接设备。未部署、未分配实际构建号、未上传或发布。
+
+---
+
+## 2026-09-15 15:16:05 | 新增功能 / 修复问题：双渠道构建与应用更新（实施中）
+
+- 文件：app.json、app.config.ts、eas.json、package.json、package-lock.json、plugins/with-release-signing.js、scripts/release/、src/features/updates/、SettingsScreen.tsx、AppProviders.tsx、android/app/build.gradle、AndroidManifest.xml、Kotlin 入口包目录。
+- 统一新包名，新增 App 内版本检查、下载、SHA-256 校验和安装入口；接入集中编号与 EAS/自有构建工具。正式发布需独立执行。
+- 当前阶段：代码实施中，尚未验证、部署或发布。
+
+---
+
+## 2026-09-15 12:02:25 | 优化代码 / 修复问题
+
+- **SDK 57 最新补丁升级（用户已确认）**
+    - package.json：Expo 更新为 ~57.0.22，按官方 bundledNativeModules 对齐现有 Expo 与 React Native 依赖；移除项目配置、脚本和测试均未引用的 expo-module-scripts@56.0.3，避免引入旧测试预设和重复 React。
+    - package-lock.json：更新依赖锁定；移除 file-entry-cache 错误指向 emoji-regex 的记录，由 npm 重新解析官方元数据。
+    - CHANGELOG.md：记录升级范围和验证结果。
+- **验证结果**
+    - Expo Doctor 21/21 通过；安装版本与 SDK 57.0.22 bundledNativeModules 配套要求无不匹配；package.json 与锁文件根依赖一致。
+    - npm 安装成功；file-entry-cache 正确包名、官方下载地址、integrity 和 create API 验证通过；React 仅保留 19.2.3 一份。
+    - Lint 与 theme:check 通过；Android Hermes Bundle 导出通过（4118 modules），输出 dist/sdk57-android。
+    - 类型检查剩余 new-note-editor.tsx 第 326、368、376 行 draftCleanupPending 类型错误，均在升级前已存在；已声明但缺失的 expo-network、expo-intent-launcher 安装后相关错误消除。
+    - 单测 54 通过、3 失败：drafts/revisions 两个测试在安装 Expo 网络模块后直接加载原生模块，触发 Node ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING；banner 连接测试仍因 lifetime 访问失败。未修改业务源码或测试。
+    - Web 导出通过：5305 modules，服务端 3690 modules，17 个静态路由，CSS 与 SQLite worker 已打包，输出 dist/sdk57-web；原生 APK 构建与设备验收未执行。
+    - 在线 expo install --check 首次遇到 TLS 连接中断，离线配套检查通过；后续在线 Expo Doctor 完整通过。
+- **原生工程边界**：本地 android 仍含旧包名 com.mouqiandi.NextNote，本轮未重生成原生目录。
+
+---
+
+## 2026-09-15 09:44:32 | 修复问题
+
+- **修复发布检查阻塞（用户已确认）**
+    - scripts/sync-theme-css.mjs：比较时兼容 CRLF/LF，写入时保留原换行符。
+    - src/core/navigation/hooks/useLongPressNavigation.ts：共享值改用 get/set，保留既有导航与动画参数。
+    - src/features/auth/providers/AuthProvider.tsx：分离存储读取与状态提交，初始化异步回调增加失效保护；移除未使用类型。
+    - src/features/notes/categories/category-icons.ts、components/CategoryButton.tsx：通过静态 CategoryIcon 入口渲染已有图标，保留尺寸、配色及回退。
+    - src/features/notes/categories/index.ts、src/features/notes/index.ts：显式导出 API，避免重复导出类型。
+    - src/features/settings/screens/SettingsScreen.tsx：移除未使用且无挂载副作用的头像 Hook。
+    - CHANGELOG.md：记录修改与验证结果。
+- **依赖恢复**：已从 npm 官方获取 file-entry-cache@8.0.0，核对完整性摘要并恢复本机对应目录；create API 和普通 Lint 缓存启动通过。原异常目录保存在系统临时目录 irisnote-file-entry-cache-repair 下。
+- **锁文件待确认**：package-lock.json 中 file-entry-cache 指向 emoji-regex；该记录及依赖元数据仍需补充授权修正，当前未改动锁文件，下次安装可能复发。
+- **验证结果**
+    - 本轮 8 个修改文件定向 ESLint 通过；全量 Lint 的原 17 个错误、5 个警告消除。
+    - theme:check 通过；临时副本验证 LF/CRLF 比较、写入格式保留、真实差异检出与修复均通过，未改动 global.css。
+    - 模拟运行验证长按完成/提前释放仅导航一次、同路由不跳转、缩放恢复、图标映射及 Folder 回退、认证异步初始化/刷新/失效初始化保护通过；不等同于设备验收。
+    - 当前仓库含本轮未修改的同步队列代码：全量 Lint 剩 2 个缺失依赖错误（expo-network、expo-intent-launcher）；类型检查另有 sync-queue 路由类型、draftCleanupPending 返回类型错误。
+    - 全量单测通过 54、失败 3：两个测试文件因 expo-network 缺失无法加载，通知连接测试失败。未调整这些源码或测试。
+    - 尚未重新完成 Android Bundle 导出或设备验收，未提交云端构建。
+
+---
+
+## 2026-09-15 09:23:24 | 修复问题
+
+- **发布基础收口：统一名称并补齐检查与 Android 构建入口**
+    - app.json - 图片与相机权限文案中的 NextNote 改为 IRisNote。
+    - package.json、package-lock.json - 内部 npm 包名统一为 irisnote，不修改 Android 包名、EAS 项目身份或依赖版本。
+    - package.json - 新增 typecheck、test、check、eas、build、build:apk、build:aab；test 使用 Node 24+ 执行 tests/**/*.test.cjs，不运行浏览器脚本；构建前执行统一检查。
+    - eas.json - 固定 EAS CLI 24.4.0，preview APK 启用远端版本号自动递增；production 保留现有自动递增策略。
+    - CHANGELOG.md - 记录已确认的第一阶段变更与验收边界。
+- **命令说明**
+    - npm run check：类型、Lint、主题一致性及现有单元测试。
+    - npm run build 或 npm run build:apk：检查通过后提交 EAS preview APK 云端构建，需要网络与 EAS 账号权限。
+    - npm run build:aab：检查通过后提交 EAS production Android 云端构建。
+- **验证结果**
+    - TypeScript、110 项现有单元测试、Expo public 配置解析、图标资源存在性、包名与锁文件一致性、变更差异检查通过。
+    - Android Hermes Bundle 导出成功（4059 modules），输出 dist/phase1-android；此结果不等同于签名 APK 构建或设备验收。
+    - npm run check 未通过：现有 Lint 缓存加载失败（fileEntryCache.create is not a function）；本机 node_modules/file-entry-cache/package.json 实际标识为 emoji-regex，依赖目录内容异常。
+    - 单独执行 theme:check 失败；只读比较确认主题内容在 CRLF 标准化后完全一致，现有校验脚本因换行符差异误报。未改动主题 CSS 或同步脚本。
+    - 关闭缓存诊断（expo lint --no-cache）完成，报告现有 17 个错误、5 个警告：useLongPressNavigation.ts 的共享值赋值、AuthProvider.tsx 的 Effect、CategoryButton.tsx 的动态图标组件、notes/categories 与 notes 的 index.ts 重复导出，以及未使用变量。此次未改动这些业务文件或屏蔽规则。
+    - 配置核验参考：https://docs.expo.dev/versions/v56.0.0/ 、https://docs.expo.dev/versions/v56.0.0/sdk/imagepicker/ 、https://docs.expo.dev/build-reference/apk/ 、https://docs.expo.dev/build-reference/app-versions/ 。
+    - 未提交 EAS 云端构建，未验收签名 APK、安装或覆盖升级；构建入口会在检查失败时阻止提交。
+
+---
+
+## 2026-09-15 01:42:51 | 新增功能
+
+- **悬浮操作按钮随标签切换图标变形**
+    - 使用持续挂载的 MorphIcon 和 lucide 图标数据，在铅笔、勾选框、剪贴板和齿轮之间播放 snappy 变形。
+    - 保留外层每轮 2 秒的无限 shake，变形期间及结束后持续摇晃；变形遵循系统减少动态效果设置。
+    - 保持 66dp 按钮、35dp 图标、配色、点击防抖导航和长按手势及动画。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingActionButton.tsx - 添加图标数据映射并接入 MorphIcon。
+    - CHANGELOG.md - 记录本次已确认变更。
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint 和差异检查通过；尚未进行设备视觉验收。
+
+---
+
 ## 2026-09-15 01:53:36 | 修复问题
 
 - **修复连接聚合测试对异步横幅发布的过时假设**
@@ -164,6 +306,94 @@
     - 审计为 252 个源码文件、19,616 行；主题目录外固定颜色 14、裸字号 17、裸圆角 15，均未因本批增加。
     - `npm run theme:check` 仍提示当前 `global.css` 与默认主题预设不同步；本批未修改主题生成源，也未执行会写入生成文件的 `npm run theme:sync`。
     - 未运行测试、构建、导出、浏览器或设备验收；单行截断、灰蓝/红色呈现与弹窗布局由用户主动验收。
+
+---
+
+## 2026-09-14 22:24:15 | 新增功能
+
+- **悬浮导航背景模糊及 15dp 顶部渐变**
+    - 新增 expo-blur 与渐变蒙版依赖，按当前标签页选择 Android BlurTargetView，采样实际页面内容。
+    - 模糊覆盖屏幕底部全宽 101dp，顶部 15dp 通过透明度蒙版平滑显现；按钮高 66dp、底部 20dp、左右 16dp 和控件间隔 15dp 保持不变。
+    - 模糊与按钮共用 300ms 位移动画，隐藏距离覆盖渐变区域和阴影；背景不拦截触摸。
+- **修改文件列表**
+    - package.json、package-lock.json - 添加原生模糊和蒙版依赖。
+    - src/app/(tabs)/_layout.tsx - 按场景提供背景采样目标。
+    - src/core/navigation/components/FloatingMenu.tsx - 背景模糊、渐变蒙版及整组隐藏。
+    - CHANGELOG.md - 记录本次已确认功能和验收结果。
+- **验证结果**
+    - TypeScript、目标文件 ESLint、差异检查通过；Android x86_64 开发客户端构建成功并安装至 Pixel_9_Pro_XL 模拟器。
+    - 截图确认底部真实模糊、15dp 顶部透明度渐变、按钮清晰；持续滚动时整组移出底边，停止后恢复，切换用户/笔记后的采样正常。
+    - 从两按钮间隙滑动可滚动底下的列表；13 秒切页及滑动观测窗口内 JavaScript 警告/错误为 0。
+    - 本机 Java 回环连接异常使用仅当前构建进程的 jdk.net.unixdomain.tmpdir 参数规避。原 Metro 未识别新增 expo-blur，验收使用独立的 8082 Metro；未停止或重启原 8081 服务。
+    - 本次完成 Android 模拟器验收，未进行 iOS 实机验收。
+
+---
+
+## 2026-09-14 21:22:35 | 修复问题
+
+- **修复悬浮导航在组件渲染期间读取 Reanimated 共享值的警告**
+    - 将 FloatingMenu 的共享值访问统一为 get()/set()，保持访问位于 Effect、事件及动画回调内，避免 React Compiler 将 hiddenOffsetY.value 提取为渲染阶段的缓存依赖。
+    - 保留当前布局、配色、300ms 动画和导航交互。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 替换共享值属性读写方式。
+    - CHANGELOG.md - 记录本次已确认修复。
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、git diff --check 通过。
+    - 检查模拟器实际加载的编译结果：缓存依赖只比较 hiddenOffsetY 和 translateY 对象，渲染阶段不再读取 hiddenOffsetY.value。
+    - Android 模拟器连续切换用户/笔记并滚动列表，14 秒观测窗口内 Reanimated 警告为 0；截图确认滚动期间导航隐藏、停止后恢复。
+
+---
+
+## 2026-09-14 20:00:45 | 优化代码
+
+- **悬浮导航向下隐藏、对称外边距及左右滑动切页**
+    - 整组左右外边距均为 16dp，白色 Tab 栏弹性填满剩余宽度，四项等宽分配；两侧控件高 66dp，白栏内边距 8dp、项目高 50dp，主按钮间隔从 15dp 增至 24dp。
+    - 隐藏方向改为向屏幕底部移动，位移按实际高度加底部偏移 50dp 与阴影余量 16dp 计算，保留现有触发时机和 600ms 动画。
+    - 切页手势仅绑定白色 Tab 栏：左滑下一页、右滑上一页，按笔记/待办/剪贴/用户的可见顺序循环；横向主导且位移超过 30dp 才切页，上下滑动不切页。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 布局尺寸、纵向隐藏动画及手势绑定范围。
+    - src/core/navigation/hooks/useSwipeTab.ts - 左右滑动判定与可见顺序切页。
+    - CHANGELOG.md - 记录本次已确认变更。
+- **验证结果**
+    - TypeScript、两文件 ESLint 通过；移除手势 hook 原有渲染阶段 ref 写入，直接使用当前路由。
+    - 模拟器验证：左滑从笔记进入待办、右滑返回笔记，上滑白栏未切页；列表滑动期间整组隐藏，停止后恢复。
+    - 已截图核对加长白栏与对称外边距的整体效果；控件树仍因无法进入空闲状态而读取失败，精确 dp 未完成原生树实测。尺寸使用明确数值类名，避免 rem 换算偏差。
+
+---
+
+## 2026-09-14 19:41:26 | 优化代码
+
+- **悬浮 Tab 栏横排并与主操作按钮等高**
+    - 白色 Tab 栏移至蓝色主操作按钮左侧，四个入口横排；白栏高 66dp、每项 50×50dp、四周内边距 8dp，与 66×66dp 主按钮间隔 15dp。
+    - 整组保留右边距 16dp、底部偏移 50dp；沿用颜色、按压反馈、Tab 路由、上下滑动切换与主按钮操作。
+    - 隐藏动画按实际布局宽度加 32dp（右边距与阴影余量）计算位移，避免横排后仅隐藏右侧部分。
+- **修改文件列表**
+    - src/core/navigation/components/FloatingMenu.tsx - 横向布局、等高尺寸及自适应隐藏位移。
+    - CHANGELOG.md - 记录本次已确认的 UI 变更。
+
+- **验证结果**
+    - TypeScript（npx tsc --noEmit）、目标文件 ESLint、目标文件 git diff --check 均通过。
+    - 模拟器刷新后开发客户端出现 Unable to load script；重新连接现有 Metro 后仍报告局域网地址 unexpected end of stream，未完成新布局截图、dp 实测及交互验收。
+    - 现有开发服务未停止或重启，未修改环境配置。
+
+---
+
+## 2026-09-14 14:47:43 | 修复问题
+
+- **恢复 Android Studio 启动前置与 Android SDK 工具链完整性**
+    - 移除指向不存在 `studio.vmoptions` 文件的用户级 `STUDIO_VM_OPTIONS` 环境变量，恢复 Android Studio 使用安装目录内置 VM 配置的前置条件。
+    - 清理用户 `PATH` 中已不存在的旧 SDK `adb.exe` 路径，保留有效的 `D:\AndroidSDK` 配置。
+    - 从 Google Android 官方源安装 Command-line Tools 22.0 到 `D:\AndroidSDK\cmdline-tools\latest`，官方 SHA-256 校验通过；将其 `bin` 目录加入用户 `PATH`。
+    - 将仅含安装占位文件的 Build Tools 35.0.0 残缺目录移至 `D:\AndroidSDK\.repair-backup-20260914-144157`，通过本机代理重新安装官方 `build-tools;35.0.0`。
+- **修改文件列表**
+    - `CHANGELOG.md` - 记录本次 Android Studio / Android SDK 本机环境修复。
+    - `D:\AndroidSDK\cmdline-tools\latest\**` - 新增 Android SDK 命令行工具。
+    - `D:\AndroidSDK\build-tools\35.0.0\**` - 重新安装完整的 Build Tools 35.0.0。
+    - 用户环境变量 - 移除失效 `STUDIO_VM_OPTIONS` 和旧 SDK PATH 项，新增 Command-line Tools `bin` PATH 项。
+- **验证结果**
+    - `sdkmanager --version` 返回 `22.0`，`sdkmanager.bat` 与 `avdmanager.bat` 均存在。
+    - Build Tools 35.0.0 的 `aapt.exe`、`aapt2.exe`、`d8.bat`、`zipalign.exe`、`apksigner.bat`、`source.properties` 与 `package.xml` 全部存在，`Pkg.Revision=35.0.0`。
+    - Android Studio 已绕过第一层失效 VM 配置，但内置 JBR 继续报 `sun.nio.fs` 模块访问错误；安装目录 VM 参数修复尚未实施，待用户单独确认。
 
 ---
 

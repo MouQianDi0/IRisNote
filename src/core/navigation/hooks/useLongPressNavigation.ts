@@ -16,16 +16,16 @@ export function useLongPressNavigation(actionRoute: Href) {
     const didStart = useSharedValue(false);
 
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: scale.value }],
+        transform: [{ scale: scale.get() }],
     }));
 
     const gesture = Gesture.Pan()
         .activateAfterLongPress(400)
         .onStart(() => {
             "worklet";
-            didStart.value = true;
-            didNavigate.value = false;
-            scale.value = withTiming(
+            didStart.set(true);
+            didNavigate.set(false);
+            scale.set(withTiming(
                 0.85,
                 {
                     duration: 300,
@@ -34,30 +34,30 @@ export function useLongPressNavigation(actionRoute: Href) {
                 (finished) => {
                     if (
                         finished &&
-                        !didNavigate.value &&
+                        !didNavigate.get() &&
                         actionRoute !== pathname
                     ) {
-                        didNavigate.value = true;
+                        didNavigate.set(true);
                         runOnJS(router.push)(actionRoute);
                     }
                 },
-            );
+            ));
         })
         .onFinalize(() => {
             "worklet";
             if (
-                didStart.value &&
-                !didNavigate.value &&
+                didStart.get() &&
+                !didNavigate.get() &&
                 actionRoute !== pathname
             ) {
-                didNavigate.value = true;
+                didNavigate.set(true);
                 runOnJS(router.push)(actionRoute);
             }
 
-            scale.value = withTiming(1, {
+            scale.set(withTiming(1, {
                 duration: 400,
                 easing: buttonEasing,
-            });
+            }));
         });
 
     return { gesture, animatedStyle };

@@ -1,19 +1,30 @@
 import { type Href, usePathname } from "expo-router";
+import { ClipboardPenLine, PencilLine, Settings, SquareCheckBig } from "lucide";
+import { MorphIcon, type IconInput } from "morphicons/react-native";
 import { Pressable } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { getMainAction } from "../navigation.constants";
+import { getActiveTabKey, getMainAction } from "../navigation.constants";
+import type { TabKey } from "../navigation.types";
 import { useDebouncedNavigation } from "../hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "../hooks/useLongPressNavigation";
 import { shake } from "@/shared/theme/motion";
 import { colors } from "@/shared/theme";
+
+const ACTION_ICONS = {
+    note: PencilLine,
+    todo: SquareCheckBig,
+    excerpt: ClipboardPenLine,
+    user: Settings,
+} satisfies Record<TabKey, IconInput>;
 
 export default function FloatingActionButton() {
     const pathname = usePathname();
     const onNavigate = useDebouncedNavigation();
     const action = getMainAction(pathname);
 
-    const { icon: ActionIcon, label } = action;
+    const { label } = action;
+    const icon = ACTION_ICONS[getActiveTabKey(pathname)];
     const { gesture: longPress, animatedStyle } = useLongPressNavigation(
         action.route as Href,
     );
@@ -42,7 +53,13 @@ export default function FloatingActionButton() {
                             animationTimingFunction: "ease-in-out",
                         }}
                     >
-                        <ActionIcon size={35} color={colors.surfaceFull} />
+                        <MorphIcon
+                            icon={icon}
+                            size={35}
+                            color={colors.surfaceFull}
+                            spring="snappy"
+                            reducedMotion="user"
+                        />
                     </Animated.View>
                 </Pressable>
             </GestureDetector>

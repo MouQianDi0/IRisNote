@@ -1,5 +1,5 @@
 import * as LucideIcons from "lucide-react-native";
-import type { ComponentType } from "react";
+import { createElement, type ComponentType } from "react";
 
 const fallback = "Folder";
 
@@ -14,6 +14,15 @@ export const getCategoryIcon = (name: string) => {
         fill?: string;
     }>;
 };
+
+export function CategoryIcon({ name, ...props }: {
+    name: string;
+    size?: number;
+    color?: string;
+    fill?: string;
+}) {
+    return createElement(getCategoryIcon(name), props);
+}
 
 export const categoryIconGroups = [
     {

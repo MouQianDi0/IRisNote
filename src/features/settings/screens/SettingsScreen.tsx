@@ -1,8 +1,9 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
+import * as Application from "expo-application";
+import { checkForUpdate } from "@/features/updates/update-store";
 import { router, type Href } from "expo-router";
 import {
     ArrowLeft,
@@ -63,10 +64,8 @@ function SettingsGroupTitle({ children }: { children: string }) {
 
 export default function SettingsScreen() {
     const { isLoggedIn, loading, logout, user } = useAuth();
-    const { avatarKey, avatarSource, avatarUploading, showAvatarOptions } =
-        useAvatar();
     const [loggingOut, setLoggingOut] = useState(false);
-    const version = Constants.expoConfig?.version ?? "—";
+    const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "—";
 
     const returnToUser = () => {
         if (router.canGoBack()) {
@@ -312,6 +311,11 @@ export default function SettingsScreen() {
                                 icon={Info}
                                 label="关于 IRisNote"
                                 value={`v${version}`}
+                            />
+                            <SettingsRow
+                                icon={Cloud}
+                                label="检查更新"
+                                onPress={() => void checkForUpdate(true)}
                                 last
                             />
                         </Card>

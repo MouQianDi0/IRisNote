@@ -129,3 +129,8 @@ PostgreSQL
 ## License
 
 本项目采用 [LICENSE](./LICENSE) 中声明的许可证。
+# Android 构建与应用更新
+
+已接入 EAS / 自有构建共用的发布工具，以及 App 内检查更新、APK 下载和安装入口。
+正式启用需要部署版本服务并配置正式签名。使用步骤、环境变量和验收边界见
+[Android 双渠道发布说明](docs/android-releases.md)。

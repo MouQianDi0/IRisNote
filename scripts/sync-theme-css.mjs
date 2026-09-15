@@ -68,10 +68,11 @@ if (!markerPattern.test(css)) {
 }
 
 if (process.argv.includes("--write")) {
-    const nextCss = css.replace(markerPattern, expected);
+    const newline = css.includes("\r\n") ? "\r\n" : "\n";
+    const nextCss = css.replace(markerPattern, expected.replace(/\n/g, newline));
     fs.writeFileSync(cssPath, nextCss, "utf8");
     console.log("global.css theme tokens synchronized.");
-} else if (css.match(markerPattern)?.[0] !== expected) {
+} else if (css.match(markerPattern)?.[0].replace(/\r\n/g, "\n") !== expected) {
     console.error(
         "global.css theme tokens are stale. Run: npm run theme:sync",
     );

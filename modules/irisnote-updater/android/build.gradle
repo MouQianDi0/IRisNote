@@ -1,0 +1,14 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'expo.modules.irisnoteupdater'
+version = '1.0.0'
+android {
+  namespace 'expo.modules.irisnoteupdater'
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+}

@@ -1,20 +1,23 @@
 {
   "cli": {
-    "appVersionSource": "remote"
+    "version": "24.4.0",
+    "appVersionSource": "local"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "autoIncrement": false
     },
     "preview": {
+      "autoIncrement": false,
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": false
     }
   },
   "submit": {
