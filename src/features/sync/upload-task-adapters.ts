@@ -113,6 +113,10 @@ async function executeNoteTask(
                     key: draft.key,
                     sessionId: draft.sessionId,
                     sequence: draft.sequence,
+                    beforeDelete: draft.removeExplicitFile === true ? async () => {
+                        const { removeExplicitDraft } = await import("@/features/notes/data/new-note-draft.repository");
+                        await removeExplicitDraft(task.ownerUserId, draft.key!);
+                    } : undefined,
                 });
             } catch {
                 console.info("[Upload queue] 笔记已同步，草稿由新会话接管", {

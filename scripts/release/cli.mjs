@@ -22,6 +22,7 @@ import {
     verifyNativeUpdater,
 } from "./delta.mjs";
 import { loadReleaseEnv } from "./env.mjs";
+import { exportBuildSource } from "./source.mjs";
 import {
     certificateDigest,
     fileSha256,
@@ -142,15 +143,10 @@ async function build() {
         path.join(os.tmpdir(), "irisnote-release-"),
     );
     console.log(`独立构建目录：${workspace}`);
-    const archive = path.join(workspace, "source.tar");
     const checkout = path.join(workspace, "source");
     await mkdir(checkout);
-    run(
-        "git",
-        ["archive", "--format=tar", `--output=${archive}`, release.commit_sha],
-        { cwd: root },
-    );
-    run("tar", ["-xf", archive, "-C", checkout]);
+    const selection = exportBuildSource(root, release.commit_sha, workspace, checkout);
+    console.log(`已排除非构建资料：${selection.excluded.join("、") || "无"}`);
     await verifyNativeUpdater(checkout);
     const buildEnv = {
         ...process.env,

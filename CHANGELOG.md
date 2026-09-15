@@ -1,3 +1,35 @@
+## 2026-09-16 03:20:57 | 修复问题：发布检查中的编辑器与通知测试失败
+
+- 文件：src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/services/new-note-draft-session.ts、src/features/notes/services/note-save.service.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 按用户修复指令收窄队列依赖导入，避免保存模块经汇总入口加载无关 Expo 原生运行时；测试 SQLite 初始化加入真实上传队列迁移，验证保存入队与后续上传两个阶段。
+- 测试暴露并修复实际缺陷：显式草稿的文件清理意图作为 removeExplicitFile 布尔值持久化到队列，执行任务时恢复受草稿会话/序号检查保护的清理操作；文件删除失败保留恢复记录。历史无标记任务保持原行为，不猜测删除文件。
+- 手动上传增加正在同步状态检查，保留结果未知时禁止重复创建及跨账户访问约束。
+- 通知测试按前台异步发布行为等待结果，并新增后台与停止后不发布横幅的回归测试。未改通知业务逻辑，未移除或跳过失败断言。
+- 验证：完整 npm run check 成功，类型检查、Lint、主题检查及 129 项测试全部通过；diff --check 通过。测试使用 Node SQLite 和显式网络/文件替身，未作真机或真实服务验收。
+- 未提交、构建、上传或发布；发布需提交修复并重新预留构建号。
+
+---
+
+## 2026-09-16 03:15:56 | 修复问题：独立构建的 CSS 声明及笔记保存返回类型
+
+- 文件：src/types/expo.d.ts、src/features/notes/services/note-save.service.ts、CHANGELOG.md。
+- 已获用户确认。新增持久 Expo 类型引用，使干净构建无需自动生成的 expo-env.d.ts 也能识别 CSS 副作用导入；为 saveNewNoteLocalFirst、saveEditedNoteLocalFirst、finishDraftSave 显式声明 Promise<NoteSaveResult>，统一可选 draftCleanupPending 的返回类型。
+- 验证：正常 TypeScript 检查及编译器屏蔽 expo-env.d.ts/.expo/types 后的全项目检查均通过；Lint、主题检查、diff --check 通过。保存服务修改前后转译出的 JavaScript 完全一致，未改变运行逻辑。
+- 完整 npm run check 停在测试阶段：72 通过、3 失败。drafts.test.cjs、revisions.test.cjs 加载 expo-modules-core/src/index.ts 时触发 ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING；banner.test.cjs:135 读取未定义对象的 lifetime 失败。未修改这些测试或扩大业务修复范围，APK 构建仍被检查门槛阻塞。
+- 未提交、预留、构建或发布。应用源码修复需提交并重新预留，原构建号仍绑定旧提交。
+
+---
+
+## 2026-09-16 03:07:33 | 修复问题 / 优化代码：筛选发布源码并修复 Windows 中文路径解包
+
+- 文件：scripts/release/source.mjs、scripts/release/cli.mjs、tests/releases/source.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- 用户确认先梳理构建输入。按预留提交的根目录清单排除 docs、releases、助手/编辑器目录、已审查的根文档与日志；保留源码、资源、原生模块、配置、测试、脚本、许可证与未知新增输入，不删除原仓库文件。
+- Windows tar 显式使用 hdrcharset=UTF-8；在原失败归档上真实解包成功，中文文件名正确；其他平台参数保持不变。
+- 验证：真实当前提交导出后核对 343 个文件与 Git blob 内容（332 个文本文件按已有 core.autocrlf 转换换行），原生模块摘要校验通过；15 项发布相关测试、定向 ESLint 与 diff --check 通过。回归覆盖中文、空格、长文件名、许可证、检查脚本、文档排除与已提交源码隔离。
+- 未运行 APK 编译、上传或发布。构建号继续绑定原提交，修复导出入口后可重试原编号；应用代码变更需要重新预留。
+
+---
+
 ## 2026-09-16 01:44:34 | 优化代码：补充本地发布配置
 
 - 文件：.env.release.local、CHANGELOG.md。

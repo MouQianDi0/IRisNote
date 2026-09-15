@@ -33,6 +33,18 @@ APK 更新由自有 `/api/releases` 接口提供；本功能不是 EAS Update �
    工作区的未提交源码、忽略的 `.env.local` 和旧 `android/` 不会进入构建。
    如需自定义 API 地址，在构建进程设置两个 `EXPO_PUBLIC_*` 参数。
 
+## 构建源码范围与中文路径
+
+发布入口按预留记录的 Git 提交读取根目录清单，再导出构建源码：
+
+- 保留 `src/`、`assets/`、`modules/`、`plugins/`、`scripts/`、`tests/`、依赖锁文件及 Expo、EAS、Metro、TypeScript、ESLint、样式配置；测试和主题检查仍是构建前必跑步骤。
+- 排除根目录的 `docs/`、`releases/`、`.claude/`、`.codegraph/`、`.vscode/`，以及 `AGENTS.md`、`CLAUDE.md`、`CHANGELOG.md`、`README.md`、`TODO.md`、`design-qa.md`、`待办事项.md`、`debug.log`、`tmpwebapp-node-modulesprepare.log`。
+- 发布说明在 `reserve` 阶段已读取并保存到服务端，构建不再依赖 `releases/` 中的说明文件。排除仅影响临时源码归档，不删除仓库文件。
+- 未列入排除清单的新目录/文件默认保留，避免遗漏新构建输入；模块内部文档、许可证与根目录 `LICENSE` 保留。
+- Windows 自带 bsdtar 解包时显式使用 `--options hdrcharset=UTF-8`，支持中文资源、空格和长文件名；Linux/macOS 保持原解包参数。工具不修改系统编码或 Git 换行配置。
+
+筛选实现位于 `scripts/release/source.mjs`。仅调整导出工具后可以重试原预留构建号；构建仍使用该编号原先绑定的提交。如需要发布后来修改的应用源码，应提交后重新预留构建号。
+
 ## Windows Gradle 回环连接修复
 
 本机用户 Temp 目录中的 Java Unix 域套接字连接会失败，表现为
