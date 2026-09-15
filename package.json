@@ -5,10 +5,12 @@
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo/ui": "~57.0.18",
+    "@noble/hashes": "^2.0.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-masked-view/masked-view": "0.3.2",
     "axios": "^1.17.0",
     "expo": "~57.0.22",
+    "expo-application": "~57.0.3",
     "expo-blur": "~57.0.3",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.18",
@@ -75,7 +77,7 @@
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
+    "android": "node ./scripts/android/run.mjs expo",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
@@ -83,12 +85,15 @@
     "test": "node --test \"tests/**/*.test.cjs\"",
     "check": "npm run typecheck && npm run lint && npm run theme:check && npm test",
     "eas": "npx --yes eas-cli@24.4.0",
-    "build": "npm run build:apk",
-    "build:apk": "npm run check && npm run eas -- build --platform android --profile preview",
-    "build:aab": "npm run check && npm run eas -- build --platform android --profile production",
+    "build": "node ./scripts/release/cli.mjs build",
+    "build:apk": "node ./scripts/release/cli.mjs build",
+    "build:aab": "node ./scripts/release/cli.mjs build --format aab",
     "design:audit": "node ./scripts/audit-design-system.mjs",
     "theme:sync": "node ./scripts/sync-theme-css.mjs --write",
-    "theme:check": "node ./scripts/sync-theme-css.mjs"
+    "theme:check": "node ./scripts/sync-theme-css.mjs",
+    "release": "node ./scripts/release/cli.mjs",
+    "test:delta-real": "node ./tests/releases/delta-roundtrip.mjs",
+    "gradle": "node ./scripts/android/run.mjs gradle"
   },
   "overrides": {
     "lightningcss": "1.30.1"
