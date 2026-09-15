@@ -9,7 +9,6 @@ import {
     stat,
     writeFile,
 } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -22,6 +21,8 @@ import {
     verifyNativeUpdater,
 } from "./delta.mjs";
 import { loadReleaseEnv } from "./env.mjs";
+import { createReleaseWorkspace } from "./workspace.mjs";
+import { setupNinja, releaseNinja } from "./ninja.mjs";
 import { exportBuildSource } from "./source.mjs";
 import {
     certificateDigest,
@@ -139,13 +140,17 @@ async function build() {
         );
     if (release.status !== "reserved")
         throw new Error("仅允许构建尚未上传的预留版本");
-    const workspace = await mkdtemp(
-        path.join(os.tmpdir(), "irisnote-release-"),
-    );
+    const ninja = release.source === "self" ? await releaseNinja(root) : null;
+    const workspace = await createReleaseWorkspace(root);
     console.log(`独立构建目录：${workspace}`);
     const checkout = path.join(workspace, "source");
     await mkdir(checkout);
-    const selection = exportBuildSource(root, release.commit_sha, workspace, checkout);
+    const selection = exportBuildSource(
+        root,
+        release.commit_sha,
+        workspace,
+        checkout,
+    );
     console.log(`已排除非构建资料：${selection.excluded.join("、") || "无"}`);
     await verifyNativeUpdater(checkout);
     const buildEnv = {
@@ -246,13 +251,23 @@ async function build() {
     // Use the original project's socket directory, not the isolated checkout under
     // the Windows user Temp directory that triggered the AF_UNIX failure.
     const nativeBuildEnv = await gradleEnvironment(root, buildEnv);
+    if (ninja) nativeBuildEnv.IRIS_NINJA_PATH = ninja;
     run(
         path.join(
             checkout,
             "android",
             process.platform === "win32" ? "gradlew.bat" : "gradlew",
         ),
-        ["assembleRelease", "--no-daemon"],
+        [
+            "assembleRelease",
+            "--no-daemon",
+            ...(ninja
+                ? [
+                      "--init-script",
+                      path.join(root, "scripts/android/ninja.init.gradle"),
+                  ]
+                : []),
+        ],
         { cwd: path.join(checkout, "android"), env: nativeBuildEnv },
     );
     const apk = path.join(
@@ -359,7 +374,8 @@ async function preparePatches(release, apk) {
 }
 async function main() {
     loadReleaseEnv(root);
-    if (action === "setup-delta") await setupDeltaTools();
+    if (action === "setup-ninja") await setupNinja(root);
+    else if (action === "setup-delta") await setupDeltaTools();
     else if (action === "patches") {
         const release = await api(`/${code()}`);
         if (release.status !== "draft") throw new Error("仅能为草稿生成差量包");
@@ -373,6 +389,7 @@ async function main() {
         run("git", ["--version"]);
         run("java", ["-version"]);
         run("tar", ["--version"]);
+        await releaseNinja(root);
         const tools = await androidTools();
         run(tools.aapt, ["version"]);
         run(tools.signer, ["version"]);
@@ -449,7 +466,7 @@ async function main() {
         console.log(JSON.stringify(await api(`/${code()}`), null, 2));
     else
         console.log(
-            "IRisNote 发布工具\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file>\n  build --build <code>\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
+            "IRisNote 发布工具\n  setup-ninja\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file>\n  build --build <code>\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
         );
 }
 main().catch((error) => {

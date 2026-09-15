@@ -1,3 +1,24 @@
+## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- Windows 发布改用项目盘短目录与项目专用 Ninja 1.12.1，通过本次 Gradle init script 指定 CMAKE_MAKE_PROGRAM。Worklets、Reanimated、Expo 各架构缓存已核对指向新工具；保留共享 SDK 与全局环境。
+- 构建号 2 的原预留提交 2d45ce0ab302094cb99dfc5480bef8eaf0fe4e57 在 D:/iris-build/r-5zeXpb/source 实测：构建前检查及 129 项测试通过，Gradle BUILD SUCCESSFUL，1071 tasks，24m 50s；四种架构原生编译成功，无 manifest still dirty 循环。
+- 用户另行确认兼容 Build Tools 37 输出。旧脚本仅识别 Signer #1，新 apksigner 输出 V2 Signer；已增加严格整行匹配，保持多证书、重复及畸形指纹拒绝。13 项相关回归测试通过，定向 ESLint 与 diff --check 通过，正式 inspect 命令实际通过。测试文件补充 Node Buffer 导入与 __dirname 声明。
+- 产物：dist/releases/IRisNote-1.0.0-2.apk 及 .apk.json；包名 com.mouqiandi.irisNote，大小 121781286 bytes，SHA256 7dec125ca8589fed872e6729e8e33ae5efe1a0bbcb7dc82abb36c6f4e34a4981。apksigner 校验成功，证书与本地正式配置一致。
+- 原构建 CLI 曾在最后证书解析处退出；经独立严格校验导出产物后，修复后的 CLI inspect 再次验证通过。未为解析修复重复进行完整原生编译。
+- 未提交代码、上传、发布或安装到设备；设备运行效果仍待验证。完整构建日志：.expo/release-build-2-short-path.log。
+
+---
+
+## 2026-09-16 03:44:48 | 修复问题：Windows 发布构建 Ninja 重生成循环（验证中）
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、tests/releases/workspace.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 用户确认修复并验证完整构建。Windows 临时源码改用项目盘 iris-build 短路径，允许 IRIS_BUILD_ROOT 覆盖并校验路径；Linux/macOS 保留系统 Temp。
+- 新增 setup-ninja 安装项目专用 Ninja 1.12.1，归档和默认二进制均校验 SHA-256；自建及 doctor 检查版本，支持 IRIS_NINJA_PATH 指向用户工具。通过本次 Gradle init script 在 Android 模块 CMake 参数指定工具，不覆盖共享 SDK、不更改全局配置。
+- 初步验证：同一旧构建目录下，Ninja 1.10.2 将存在的 Hermes CMake 文件误判为缺失，1.12.1 dry-run 不再出现该误判；短路径及工具版本测试 2 项通过。构建号 2 已在新短目录启动完整构建，日志 .expo/release-build-2-short-path.log，尚未宣称 APK 构建成功。
+
+---
+
 ## 2026-09-16 03:20:57 | 修复问题：发布检查中的编辑器与通知测试失败
 
 - 文件：src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/services/new-note-draft-session.ts、src/features/notes/services/note-save.service.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/notifications/banner.test.cjs、CHANGELOG.md。

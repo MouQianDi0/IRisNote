@@ -47,6 +47,22 @@ APK 更新由自有 `/api/releases` 接口提供；本功能不是 EAS Update �
 
 ## Windows Gradle 回环连接修复
 
+### Windows Ninja 长路径兼容
+
+Windows 发布构建使用项目所在盘的短目录（例如 `D:\iris-build\r-xxxxxx\source`），不再使用用户 Temp 下的长目录。可在 `.env.release.local` 设置 `IRIS_BUILD_ROOT`，必须是本地绝对路径、英文无空格且不超过 40 字符。目录自动创建，每次构建使用独立子目录。
+
+首次准备项目专用 Ninja：
+
+```powershell
+npm run release -- setup-ninja
+```
+
+工具下载官方 Ninja 1.12.1 并校验归档及可执行文件 SHA-256，保存在 `.expo/ninja-1.12.1/`。也可通过 `IRIS_NINJA_PATH` 指定已有的 Ninja 1.12.0 或更新版本。`doctor` 和 Windows 自建发布会在耗时构建前检查工具。
+
+发布入口通过本次 Gradle 的 `--init-script`，在各 Android 模块的 CMake 参数中指定 `CMAKE_MAKE_PROGRAM`。不覆盖 Android SDK 中的 ninja.exe，不更改全局 PATH/TEMP 或用户 Gradle 配置；Linux/macOS 保留原工具链。已有旧临时构建目录保留，新构建从短目录重新生成 CMake 缓存。
+
+### Java 回环连接
+
 本机用户 Temp 目录中的 Java Unix 域套接字连接会失败，表现为
 `Unable to establish loopback connection` / `Invalid argument: connect`。
 项目命令在 Windows 下通过子进程 `JAVA_TOOL_OPTIONS` 将 `jdk.net.unixdomain.tmpdir`
