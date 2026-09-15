@@ -3,7 +3,7 @@ import { tv } from "tailwind-variants";
 /**
  * HyperOS 风格草稿弹窗的样式配方。
  *
- * 视觉规格见 docs/IRisNote视觉设计规范.md；颜色与圆角值由 global.css 的
+ * 视觉规格见 docs/UI/IRisNote视觉设计规范.md；颜色与圆角值由 global.css 的
  * hyper-* Token 维护，这里只组合语义类名，避免出现第二个数据源。
  */
 

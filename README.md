@@ -116,15 +116,15 @@ irisapi（Express API）
 PostgreSQL
 ```
 
-接口细节见 [API 文档](./docs/API.md) 和 [前后端连接说明](./docs/axios-express-postgresql（前端连接到数据库）.md)。
+接口细节见 [API 文档](./docs/API后端/API.md) 和 [前后端连接说明](./docs/API后端/axios-express-postgresql（前端连接到数据库）.md)。
 
 ## 开发文档
 
-- [项目架构与文件索引](./docs/项目架构与文件索引.md)：目录职责、路由映射和逐文件说明。
-- [业务模块与运行逻辑](./docs/业务模块与运行逻辑.md)：认证、笔记、分类、头像等业务的数据流与调用链。
-- [后续开发指南](./docs/后续开发指南.md)：新增页面、API、组件、Hook、类型和业务模块的具体方法。
-- [样式开发规范](./docs/样式开发规范.md)：NativeWind、Theme Token 和共享 UI 的使用规则。
-- [GitHub 团队开发指南](./docs/GitHub团队开发指南.md)：分支、提交和协作约定。
+- [项目架构与文件索引](./docs/架构指南/项目架构与文件索引.md)：目录职责、路由映射和逐文件说明。
+- [业务模块与运行逻辑](./docs/架构指南/业务模块与运行逻辑.md)：认证、笔记、分类、头像等业务的数据流与调用链。
+- [后续开发指南](./docs/架构指南/后续开发指南.md)：新增页面、API、组件、Hook、类型和业务模块的具体方法。
+- [样式开发规范](./docs/UI/样式开发规范.md)：NativeWind、Theme Token 和共享 UI 的使用规则。
+- [GitHub 团队开发指南](./docs/架构指南/GitHub团队开发指南.md)：分支、提交和协作约定。
 
 ## License
 
@@ -133,4 +133,4 @@ PostgreSQL
 
 已接入 EAS / 自有构建共用的发布工具，以及 App 内检查更新、APK 下载和安装入口。
 正式启用需要部署版本服务并配置正式签名。使用步骤、环境变量和验收边界见
-[Android 双渠道发布说明](docs/android-releases.md)。
+[Android 双渠道发布说明](docs/构建发布/android-releases.md)。

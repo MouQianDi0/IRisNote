@@ -8,8 +8,8 @@ import { getActiveTabKey, getMainAction } from "../navigation.constants";
 import type { TabKey } from "../navigation.types";
 import { useDebouncedNavigation } from "../hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "../hooks/useLongPressNavigation";
-import { shake } from "@/shared/theme/motion";
 import { colors } from "@/shared/theme";
+import { shake } from "@/shared/theme/motion";
 
 const ACTION_ICONS = {
     note: PencilLine,

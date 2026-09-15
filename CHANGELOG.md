@@ -2,6 +2,243 @@
 
 ---
 
+## 2026-09-16 03:17:05 | 优化代码：codegraph 本地数据库三文件脱离 git 跟踪
+
+- **变更概述**：经用户确认，对 .codegraph/codegraph.db（约 10MB）、codegraph.db-shm、codegraph.db-wal 执行 `git rm --cached`，暂存区写入删除跟踪记录（D），磁盘文件保留。三者脱离跟踪后由 `.codegraph/.gitignore` 已有的 `*` 规则（忽略目录内除自身外一切）接管，无需修改根 .gitignore。协作者拉取该提交时本地这三个文件会被 git 删除，codegraph 会自动重建，无损失。
+- **修改文件列表**
+    - `.codegraph/codegraph.db`、`.codegraph/codegraph.db-shm`、`.codegraph/codegraph.db-wal` - 仅移出 git 索引，文件内容未改动。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`git status` 确认三条 D 记录已入暂存区；`ls` 确认文件仍在磁盘（10002432/32768/0 字节）；`git check-ignore -v` 确认 `.codegraph/.gitignore:4:*` 接住三者。未提交。
+
+---
+
+## 2026-09-16 03:13:48 | 优化代码：debug.log 等四个运行时文件脱离 git 跟踪
+
+- **变更概述**：经用户确认，对 debug.log、tmpwebapp-node-modulesprepare.log、.codegraph/daemon.log、.codegraph/daemon.pid 执行 `git rm --cached`，暂存区写入删除跟踪记录（D），磁盘文件保留。该记录将随下一次 commit 提交，之后四个文件成为未跟踪文件并被 `.gitignore` 的 `*.log`/`*.pid` 规则忽略，不再出现在 status 中。注意：协作者拉取该提交时本地这四个文件会被 git 删除（运行时自动再生，无损失）。
+- **修改文件列表**
+    - `debug.log`、`tmpwebapp-node-modulesprepare.log`、`.codegraph/daemon.log`、`.codegraph/daemon.pid` - 仅移出 git 索引，文件内容未改动。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`git status` 确认四条 D 记录已入暂存区（另有并行会话的 `D src/core/navigation/hooks/useSwipeTab.ts` 非本次产生）；`ls` 确认四个文件仍在磁盘。未提交。
+
+---
+
+## 2026-09-16 03:09:33 | 优化代码：清理暂存区垃圾文件并补全忽略规则
+
+- **变更概述**：推送 kroos 后清理混入暂存区的构建缓存与日志文件，并补充 .gitignore 规则防止再次混入。注意：debug.log、tmpwebapp-node-modulesprepare.log、.codegraph/daemon.log、.codegraph/daemon.pid 是历史已跟踪文件，本次仅移出暂存区，未脱离跟踪（需另行确认后执行 git rm --cached 才能让忽略规则对其生效）。
+- **修改文件列表**
+    - `.gitignore` - 新增 `.gradle/`（覆盖 modules/* 子项目缓存）、`*.log`、`*.pid` 忽略规则。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`git status` 确认 8 个 `modules/irisnote-updater/android/.gradle/` 缓存文件已回到未跟踪状态并被忽略；4 个已跟踪日志文件回到未暂存修改状态。未做其他文件改动，未提交。
+
+---
+
+## 2026-09-16 02:36:43 | 修复问题：悬浮 Tab 改为先路由再播放点击动画
+
+- **变更概述**：点击非当前 Tab 时立即路由，目标页成为当前页后再由蓝色图标播放 35dp → 17.5dp → 35dp 的两段 200ms 动画，避免路由更新吞掉放大阶段；点击当前 Tab 仍直接播放动画且不重复路由。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 将路由与动画请求解耦；使用共享目标状态在路由生效后触发动画，连续点击只保留最后目标，开始滑动时取消待播放的点击动画。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与限定范围 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；仍需真机确认先路由后动画、当前页重复点击、快速连续点击和点击后立即滑动四类行为。
+
+---
+
+## 2026-09-16 00:21:12 | 优化代码：悬浮 Tab 支持连续点击反馈
+
+- **变更概述**：悬浮 Tab 的不同目标连续点击、路由前重复点击同一目标、以及重复点击已选中 Tab 均会播放 35dp → 17.5dp → 35dp 的两段 200ms 动画。前两种仅保留最后一次非当前 Tab 点击的路由；已选中 Tab 只播放蓝色动画，不重复路由。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 将目标、会话号和是否路由合并为原子点击请求，保证快速连点的旧动画/旧路由被取消，并开放已选中 Tab 的无路由点击反馈。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；仍需真机确认三种连续点击行为、路由次数及点击后立即滑动取消。
+
+---
+
+## 2026-09-16 00:16:33 | 修复问题：悬浮 Tab 放大动画改由真实缩放链驱动
+
+- **变更概述**：修复点击 Tab 后放大动画仍可能因路由与间接状态反应同帧竞争而丢失的问题。点击目标图标现在由自身的实际缩小动画完成回调直接切蓝并启动 200ms 放大，随后并行派发路由；放大不等待路由结果，也不再依赖父组件的阶段信号或占位计时器。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 将点击缩小、变蓝、放大和路由串成单一 UI 线程动画链；删除 `clickPhase` 与 `clickTransitionProgress`，保留会话号对快速连点和滑动取消的保护。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；仍需真机确认 35dp → 17.5dp → 35dp 的两个 200ms 阶段、变蓝与路由，以及快速连点和点击后立即滑动的取消行为。
+
+---
+
+## 2026-09-16 00:08:28 | 修复问题：悬浮 Tab 路由抢占蓝色放大动画
+
+- **变更概述**：第 200ms 切蓝后，先在 UI 线程登记蓝色图标由 50% 放大至 100% 的 200ms 动画，再异步派发路由；不监听、不等待路由完成或成功结果，避免导航更新抢占并丢失放大反馈。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 调整点击完成回调中的动画初始化与路由派发顺序。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；仍需真机确认点击后的完整蓝色放大与页面切换并行。
+
+---
+
+## 2026-09-16 00:04:03 | 修复问题：悬浮 Tab 延迟路由被过期会话错误取消
+
+- **变更概述**：修复非当前悬浮 Tab 点击后，图标完成前 200ms 灰色缩小却未变蓝、未切换页面的问题。点击会话号改为先计算并缓存新值，再写入 UI 共享状态；后续 UI 线程动画完成回调使用同一值校验，因此可继续执行变蓝、路由与蓝色放大。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 统一点击会话号的写入值与延迟动画完成后的校验值，避免 JS/UI 线程时序导致正常点击被当作过期会话。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；仍需在真机确认第 200ms 的变蓝与页面切换、蓝色放大、连续点击及点击后立即横滑取消。
+
+---
+
+## 2026-09-15 23:57:41 | 优化代码：悬浮 Tab 点击改为延迟变蓝的两段缩放
+
+- **变更概述**：点击目标 Tab 后，图标先以灰色在 200ms 内缩小到 50%；第 200ms 同步切换为蓝色并路由，再在 200ms 内放大到 100%。快速连续点击或开始滑动会取消旧会话的变色、放大和路由。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 用私有点击目标、阶段与会话共享值替换 `pulse`，实现两段缩放、延迟变色及路由取消。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）及 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认灰色缩小的完整 200ms、变蓝与路由同帧、蓝色放大，以及快速连续点击和点击后立即横滑的取消行为。
+
+---
+
+## 2026-09-15 23:52:14 | 优化代码：恢复悬浮 Tab 的点击选中动画
+
+- **变更概述**：恢复点击非当前 Tab 时目标蓝色图标的原 `pulse` 反馈（0.5 秒、`ease-out`、透明度 0.5 与缩放 0.6 回到正常）。点击会同步图标颜色并取消尚未完成的滑动延迟路由；横向滑动焦点缩放不触发该动画。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 新增点击动画版本状态、目标图标 `pulse` 和点击对过期滑动导航的取消。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）及 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认连续点击不同 Tab、点击后立即横滑，以及点击当前 Tab 不重复播放的行为。
+
+---
+
+## 2026-09-15 23:47:36 | 优化代码：悬浮 Tab 改为焦点缩放后路由
+
+- **变更概述**：横向滑动进入图标焦点时，图标在 200ms 内缩小到 50%；焦点离开时在 200ms 内还原。重复或反向途经会从当前缩放值平滑切换。成功松手后，最终焦点图标先完成还原，再路由到目标页面；新滑动会取消旧的待执行路由。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 删除途经抖动，改为 UI 线程焦点缩放、最终放大完成后的延迟路由和过期路由取消。
+    - `src/shared/theme/motion.ts` - 删除不再使用的 `tabShake`；右侧按钮的循环 `shake` 保持不变。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`FloatingMenu.tsx` 与 `motion.ts` 已通过定向 ESLint（零错误零警告）及 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认慢拖、快速横拖、反向滑动、松手后 200ms 路由及立即开始下一次滑动的取消行为。
+
+---
+
+## 2026-09-15 23:39:03 | 修复问题：恢复右侧操作按钮的循环抖动
+
+- **变更概述**：恢复右侧 35dp 操作图标原有的 2 秒无限循环抖动及末段摇摆节奏；左侧滑动途经 Tab 保留即时单次抖动，两者使用独立关键帧，互不影响。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingActionButton.tsx` - 恢复 `shake` 的 2 秒、无限循环、`ease-in-out` 动画包裹。
+    - `src/core/navigation/components/FloatingMenu.tsx` - 左侧途经 Tab 改用专用 `tabShake`，仍按跨过图标中心时单次触发。
+    - `src/shared/theme/motion.ts` - 恢复原 `shake` 关键帧，并拆出立即摇摆的 `tabShake`。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：`FloatingMenu.tsx`、`FloatingActionButton.tsx` 与 `motion.ts` 已通过定向 ESLint（零错误零警告）及 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认右侧完整 2 秒循环，以及左侧慢拖、快速横拖、反向滑动时的单次抖动。
+
+---
+
+## 2026-09-15 23:33:20 | 优化代码：悬浮 Tab 图标放大并按滑动途径抖动
+
+- **变更概述**：左侧悬浮 Tab 移除可视文字标签，图标从 24dp 放大为与右侧操作按钮一致的 35dp。横向滑动变色期间，每个被手指途经的图标立即播放一次抖动；右侧操作按钮不再持续循环抖动。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 移除文字渲染，保留 50dp 触摸区并补足 Tab 无障碍语义；基于滑动位置跨过图标中心的 UI 线程反应逐项触发单次抖动。
+    - `src/core/navigation/components/FloatingActionButton.tsx` - 删除右侧操作图标的无限循环抖动，保留 35dp 图标和原有点击、长按行为。
+    - `src/shared/theme/motion.ts` - 将共享抖动关键帧改为从动画开始即摇摆，以匹配滑动途经的即时反馈。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`FloatingMenu.tsx`、`FloatingActionButton.tsx` 与 `motion.ts` 已通过定向 ESLint（零错误零警告）及 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认慢拖、快速横拖、反向划过同一图标、松手导航和普通单击 Tab。
+
+---
+
+## 2026-09-15 23:20:30 | 新增功能：悬浮 Tab 滑动预选颜色跟手
+
+- **变更概述**：悬浮 Tab 横向滑动期间，图标灰蓝颜色改为按手指实时横坐标连续交叉淡化；颜色进度不使用固定时长，手指快慢会直接反映到变色速度。拖动期间不切换页面，成功结束时保持最终目标图标为蓝色并沿用单次最终坐标导航；取消或落在左右 8dp 内边距时恢复当前页面图标颜色。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 新增 UI 线程选择位置共享值、图标灰蓝双层交叉淡化和拖动取消回退；保留最终坐标单次导航。
+    - `CHANGELOG.md` - 记录本次新增功能。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认慢拖、快速横拖、两图标中心之间的渐变、松手导航以及取消/边距回退。
+
+---
+
+## 2026-09-15 23:00:58 | 优化代码：悬浮 Tab 改为松手后单次切换
+
+- **变更概述**：悬浮 Tab 横向拖动不再逐个经过图标区即时导航；仅在横向位移超过 1dp 且手势成功结束时，按最终 `x` 坐标识别目标图标并导航一次。结束位置落在菜单左右 8dp 内边距时保持当前页面，取消或失败手势不触发导航。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 移除拖动过程命中与多次导航，改为 `onEnd` 单次最终坐标判定。
+    - `src/core/navigation/components/SwipeTabsNavigator.tsx` - 移除仅服务于即时定位的临时分页动画状态，恢复页面原有动画设置。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：两个受影响组件已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认短横拖、长横拖、松手落在不同图标区、边距松手及取消手势的行为。
+
+---
+
+## 2026-09-15 22:55:00 | 优化代码：docs 文档目录按分类重组
+
+- **变更概述**：docs 下 31 篇 md 按内容归类为 7 个子目录（UI、API后端、进度与验证、架构指南、学习参考、构建发布、待办），根目录 `TODO.md` 与 `待办事项.md` 一并移入 `docs/待办/`；同步修复跨分类互链与全部外部路径引用。
+- **修改文件列表**
+    - `docs/UI/`、`docs/API后端/`、`docs/进度与验证/`、`docs/架构指南/`、`docs/学习参考/`、`docs/构建发布/`、`docs/待办/` - 31 篇 md 与 `release.env.example` 经 git mv 移入对应分类目录。
+    - `docs/架构指南/后续开发指南.md` - 3 处互链改指 `../UI/`。
+    - `docs/UI/全局横幅通知设计与调用规范.md` - 2 处互链改指 `../架构指南/`。
+    - `docs/进度与验证/IRisNote编辑器核心架构与实施计划.md` - 4 处互链改指 `../架构指南/` 与 `../学习参考/`。
+    - `docs/UI/IRisNote视觉设计规范.md` - 3 处 `TODO.md` 提及改为 `docs/待办/TODO.md`。
+    - `docs/UI/miuix设计参考（HyperOS风格）.md` - 1 处样式规范提及加 `UI/` 前缀（miuix 上游仓库的 `docs/guide/*` 路径不动）。
+    - `docs/待办/TODO.md`、`docs/待办/待办事项.md` - 自根目录移入，内部 7 处 docs 路径引用更新为新分类路径。
+    - `README.md` - 8 处文档链接更新为新路径。
+    - `src/features/notes/components/editor/draft-dialog.styles.ts`、`scripts/ui-dump-parse.mjs` - 仅注释中的规范路径更新。
+    - `CHANGELOG.md` - 记录本次修改。
+- **验证结果**：全仓 36 处 markdown 相对链接扫描全部可达；残留旧扁平路径仅为 irisapi 服务端仓库的 `docs/releases.md` 与 `项目编辑器进度.md` 历史日志行（按记录不改写历史，保留）；两个被改动代码文件通过定向 ESLint（零错误零警告）。git mv 保留文件历史；未运行 TypeScript/构建（无逻辑改动）。
+
+---
+
+## 2026-09-15 22:52:38 | 修复问题：快速拖动悬浮 Tab 时页面动画滞后
+
+- **变更概述**：修复手指快速横向掠过多个悬浮 Tab 图标时，原生分页器连续播放默认转场而落后于当前命中图标的问题。实际横向移动达到 1dp 后，拖动会话内的页面切换改为无动画即时定位；手势结束后的下一帧恢复原有分页动画，因此图标单击和页面区域的正常横滑不受影响。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 在 UI 线程识别实际横向拖动起止，并仅在拖动会话期间通知分页器切换为即时同步模式。
+    - `src/core/navigation/components/SwipeTabsNavigator.tsx` - 接收悬浮 Tab 拖动状态，临时关闭 `TabView` 页间动画并在下一帧安全恢复，清理未执行的恢复帧。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：两个受影响组件已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机快速连续划过四个图标、快速反向划动，以及单击图标与页面横滑后确认默认动画恢复。
+
+---
+
+## 2026-09-15 22:44:22 | 新增功能：悬浮底栏拖动即时切换主页面
+
+- **变更概述**：悬浮底栏在手指按下和移动期间按当前位置实时识别笔记、待办、剪贴、用户图标区；进入新图标区即导航到对应主页面，不再等待松手。命中逻辑按实际 `onLayout` 宽度和 8dp 内边距计算，适配不同屏宽，右侧设置按钮不参与此手势。
+- **修改文件列表**
+    - `src/core/navigation/components/FloatingMenu.tsx` - 新增 UI 线程拖动命中判定、跨区去重和到 JS 导航调度；保留图标点击、无障碍语义、底栏原有视觉与设置按钮。
+    - `CHANGELOG.md` - 记录本次修改。
+- **验证结果**：`FloatingMenu.tsx` 已通过定向 ESLint（零错误零警告）与 `git diff --check`。未运行 TypeScript、构建、导出或设备交互验收；需在真机确认按住连续划过四个图标、反向划动、笔记卡片横滑和右侧设置点击。
+
+---
+
+## 2026-09-15 21:37:55 | 新增功能：主页面实时横滑切换
+
+- **变更概述**：笔记、待办、剪贴、用户四个主页面改为基于 `react-native-tab-view` 与原生 `react-native-pager-view` 的横向 Pager；页面跟随手势连续移动，完成翻页后浮动菜单的选中状态与当前路由同步。相邻页预加载一页，端点不再循环或过度回弹。
+- **修改文件列表**
+    - `src/core/navigation/components/SwipeTabsNavigator.tsx` - 新增 Expo Router 适配的 Pager Tabs，保持文件路由、嵌套 Stack、手势事件与页面预加载。
+    - `src/app/(tabs)/_layout.tsx` - 使用 Pager Tabs 替代原 Bottom Tabs，保留现有浮动菜单和各 Tab 的模糊目标包装。
+    - `src/core/navigation/components/FloatingMenu.tsx` - 移除菜单自身横滑绑定，菜单点击改由 Pager 导航状态处理。
+    - `src/core/navigation/hooks/useSwipeTab.ts` - 删除旧 `PanResponder` 松手后切换逻辑。
+    - `src/core/navigation/navigation.constants.ts` - 删除仅供旧横滑 Hook 使用的 Tab 顺序和索引常量。
+    - `package.json`、`package-lock.json` - 新增 `react-native-tab-view` 与 SDK 57 兼容的 `react-native-pager-view`。
+    - `CHANGELOG.md` - 记录本次修改。
+- **验证结果**：受影响导航文件已通过定向 ESLint（零错误零警告）和 `git diff --check`。未运行 TypeScript、构建、导出或设备验收；真机仍需核验横滑与笔记卡片横滑手势的优先级。
+
+---
+
+## 2026-09-15 21:26:28 | 优化代码：AGENTS.md 文档版本链接跟进 SDK 57
+
+- **变更概述**：master 合并带来 Expo SDK 57（~57.0.22）升级后，AGENTS.md 顶部强制阅读的版本文档链接仍指向 v56.0.0，已更新为 https://docs.expo.dev/versions/v57.0.0/（链接有效性已在线核验，SDK 57 对应 React Native 0.86）。
+- **修改文件列表**
+    - `AGENTS.md` - 文档链接 v56.0.0 → v57.0.0，仅此一行。
+    - `CHANGELOG.md` - 记录本次修改。
+- **验证结果**：纯文档链接修改，不触碰代码；WebFetch 核验目标页面为 Expo SDK v57.0.0 reference。
+
+---
+
+## 2026-09-15 21:22:15 | 优化代码：同步远端 master 到 kroos
+
+- **合并 origin/master（419a68f，PR #91~#93）进入 kroos，合并提交 de3fb17**
+    - 带入应用内更新功能（modules/irisnote-updater 原生差量合并模块、发布工具、Gradle 回环修复）、SDK 57 升级（Expo ~57.0.22）、双渠道构建与包名统一等 67 个文件改动。
+    - 中止了此前针对过时 master（3397042，PR #90）的半成品合并后重新合并；已核验 3397042 为 origin/master 祖先，中止不丢内容。
+    - 唯一冲突 CHANGELOG.md：双方条目全部保留并按时间倒序重排，同时修复自动合并造成的顶部标题丢失与文件中部标题重复。
+- **修改文件列表**
+    - `CHANGELOG.md` - 冲突解决（双保留 + 倒序 + 标题去重）及本条记录。
+- **验证结果**
+    - `npm install` 完成（+112 / −439 / ~211 个包，SDK 57 依赖就位；transitive uuid 弃用警告与 unrs-resolver 安装脚本提示，均无碍）。
+    - `npx tsc --noEmit`：仅 new-note-editor.tsx 326/368/376 三处既有 draftCleanupPending 错误，与 master 基线完全一致，无新增。
+    - `npm test`：71 项 69 过 2 挂，失败为 drafts/revisions 两文件既有 Node 24 类型剥离加载问题（kroos/master 双方均有记录）；kroos 侧 banner 测试修复保留生效，master 新增 releases 差量测试全部通过。
+    - `npm run lint` 与 `npm run theme:check` 通过。
+    - 未做设备验收。注意：master 已升级 SDK 57，现有 SDK 56 的 Expo Go 将无法加载本项目，需升级 Expo Go 或改用 dev build 流程。
+
+---
+
 ## 2026-09-15 16:44:52 | 修复问题：项目构建入口的 Gradle 回环错误
 
 - 文件：scripts/android/gradle-env.mjs、scripts/android/run.mjs、package.json、scripts/release/cli.mjs、tests/releases/gradle-env.test.cjs、docs/android-releases.md、CHANGELOG.md。

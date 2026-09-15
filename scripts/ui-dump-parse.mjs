@@ -1,7 +1,7 @@
 /**
  * 真机布局实测：uiautomator dump → 控件树 px/dp 对账单。
  * 用法：node scripts/ui-dump-parse.mjs [--serial <serial>]
- * 流程与判读规则见 docs/IRisNote视觉设计规范.md「真机布局实测验收」。
+ * 流程与判读规则见 docs/UI/IRisNote视觉设计规范.md「真机布局实测验收」。
  */
 import { execFileSync } from "node:child_process";
 
