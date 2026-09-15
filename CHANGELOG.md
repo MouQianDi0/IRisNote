@@ -1,3 +1,68 @@
+## 2026-09-15 16:44:52 | 修复问题：项目构建入口的 Gradle 回环错误
+
+- 文件：scripts/android/gradle-env.mjs、scripts/android/run.mjs、package.json、scripts/release/cli.mjs、tests/releases/gradle-env.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- Windows 构建通过子进程 JAVA_TOOL_OPTIONS 指定原项目 .expo 目录作为 Unix 域套接字目录，覆盖 Gradle 启动器、daemon 和编译子进程。默认用户 Temp 的 Unix 域连接失败，项目目录的实际连接与 Selector 创建成功。
+- npm run android 和新增 npm run gradle 接入统一入口，自有发布构建使用同一环境；Gradle 命令默认 --no-daemon。保留已有 JVM 参数及父进程环境，Linux/macOS 不注入设置。
+- 验证：新修复与发布流程共 14 项测试通过（含真实 JDK Selector）；定向 ESLint、Node 语法检查、git diff --check 通过；Expo run:android --help 参数转发成功；npm run gradle -- help 实际 BUILD SUCCESSFUL，33 tasks，耗时约 1 分钟。
+- 原生编译验证：npm run gradle -- :irisnote-updater:compileDebugKotlin 已越过回环和配置阶段，后续等待 react-android-0.86.3-debug.aar（279001319 字节）下载，临时文件停在 62620736 字节数分钟无增长，主动结束本次验证。日志：.expo/gradle-updater-build.log。不能据此声称原生编译或 APK 构建通过。
+- 范围：直接 android/gradlew.bat 与 Android Studio 直接同步未接入项目启动入口，仍需单独设置；未修改全局 JDK、TEMP、网络或防火墙，未部署或发布。
+
+---
+
+## 2026-09-15 16:35:58 | 修复问题：Windows Gradle 回环连接（验证中）
+
+- 文件：scripts/android/gradle-env.mjs、scripts/android/run.mjs、package.json、scripts/release/cli.mjs、tests/releases/gradle-env.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- 已获用户确认。Windows 构建入口通过进程级 JAVA_TOOL_OPTIONS 指定原项目 .expo 套接字目录，覆盖 Gradle daemon 与编译子进程；Linux/macOS 不注入。自有发布构建使用原项目目录，避免独立 checkout 的用户 Temp 路径。
+- 保留已有 JVM 参数，不修改父进程或全局环境；新增 npm run gradle，npm run android 接入统一环境。
+- 临时验证已通过 NIO Selector 和 Gradle 握手，持久入口验证进行中。
+
+---
+
+## 2026-09-15 16:08:26 | 新增功能 / 修复问题：按主次补丁版本实行完整与差量更新
+
+- 文件：src/features/updates/release.ts、update-store.ts、UpdateDialog.tsx；scripts/release/cli.mjs、delta.mjs；modules/irisnote-updater/（Expo 模块声明、Kotlin 模块、HPatch.java、四 ABI 原生库、Gradle/ProGuard 配置、SHA-256 清单及上游许可）；tests/releases/releases.test.cjs、delta-roundtrip.mjs；package.json、docs/android-releases.md、docs/release.env.example、CHANGELOG.md。
+- 主版本不同使用完整 APK；同主版本的功能/补丁更新要求匹配的差量包。客户端核对真实安装构建、版本、旧 APK 摘要及补丁算法，缺少补丁不静默回退全量。
+- Android 合并使用固定 HDiffPatch 5.1.3 官方库。读取已安装 sourceDir，校验旧包/补丁/目标摘要及新包签名、版本、包名；禁止跨缓存路径和拆分 APK 差量。失败清理输出，安装前再次校验。
+- 发布工具支持 setup-delta 与 patches；上传完整目标后自动为历史同主版本生成补丁、实际还原验证并上传，恢复操作跳过已完成补丁。工具归档与原生文件摘要固定，构建前同时核对工作区和归档代码里的原生库。
+- 界面新增完整/差量类型与实际下载大小，新增“正在合并更新”及无匹配补丁状态。
+- 验证：客户端/工具 11 项测试、后端版本规则 4 项测试通过；全量 lint、theme:check、后端 TypeScript 检查通过；Android Hermes 导出通过（4137 modules，dist/delta-update-validation）。Expo 自动链接识别 irisnote-updater；四 ABI ELF LOAD 均为 0x4000 对齐，JNI 导出符号存在。
+- 真实差量工具验收：独立签名的合成测试 APK 各 1057116 字节，补丁 2240 字节；还原后完整 SHA-256 与目标一致，并通过 apksigner 与 aapt 校验。错误旧摘要和损坏补丁被拒绝。记录：.expo/delta-tests/signed-apk-bXPcAZ/result.json。该体积不代表正式 IRisNote 更新效果。
+- 未通过环境验收：Gradle 原生模块编译在进入编译前报 Unable to establish loopback connection / Could not receive a message from the daemon；仅对本次进程尝试 Unix-domain/IPv4 参数，无全局环境变更，仍失败。adb 无设备。原有三处 draftCleanupPending 类型错误仍存在。
+- 尚未完成原生模块编译、真机合并及覆盖安装、真实数据库发布验证。未运行迁移、未部署、未提交 EAS 构建或发布版本。
+
+---
+
+## 2026-09-15 15:56:10 | 新增功能：差量更新（实施中，用户已确认）
+
+- 新增 HDiffPatch 5.1.3 原生合并模块及固定摘要库、差量生成/实际还原校验、版本规则和补丁接口。
+- 主版本变化使用完整包；同主版本必须匹配差量包，不静默退回完整下载。
+- 代码实施中，尚未运行数据库迁移或实际发布。
+
+---
+
+## 2026-09-15 15:27:24 | 新增功能 / 修复问题：双渠道构建、包名统一与 App 内更新
+
+- 文件：app.json、app.config.ts、eas.json、package.json、package-lock.json、.gitignore、README.md、docs/android-releases.md、docs/release.env.example、plugins/with-release-signing.js、scripts/release/cli.mjs、scripts/release/lib.mjs、src/features/updates/release.ts、update-store.ts、UpdateDialog.tsx、src/features/settings/screens/SettingsScreen.tsx、src/core/providers/AppProviders.tsx、tests/releases/releases.test.cjs、CHANGELOG.md。
+- 本地生成工程：android/app/build.gradle、android/app/src/main/AndroidManifest.xml、res/values/strings.xml、java/com/mouqiandi/irisNote/MainActivity.kt 和 MainApplication.kt；旧 NextNote 两个入口迁移到新包目录。android 仍按项目约定忽略，新 checkout 通过 app.config 和插件重新生成。
+- 新包名统一为 com.mouqiandi.irisNote，显示名 IRisNote，scheme 为 irisnote。旧包名属于另一应用，不自动迁移数据。
+- EAS 保留；版本来源改为 local，由发布工具注入服务分配的构建号。保留 EAS AAB production 构建；APK 自有构建在独立 Git 提交目录执行。
+- 发布命令支持 doctor/reserve/build/inspect/upload/status/publish/withdraw，构建、上传草稿和发布分离。校验真实包名、版本、单一签名证书与 SHA-256。正式 Gradle 构建禁止回退到调试签名。
+- App 新增六小时自动检查和手动检查、更新说明、下载进度/取消/重试、分块 SHA-256 校验、安装前复核、系统安装和安装权限入口。进程被杀后的后台下载不在当前保证范围。
+- 依赖新增 expo-application ~57.0.3、@noble/hashes ^2.0.1。修复构建工具在 Windows 下的批处理引号及 npm.cmd 绝对路径解析。
+- 验证：新增客户端/工具 8 项测试全部通过；全量 lint、theme:check 通过；Android Hermes 导出通过（4136 modules，dist/releases-validation）；Expo 配置注入实测包名正确，示例版本 1.2.3 / 构建号 44。doctor 与 npm.cmd 实际调用通过。
+- 项目既有阻塞：类型检查仍有 new-note-editor.tsx 三处 draftCleanupPending 错误；全量测试执行时 61 通过、3 失败（drafts/revisions 原生模块加载和 banner lifetime），之后新增的第 8 项工具测试亦通过。未修改这些既有问题，构建前置检查会阻断正式打包。
+- 未验收：正式 APK/AAB 构建、EAS 凭据、真实 PostgreSQL 发布事务、HTTPS 下载及设备覆盖升级；adb 无已连接设备。未部署、未分配实际构建号、未上传或发布。
+
+---
+
+## 2026-09-15 15:16:05 | 新增功能 / 修复问题：双渠道构建与应用更新（实施中）
+
+- 文件：app.json、app.config.ts、eas.json、package.json、package-lock.json、plugins/with-release-signing.js、scripts/release/、src/features/updates/、SettingsScreen.tsx、AppProviders.tsx、android/app/build.gradle、AndroidManifest.xml、Kotlin 入口包目录。
+- 统一新包名，新增 App 内版本检查、下载、SHA-256 校验和安装入口；接入集中编号与 EAS/自有构建工具。正式发布需独立执行。
+- 当前阶段：代码实施中，尚未验证、部署或发布。
+
+---
+
 # CHANGELOG
 
 ---

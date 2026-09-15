@@ -19,7 +19,11 @@
         "monochromeImage": "./assets/images/IRisNote.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.mouqiandi.irisNote"
+      "package": "com.mouqiandi.irisNote",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ]
     },
     "web": {
       "output": "server",
@@ -65,7 +69,8 @@
       ],
       "expo-sharing",
       "expo-web-browser",
-      "expo-sqlite"
+      "expo-sqlite",
+      "./plugins/with-release-signing"
     ],
     "experiments": {
       "typedRoutes": true,

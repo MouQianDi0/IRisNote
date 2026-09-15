@@ -18,6 +18,9 @@ CHANGELOG.md
 .kotlin/
 *.orig.*
 *.jks
+*.keystore
+credentials.json
+.release.env*
 *.p8
 *.p12
 *.key
