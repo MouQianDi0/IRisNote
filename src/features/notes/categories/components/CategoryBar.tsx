@@ -1,10 +1,13 @@
 import { getCategories } from "../api/categories.api";
+import { useApplicationDatabase } from "@/core/database";
+import { useAuth } from "@/features/auth/hooks/useAuth";
+import { applyQueuedCategoryChanges } from "@/features/sync";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavigation";
 import { colors, radius } from "@/shared/theme";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, View } from "react-native";
+import { Image, Pressable, ScrollView, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { ALL_CATEGORY } from "../categories.constants";
@@ -29,6 +32,8 @@ type FloatingBarProps = {
     onAddCategory: () => void;
 };
 export default function FloatingBar({ onCategoryPress, onAddCategory }: FloatingBarProps) {
+    const database = useApplicationDatabase();
+    const { user } = useAuth();
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
     const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
@@ -49,8 +54,10 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
         if (categoriesRequestRef.current) return categoriesRequestRef.current;
 
         const request = getCategories()
-            .then((data) => {
-                setCategories(data);
+            .then(async (data) => {
+                setCategories(user
+                    ? await applyQueuedCategoryChanges(database, user.id, data)
+                    : data);
             })
             .catch((err: any) => {
                 console.error(
@@ -58,10 +65,6 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                     err.response?.status,
                     err.response?.data || err.message,
                 );
-                Alert.alert("加载失败", "获取分类列表失败，请检查网络后重试", [
-                    { text: "取消", style: "cancel" },
-                    { text: "重试", onPress: () => fetchCategoriesRequest() },
-                ]);
             })
             .finally(() => {
                 categoriesRequestRef.current = null;
@@ -69,7 +72,7 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
 
         categoriesRequestRef.current = request;
         return request;
-    }, []);
+    }, [database, user]);
 
     useEffect(() => {
         fetchCategories();
@@ -97,18 +100,24 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
         [onCategoryPress, selectedId],
     );
     const { deleteCategory } = useCategoryDelete(
+        database,
+        user?.id ?? null,
         setCategories,
         setLongPressVisible,
         setCategoryModelVisible,
         handleCategoryDeleted,
     );
-    const { togglePin } = useCategoryPin(setCategories, setLongPressVisible);
-    const { toggleStar } = useCategoryStar(setCategories, setLongPressVisible);
+    const { togglePin } = useCategoryPin(database, user?.id ?? null, setCategories, setLongPressVisible);
+    const { toggleStar } = useCategoryStar(database, user?.id ?? null, setCategories, setLongPressVisible);
     const { renameCategory } = useCategoryRename(
+        database,
+        user?.id ?? null,
         setCategories,
         setLongPressVisible,
     );
     const { changeIcon } = useCategoryChangeIcon(
+        database,
+        user?.id ?? null,
         setCategories,
         setLongPressVisible,
     );

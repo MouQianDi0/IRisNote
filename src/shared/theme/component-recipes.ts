@@ -113,6 +113,16 @@ export const componentRecipes = {
             border: color.transparent,
         },
     },
+    inlineHint: {
+        neutral: {
+            background: color.transparent,
+            content: color.textSecondary,
+        },
+        important: {
+            background: color.transparent,
+            content: color.destructive,
+        },
+    },
     iconPickerCell: {
         default: {
             background: color.surfaceControl,

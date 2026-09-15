@@ -1,36 +1,14 @@
-import { deleteCategory as deleteCategoryRequest } from "../api/categories.api";
-import { deleteNote, getNotes } from "../../api/notes.api";
+import type { ApplicationDatabase } from "@/core/database";
+import { enqueueCategoryDelete } from "@/features/sync";
 import type { Category } from "@/features/notes/categories/categories.types";
-import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
 import { ALL_CATEGORY } from "../categories.constants";
 import { notifyCategoriesChanged } from "../categories.events";
 import { notifyNotesRemovedByCategory } from "../../notes.events";
 
-const DELETE_BATCH_SIZE = 3;
-const DELETE_BATCH_DELAY_MS = 100;
-
-const wait = (ms: number) =>
-    new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-    });
-
-const deleteNotesInBatches = async (
-    notes: Pick<Note, "id" | "category_id">[],
-) => {
-    // TODO: Replace this with a server-side bulk delete endpoint when available.
-    for (let index = 0; index < notes.length; index += DELETE_BATCH_SIZE) {
-        const batch = notes.slice(index, index + DELETE_BATCH_SIZE);
-        await Promise.all(batch.map((note) => deleteNote(note.id)));
-
-        const hasNextBatch = index + DELETE_BATCH_SIZE < notes.length;
-        if (hasNextBatch) {
-            await wait(DELETE_BATCH_DELAY_MS);
-        }
-    }
-};
-
 export function useCategoryDelete(
+    database: ApplicationDatabase,
+    ownerUserId: number | null,
     setCategories: React.Dispatch<React.SetStateAction<Category[]>>,
     setLongPressVisible: React.Dispatch<React.SetStateAction<Category | null>>,
     setCategoryModelVisible: React.Dispatch<React.SetStateAction<boolean>>,
@@ -39,16 +17,10 @@ export function useCategoryDelete(
     const deleteCategory = useCallback(
         async (category: Category) => {
             if (category.id === ALL_CATEGORY.id) return;
+            if (ownerUserId == null) return;
 
             try {
-                const notes = await getNotes();
-                const categoryNotes = notes.filter(
-                    (note) => note.category_id === category.id,
-                );
-
-                await deleteNotesInBatches(categoryNotes);
-
-                await deleteCategoryRequest(category.id);
+                await enqueueCategoryDelete(database, ownerUserId, category);
                 setCategories((prev) =>
                     prev.filter((c) => c.id !== category.id),
                 );
@@ -69,6 +41,8 @@ export function useCategoryDelete(
             setLongPressVisible,
             setCategoryModelVisible,
             onDeleted,
+            database,
+            ownerUserId,
         ],
     );
 

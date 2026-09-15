@@ -1,6 +1,6 @@
 import { colors, radii } from "@/shared/theme";
-import { CircleCheck, CirclePlus, Keyboard, KeyboardOff, Mic } from "lucide-react-native";
-import { Pressable, View } from "react-native";
+import { CircleCheck, CirclePlus, Keyboard as KeyboardIcon, KeyboardOff, Mic } from "lucide-react-native";
+import { Keyboard, Pressable, View } from "react-native";
 
 type Props = {
   docked: boolean;
@@ -18,7 +18,8 @@ export default function EditorBottomToolbar({
   disabled,
   onEdit,
 }: Props) {
-  const PrimaryIcon = docked ? KeyboardOff : Keyboard;
+  const PrimaryIcon = docked ? KeyboardOff : KeyboardIcon;
+  const primaryLabel = docked ? "收起键盘" : "编辑正文";
 
   return (
     <View
@@ -47,10 +48,10 @@ export default function EditorBottomToolbar({
       />
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="编辑正文"
+        accessibilityLabel={primaryLabel}
         accessibilityState={{ disabled }}
         disabled={disabled}
-        onPress={onEdit}
+        onPress={docked ? Keyboard.dismiss : onEdit}
         style={({ pressed }) => ({
           flex: 1,
           height: docked ? TOOLBAR_HEIGHT : FLOATING_TOUCH_HEIGHT,

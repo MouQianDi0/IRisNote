@@ -42,6 +42,10 @@ export default function RootLayout() {
                             options={{ headerShown: false }}
                         />
                         <Stack.Screen
+                            name="pages/user/sync-queue"
+                            options={{ headerShown: false }}
+                        />
+                        <Stack.Screen
                             name="auth/welcome"
                             options={{ headerShown: false }}
                         />
