@@ -1,5 +1,5 @@
 {
-  "name": "nextnote",
+  "name": "irisnote",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
@@ -78,6 +78,13 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"tests/**/*.test.cjs\"",
+    "check": "npm run typecheck && npm run lint && npm run theme:check && npm test",
+    "eas": "npx --yes eas-cli@24.4.0",
+    "build": "npm run build:apk",
+    "build:apk": "npm run check && npm run eas -- build --platform android --profile preview",
+    "build:aab": "npm run check && npm run eas -- build --platform android --profile production",
     "design:audit": "node ./scripts/audit-design-system.mjs",
     "theme:sync": "node ./scripts/sync-theme-css.mjs --write",
     "theme:check": "node ./scripts/sync-theme-css.mjs"

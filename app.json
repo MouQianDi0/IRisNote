@@ -58,8 +58,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow NextNote to access your photos so you can choose an avatar.",
-          "cameraPermission": "Allow NextNote to use the camera so you can take an avatar photo.",
+          "photosPermission": "Allow IRisNote to access your photos so you can choose an avatar.",
+          "cameraPermission": "Allow IRisNote to use the camera so you can take an avatar photo.",
           "microphonePermission": false
         }
       ],

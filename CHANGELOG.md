@@ -2,6 +2,29 @@
 
 ---
 
+## 2026-09-15 09:23:24 | 修复问题
+
+- **发布基础收口：统一名称并补齐检查与 Android 构建入口**
+    - app.json - 图片与相机权限文案中的 NextNote 改为 IRisNote。
+    - package.json、package-lock.json - 内部 npm 包名统一为 irisnote，不修改 Android 包名、EAS 项目身份或依赖版本。
+    - package.json - 新增 typecheck、test、check、eas、build、build:apk、build:aab；test 使用 Node 24+ 执行 tests/**/*.test.cjs，不运行浏览器脚本；构建前执行统一检查。
+    - eas.json - 固定 EAS CLI 24.4.0，preview APK 启用远端版本号自动递增；production 保留现有自动递增策略。
+    - CHANGELOG.md - 记录已确认的第一阶段变更与验收边界。
+- **命令说明**
+    - npm run check：类型、Lint、主题一致性及现有单元测试。
+    - npm run build 或 npm run build:apk：检查通过后提交 EAS preview APK 云端构建，需要网络与 EAS 账号权限。
+    - npm run build:aab：检查通过后提交 EAS production Android 云端构建。
+- **验证结果**
+    - TypeScript、110 项现有单元测试、Expo public 配置解析、图标资源存在性、包名与锁文件一致性、变更差异检查通过。
+    - Android Hermes Bundle 导出成功（4059 modules），输出 dist/phase1-android；此结果不等同于签名 APK 构建或设备验收。
+    - npm run check 未通过：现有 Lint 缓存加载失败（fileEntryCache.create is not a function）；本机 node_modules/file-entry-cache/package.json 实际标识为 emoji-regex，依赖目录内容异常。
+    - 单独执行 theme:check 失败；只读比较确认主题内容在 CRLF 标准化后完全一致，现有校验脚本因换行符差异误报。未改动主题 CSS 或同步脚本。
+    - 关闭缓存诊断（expo lint --no-cache）完成，报告现有 17 个错误、5 个警告：useLongPressNavigation.ts 的共享值赋值、AuthProvider.tsx 的 Effect、CategoryButton.tsx 的动态图标组件、notes/categories 与 notes 的 index.ts 重复导出，以及未使用变量。此次未改动这些业务文件或屏蔽规则。
+    - 配置核验参考：https://docs.expo.dev/versions/v56.0.0/ 、https://docs.expo.dev/versions/v56.0.0/sdk/imagepicker/ 、https://docs.expo.dev/build-reference/apk/ 、https://docs.expo.dev/build-reference/app-versions/ 。
+    - 未提交 EAS 云端构建，未验收签名 APK、安装或覆盖升级；构建入口会在检查失败时阻止提交。
+
+---
+
 ## 2026-09-15 01:42:51 | 新增功能
 
 - **悬浮操作按钮随标签切换图标变形**
