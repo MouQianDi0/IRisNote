@@ -58,3 +58,10 @@ example
 
 .codex-remote-attachments
 .v2c
+
+# Gradle 构建缓存（含 modules/* 子项目）
+.gradle/
+
+# 运行日志与进程文件
+*.log
+*.pid
