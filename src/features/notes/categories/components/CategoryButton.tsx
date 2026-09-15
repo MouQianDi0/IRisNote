@@ -1,4 +1,4 @@
-import { getCategoryIcon } from "../category-icons";
+import { CategoryIcon } from "../category-icons";
 import type { Category } from "@/features/notes/categories/categories.types";
 import { pulse } from "@/shared/theme/motion";
 import { colors } from "@/shared/theme";
@@ -19,7 +19,6 @@ export default function FloatingBarCategoryButton({
     onPress,
     onLongPress,
 }: FloatingBarCategoryButtonProps) {
-    const IconComponent = getCategoryIcon(category.icon);
 
     return (
         <Pressable
@@ -55,13 +54,14 @@ export default function FloatingBarCategoryButton({
                         animationTimingFunction: "ease-out",
                     }}
                 >
-                    <IconComponent
+                    <CategoryIcon
+                        name={category.icon}
                         size={30}
                         color={colors.floatingAccentOpaque}
                     />
                 </Animated.View>
             ) : (
-                <IconComponent size={30} color={colors.textSecondary} />
+                <CategoryIcon name={category.icon} size={30} color={colors.textSecondary} />
             )}
 
             <Text

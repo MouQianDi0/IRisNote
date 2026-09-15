@@ -1,5 +1,4 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
@@ -63,8 +62,6 @@ function SettingsGroupTitle({ children }: { children: string }) {
 
 export default function SettingsScreen() {
     const { isLoggedIn, loading, logout, user } = useAuth();
-    const { avatarKey, avatarSource, avatarUploading, showAvatarOptions } =
-        useAvatar();
     const [loggingOut, setLoggingOut] = useState(false);
     const version = Constants.expoConfig?.version ?? "—";
 
