@@ -1,5 +1,6 @@
 {
   "cli": {
+    "version": "24.4.0",
     "appVersionSource": "remote"
   },
   "build": {
@@ -8,6 +9,7 @@
       "distribution": "internal"
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal",
       "android": {
         "buildType": "apk"

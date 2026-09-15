@@ -2,6 +2,69 @@
 
 ---
 
+## 2026-09-15 12:02:25 | 优化代码 / 修复问题
+
+- **SDK 57 最新补丁升级（用户已确认）**
+    - package.json：Expo 更新为 ~57.0.22，按官方 bundledNativeModules 对齐现有 Expo 与 React Native 依赖；移除项目配置、脚本和测试均未引用的 expo-module-scripts@56.0.3，避免引入旧测试预设和重复 React。
+    - package-lock.json：更新依赖锁定；移除 file-entry-cache 错误指向 emoji-regex 的记录，由 npm 重新解析官方元数据。
+    - CHANGELOG.md：记录升级范围和验证结果。
+- **验证结果**
+    - Expo Doctor 21/21 通过；安装版本与 SDK 57.0.22 bundledNativeModules 配套要求无不匹配；package.json 与锁文件根依赖一致。
+    - npm 安装成功；file-entry-cache 正确包名、官方下载地址、integrity 和 create API 验证通过；React 仅保留 19.2.3 一份。
+    - Lint 与 theme:check 通过；Android Hermes Bundle 导出通过（4118 modules），输出 dist/sdk57-android。
+    - 类型检查剩余 new-note-editor.tsx 第 326、368、376 行 draftCleanupPending 类型错误，均在升级前已存在；已声明但缺失的 expo-network、expo-intent-launcher 安装后相关错误消除。
+    - 单测 54 通过、3 失败：drafts/revisions 两个测试在安装 Expo 网络模块后直接加载原生模块，触发 Node ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING；banner 连接测试仍因 lifetime 访问失败。未修改业务源码或测试。
+    - Web 导出通过：5305 modules，服务端 3690 modules，17 个静态路由，CSS 与 SQLite worker 已打包，输出 dist/sdk57-web；原生 APK 构建与设备验收未执行。
+    - 在线 expo install --check 首次遇到 TLS 连接中断，离线配套检查通过；后续在线 Expo Doctor 完整通过。
+- **原生工程边界**：本地 android 仍含旧包名 com.mouqiandi.NextNote，本轮未重生成原生目录。
+
+---
+
+## 2026-09-15 09:44:32 | 修复问题
+
+- **修复发布检查阻塞（用户已确认）**
+    - scripts/sync-theme-css.mjs：比较时兼容 CRLF/LF，写入时保留原换行符。
+    - src/core/navigation/hooks/useLongPressNavigation.ts：共享值改用 get/set，保留既有导航与动画参数。
+    - src/features/auth/providers/AuthProvider.tsx：分离存储读取与状态提交，初始化异步回调增加失效保护；移除未使用类型。
+    - src/features/notes/categories/category-icons.ts、components/CategoryButton.tsx：通过静态 CategoryIcon 入口渲染已有图标，保留尺寸、配色及回退。
+    - src/features/notes/categories/index.ts、src/features/notes/index.ts：显式导出 API，避免重复导出类型。
+    - src/features/settings/screens/SettingsScreen.tsx：移除未使用且无挂载副作用的头像 Hook。
+    - CHANGELOG.md：记录修改与验证结果。
+- **依赖恢复**：已从 npm 官方获取 file-entry-cache@8.0.0，核对完整性摘要并恢复本机对应目录；create API 和普通 Lint 缓存启动通过。原异常目录保存在系统临时目录 irisnote-file-entry-cache-repair 下。
+- **锁文件待确认**：package-lock.json 中 file-entry-cache 指向 emoji-regex；该记录及依赖元数据仍需补充授权修正，当前未改动锁文件，下次安装可能复发。
+- **验证结果**
+    - 本轮 8 个修改文件定向 ESLint 通过；全量 Lint 的原 17 个错误、5 个警告消除。
+    - theme:check 通过；临时副本验证 LF/CRLF 比较、写入格式保留、真实差异检出与修复均通过，未改动 global.css。
+    - 模拟运行验证长按完成/提前释放仅导航一次、同路由不跳转、缩放恢复、图标映射及 Folder 回退、认证异步初始化/刷新/失效初始化保护通过；不等同于设备验收。
+    - 当前仓库含本轮未修改的同步队列代码：全量 Lint 剩 2 个缺失依赖错误（expo-network、expo-intent-launcher）；类型检查另有 sync-queue 路由类型、draftCleanupPending 返回类型错误。
+    - 全量单测通过 54、失败 3：两个测试文件因 expo-network 缺失无法加载，通知连接测试失败。未调整这些源码或测试。
+    - 尚未重新完成 Android Bundle 导出或设备验收，未提交云端构建。
+
+---
+
+## 2026-09-15 09:23:24 | 修复问题
+
+- **发布基础收口：统一名称并补齐检查与 Android 构建入口**
+    - app.json - 图片与相机权限文案中的 NextNote 改为 IRisNote。
+    - package.json、package-lock.json - 内部 npm 包名统一为 irisnote，不修改 Android 包名、EAS 项目身份或依赖版本。
+    - package.json - 新增 typecheck、test、check、eas、build、build:apk、build:aab；test 使用 Node 24+ 执行 tests/**/*.test.cjs，不运行浏览器脚本；构建前执行统一检查。
+    - eas.json - 固定 EAS CLI 24.4.0，preview APK 启用远端版本号自动递增；production 保留现有自动递增策略。
+    - CHANGELOG.md - 记录已确认的第一阶段变更与验收边界。
+- **命令说明**
+    - npm run check：类型、Lint、主题一致性及现有单元测试。
+    - npm run build 或 npm run build:apk：检查通过后提交 EAS preview APK 云端构建，需要网络与 EAS 账号权限。
+    - npm run build:aab：检查通过后提交 EAS production Android 云端构建。
+- **验证结果**
+    - TypeScript、110 项现有单元测试、Expo public 配置解析、图标资源存在性、包名与锁文件一致性、变更差异检查通过。
+    - Android Hermes Bundle 导出成功（4059 modules），输出 dist/phase1-android；此结果不等同于签名 APK 构建或设备验收。
+    - npm run check 未通过：现有 Lint 缓存加载失败（fileEntryCache.create is not a function）；本机 node_modules/file-entry-cache/package.json 实际标识为 emoji-regex，依赖目录内容异常。
+    - 单独执行 theme:check 失败；只读比较确认主题内容在 CRLF 标准化后完全一致，现有校验脚本因换行符差异误报。未改动主题 CSS 或同步脚本。
+    - 关闭缓存诊断（expo lint --no-cache）完成，报告现有 17 个错误、5 个警告：useLongPressNavigation.ts 的共享值赋值、AuthProvider.tsx 的 Effect、CategoryButton.tsx 的动态图标组件、notes/categories 与 notes 的 index.ts 重复导出，以及未使用变量。此次未改动这些业务文件或屏蔽规则。
+    - 配置核验参考：https://docs.expo.dev/versions/v56.0.0/ 、https://docs.expo.dev/versions/v56.0.0/sdk/imagepicker/ 、https://docs.expo.dev/build-reference/apk/ 、https://docs.expo.dev/build-reference/app-versions/ 。
+    - 未提交 EAS 云端构建，未验收签名 APK、安装或覆盖升级；构建入口会在检查失败时阻止提交。
+
+---
+
 ## 2026-09-15 01:42:51 | 新增功能
 
 - **悬浮操作按钮随标签切换图标变形**

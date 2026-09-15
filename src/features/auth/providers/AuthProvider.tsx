@@ -1,5 +1,4 @@
 import { getUserProfile } from "@/features/auth/api/session.api";
-import type { AuthState } from "@/features/auth/auth.types";
 import type { User } from "@/shared/types/user";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -15,6 +14,15 @@ import { AuthContext } from "../auth.context";
 import { banner } from "@/core/notifications";
 import { resetConnectionSession } from "@/shared/http/connection-events";
 
+async function readStoredSession() {
+    const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
+    const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
+    return {
+        token: storedToken,
+        user: storedUser ? JSON.parse(storedUser) as User : null,
+    };
+}
+
 export function AuthProvider({
     children,
 }: PropsWithChildren): React.JSX.Element {
@@ -23,17 +31,15 @@ export function AuthProvider({
     const [loading, setLoading] = useState(true);
     const initialLoadDone = useRef(false);
 
-    const load = useCallback(async () => {
-        const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
-        const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
-        setToken(storedToken);
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        } else {
-            setUser(null);
-        }
+    const applySession = useCallback((session: Awaited<ReturnType<typeof readStoredSession>>) => {
+        setToken(session.token);
+        setUser(session.user);
         setLoading(false);
     }, []);
+
+    const load = useCallback(async () => {
+        applySession(await readStoredSession());
+    }, [applySession]);
 
     const syncProfile = useCallback(async () => {
         const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
@@ -51,13 +57,17 @@ export function AuthProvider({
     }, []);
 
     useEffect(() => {
-        load().then(() => {
+        let active = true;
+        void readStoredSession().then((session) => {
+            if (!active) return;
+            applySession(session);
             if (!initialLoadDone.current) {
                 initialLoadDone.current = true;
                 syncProfile();
             }
         });
-    }, [load, syncProfile]);
+        return () => { active = false; };
+    }, [applySession, syncProfile]);
 
     useFocusEffect(
         useCallback(() => {
