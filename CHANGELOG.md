@@ -1,5 +1,24 @@
 # CHANGELOG
 
+## 2026-09-16 10:58:50 | 新增功能：日历公共组件 AppCalendar（周月双形态，路线 B）并挂载待办页
+
+- **变更概述**：按已确认计划（路线 B：flash-calendar）实现日历公共组件族并首次挂载。① 新增 `AppCalendar`：周视图（收起态单周条，左右分页翻周、滚动窗口边缘静默重建近似无限翻页、跨月日期正常渲染）与月视图（44dp 标题行 + IconButton compact ghost 导航翻月、min/max 钳制）双形态；下滑展开、上滑收起（垂直位移 >14dp 判定 + 220ms 高度动画），展开/收起按选中值锚定。选中/今日为整格 48×48 矩形圆角（radii.control 16dp 连续圆角，用户裁定取代 v1.0 的 40dp 圆），今日 surfaceSelected 底蓝字，范围中段全宽色带端点仅外侧圆角；唯一分隔线在表头行底（用户裁定，标题行下不画），分隔线到首行日期 0dp（主题容器负 margin 抵消库内 4dp 统一间距）。② 周条与月视图共用 CalendarTheme 映射（模块级常量，引用稳定）与 flash-calendar 日格积木（Calendar.Item.Day/WeekName + buildCalendar 周行元数据）。③ 选值状态机：single 再点不取消；range 起点→终点→早于起点重设→第三击重来，受控/非受控并存（外部值回显保留内部阶段）。④ Date ID 全链路本地时区工具（toDateId/fromDateId 等，杜绝 UTC 偏移）。⑤ 待办页（第二页）挂载：容器上边框下 12dp，周视图默认，受控单选。AppCalendarList 契约保留未实现（无调用方）。已知取舍（用户确认路线 B 时知情）：flash-calendar 无逐格无障碍标签注入点；范围内禁用日显示选中态。
+- **修改文件列表**
+    - `src/shared/utils/date-id.ts` - 新增：Date ID 本地时区工具（toDateId/fromDateId/addDays/addWeeks/toMonthId/addMonths/startOfWeekId/formatMonthTitle/weekdayLabels 等）。
+    - `src/shared/ui/Calendar/calendar-logic.ts` - 新增：纯逻辑（single/range 选值状态机、toActiveDateRanges、锚定与收起/展开目标计算、月份导航钳制、周滚动窗口）。
+    - `src/shared/ui/Calendar/flash-calendar-theme.ts` - 新增：视觉规格常量 + CalendarTheme 映射（矩形圆角状态表、表头 gap 归零与 0dp 间隔负 margin、activeDayFiller 补缝色）+ 模块级格式化函数。
+    - `src/shared/ui/Calendar/WeekStrip.tsx` - 新增：收起态周条（分页 ScrollView 滚动窗口 + flash-calendar 日格复用 + 星期表头）。
+    - `src/shared/ui/Calendar/AppCalendar.tsx` - 新增：主组件（月视图标题行/导航、flash-calendar Calendar 承载、viewMode 受控/非受控、PanResponder 手势、高度动画）。
+    - `src/shared/ui/Calendar/index.ts` - 新增：组件族导出。
+    - `src/shared/ui/index.ts` - 追加 AppCalendar 及类型导出。
+    - `src/features/todos/screens/TodosScreen.tsx` - 挂载 AppCalendar（pt-3 = 距容器上边框 12dp，initialViewMode="week"，受控单选状态）。
+    - `tests/ui/calendar.test.cjs` - 新增：13 项 Node 单元测试（时区往返/闰年/跨月/周起点/状态机全语义/钳制/锚定/窗口）。
+    - `docs/UI/日历公共组件规范.md` - 升级 v1.1：周视图双形态、矩形圆角状态表、单分隔线裁定、路线 B 定案与取舍、验收清单勾选、§10 实现勘误。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：`npx tsc --noEmit` 新增/修改文件零错误（仓库另有 6 处未触碰文件的既有错误：`_layout.tsx` ×3、`new-note-editor.tsx` ×3）；定向 `npx eslint --no-cache` 全部通过（tests 目录按项目惯例不参与 eslint，与既有测试一致）；`node --test tests/ui/calendar.test.cjs` 13/13 通过；全量 `npm test` 82/84，2 个失败为 `tests/editor/drafts|revisions.test.cjs` 的既有环境问题（Node 24 拒绝对 node_modules/expo-modules-core TS 源码做类型剥离，与本次改动无关）。未启动浏览器、模拟器或真机；真机对账与视觉验收待用户执行。
+
+---
+
 ## 2026-09-16 07:56:02 | 优化代码：剪贴板页预留右侧工具栏
 
 - **变更概述**：剪贴板页在内容卡片右侧预留与笔记页分类栏相同的 75dp 工具栏栏位，沿用应用背景与现有卡片的右上角圆角；当前仅保留布局空间，未接入工具操作。
