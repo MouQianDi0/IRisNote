@@ -691,7 +691,7 @@ export default function NotesScreen() {
                     </Pressable>
                 </View>
                 <View className="relative flex-1">
-                    <View className="bg-white rounded-tl-content p-4 pb-6 h-[100%] border-[1px] border-note-page-border mb-2">
+                    <View className="bg-white rounded-tl-content p-4 pb-6 h-[100%] border-b border-l border-t border-note-page-border mb-2">
                         <NotesSyncHeader
                             key={user?.id ?? "signed-out"}
                             count={filteredNotes.length}
