@@ -125,21 +125,41 @@ test('old action completion does not unlock a new action using the same ID', asy
 const events = require('../../src/shared/http/connection-events.ts');
 const { banner, notificationStore } = require('../../src/core/notifications/notification.service.ts');
 const { startConnectionCoordinator } = require('../../src/core/notifications/server-connection-coordinator.ts');
-test('connection failures aggregate, recovery resolves, stale and business failures do not create faults', async () => {
+
+test('background connection faults do not publish a banner and stopped async work stays silent', async t => {
+  banner.clearSession(); events.resetConnectionSession();
+  let releaseSummary;
+  const coordinator = startConnectionCoordinator(async () => {}, {
+    getPendingSummary: () => new Promise(resolve => { releaseSummary = resolve; }),
+  });
+  t.after(() => { coordinator.stop(); banner.clearSession(); });
+  const fail = () => events.publishConnectionEvent({ ...events.requestConnectionStamp(), outcome: 'unavailable' });
+  coordinator.setActive(false);
+  fail(); fail();
+  releaseSummary({ count: 1, estimatedBytes: 10 });
+  await new Promise(setImmediate);
+  assert.equal(notificationStore.getSnapshot().length, 0);
+  coordinator.setActive(true);
+  fail();
+  coordinator.stop();
+  releaseSummary({ count: 1, estimatedBytes: 10 });
+  await new Promise(setImmediate);
+  assert.equal(notificationStore.getSnapshot().length, 0);
+});
+test('connection failures aggregate, recovery resolves, stale and business failures do not create faults', async t => {
   banner.clearSession(); events.resetConnectionSession();
   const coordinator = startConnectionCoordinator(async () => {});
-  // 协调器自 454da44 起 publishFault 为异步（先取暂存摘要），且后台（inactive）不发布横幅；本用例验证前台聚合行为。
   coordinator.setActive(true);
-  const flush = () => new Promise(resolve => setImmediate(resolve));
+  t.after(() => { coordinator.stop(); banner.clearSession(); });
   const emit = outcome => events.publishConnectionEvent({ ...events.requestConnectionStamp(), outcome });
   emit('reachable'); assert.equal(notificationStore.getSnapshot().length, 0);
   emit('unavailable'); assert.equal(notificationStore.getSnapshot().length, 0);
-  emit('unavailable'); await flush();
+  emit('unavailable'); await new Promise(setImmediate);
   assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
   const stale = events.requestConnectionStamp(); emit('success');
   events.publishConnectionEvent({ ...stale, outcome: 'unavailable' });
   assert.equal(notificationStore.getSnapshot()[0].title, '服务器连接已恢复');
-  emit('unavailable'); emit('unavailable'); await flush();
+  emit('unavailable'); emit('unavailable'); await new Promise(setImmediate);
   assert.equal(notificationStore.getSnapshot()[0].lifetime.mode, 'until-resolved');
   coordinator.stop(); banner.clearSession();
 });

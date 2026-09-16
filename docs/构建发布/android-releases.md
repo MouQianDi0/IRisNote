@@ -23,13 +23,45 @@ APK 更新由自有 `/api/releases` 接口提供；本功能不是 EAS Update �
 2. 核对已有正式 APK 包名、最高构建号和签名证书，初始化序列高于所有已分发构建。
 3. 在自有机器配置 Node.js（满足当前 Expo SDK 要求）、JDK、Android SDK、build-tools、
    Git、tar。Windows 使用 Gradle，不调用 Windows 不支持的 EAS local build。
-4. 通过环境变量配置 `docs/release.env.example` 中的参数；不要提交密钥或密码。
+4. 将 `docs/release.env.example` 复制为项目根目录的 `.env.release.local` 并填写参数；
+   发布工具会自动读取此文件，终端或 CI 中已有的环境变量优先（包括空值）。
+   文件不存在时仍可只使用终端环境变量；文件读取失败会停止命令。
+   删除不用的空配置项，含 `#` 或空格的值加引号，Windows 路径建议用单引号。
+   `.env.release.local` 已被 Git 忽略，不要提交密钥或密码；发布工具不读取应用的 `.env.local`。
    EAS 云端凭据需预先配置同一正式签名，发布工具不会自动导出或替换签名密钥。
 5. 提交应用源码及工具；构建会从指定 Git 提交导出到独立临时目录。
    工作区的未提交源码、忽略的 `.env.local` 和旧 `android/` 不会进入构建。
    如需自定义 API 地址，在构建进程设置两个 `EXPO_PUBLIC_*` 参数。
 
+## 构建源码范围与中文路径
+
+发布入口按预留记录的 Git 提交读取根目录清单，再导出构建源码：
+
+- 保留 `src/`、`assets/`、`modules/`、`plugins/`、`scripts/`、`tests/`、依赖锁文件及 Expo、EAS、Metro、TypeScript、ESLint、样式配置；测试和主题检查仍是构建前必跑步骤。
+- 排除根目录的 `docs/`、`releases/`、`.claude/`、`.codegraph/`、`.vscode/`，以及 `AGENTS.md`、`CLAUDE.md`、`CHANGELOG.md`、`README.md`、`TODO.md`、`design-qa.md`、`待办事项.md`、`debug.log`、`tmpwebapp-node-modulesprepare.log`。
+- 发布说明在 `reserve` 阶段已读取并保存到服务端，构建不再依赖 `releases/` 中的说明文件。排除仅影响临时源码归档，不删除仓库文件。
+- 未列入排除清单的新目录/文件默认保留，避免遗漏新构建输入；模块内部文档、许可证与根目录 `LICENSE` 保留。
+- Windows 自带 bsdtar 解包时显式使用 `--options hdrcharset=UTF-8`，支持中文资源、空格和长文件名；Linux/macOS 保持原解包参数。工具不修改系统编码或 Git 换行配置。
+
+筛选实现位于 `scripts/release/source.mjs`。仅调整导出工具后可以重试原预留构建号；构建仍使用该编号原先绑定的提交。如需要发布后来修改的应用源码，应提交后重新预留构建号。
+
 ## Windows Gradle 回环连接修复
+
+### Windows Ninja 长路径兼容
+
+Windows 发布构建使用项目所在盘的短目录（例如 `D:\iris-build\r-xxxxxx\source`），不再使用用户 Temp 下的长目录。可在 `.env.release.local` 设置 `IRIS_BUILD_ROOT`，必须是本地绝对路径、英文无空格且不超过 40 字符。目录自动创建，每次构建使用独立子目录。
+
+首次准备项目专用 Ninja：
+
+```powershell
+npm run release -- setup-ninja
+```
+
+工具下载官方 Ninja 1.12.1 并校验归档及可执行文件 SHA-256，保存在 `.expo/ninja-1.12.1/`。也可通过 `IRIS_NINJA_PATH` 指定已有的 Ninja 1.12.0 或更新版本。`doctor` 和 Windows 自建发布会在耗时构建前检查工具。
+
+发布入口通过本次 Gradle 的 `--init-script`，在各 Android 模块的 CMake 参数中指定 `CMAKE_MAKE_PROGRAM`。不覆盖 Android SDK 中的 ninja.exe，不更改全局 PATH/TEMP 或用户 Gradle 配置；Linux/macOS 保留原工具链。已有旧临时构建目录保留，新构建从短目录重新生成 CMake 缓存。
+
+### Java 回环连接
 
 本机用户 Temp 目录中的 Java Unix 域套接字连接会失败，表现为
 `Unable to establish loopback connection` / `Invalid argument: connect`。

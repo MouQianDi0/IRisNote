@@ -1,3 +1,78 @@
+## 2026-09-16 14:42:13 | 修复问题 / 优化代码：导航器回调类型与 Agent 构建验收规则
+
+- 文件：AGENTS.md、src/core/navigation/components/SwipeTabsNavigator.tsx、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 已获用户确认。新增类型安全、修改前后检查、合并后复验与发布提交核对等七条规则。
+- withLayoutContext 使用原始 SwipeTabsNavigator 函数类型，避免 Expo Router 工厂返回的 any 丢失组件属性，恢复 screenLayout 与 tabBar 的回调参数推断；不改变界面和运行逻辑。
+- 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
+
+---
+## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- Windows 发布改用项目盘短目录与项目专用 Ninja 1.12.1，通过本次 Gradle init script 指定 CMAKE_MAKE_PROGRAM。Worklets、Reanimated、Expo 各架构缓存已核对指向新工具；保留共享 SDK 与全局环境。
+- 构建号 2 的原预留提交 2d45ce0ab302094cb99dfc5480bef8eaf0fe4e57 在 D:/iris-build/r-5zeXpb/source 实测：构建前检查及 129 项测试通过，Gradle BUILD SUCCESSFUL，1071 tasks，24m 50s；四种架构原生编译成功，无 manifest still dirty 循环。
+- 用户另行确认兼容 Build Tools 37 输出。旧脚本仅识别 Signer #1，新 apksigner 输出 V2 Signer；已增加严格整行匹配，保持多证书、重复及畸形指纹拒绝。13 项相关回归测试通过，定向 ESLint 与 diff --check 通过，正式 inspect 命令实际通过。测试文件补充 Node Buffer 导入与 __dirname 声明。
+- 产物：dist/releases/IRisNote-1.0.0-2.apk 及 .apk.json；包名 com.mouqiandi.irisNote，大小 121781286 bytes，SHA256 7dec125ca8589fed872e6729e8e33ae5efe1a0bbcb7dc82abb36c6f4e34a4981。apksigner 校验成功，证书与本地正式配置一致。
+- 原构建 CLI 曾在最后证书解析处退出；经独立严格校验导出产物后，修复后的 CLI inspect 再次验证通过。未为解析修复重复进行完整原生编译。
+- 未提交代码、上传、发布或安装到设备；设备运行效果仍待验证。完整构建日志：.expo/release-build-2-short-path.log。
+
+---
+
+## 2026-09-16 03:44:48 | 修复问题：Windows 发布构建 Ninja 重生成循环（验证中）
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、tests/releases/workspace.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 用户确认修复并验证完整构建。Windows 临时源码改用项目盘 iris-build 短路径，允许 IRIS_BUILD_ROOT 覆盖并校验路径；Linux/macOS 保留系统 Temp。
+- 新增 setup-ninja 安装项目专用 Ninja 1.12.1，归档和默认二进制均校验 SHA-256；自建及 doctor 检查版本，支持 IRIS_NINJA_PATH 指向用户工具。通过本次 Gradle init script 在 Android 模块 CMake 参数指定工具，不覆盖共享 SDK、不更改全局配置。
+- 初步验证：同一旧构建目录下，Ninja 1.10.2 将存在的 Hermes CMake 文件误判为缺失，1.12.1 dry-run 不再出现该误判；短路径及工具版本测试 2 项通过。构建号 2 已在新短目录启动完整构建，日志 .expo/release-build-2-short-path.log，尚未宣称 APK 构建成功。
+
+---
+
+## 2026-09-16 03:20:57 | 修复问题：发布检查中的编辑器与通知测试失败
+
+- 文件：src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/services/new-note-draft-session.ts、src/features/notes/services/note-save.service.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 按用户修复指令收窄队列依赖导入，避免保存模块经汇总入口加载无关 Expo 原生运行时；测试 SQLite 初始化加入真实上传队列迁移，验证保存入队与后续上传两个阶段。
+- 测试暴露并修复实际缺陷：显式草稿的文件清理意图作为 removeExplicitFile 布尔值持久化到队列，执行任务时恢复受草稿会话/序号检查保护的清理操作；文件删除失败保留恢复记录。历史无标记任务保持原行为，不猜测删除文件。
+- 手动上传增加正在同步状态检查，保留结果未知时禁止重复创建及跨账户访问约束。
+- 通知测试按前台异步发布行为等待结果，并新增后台与停止后不发布横幅的回归测试。未改通知业务逻辑，未移除或跳过失败断言。
+- 验证：完整 npm run check 成功，类型检查、Lint、主题检查及 129 项测试全部通过；diff --check 通过。测试使用 Node SQLite 和显式网络/文件替身，未作真机或真实服务验收。
+- 未提交、构建、上传或发布；发布需提交修复并重新预留构建号。
+
+---
+
+## 2026-09-16 03:15:56 | 修复问题：独立构建的 CSS 声明及笔记保存返回类型
+
+- 文件：src/types/expo.d.ts、src/features/notes/services/note-save.service.ts、CHANGELOG.md。
+- 已获用户确认。新增持久 Expo 类型引用，使干净构建无需自动生成的 expo-env.d.ts 也能识别 CSS 副作用导入；为 saveNewNoteLocalFirst、saveEditedNoteLocalFirst、finishDraftSave 显式声明 Promise<NoteSaveResult>，统一可选 draftCleanupPending 的返回类型。
+- 验证：正常 TypeScript 检查及编译器屏蔽 expo-env.d.ts/.expo/types 后的全项目检查均通过；Lint、主题检查、diff --check 通过。保存服务修改前后转译出的 JavaScript 完全一致，未改变运行逻辑。
+- 完整 npm run check 停在测试阶段：72 通过、3 失败。drafts.test.cjs、revisions.test.cjs 加载 expo-modules-core/src/index.ts 时触发 ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING；banner.test.cjs:135 读取未定义对象的 lifetime 失败。未修改这些测试或扩大业务修复范围，APK 构建仍被检查门槛阻塞。
+- 未提交、预留、构建或发布。应用源码修复需提交并重新预留，原构建号仍绑定旧提交。
+
+---
+
+## 2026-09-16 03:07:33 | 修复问题 / 优化代码：筛选发布源码并修复 Windows 中文路径解包
+
+- 文件：scripts/release/source.mjs、scripts/release/cli.mjs、tests/releases/source.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- 用户确认先梳理构建输入。按预留提交的根目录清单排除 docs、releases、助手/编辑器目录、已审查的根文档与日志；保留源码、资源、原生模块、配置、测试、脚本、许可证与未知新增输入，不删除原仓库文件。
+- Windows tar 显式使用 hdrcharset=UTF-8；在原失败归档上真实解包成功，中文文件名正确；其他平台参数保持不变。
+- 验证：真实当前提交导出后核对 343 个文件与 Git blob 内容（332 个文本文件按已有 core.autocrlf 转换换行），原生模块摘要校验通过；15 项发布相关测试、定向 ESLint 与 diff --check 通过。回归覆盖中文、空格、长文件名、许可证、检查脚本、文档排除与已提交源码隔离。
+- 未运行 APK 编译、上传或发布。构建号继续绑定原提交，修复导出入口后可重试原编号；应用代码变更需要重新预留。
+
+---
+
+## 2026-09-16 01:44:34 | 优化代码：补充本地发布配置
+
+- 文件：.env.release.local、CHANGELOG.md。
+- 按用户授权填写已确认的公开 API 地址和本机 SDK/JDK 路径，并填写项目现有签名文件路径；保留已有配置值，空差量工具路径改为采用默认查找。
+- 验证：配置可解析，SDK/JDK/签名文件路径存在。管理令牌、签名密码/别名与证书指纹尚待补充，签名文件正式用途待用户确认；未构建或发布。日志不包含敏感配置值。
+
+---
+
+## 2026-09-16 01:31:59 | 优化代码：发布工具自动加载本地配置
+
+- 文件：scripts/release/env.mjs、scripts/release/cli.mjs、tests/releases/release-env.test.cjs、.gitignore、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
+- 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
+- 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
 # CHANGELOG
 
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转

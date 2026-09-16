@@ -27,6 +27,7 @@ const drafts = require('../../src/features/notes/data/note-draft.repository.ts')
 const { createLocalNotes } = require('../../src/core/database/migrations/0002-create-local-notes.ts');
 const { createNoteDrafts } = require('../../src/core/database/migrations/0003-create-note-drafts.ts');
 const { createNoteRevisions } = require('../../src/core/database/migrations/0004-create-note-revisions.ts');
+const { createUploadQueue } = require('../../src/core/database/migrations/0005-create-upload-queue.ts');
 const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 let createCalls = 0;
 let updateCalls = 0;
@@ -36,6 +37,7 @@ const api = {
 };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
+const { listUploadTasks } = require('../../src/core/sync/upload-queue.repository.ts');
 
 test('reconcile reports actual inserted notes even when deletion keeps total unchanged', async t => {
     const { port: db } = await database(t);
@@ -56,7 +58,8 @@ test('notification callback failure cannot interrupt committed note save', async
         notified = true; throw new Error('notification failed');
     });
     assert.equal(notified, true);
-    assert.equal(result.cloudState, 'unknown');
+    assert.equal(result.cloudState, 'queued');
+    assert.equal((await listUploadTasks(port, 1))[0].payload.clientId, result.note.id);
     const saved = await notes.getLocalNotes(port, 1);
     assert.equal(saved[0].content, 'retained');
 });
@@ -98,6 +101,7 @@ async function database(t, { withRevisions = true } = {}) {
     await createLocalNotes.up(migrationPort);
     await createNoteDrafts.up(migrationPort);
     if (withRevisions) await createNoteRevisions.up(migrationPort);
+    await createUploadQueue.up(migrationPort);
     return { port, sql, migrationPort };
 }
 
@@ -152,14 +156,19 @@ test('changed edit creates V2 chained to V1', async (t) => {
     assert.equal(edited.current_revision_id, list[0].revision_id);
 });
 
-test('unchanged edit with pending status keeps one revision but still uploads', async (t) => {
+test('unchanged pending edit keeps one revision and one durable upload task without immediate requests', async (t) => {
     const { port } = await database(t);
     createCalls = 0; updateCalls = 0;
     const { note } = await notes.createPendingLocalNote(port, 1, payload('同一正文'));
     const result = await saves.saveEditedNoteLocalFirst(
         port, 1, note, payload('同一正文'));
     assert.equal(result.unchanged, true);
-    assert.equal(createCalls + updateCalls, 1);
+    assert.equal(result.cloudState, 'queued');
+    assert.equal(createCalls + updateCalls, 0);
+    await saves.saveEditedNoteLocalFirst(port, 1, result.note, payload('同一正文'));
+    const tasks = await listUploadTasks(port, 1);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].payload.clientId, note.id);
     assert.equal((await revisions.listNoteRevisions(port, 1, note.id)).length, 1);
 });
 
@@ -402,6 +411,9 @@ test('revisions are isolated per account', async (t) => {
 test('manual upload blocks uncertain creates and in-flight notes', async t => {
     const { port } = await database(t);
     const result = await saves.saveNewNoteLocalFirst(port, 1, payload('keep'));
+    assert.equal(result.cloudState, 'queued');
+    const attempted = await saves.uploadNoteNow(port, 1, result.note.id);
+    assert.equal(attempted.cloudState, 'unknown');
     const before = createCalls;
     await assert.rejects(saves.uploadNoteNow(port, 1, result.note.id), /结果未知/);
     assert.equal(createCalls, before);
