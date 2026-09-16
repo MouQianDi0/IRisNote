@@ -67,7 +67,7 @@ npm run release -- setup-ninja
 `Unable to establish loopback connection` / `Invalid argument: connect`。
 项目命令在 Windows 下通过子进程 `JAVA_TOOL_OPTIONS` 将 `jdk.net.unixdomain.tmpdir`
 设为原始项目 `.expo` 目录，确保启动器、Gradle daemon 和编译子进程在启动时获得设置。
-不改变全局 TEMP、JAVA_HOME、网络或防火墙配置；Linux/macOS 不注入此参数。
+不改变全局 TEMP、JAVA\_HOME、网络或防火墙配置；Linux/macOS 不注入此参数。
 
 ```powershell
 npm run android
@@ -91,8 +91,8 @@ npm run release -- setup-delta
 npm run release -- doctor
 npm run release -- reserve --source self --version 1.1.0 --notes D:\releases\notes-1.1.0.txt
 npm run release -- build --build 28
-npm run release -- inspect --build 28 --apk .\dist\releases\IRisNote-1.1.0-28.apk
-npm run release -- upload --build 28 --apk .\dist\releases\IRisNote-1.1.0-28.apk
+npm run release -- inspect --build 28 --apk .\dist\releases\1.1.0\IRisNote-1.1.0-28.apk
+npm run release -- upload --build 28 --apk .\dist\releases\1.1.0\IRisNote-1.1.0-28.apk
 npm run release -- status --build 28
 ```
 
@@ -107,7 +107,7 @@ npm run release -- publish --build 28
 补丁生成/上传中断后，运行以下命令恢复，已成功上传的补丁会跳过：
 
 ```powershell
-npm run release -- patches --build 28 --apk .\dist\releases\IRisNote-1.1.0-28.apk
+npm run release -- patches --build 28 --apk .\dist\releases\1.1.0\IRisNote-1.1.0-28.apk
 ```
 
 发布前再次检查补丁覆盖范围；如果期间有其他版本先发布，需补齐新增基础包的补丁。
@@ -115,7 +115,7 @@ npm run release -- patches --build 28 --apk .\dist\releases\IRisNote-1.1.0-28.ap
 它不会作为同主版本更新的自动备用下载。
 
 差量工具固定为 HDiffPatch 5.1.3，下载归档有 SHA-256 锁定。支持 Windows x64/ARM64、
-Linux x64/ARM64 和 macOS；也可配置 IRIS_HDIFFZ_PATH / IRIS_HPATCHZ_PATH 指向对应版本。
+Linux x64/ARM64 和 macOS；也可配置 IRIS\_HDIFFZ\_PATH / IRIS\_HPATCHZ\_PATH 指向对应版本。
 Windows x64 工具及 Android 库已在当前开发环境核对；其他宿主平台需在目标机器验证。
 差量包大小取决于实际二进制变化，不保证固定节省比例。
 
@@ -138,7 +138,8 @@ Windows 的参数路径不能包含命令解释器元字符；使用普通绝对
 - withdrawn：执行 `npm run release -- withdraw --build 28` 停止推荐该版本。
   客户端不执行降级，已经安装问题版本的用户需要更高构建号的修复版。
 
-自有构建输出保存在 `dist/releases/`，旁边 JSON 记录提交、包信息和摘要。
+自有构建输出按版本号保存到 `dist/releases/<版本号>/`（例如 `dist/releases/1.1.0/`），
+旁边 JSON 记录提交、包信息和摘要；差量补丁的临时工作目录也在同一版本子目录下。
 独立临时目录路径会打印出来并保留供诊断；清理前确认构建完成及产物已保存。
 构建成功、上传草稿和发布是三个不同结果。
 
