@@ -6,6 +6,7 @@ import {
     mkdtemp,
     readdir,
     readFile,
+    rm,
     stat,
     writeFile,
 } from "node:fs/promises";
@@ -367,9 +368,12 @@ async function preparePatches(release, apk) {
             throw new Error(
                 `差量包 ${old.build_code} → ${release.build_code} 上传失败：${uploaded.status}`,
             );
+        // 上传成功后删除下载的基础 APK，保留补丁文件与元数据作为本机构建记录。
+        await rm(oldApk, { force: true });
         console.log(
             `差量包已校验并上传：${old.build_code} → ${release.build_code}，${metadata.size} bytes（${((100 * metadata.size) / Number(release.size_bytes)).toFixed(1)}%）`,
         );
+        console.log(`已删除基础 APK，保留补丁记录：${path.basename(work)}`);
     }
 }
 async function main() {

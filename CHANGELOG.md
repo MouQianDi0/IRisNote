@@ -1,3 +1,11 @@
+## 2026-09-17 03:22:24 | 优化代码：差量包上传成功后删除基础 APK 并保留补丁记录
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。preparePatches() 上传差量包成功后，删除临时下载的基础 APK（rm force），保留 `<构建>-from-<基础构建>-*` 目录及 update.hdiff 与元数据作为本机补丁记录；上传失败仍抛异常并保留现场。
+- 文档补充该清理行为说明。验证：node --check、定向 ESLint、修改前后 npm run typecheck、releases 相关 17 项测试、git diff --check 均通过；未执行真实差量上传。
+
+---
+
 ## 2026-09-17 01:46:36 | 新增功能：生成 0.2.0 版本更新说明并调整说明文件命名规范
 
 - 文件：releases/notes-0.2.0.txt、docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
@@ -22,6 +30,7 @@
 - 已获用户确认（文件夹命名取仅版本号）。build() 的 APK 与 .apk.json 输出目录由 `dist/releases/` 改为 `dist/releases/<版本号>/`，目录递归自动创建，同版本多次构建共处一夹、靠文件名区分；preparePatches() 的差量补丁临时工作目录同步归入版本子目录。
 - 已有顶层旧产物不自动迁移，保留原地；后续 inspect/upload/patches 的 `--apk` 参数需指向新子目录路径，文档示例已同步更新。
 - 验证：node --check 语法检查、定向 ESLint、git diff --check 通过；未执行真实构建、上传或发布。
+
 ## 2026-09-16 16:49:35 | 新增功能：待办创建弹窗与列表设计文档
 
 - 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
@@ -59,6 +68,7 @@
 - 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
 
 ---
+
 ## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
 
 - 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
@@ -126,6 +136,7 @@
 - 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
 - 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
 - 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
+
 # CHANGELOG
 
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
@@ -1219,6 +1230,7 @@
     - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**

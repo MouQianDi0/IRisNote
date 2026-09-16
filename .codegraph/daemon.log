@@ -313,3 +313,9 @@
 [CodeGraph daemon] Listening on \\.\pipe\codegraph-53ef3389ab444e0d (pid 57472, v1.5.0). Idle timeout 300000ms.
 [CodeGraph MCP] File watcher active — graph will auto-sync on changes
 [CodeGraph MCP] Query pool: up to 16 worker thread(s) for concurrent reads.
+[CodeGraph MCP] Auto-synced 1 file(s) in 1242ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 36ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 44ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 29ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 23ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 17ms
