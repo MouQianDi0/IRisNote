@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-09-16 10:58:50 | 新增功能：日历公共组件 AppCalendar（周月双形态，路线 B）并挂载待办页
+
+- **变更概述**：按已确认计划（路线 B：flash-calendar）实现日历公共组件族并首次挂载。① 新增 `AppCalendar`：周视图（收起态单周条，左右分页翻周、滚动窗口边缘静默重建近似无限翻页、跨月日期正常渲染）与月视图（44dp 标题行 + IconButton compact ghost 导航翻月、min/max 钳制）双形态；下滑展开、上滑收起（垂直位移 >14dp 判定 + 220ms 高度动画），展开/收起按选中值锚定。选中/今日为整格 48×48 矩形圆角（radii.control 16dp 连续圆角，用户裁定取代 v1.0 的 40dp 圆），今日 surfaceSelected 底蓝字，范围中段全宽色带端点仅外侧圆角；唯一分隔线在表头行底（用户裁定，标题行下不画），分隔线到首行日期 0dp（主题容器负 margin 抵消库内 4dp 统一间距）。② 周条与月视图共用 CalendarTheme 映射（模块级常量，引用稳定）与 flash-calendar 日格积木（Calendar.Item.Day/WeekName + buildCalendar 周行元数据）。③ 选值状态机：single 再点不取消；range 起点→终点→早于起点重设→第三击重来，受控/非受控并存（外部值回显保留内部阶段）。④ Date ID 全链路本地时区工具（toDateId/fromDateId 等，杜绝 UTC 偏移）。⑤ 待办页（第二页）挂载：容器上边框下 12dp，周视图默认，受控单选。AppCalendarList 契约保留未实现（无调用方）。已知取舍（用户确认路线 B 时知情）：flash-calendar 无逐格无障碍标签注入点；范围内禁用日显示选中态。
+- **修改文件列表**
+    - `src/shared/utils/date-id.ts` - 新增：Date ID 本地时区工具（toDateId/fromDateId/addDays/addWeeks/toMonthId/addMonths/startOfWeekId/formatMonthTitle/weekdayLabels 等）。
+    - `src/shared/ui/Calendar/calendar-logic.ts` - 新增：纯逻辑（single/range 选值状态机、toActiveDateRanges、锚定与收起/展开目标计算、月份导航钳制、周滚动窗口）。
+    - `src/shared/ui/Calendar/flash-calendar-theme.ts` - 新增：视觉规格常量 + CalendarTheme 映射（矩形圆角状态表、表头 gap 归零与 0dp 间隔负 margin、activeDayFiller 补缝色）+ 模块级格式化函数。
+    - `src/shared/ui/Calendar/WeekStrip.tsx` - 新增：收起态周条（分页 ScrollView 滚动窗口 + flash-calendar 日格复用 + 星期表头）。
+    - `src/shared/ui/Calendar/AppCalendar.tsx` - 新增：主组件（月视图标题行/导航、flash-calendar Calendar 承载、viewMode 受控/非受控、PanResponder 手势、高度动画）。
+    - `src/shared/ui/Calendar/index.ts` - 新增：组件族导出。
+    - `src/shared/ui/index.ts` - 追加 AppCalendar 及类型导出。
+    - `src/features/todos/screens/TodosScreen.tsx` - 挂载 AppCalendar（pt-3 = 距容器上边框 12dp，initialViewMode="week"，受控单选状态）。
+    - `tests/ui/calendar.test.cjs` - 新增：13 项 Node 单元测试（时区往返/闰年/跨月/周起点/状态机全语义/钳制/锚定/窗口）。
+    - `docs/UI/日历公共组件规范.md` - 升级 v1.1：周视图双形态、矩形圆角状态表、单分隔线裁定、路线 B 定案与取舍、验收清单勾选、§10 实现勘误。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：`npx tsc --noEmit` 新增/修改文件零错误（仓库另有 6 处未触碰文件的既有错误：`_layout.tsx` ×3、`new-note-editor.tsx` ×3）；定向 `npx eslint --no-cache` 全部通过（tests 目录按项目惯例不参与 eslint，与既有测试一致）；`node --test tests/ui/calendar.test.cjs` 13/13 通过；全量 `npm test` 82/84，2 个失败为 `tests/editor/drafts|revisions.test.cjs` 的既有环境问题（Node 24 拒绝对 node_modules/expo-modules-core TS 源码做类型剥离，与本次改动无关）。未启动浏览器、模拟器或真机；真机对账与视觉验收待用户执行。
+
+---
+
+## 2026-09-16 07:56:02 | 优化代码：剪贴板页预留右侧工具栏
+
+- **变更概述**：剪贴板页在内容卡片右侧预留与笔记页分类栏相同的 75dp 工具栏栏位，沿用应用背景与现有卡片的右上角圆角；当前仅保留布局空间，未接入工具操作。
+- **修改文件列表**
+    - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 将页面改为内容区与右侧工具栏栏位的横向布局。
+    - `CHANGELOG.md` - 记录本次剪贴板工具栏预留。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+## 2026-09-16 07:52:27 | 优化代码：剪贴板页镜像笔记容器
+
+- **变更概述**：剪贴板摘录页采用与笔记页对应的容器布局：顶部 15dp、应用背景、白色内容卡片、16dp 内容内边距与底部 8dp 间距；卡片使用右上角内容圆角，并按镜像方向保留上、右、下边框。
+- **修改文件列表**
+    - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 使用镜像笔记页的剪贴板内容容器承载现有占位内容。
+    - `CHANGELOG.md` - 记录本次剪贴板页容器调整。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
 ---
 
 ## 2026-09-16 06:47:46 | 新增功能：通知渠道适配文档（Android / iOS / 鸿蒙调研）
@@ -9,6 +44,86 @@
     - `docs/UI/通知渠道适配.md` - 新增调研与适配文档（版本 1.0）。
     - `CHANGELOG.md` - 记录本次新增。
 - **验证结果**：平台事实均以官方文档当日核验（Android developer 文档 Live Updates 硬性要求与政策禁项、Apple HIG 与 WWDC21 时效性通知、华为实况窗文档 8 小时/准入原则/AGC 申请、OpenHarmony API 参考 SlotType/SlotLevel 枚举值与 requestEnableNotification 单次弹窗机制、Expo v57 notifications SDK 文档 API 清单）；项目侧结论来自全库检索（依赖、android 构建配置、src/ 通知引用、docs 需求出处逐条核对）。
+
+---
+
+## 2026-09-16 07:48:32 | 优化代码：待办页仅保留上边框
+
+- **变更概述**：待办主容器增加与笔记页主内容卡片一致的 1dp 上边框；左右及底部边框、阴影和分页虚线保持移除，容器仍全高铺满。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 主容器增加 `border-t border-note-page-border`。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:46:55 | 优化代码：撤销笔记页左边框隐藏
+
+- **变更概述**：按用户指令撤销上一轮笔记主内容卡片左边框隐藏，恢复其上、左、下边框；待办页无边框、无阴影、无分页虚线的当前状态不变。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 恢复主内容卡片左边框。
+    - `CHANGELOG.md` - 记录本次撤销。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:45:18 | 修复问题：隐藏笔记页左侧分页边框
+
+- **变更概述**：笔记页主内容卡片移除左边框，避免横向切换时其随场景平移至待办页交接位置形成残留竖线；保留上、下边框、圆角、间距及笔记业务逻辑。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 主内容卡片改为仅上、下边框。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：待执行定向 ESLint 与差异空白检查；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:41:51 | 修复问题：移除待办页分页虚线
+
+- **变更概述**：删除待办页左侧中段虚线分割 View，横向分页切换不再显示任何人为分页线；待办容器继续保持无边框、无阴影与全高铺满。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 删除绝对定位的分页虚线。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:38:12 | 修复问题：移除待办页分页侧向阴影
+
+- **变更概述**：待办主容器移除 `shadow-lg`，使横向切换时顶部和底部不再出现连续的左右投影线；保留白色背景、全高布局及左侧中段浅色虚线。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 删除主容器侧向阴影类。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:35:09 | 修复问题：隐藏笔记页右侧分页边框
+
+- **变更概述**：笔记页主内容卡片移除右边框，避免横向切换至待办页时露出连续分页竖线；保留上、左、下边框、圆角、内容间距与现有笔记业务逻辑。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 四周边框改为仅上、左、下边框。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:32:57 | 修复问题：待办页无边框铺满容器
+
+- **变更概述**：移除待办主卡片上、右、下实线边框以及 8dp 底部外边距，卡片自顶部 15dp 铺至页面底部；保留左侧中段浅色虚线，避免横向分页时出现连续左右边界线。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 主卡片改为无四周实线、无底部留白的 `flex-1` 容器。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:21:45 | 修复问题：减弱待办页交接分割线
+
+- **变更概述**：移除待办主卡片左侧贯穿全高的实线边框，避免其覆盖交接虚线造成分页边界过于明显；保留中间 50% 高度的虚线，并改用 `divider` 色与 50% 不透明度。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 左侧边框改为无边框，仅保留中段浅色虚线。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
 
 ---
 
