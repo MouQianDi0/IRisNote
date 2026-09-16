@@ -1,3 +1,22 @@
+## 2026-09-16 16:18:30 | 优化代码：待办日期轨道月份标题与返回今天按钮
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 日期轨道与右侧栏顶部间隔调整为 0dp，顶部新增 50dp 中文月份标题（如“八月”），标题下复用 28×2dp 分隔线；跨月周优先显示当前周内所选日期的月份，未选中该周日期时取该周中间日所属月份。月份块作为锚点，点击后使用公共 `AnchoredPopover` 打开 `AppCalendar` 快速跳转，选择日期后自动关闭并切换到对应周。
+- 原快速跳转左箭头及公共气泡月历替换为 50×50dp 主题色圆角矩形“返回今天”按钮，仅显示 `Undo2` 图标；点击后回到今天所在周并选中今天，到达今天时隐藏整个按钮并保留同尺寸占位。周一至周日七项及 2dp 日期间隔保持不变。
+- 真机发现按钮初版因 `className` 与函数式样式互操作而收缩为图标边界，现将 8dp 外间距移至独立外层，按钮本体沿用日期按钮的纯原生样式路径。验证：定向 Expo ESLint、全量 `npx tsc --noEmit`、`git diff --check` 及日历测试 13/13 通过；ADB 实测非今日状态按钮为 50.1×49.7dp，到达今天后按钮节点消失，月份锚点为 50.1×49.7dp。未代替用户点击设备打开气泡验收。
+
+---
+
+## 2026-09-16 16:00:45 | 修复问题：待办日期轨道固定单周与翻周手势
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 根据真机截图与 ADB 布局导出修复右侧日期轨道。旧实现同时挂载前一周、当前周和下一周，未形成固定高度视口，真机实际连续暴露 2025-06-13 至 2025-06-29，并由 ScrollView 回中逻辑造成翻周方向与落点混乱。
+- 日期轨道改为只创建当前周 7 个节点，固定从周一排列到周日；标签由“一/二/…”补全为“周一/周二/…/周日”。日期项保持 50×50dp，相邻纵向间隔 2dp。
+- 移除三页 ScrollView 与回中逻辑，改为 Gesture Handler 在手势结束时单次换周：上滑进入下一周，下滑返回上一周；快速跳转的左箭头与公共气泡月历保持不变。
+- 验证：连接设备 `3B15AL01DR100000` 的修改前布局导出确认轨道越界；修复后定向 Expo ESLint、全量 `npx tsc --noEmit`、`git diff --check` 及日历测试 13/13 通过。设备当前显示“Cannot connect to Expo CLI”，未将新源码加载到真机，因此修复后的视觉与手势仍待重新连接后验收。
+
+---
+
 ## 2026-09-16 14:42:13 | 修复问题 / 优化代码：导航器回调类型与 Agent 构建验收规则
 
 - 文件：AGENTS.md、src/core/navigation/components/SwipeTabsNavigator.tsx、tests/notifications/banner.test.cjs、CHANGELOG.md。
