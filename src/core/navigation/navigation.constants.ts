@@ -16,16 +16,16 @@ export const TAB_MENU_ITEMS = [
         icon: Notebook,
     },
     {
-        name: "待办",
-        key: "todo" as const,
-        route: "/(tabs)/todo" as const,
-        icon: SquareCheckBig,
-    },
-    {
         name: "剪贴",
         key: "excerpt" as const,
         route: "/(tabs)/excerpt" as const,
         icon: ClipboardPenLine,
+    },
+    {
+        name: "待办",
+        key: "todo" as const,
+        route: "/(tabs)/todo" as const,
+        icon: SquareCheckBig,
     },
     {
         name: "用户",

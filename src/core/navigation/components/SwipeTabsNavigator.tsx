@@ -173,7 +173,8 @@ const SwipeTabsNavigatorFactory = createNavigatorFactory(SwipeTabsNavigator)();
 
 export const SwipeTabs = withLayoutContext<
     SwipeTabOptions,
-    typeof SwipeTabsNavigatorFactory.Navigator,
+    // The factory returns any in Expo Router; preserve the original component's props.
+    typeof SwipeTabsNavigator,
     TabNavigationState<ParamListBase>,
     SwipeTabEventMap
 >(SwipeTabsNavigatorFactory.Navigator);

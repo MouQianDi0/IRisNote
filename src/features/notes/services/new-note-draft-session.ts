@@ -50,6 +50,7 @@ export class NewNoteDraftSession {
             const target = row?.note_id == null ? undefined : await getLocalNoteByClientId(this.db, this.owner, row.note_id) ?? undefined;
             await assertDraftCommit(this.db, this.owner, snapshot.commit, target ?? null);
             return { ...snapshot, target, commit: { ...snapshot.commit,
+                removeExplicitFile: true,
                 beforeDelete: () => removeExplicitDraft(this.owner, this.key) } };
         } catch (cause) { this.unlock(); throw cause; }
     }

@@ -66,8 +66,8 @@ export default function TabsLayout() {
         }}
       >
         <SwipeTabs.Screen name="note" />
-        <SwipeTabs.Screen name="todo" />
         <SwipeTabs.Screen name="excerpt" />
+        <SwipeTabs.Screen name="todo" />
         <SwipeTabs.Screen name="user" />
       </SwipeTabs>
     </>

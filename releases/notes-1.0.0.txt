@@ -1,0 +1,12 @@
+2026-09-16 01:44:34 | 优化代码：补充本地发布配置
+
+- 文件：.env.release.local、CHANGELOG.md。
+- 按用户授权填写已确认的公开 API 地址和本机 SDK/JDK 路径，并填写项目现有签名文件路径；保留已有配置值，空差量工具路径改为采用默认查找。
+- 验证：配置可解析，SDK/JDK/签名文件路径存在。管理令牌、签名密码/别名与证书指纹尚待补充，签名文件正式用途待用户确认；未构建或发布。日志不包含敏感配置值。
+
+2026-09-16 01:31:59 | 优化代码：发布工具自动加载本地配置
+
+- 文件：scripts/release/env.mjs、scripts/release/cli.mjs、tests/releases/release-env.test.cjs、.gitignore、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
+- 保持应用 .env.local 独立；确认 .env\*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
+- 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布

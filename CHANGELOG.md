@@ -1,4 +1,191 @@
+## 2026-09-16 16:28:01 | 优化代码：构建产物按版本号分目录存放
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认（文件夹命名取仅版本号）。build() 的 APK 与 .apk.json 输出目录由 `dist/releases/` 改为 `dist/releases/<版本号>/`，目录递归自动创建，同版本多次构建共处一夹、靠文件名区分；preparePatches() 的差量补丁临时工作目录同步归入版本子目录。
+- 已有顶层旧产物不自动迁移，保留原地；后续 inspect/upload/patches 的 `--apk` 参数需指向新子目录路径，文档示例已同步更新。
+- 验证：node --check 语法检查、定向 ESLint、git diff --check 通过；未执行真实构建、上传或发布。
+## 2026-09-16 16:49:35 | 新增功能：待办创建弹窗与列表设计文档
+
+- 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 新增待办创建弹窗、公共正文输入、日期时间、容器颜色、笔记关联和待办列表卡片的完整设计规范；布局尺寸、字体、圆角、间距、颜色层级与状态均引用现有 IRisNote 视觉设计和公共组件规范。
+- 明确取消创建、确认创建、遮罩点击与系统返回的保存语义；正文非空时遮罩关闭自动保存，空内容不创建，外部日历或通知失败不得丢失本地待办。
+- 记录系统日历按场景申请读写权限、本地优先关联笔记、开始时间单次普通提醒以及动态通知不适用于待办/日历场景的边界。本次只修改文档，未实现页面、组件、数据表、依赖或平台权限。
+- 验证：修改前后 `npm run typecheck` 均通过；文档完成后检查 Markdown 结构、相对链接、Git 差异、空白错误及冲突标记。未运行应用、构建、浏览器或真机验收。
+
+---
+
+## 2026-09-16 16:18:30 | 优化代码：待办日期轨道月份标题与返回今天按钮
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 日期轨道与右侧栏顶部间隔调整为 0dp，顶部新增 50dp 中文月份标题（如“八月”），标题下复用 28×2dp 分隔线；跨月周优先显示当前周内所选日期的月份，未选中该周日期时取该周中间日所属月份。月份块作为锚点，点击后使用公共 `AnchoredPopover` 打开 `AppCalendar` 快速跳转，选择日期后自动关闭并切换到对应周。
+- 原快速跳转左箭头及公共气泡月历替换为 50×50dp 主题色圆角矩形“返回今天”按钮，仅显示 `Undo2` 图标；点击后回到今天所在周并选中今天，到达今天时隐藏整个按钮并保留同尺寸占位。周一至周日七项及 2dp 日期间隔保持不变。
+- 真机发现按钮初版因 `className` 与函数式样式互操作而收缩为图标边界，现将 8dp 外间距移至独立外层，按钮本体沿用日期按钮的纯原生样式路径。验证：定向 Expo ESLint、全量 `npx tsc --noEmit`、`git diff --check` 及日历测试 13/13 通过；ADB 实测非今日状态按钮为 50.1×49.7dp，到达今天后按钮节点消失，月份锚点为 50.1×49.7dp。未代替用户点击设备打开气泡验收。
+
+---
+
+## 2026-09-16 16:00:45 | 修复问题：待办日期轨道固定单周与翻周手势
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 根据真机截图与 ADB 布局导出修复右侧日期轨道。旧实现同时挂载前一周、当前周和下一周，未形成固定高度视口，真机实际连续暴露 2025-06-13 至 2025-06-29，并由 ScrollView 回中逻辑造成翻周方向与落点混乱。
+- 日期轨道改为只创建当前周 7 个节点，固定从周一排列到周日；标签由“一/二/…”补全为“周一/周二/…/周日”。日期项保持 50×50dp，相邻纵向间隔 2dp。
+- 移除三页 ScrollView 与回中逻辑，改为 Gesture Handler 在手势结束时单次换周：上滑进入下一周，下滑返回上一周；快速跳转的左箭头与公共气泡月历保持不变。
+- 验证：连接设备 `3B15AL01DR100000` 的修改前布局导出确认轨道越界；修复后定向 Expo ESLint、全量 `npx tsc --noEmit`、`git diff --check` 及日历测试 13/13 通过。设备当前显示“Cannot connect to Expo CLI”，未将新源码加载到真机，因此修复后的视觉与手势仍待重新连接后验收。
+
+---
+
+## 2026-09-16 14:42:13 | 修复问题 / 优化代码：导航器回调类型与 Agent 构建验收规则
+
+- 文件：AGENTS.md、src/core/navigation/components/SwipeTabsNavigator.tsx、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 已获用户确认。新增类型安全、修改前后检查、合并后复验与发布提交核对等七条规则。
+- withLayoutContext 使用原始 SwipeTabsNavigator 函数类型，避免 Expo Router 工厂返回的 any 丢失组件属性，恢复 screenLayout 与 tabBar 的回调参数推断；不改变界面和运行逻辑。
+- 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
+
+---
+## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- Windows 发布改用项目盘短目录与项目专用 Ninja 1.12.1，通过本次 Gradle init script 指定 CMAKE_MAKE_PROGRAM。Worklets、Reanimated、Expo 各架构缓存已核对指向新工具；保留共享 SDK 与全局环境。
+- 构建号 2 的原预留提交 2d45ce0ab302094cb99dfc5480bef8eaf0fe4e57 在 D:/iris-build/r-5zeXpb/source 实测：构建前检查及 129 项测试通过，Gradle BUILD SUCCESSFUL，1071 tasks，24m 50s；四种架构原生编译成功，无 manifest still dirty 循环。
+- 用户另行确认兼容 Build Tools 37 输出。旧脚本仅识别 Signer #1，新 apksigner 输出 V2 Signer；已增加严格整行匹配，保持多证书、重复及畸形指纹拒绝。13 项相关回归测试通过，定向 ESLint 与 diff --check 通过，正式 inspect 命令实际通过。测试文件补充 Node Buffer 导入与 __dirname 声明。
+- 产物：dist/releases/IRisNote-1.0.0-2.apk 及 .apk.json；包名 com.mouqiandi.irisNote，大小 121781286 bytes，SHA256 7dec125ca8589fed872e6729e8e33ae5efe1a0bbcb7dc82abb36c6f4e34a4981。apksigner 校验成功，证书与本地正式配置一致。
+- 原构建 CLI 曾在最后证书解析处退出；经独立严格校验导出产物后，修复后的 CLI inspect 再次验证通过。未为解析修复重复进行完整原生编译。
+- 未提交代码、上传、发布或安装到设备；设备运行效果仍待验证。完整构建日志：.expo/release-build-2-short-path.log。
+
+---
+
+## 2026-09-16 03:44:48 | 修复问题：Windows 发布构建 Ninja 重生成循环（验证中）
+
+- 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、tests/releases/workspace.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 用户确认修复并验证完整构建。Windows 临时源码改用项目盘 iris-build 短路径，允许 IRIS_BUILD_ROOT 覆盖并校验路径；Linux/macOS 保留系统 Temp。
+- 新增 setup-ninja 安装项目专用 Ninja 1.12.1，归档和默认二进制均校验 SHA-256；自建及 doctor 检查版本，支持 IRIS_NINJA_PATH 指向用户工具。通过本次 Gradle init script 在 Android 模块 CMake 参数指定工具，不覆盖共享 SDK、不更改全局配置。
+- 初步验证：同一旧构建目录下，Ninja 1.10.2 将存在的 Hermes CMake 文件误判为缺失，1.12.1 dry-run 不再出现该误判；短路径及工具版本测试 2 项通过。构建号 2 已在新短目录启动完整构建，日志 .expo/release-build-2-short-path.log，尚未宣称 APK 构建成功。
+
+---
+
+## 2026-09-16 03:20:57 | 修复问题：发布检查中的编辑器与通知测试失败
+
+- 文件：src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/services/new-note-draft-session.ts、src/features/notes/services/note-save.service.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 按用户修复指令收窄队列依赖导入，避免保存模块经汇总入口加载无关 Expo 原生运行时；测试 SQLite 初始化加入真实上传队列迁移，验证保存入队与后续上传两个阶段。
+- 测试暴露并修复实际缺陷：显式草稿的文件清理意图作为 removeExplicitFile 布尔值持久化到队列，执行任务时恢复受草稿会话/序号检查保护的清理操作；文件删除失败保留恢复记录。历史无标记任务保持原行为，不猜测删除文件。
+- 手动上传增加正在同步状态检查，保留结果未知时禁止重复创建及跨账户访问约束。
+- 通知测试按前台异步发布行为等待结果，并新增后台与停止后不发布横幅的回归测试。未改通知业务逻辑，未移除或跳过失败断言。
+- 验证：完整 npm run check 成功，类型检查、Lint、主题检查及 129 项测试全部通过；diff --check 通过。测试使用 Node SQLite 和显式网络/文件替身，未作真机或真实服务验收。
+- 未提交、构建、上传或发布；发布需提交修复并重新预留构建号。
+
+---
+
+## 2026-09-16 03:15:56 | 修复问题：独立构建的 CSS 声明及笔记保存返回类型
+
+- 文件：src/types/expo.d.ts、src/features/notes/services/note-save.service.ts、CHANGELOG.md。
+- 已获用户确认。新增持久 Expo 类型引用，使干净构建无需自动生成的 expo-env.d.ts 也能识别 CSS 副作用导入；为 saveNewNoteLocalFirst、saveEditedNoteLocalFirst、finishDraftSave 显式声明 Promise<NoteSaveResult>，统一可选 draftCleanupPending 的返回类型。
+- 验证：正常 TypeScript 检查及编译器屏蔽 expo-env.d.ts/.expo/types 后的全项目检查均通过；Lint、主题检查、diff --check 通过。保存服务修改前后转译出的 JavaScript 完全一致，未改变运行逻辑。
+- 完整 npm run check 停在测试阶段：72 通过、3 失败。drafts.test.cjs、revisions.test.cjs 加载 expo-modules-core/src/index.ts 时触发 ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING；banner.test.cjs:135 读取未定义对象的 lifetime 失败。未修改这些测试或扩大业务修复范围，APK 构建仍被检查门槛阻塞。
+- 未提交、预留、构建或发布。应用源码修复需提交并重新预留，原构建号仍绑定旧提交。
+
+---
+
+## 2026-09-16 03:07:33 | 修复问题 / 优化代码：筛选发布源码并修复 Windows 中文路径解包
+
+- 文件：scripts/release/source.mjs、scripts/release/cli.mjs、tests/releases/source.test.cjs、docs/android-releases.md、CHANGELOG.md。
+- 用户确认先梳理构建输入。按预留提交的根目录清单排除 docs、releases、助手/编辑器目录、已审查的根文档与日志；保留源码、资源、原生模块、配置、测试、脚本、许可证与未知新增输入，不删除原仓库文件。
+- Windows tar 显式使用 hdrcharset=UTF-8；在原失败归档上真实解包成功，中文文件名正确；其他平台参数保持不变。
+- 验证：真实当前提交导出后核对 343 个文件与 Git blob 内容（332 个文本文件按已有 core.autocrlf 转换换行），原生模块摘要校验通过；15 项发布相关测试、定向 ESLint 与 diff --check 通过。回归覆盖中文、空格、长文件名、许可证、检查脚本、文档排除与已提交源码隔离。
+- 未运行 APK 编译、上传或发布。构建号继续绑定原提交，修复导出入口后可重试原编号；应用代码变更需要重新预留。
+
+---
+
+## 2026-09-16 01:44:34 | 优化代码：补充本地发布配置
+
+- 文件：.env.release.local、CHANGELOG.md。
+- 按用户授权填写已确认的公开 API 地址和本机 SDK/JDK 路径，并填写项目现有签名文件路径；保留已有配置值，空差量工具路径改为采用默认查找。
+- 验证：配置可解析，SDK/JDK/签名文件路径存在。管理令牌、签名密码/别名与证书指纹尚待补充，签名文件正式用途待用户确认；未构建或发布。日志不包含敏感配置值。
+
+---
+
+## 2026-09-16 01:31:59 | 优化代码：发布工具自动加载本地配置
+
+- 文件：scripts/release/env.mjs、scripts/release/cli.mjs、tests/releases/release-env.test.cjs、.gitignore、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
+- 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
+- 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
+- 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
 # CHANGELOG
+
+## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
+
+- **变更概述**：待办页将原内容区横向周历移入右侧 75dp 预留栏，改为按周展示的七日竖向日期轨道；日期轨道距栏顶部 30dp，单元格采用与笔记分类图标同级的 50dp 方形基准。今天固定显示主题色，点击其他日期显示淡色选中态；上下翻动切换周，左箭头以公共锚点气泡弹窗打开月历快速跳转。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 移除内容区顶部横向日历，挂载右侧日期轨道。
+    - `src/features/todos/components/TodoCalendarRail.tsx` - 新增：竖向周分页、日期状态色和公共气泡月历跳转入口。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：定向 Expo ESLint、`git diff --check` 与 `node --test tests/ui/calendar.test.cjs`（13/13）通过；全量 `npx tsc --noEmit` 仍有 6 个既有错误，位于 `src/app/(tabs)/_layout.tsx`（3）及 `src/features/notes/components/editor/new-note-editor.tsx`（3），本次文件未出现类型错误；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 15:37:16 | 优化代码：新增全局 Git 提交命令技能调用规则
+
+- **变更概述**：将“任务完成后强制调用 `git-commit-command` 技能”的持久规则写入全局 Codex 提示词。规则要求技能基于实际 Git 状态区分本次与无关改动、无变更时说明原因，并禁止在用户未明确要求时自动暂存、提交或推送；跨项目全局指令按约定在当前项目日志记账。
+- **修改文件列表**
+    - `C:\Users\31268\.codex\AGENTS.md` - 全局协作约定新增 Git 提交命令技能调用与 Git 写操作边界。
+    - `CHANGELOG.md` - 记录本次全局提示词变更。
+- **验证结果**：已完成提示词内容与差异检查；未执行 Git 暂存、提交或推送。
+
+---
+
+## 2026-09-16 15:26:56 | 优化代码：剪贴与待办页面容器互换
+
+- **变更概述**：按确认方案完成剪贴与待办页面的容器职责互换。剪贴页移除右侧工具栏预留和内容圆角，白色内容区撑满可用宽度；待办页恢复原有 AppCalendar，并采用左侧内容区加右侧 75dp 预留栏的横向结构，右侧栏与笔记分类栏的宽度和背景保持一致。既有剪贴、待办页面顺序调整保持不变。
+- **修改文件列表**
+    - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 移除右侧 75dp 栏与圆角内容卡片，改为全宽、无圆角的剪贴内容区。
+    - `src/features/todos/screens/TodosScreen.tsx` - 恢复 AppCalendar，改为内容区与右侧 75dp 预留栏的横向布局。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：定向 Expo ESLint 与 `git diff --check` 均通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 14:22:17 | 新增功能：公共日历组件待办跟踪文档
+
+- **变更概述**：应用户要求在 `docs/待办/` 新建日历组件专线跟踪文档（与既有 `待办事项.md` 公共组件线同模式）。内容：① 记录 AppCalendar 周月双形态（路线 B）当前落地进度——规范 v1.1、依赖安装、五个源码文件与 Date ID 工具、待办页 12dp 挂载、13/13 单元测试与静态检查（commit 12679b9，工作区干净）；② 沉淀六项关键裁定史（路线 B 定案、矩形圆角 16dp、单分隔线、周视图交互、挂载间距、范围外事项）防反复；③ 链接规范/公共组件规范/FlashCalendar 调研/节假日数据源调研/TODO 总索引/CHANGELOG 条目六份关联文档；④ 补充剩余清单四组：验收类（真机对账、手势、无障碍、视觉验收）、实现类（AppCalendarList、待办页业务联动、日历弹窗）、路线 B 三项已知取舍处置、节假日数据源两项待决策。纯文档新增，无业务代码改动。
+- **修改文件列表**
+    - `docs/待办/公共日历组件待办.md` - 新增：公共日历组件待办跟踪文档（首版）。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：文档内 6 个相对链接目标逐一核对存在；进度事实摘自规范 v1.1 §9/§10、CHANGELOG 2026-09-16 10:58:50 条目与 git log（12679b9，`git status --short` 干净）；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 10:58:50 | 新增功能：日历公共组件 AppCalendar（周月双形态，路线 B）并挂载待办页
+
+- **变更概述**：按已确认计划（路线 B：flash-calendar）实现日历公共组件族并首次挂载。① 新增 `AppCalendar`：周视图（收起态单周条，左右分页翻周、滚动窗口边缘静默重建近似无限翻页、跨月日期正常渲染）与月视图（44dp 标题行 + IconButton compact ghost 导航翻月、min/max 钳制）双形态；下滑展开、上滑收起（垂直位移 >14dp 判定 + 220ms 高度动画），展开/收起按选中值锚定。选中/今日为整格 48×48 矩形圆角（radii.control 16dp 连续圆角，用户裁定取代 v1.0 的 40dp 圆），今日 surfaceSelected 底蓝字，范围中段全宽色带端点仅外侧圆角；唯一分隔线在表头行底（用户裁定，标题行下不画），分隔线到首行日期 0dp（主题容器负 margin 抵消库内 4dp 统一间距）。② 周条与月视图共用 CalendarTheme 映射（模块级常量，引用稳定）与 flash-calendar 日格积木（Calendar.Item.Day/WeekName + buildCalendar 周行元数据）。③ 选值状态机：single 再点不取消；range 起点→终点→早于起点重设→第三击重来，受控/非受控并存（外部值回显保留内部阶段）。④ Date ID 全链路本地时区工具（toDateId/fromDateId 等，杜绝 UTC 偏移）。⑤ 待办页（第二页）挂载：容器上边框下 12dp，周视图默认，受控单选。AppCalendarList 契约保留未实现（无调用方）。已知取舍（用户确认路线 B 时知情）：flash-calendar 无逐格无障碍标签注入点；范围内禁用日显示选中态。
+- **修改文件列表**
+    - `src/shared/utils/date-id.ts` - 新增：Date ID 本地时区工具（toDateId/fromDateId/addDays/addWeeks/toMonthId/addMonths/startOfWeekId/formatMonthTitle/weekdayLabels 等）。
+    - `src/shared/ui/Calendar/calendar-logic.ts` - 新增：纯逻辑（single/range 选值状态机、toActiveDateRanges、锚定与收起/展开目标计算、月份导航钳制、周滚动窗口）。
+    - `src/shared/ui/Calendar/flash-calendar-theme.ts` - 新增：视觉规格常量 + CalendarTheme 映射（矩形圆角状态表、表头 gap 归零与 0dp 间隔负 margin、activeDayFiller 补缝色）+ 模块级格式化函数。
+    - `src/shared/ui/Calendar/WeekStrip.tsx` - 新增：收起态周条（分页 ScrollView 滚动窗口 + flash-calendar 日格复用 + 星期表头）。
+    - `src/shared/ui/Calendar/AppCalendar.tsx` - 新增：主组件（月视图标题行/导航、flash-calendar Calendar 承载、viewMode 受控/非受控、PanResponder 手势、高度动画）。
+    - `src/shared/ui/Calendar/index.ts` - 新增：组件族导出。
+    - `src/shared/ui/index.ts` - 追加 AppCalendar 及类型导出。
+    - `src/features/todos/screens/TodosScreen.tsx` - 挂载 AppCalendar（pt-3 = 距容器上边框 12dp，initialViewMode="week"，受控单选状态）。
+    - `tests/ui/calendar.test.cjs` - 新增：13 项 Node 单元测试（时区往返/闰年/跨月/周起点/状态机全语义/钳制/锚定/窗口）。
+    - `docs/UI/日历公共组件规范.md` - 升级 v1.1：周视图双形态、矩形圆角状态表、单分隔线裁定、路线 B 定案与取舍、验收清单勾选、§10 实现勘误。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：`npx tsc --noEmit` 新增/修改文件零错误（仓库另有 6 处未触碰文件的既有错误：`_layout.tsx` ×3、`new-note-editor.tsx` ×3）；定向 `npx eslint --no-cache` 全部通过（tests 目录按项目惯例不参与 eslint，与既有测试一致）；`node --test tests/ui/calendar.test.cjs` 13/13 通过；全量 `npm test` 82/84，2 个失败为 `tests/editor/drafts|revisions.test.cjs` 的既有环境问题（Node 24 拒绝对 node_modules/expo-modules-core TS 源码做类型剥离，与本次改动无关）。未启动浏览器、模拟器或真机；真机对账与视觉验收待用户执行。
+
+---
+
+## 2026-09-16 07:56:02 | 优化代码：剪贴板页预留右侧工具栏
+
+- **变更概述**：剪贴板页在内容卡片右侧预留与笔记页分类栏相同的 75dp 工具栏栏位，沿用应用背景与现有卡片的右上角圆角；当前仅保留布局空间，未接入工具操作。
+- **修改文件列表**
+    - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 将页面改为内容区与右侧工具栏栏位的横向布局。
+    - `CHANGELOG.md` - 记录本次剪贴板工具栏预留。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+## 2026-09-16 07:52:27 | 优化代码：剪贴板页镜像笔记容器
+
+- **变更概述**：剪贴板摘录页采用与笔记页对应的容器布局：顶部 15dp、应用背景、白色内容卡片、16dp 内容内边距与底部 8dp 间距；卡片使用右上角内容圆角，并按镜像方向保留上、右、下边框。
+- **修改文件列表**
+    - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 使用镜像笔记页的剪贴板内容容器承载现有占位内容。
+    - `CHANGELOG.md` - 记录本次剪贴板页容器调整。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
 
 ---
 
@@ -9,6 +196,86 @@
     - `docs/UI/通知渠道适配.md` - 新增调研与适配文档（版本 1.0）。
     - `CHANGELOG.md` - 记录本次新增。
 - **验证结果**：平台事实均以官方文档当日核验（Android developer 文档 Live Updates 硬性要求与政策禁项、Apple HIG 与 WWDC21 时效性通知、华为实况窗文档 8 小时/准入原则/AGC 申请、OpenHarmony API 参考 SlotType/SlotLevel 枚举值与 requestEnableNotification 单次弹窗机制、Expo v57 notifications SDK 文档 API 清单）；项目侧结论来自全库检索（依赖、android 构建配置、src/ 通知引用、docs 需求出处逐条核对）。
+
+---
+
+## 2026-09-16 07:48:32 | 优化代码：待办页仅保留上边框
+
+- **变更概述**：待办主容器增加与笔记页主内容卡片一致的 1dp 上边框；左右及底部边框、阴影和分页虚线保持移除，容器仍全高铺满。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 主容器增加 `border-t border-note-page-border`。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:46:55 | 优化代码：撤销笔记页左边框隐藏
+
+- **变更概述**：按用户指令撤销上一轮笔记主内容卡片左边框隐藏，恢复其上、左、下边框；待办页无边框、无阴影、无分页虚线的当前状态不变。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 恢复主内容卡片左边框。
+    - `CHANGELOG.md` - 记录本次撤销。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:45:18 | 修复问题：隐藏笔记页左侧分页边框
+
+- **变更概述**：笔记页主内容卡片移除左边框，避免横向切换时其随场景平移至待办页交接位置形成残留竖线；保留上、下边框、圆角、间距及笔记业务逻辑。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 主内容卡片改为仅上、下边框。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：待执行定向 ESLint 与差异空白检查；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:41:51 | 修复问题：移除待办页分页虚线
+
+- **变更概述**：删除待办页左侧中段虚线分割 View，横向分页切换不再显示任何人为分页线；待办容器继续保持无边框、无阴影与全高铺满。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 删除绝对定位的分页虚线。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:38:12 | 修复问题：移除待办页分页侧向阴影
+
+- **变更概述**：待办主容器移除 `shadow-lg`，使横向切换时顶部和底部不再出现连续的左右投影线；保留白色背景、全高布局及左侧中段浅色虚线。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 删除主容器侧向阴影类。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:35:09 | 修复问题：隐藏笔记页右侧分页边框
+
+- **变更概述**：笔记页主内容卡片移除右边框，避免横向切换至待办页时露出连续分页竖线；保留上、左、下边框、圆角、内容间距与现有笔记业务逻辑。
+- **修改文件列表**
+    - `src/features/notes/screens/NotesScreen.tsx` - 四周边框改为仅上、左、下边框。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:32:57 | 修复问题：待办页无边框铺满容器
+
+- **变更概述**：移除待办主卡片上、右、下实线边框以及 8dp 底部外边距，卡片自顶部 15dp 铺至页面底部；保留左侧中段浅色虚线，避免横向分页时出现连续左右边界线。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 主卡片改为无四周实线、无底部留白的 `flex-1` 容器。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 07:21:45 | 修复问题：减弱待办页交接分割线
+
+- **变更概述**：移除待办主卡片左侧贯穿全高的实线边框，避免其覆盖交接虚线造成分页边界过于明显；保留中间 50% 高度的虚线，并改用 `divider` 色与 50% 不透明度。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 左侧边框改为无边框，仅保留中段浅色虚线。
+    - `CHANGELOG.md` - 记录本次修复。
+- **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
 
 ---
 

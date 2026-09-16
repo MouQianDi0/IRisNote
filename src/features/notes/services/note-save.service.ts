@@ -191,7 +191,7 @@ export async function saveNewNoteLocalFirst(
     payload: CreateNotePayload,
     draft?: DraftCommit,
     onLocalSaved?: (note: Note) => void,
-) {
+): Promise<NoteSaveResult> {
     const { note: localNote } = await createPendingLocalNote(
         database,
         ownerUserId,
@@ -214,7 +214,7 @@ export async function saveEditedNoteLocalFirst(
     payload: UpdateNotePayload,
     draft?: DraftCommit,
     onLocalSaved?: (note: Note) => void,
-) {
+): Promise<NoteSaveResult> {
     const staged = await stageEditedNoteForSync(
         database,
         ownerUserId,
@@ -337,7 +337,7 @@ export async function stageEditedNoteForSync(
 async function finishDraftSave(
     database: ApplicationDatabase, owner: number, note: Note, draft?: DraftCommit,
     unchanged = false,
-) {
+): Promise<NoteSaveResult> {
     await enqueueNoteUpload(database, owner, note, draft);
     return {
         note,
@@ -375,6 +375,7 @@ export async function uploadNoteNow(
 ) {
     const note = await getLocalNoteByClientId(database, owner, id);
     if (!note) throw new Error("笔记已不存在");
+    if (note.sync_status === "syncing") throw new Error("笔记正在同步，请稍后重试。");
     if (note.server_id == null && note.sync_status === "unknown") {
         throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
     }
