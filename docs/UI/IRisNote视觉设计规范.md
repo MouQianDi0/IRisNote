@@ -31,8 +31,8 @@ adb shell wm density             # 需手动换算时查密度（1dp = 密度/16
 ## 1. 总则
 
 - 风格基线：HyperOS / miuix 设计语言（分组卡片、squircle 观感的连续圆角、克制的单主色、分割线不贯通、弹层遮罩统一）。
-- **主色决策（已定）**：沿用项目现有 `#007AFF`（iOS 蓝），不采用 miuix 的 `#3482FF`。主色切换属全局产品决策，另行立项（见 `TODO.md` §2）。
-- 当前仅浅色模式；深色模式缺失是已知债务（`TODO.md` §2），本文档所有 Token 暂只有浅色值。
+- **主色决策（已定）**：沿用项目现有 `#007AFF`（iOS 蓝），不采用 miuix 的 `#3482FF`。主色切换属全局产品决策，另行立项（见 `docs/待办/TODO.md` §2）。
+- 当前仅浅色模式；深色模式缺失是已知债务（`docs/待办/TODO.md` §2），本文档所有 Token 暂只有浅色值。
 - 单一数据源：默认浅色主题原始值定义在 `src/shared/theme/presets/default-light.json`；TypeScript 主题对象直接解析该预设，`global.css` 托管区块通过 `npm run theme:sync` 生成，并用 `npm run theme:check` 检查一致性。
 - 公共组件不得绑定当前色值，必须引用《公共组件规范》的语义 Token。后期更改主色、表面色、文字色或反馈色时，按完整主题预设替换，页面与组件接口保持不变。
 
@@ -285,4 +285,4 @@ danger（红色强调）**只用于不可逆操作的最终确认步**——即�
 | 全局横幅通知 | ✅ 已实现，自动上传队列复用稳定 ID 原位更新 |
 | 同步暂存列表 | ✅ 已实现，真机网络切换与布局待用户验收 |
 
-迁移原则：接触某弹窗时按本规范重写；新弹窗一律按本规范实现。深色模式、squircle（`react-native-figma-squircle`，需 dev build 重建）在 `TODO.md` §2 立项后另行推进。
+迁移原则：接触某弹窗时按本规范重写；新弹窗一律按本规范实现。深色模式、squircle（`react-native-figma-squircle`，需 dev build 重建）在 `docs/待办/TODO.md` §2 立项后另行推进。

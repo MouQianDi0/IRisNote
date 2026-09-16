@@ -4,5 +4,6 @@
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
   },
-  "tailwindCSS.classFunctions": ["tv"]
+  "tailwindCSS.classFunctions": ["tv"],
+  "Codegeex.RepoIndex": true
 }

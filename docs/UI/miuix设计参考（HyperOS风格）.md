@@ -192,7 +192,7 @@ Squircle = 连续曲率圆角。普通圆角在直线与圆弧交界处曲率突
 
 ## 6. RN / Expo 落地映射（IRisNote）
 
-对齐现有体系（见 `docs/样式开发规范.md`：NativeWind 5 + Tailwind 4 `global.css` @theme 静态 token + `src/shared/theme` 动态 token 双轨同步）。
+对齐现有体系（见 `docs/UI/样式开发规范.md`：NativeWind 5 + Tailwind 4 `global.css` @theme 静态 token + `src/shared/theme` 动态 token 双轨同步）。
 
 ### 6.1 颜色 token
 

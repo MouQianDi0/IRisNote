@@ -1,11 +1,12 @@
 import TabsBackExitHandler from "@/core/navigation/components/TabsBackExitHandler";
 import FloatingMenu from "@/core/navigation/components/FloatingMenu";
+import { SwipeTabs } from "@/core/navigation/components/SwipeTabsNavigator";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { colors } from "@/shared/theme";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect } from "expo-router";
 import { BlurTargetView } from "expo-blur";
 import { createRef, useState, type RefObject } from "react";
-import { ActivityIndicator, Easing, View } from "react-native";
+import { ActivityIndicator, Dimensions, View } from "react-native";
 
 export default function TabsLayout() {
   const { isLoggedIn, loading } = useAuth();
@@ -40,7 +41,11 @@ export default function TabsLayout() {
   return (
     <>
       <TabsBackExitHandler />
-      <Tabs
+      <SwipeTabs
+        initialLayout={{ width: Dimensions.get("window").width }}
+        tabBarPosition="bottom"
+        keyboardDismissMode="auto"
+        overScrollMode="never"
         screenLayout={({ children, route }) => (
           <BlurTargetView ref={blurTargets[route.name]} style={{ flex: 1 }}>
             {children}
@@ -54,44 +59,17 @@ export default function TabsLayout() {
         )}
         screenOptions={{
           headerShown: false,
-          transitionSpec: {
-            animation: "timing",
-            config: {
-              duration: 180,
-              easing: Easing.out(Easing.quad),
-            },
-          },
-
-          sceneStyleInterpolator: ({ current }) => ({
-            sceneStyle: {
-              opacity: current.progress.interpolate({
-                inputRange: [-1, 0, 1],
-                outputRange: [0.4, 1, 0.4],
-              }),
-
-              transform: [
-                {
-                  translateY: current.progress.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: [8, 0, 8],
-                  }),
-                },
-                {
-                  scale: current.progress.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: [0.98, 1, 0.98],
-                  }),
-                },
-              ],
-            },
-          }),
+          swipeEnabled: true,
+          animationEnabled: true,
+          lazy: true,
+          lazyPreloadDistance: 1,
         }}
       >
-        <Tabs.Screen name="note" />
-        <Tabs.Screen name="todo" />
-        <Tabs.Screen name="excerpt" />
-        <Tabs.Screen name="user" />
-      </Tabs>
+        <SwipeTabs.Screen name="note" />
+        <SwipeTabs.Screen name="todo" />
+        <SwipeTabs.Screen name="excerpt" />
+        <SwipeTabs.Screen name="user" />
+      </SwipeTabs>
     </>
   );
 }

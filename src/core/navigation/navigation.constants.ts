@@ -8,20 +8,6 @@ import {
 } from "lucide-react-native";
 import type { MainAction, TabKey } from "./navigation.types";
 
-export const TAB_ORDER = [
-    "/(tabs)/user",
-    "/(tabs)/excerpt",
-    "/(tabs)/todo",
-    "/(tabs)/note",
-] as const;
-
-export const TAB_INDEX_BY_KEY: Record<TabKey, number> = {
-    user: 0,
-    excerpt: 1,
-    todo: 2,
-    note: 3,
-};
-
 export const TAB_MENU_ITEMS = [
     {
         name: "笔记",
