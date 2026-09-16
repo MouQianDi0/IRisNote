@@ -322,6 +322,56 @@ test('reconcile appends, skips or seeds revisions per branch', async (t) => {
     assert.ok(await notes.getLocalNoteByClientId(port, 1, 77));
 });
 
+test('reconcile without ordering fields preserves local order and timestamp', async (t) => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [serverNote(51, '正文')]);
+    // 本地置顶排序与编辑时间（服务端接口不下发这三个值的现状）。
+    await port.run(
+        `UPDATE local_notes SET is_pinned = 1, pinned_order = 7, local_order = 2,
+            local_updated_at = '2026-09-16T10:00:00.000Z'
+         WHERE server_id = 51`);
+
+    await notes.reconcileServerNotes(port, 1, [
+        { ...serverNote(51, '正文'), is_pinned: true },
+    ]);
+
+    const row = await port.getFirst(
+        `SELECT pinned_order, local_order, local_updated_at FROM local_notes WHERE server_id = 51`);
+    assert.equal(row.pinned_order, 7);
+    assert.equal(row.local_order, 2);
+    assert.equal(row.local_updated_at, '2026-09-16T10:00:00.000Z');
+});
+
+test('reconcile applies flag changes and bumps local_updated_at', async (t) => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [serverNote(52, '正文')]);
+    await port.run(
+        `UPDATE local_notes SET local_updated_at = '2026-09-16T10:00:00.000Z' WHERE server_id = 52`);
+
+    await notes.reconcileServerNotes(port, 1, [
+        { ...serverNote(52, '正文'), is_starred: true },
+    ]);
+
+    const row = await port.getFirst(
+        `SELECT is_starred, local_updated_at FROM local_notes WHERE server_id = 52`);
+    assert.equal(row.is_starred, 1);
+    assert.notEqual(row.local_updated_at, '2026-09-16T10:00:00.000Z');
+});
+
+test('reconcile adopts server ordering fields when provided', async (t) => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [serverNote(53, '正文')]);
+
+    await notes.reconcileServerNotes(port, 1, [
+        { ...serverNote(53, '正文'), local_order: 9, pinned_order: 4 },
+    ]);
+
+    const row = await port.getFirst(
+        `SELECT local_order, pinned_order FROM local_notes WHERE server_id = 53`);
+    assert.equal(row.local_order, 9);
+    assert.equal(row.pinned_order, 4);
+});
+
 test('restore creates a new revision and never mutates the old node', async (t) => {
     const { port } = await database(t);
     const created = await notes.createPendingLocalNote(port, 1, payload('V1 正文'));

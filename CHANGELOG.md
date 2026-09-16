@@ -1,3 +1,25 @@
+## 2026-09-17 03:27:16 | 新增功能：笔记排序同步与分层列表设计文档
+
+- 文件：docs/架构指南/笔记排序同步与分层列表设计.md、CHANGELOG.md。
+- 新增阶段二正式设计稿：以「排序=已同步字段的推导函数」为总则，服务端 `notes` 增 `updated_at`/`pinned_at`/`starred_at` 三时间戳列（值变化才盖章、互不牵连、服务端唯一盖章方），客户端镜像存储后按 `(is_pinned, is_starred, 层内时间戳, id)` 总序排序，单 FlatList 四段分层（置顶已标星→置顶未标星→标星→普通）。
+- 记录行为语义（编辑不打乱层内次序、置顶/重置顶跳层顶）、多设备到达序 LWW 与 `id` 同刻决胜、存量回填建议（`created_at`）、`pinned_order`/`local_order` 退役计划、实施顺序（服务端先行向后兼容→客户端切键→UI 分层须文字预览）与残余风险（批量合法变序仍依赖 RN 上游修复）。
+- 2026-09-16 23:46:17 落地的 reconcile 护栏为本设计的兼容层，文档内互相引用。本次只新增文档，未改代码、依赖与构建配置。
+- 验证：`npx tsc --noEmit` 通过（0 错，未触及 TS 文件）；检查 Markdown 结构、相对路径引用、`git diff --check` 空白与冲突标记。
+
+---
+
+## 2026-09-16 23:46:17 | 修复问题：同步对账不再抹除本地排序字段，消除启动约 40 秒闪退
+
+- 文件：src/features/notes/data/note-local.repository.ts、tests/editor/revisions.test.cjs、CHANGELOG.md。
+- 问题现象：release 包（versionCode 2）连续三次在启动约 40-48 秒时前台闪退，堆栈为 Fabric `addViewAt: failed to insert view at index 13`，根因 `The specified child already has a parent`。
+- 问题根源：`GET /notes` 不下发 `local_order`/`pinned_order`，而 `reconcileServerNotes` 对每条已同步行无条件 UPDATE，把 `local_order` 覆盖成服务端数组下标、`pinned_order` 抹成 NULL、`local_updated_at` 刷成当前时间。服务端回包（约 40 秒）后整表排序改变，FlatList（initialNumToRender=8 + maxToRenderPerBatch=6，第 14 格即 index 13）发生整表 key 搬移，撞上 RN 0.86 Fabric 批量挂载"插入先于移除"的竞态而崩溃；置顶顺序每次同步被抹属同一根源的数据丢失。
+- 修复方案：UPDATE 前增加逐字段变化检测（title/content/category_id/created_at/is_pinned/is_starred 及服务端提供的排序值），完全无变化的行整行跳过；有变化时排序字段保序回填（`note.local_order ?? existing.local_order`、`note.pinned_order ?? existing.pinned_order`）。效果：同步回包后无实际变化的数据在本地产生逐字段相同的笔记数组，FlatList key 零移动，竞态无从触发；该语义同时是服务端将来下发排序字段（推导排序方案）后的前向兼容层。
+- 选择理由：设备侧 dropbox 三次崩溃签名一致（index 13、存活 40-48s）；结构排查排除日历组件（容器子数不足）与重复 id（client_id 负数隔离 + 唯一约束），唯一与"index 13 插入"结构吻合的是笔记列表批量挂载。修复保序而非改列表参数，拔的是触发器本身。
+- 风险评估：仅影响"服务端未提供排序字段"时的回填行为（服务端现状即不提供），语义收紧；不触碰正文/版本/同步状态字段与 INSERT 分支。`local_updated_at` 读取方仅 `getLocalNotes` 排序兜底，已排查无隐藏依赖。
+- 验证：修改前 `npx tsc --noEmit` 0 错留底；新增 3 个回归用例（无排序字段回包保留本地值且不刷新时间戳、标志变化仍生效、服务端提供排序值时采纳），`tests/editor/revisions.test.cjs` 23/23 通过；`npm run check` 中 tsc/eslint/theme 通过、全量测试 146/147（唯一失败 `tests/releases/source.test.cjs` 为 tar 执行失败，经 git stash 前后对比确认为存量环境问题，与本次修改无关）。真机验证待用户出包：连续多次冷启动并停留超过 1 分钟，确认不再闪退。
+
+---
+
 ## 2026-09-16 16:49:35 | 新增功能：待办创建弹窗与列表设计文档
 
 - 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
