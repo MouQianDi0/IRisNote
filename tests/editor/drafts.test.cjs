@@ -27,10 +27,23 @@ const notes = require('../../src/features/notes/data/note-local.repository.ts');
 const { createLocalNotes } = require('../../src/core/database/migrations/0002-create-local-notes.ts');
 const { createNoteDrafts } = require('../../src/core/database/migrations/0003-create-note-drafts.ts');
 const { createNoteRevisions } = require('../../src/core/database/migrations/0004-create-note-revisions.ts');
+const { createUploadQueue } = require('../../src/core/database/migrations/0005-create-upload-queue.ts');
 const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 const api = { createNote: async () => { throw new Error('test network unavailable'); }, updateNote: async () => { throw new Error('test network unavailable'); } };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
+const queue = require('../../src/core/sync/upload-queue.repository.ts');
+const categoryApiPath = require.resolve('../../src/features/notes/categories/api/categories.api.ts');
+const unexpectedCategoryCall = async () => { throw new Error('Unexpected category request'); };
+require.cache[categoryApiPath] = { id: categoryApiPath, filename: categoryApiPath, loaded: true,
+    exports: { createCategory: unexpectedCategoryCall, updateCategory: unexpectedCategoryCall, deleteCategory: unexpectedCategoryCall } };
+const { executeUploadTask } = require('../../src/features/sync/upload-task-adapters.ts');
+async function executeQueuedNote(port, owner, id) {
+    const tasks = await queue.listUploadTasks(port, owner);
+    const task = tasks.find(item => item.payload.clientId === id);
+    assert.ok(task, 'saving must persist a note upload task');
+    return executeUploadTask(port, task);
+}
 const filesPath = require.resolve('../../src/features/notes/data/saved-draft-files.ts');
 const fileMemory = new Map();
 const savedDraftFiles = {
@@ -164,7 +177,9 @@ test('formal save clears corresponding explicit file and recovery, preserving an
     const snapshot = await b.beginSave();
     const result = await saves.saveNewNoteLocalFirst(port, 7, payload('saved'), snapshot.commit);
     b.finish(); await b.close();
-    assert.equal(result.cloudState, 'accepted');
+    assert.equal(result.cloudState, 'queued');
+    assert.ok(await drafts.readNoteDraft(port, 7, a.key));
+    assert.equal((await executeQueuedNote(port, 7, result.note.id)).state, 'accepted');
     const list = await newDrafts.listNewNoteDrafts(port, 7);
     assert.deepEqual(list.map((entry) => entry.key), [other.key]);
 });
@@ -180,9 +195,11 @@ test('file cleanup failure retains linked recovery and retry does not duplicate 
     const remove = t.mock.method(savedDraftFiles, 'remove', async () => { throw new Error('remove failed'); });
     const result = await saves.saveNewNoteLocalFirst(port, 7, payload('saved'), snap.commit);
     b.finish(); await b.close();
-    assert.equal(result.cloudState, 'accepted');
+    assert.equal(result.cloudState, 'queued');
+    assert.equal(posts, 0);
+    assert.equal((await executeQueuedNote(port, 7, result.note.id)).state, 'accepted');
     assert.equal((await drafts.readNoteDraft(port, 7, a.key)).note_id, result.note.id);
-    assert.equal(result.draftCleanupPending, true);
+    assert.equal((await notes.getLocalNoteByClientId(port, 7, result.note.id)).sync_status, 'synced');
     remove.mock.restore();
     const c = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
     const retry = await c.beginSave();
@@ -202,7 +219,9 @@ test('discard after local-only commit keeps saved file linked to same note', asy
     b.change(value('local commit')); const snap = await b.beginSave();
     const result = await saves.saveNewNoteLocalFirst(port, 7, payload('local commit'), snap.commit);
     b.finish(); await b.close();
-    assert.equal(result.cloudState, 'unknown');
+    assert.equal(result.cloudState, 'queued');
+    assert.equal(posts, 0);
+    assert.equal((await executeQueuedNote(port, 7, result.note.id)).state, 'blocked');
     const c = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
     c.change(value('discarded changes')); await c.discard(); await c.close();
     const d = await NewNoteDraftSession.resume(port, 7, a.key, () => {});
@@ -258,6 +277,7 @@ async function database(t, filename = ':memory:') {
     await createLocalNotes.up(migrationPort);
     await createNoteDrafts.up(migrationPort);
     await createNoteRevisions.up(migrationPort);
+    await createUploadQueue.up(migrationPort);
     return { port, sql, migrationPort };
 }
 
@@ -447,9 +467,12 @@ test('cloud unknown retains linked draft and retry does not issue a second POST'
     await drafts.openNoteDraft(port, 1, 'new', 'a', null, value(''));
     await drafts.writeNoteDraft(port, 1, commit, value('draft'));
     const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('draft'), commit);
-    assert.equal(saved.cloudState, 'unknown');
+    assert.equal(saved.cloudState, 'queued');
+    assert.equal(posts, 0);
+    assert.equal((await executeQueuedNote(port, 1, saved.note.id)).state, 'blocked');
     assert.equal((await drafts.readNoteDraft(port, 1, 'new')).note_id, saved.note.id);
-    const retried = await saves.saveEditedNoteLocalFirst(port, 1, saved.note, payload('retry'), commit);
+    const latest = await notes.getLocalNoteByClientId(port, 1, saved.note.id);
+    const retried = await saves.saveEditedNoteLocalFirst(port, 1, latest, payload('retry'), commit);
     assert.equal(retried.cloudState, 'unknown'); assert.equal(posts, 1);
     assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
 });
@@ -461,7 +484,8 @@ test('accepted cloud save clears only its own submitted draft', async (t) => {
     await drafts.openNoteDraft(port, 1, 'new', 'a', null, value(''));
     await drafts.writeNoteDraft(port, 1, commit, value('draft'));
     const result = await saves.saveNewNoteLocalFirst(port, 1, payload('draft'), commit);
-    assert.equal(result.cloudState, 'accepted');
+    assert.equal(result.cloudState, 'queued');
+    assert.equal((await executeQueuedNote(port, 1, result.note.id)).state, 'accepted');
     assert.equal(await drafts.readNoteDraft(port, 1, 'new'), null);
 });
 
@@ -475,7 +499,8 @@ test('new session opened during upload survives old save cleanup', async (t) => 
     const commit = { key: 'new', sessionId: 'a', sequence: 1 };
     await drafts.openNoteDraft(port, 1, 'new', 'a', null, value(''));
     await drafts.writeNoteDraft(port, 1, commit, value('draft'));
-    await saves.saveNewNoteLocalFirst(port, 1, payload('draft'), commit);
+    const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('draft'), commit);
+    assert.equal((await executeQueuedNote(port, 1, saved.note.id)).state, 'accepted');
     assert.equal((await drafts.readNoteDraft(port, 1, 'new')).content, 'newer draft');
 });
 

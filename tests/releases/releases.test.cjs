@@ -1,3 +1,5 @@
+/* global __dirname */
+const { Buffer } = require('node:buffer');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -51,8 +53,13 @@ test('tool verifies APK identity and sole certificate', async () => {
   assert.throws(() => lib.validateApkInfo({ ...info, buildCode: 27 }, row));
   const digest = 'a'.repeat(64);
   assert.equal(lib.certificateDigest(`Signer #1 certificate SHA-256 digest: ${digest}`), digest);
+  assert.equal(lib.certificateDigest(`V2 Signer: certificate DN: CN=Test\r\nV2 Signer: certificate SHA-256 digest: ${digest.toUpperCase()}\r\nV2 Signer: certificate SHA-1 digest: ignored\r\n`), digest);
+  assert.equal(lib.certificateDigest(`V3 Signer: certificate SHA-256 digest: ${digest}`), digest);
   assert.throws(() => lib.certificateDigest('unsigned'));
   assert.throws(() => lib.certificateDigest(`Signer #1 certificate SHA-256 digest: ${digest}\nSigner #2 certificate SHA-256 digest: ${digest}`));
+  assert.throws(() => lib.certificateDigest(`V2 Signer: certificate SHA-256 digest: ${digest}\nV2 Signer: certificate SHA-256 digest: ${'b'.repeat(64)}`));
+  assert.throws(() => lib.certificateDigest(`Signer #1 certificate SHA-256 digest: ${digest}\nV2 Signer: certificate SHA-256 digest: ${digest}`));
+  assert.throws(() => lib.certificateDigest(`V2 Signer: certificate SHA-256 digest: ${digest}0`));
 });
 test('Windows batch lookup preserves npm installation directory', { skip: process.platform !== 'win32' }, async () => {
   const { run, npm } = await import('../../scripts/release/lib.mjs');

@@ -39,6 +39,7 @@ yarn-error.*
 *.pem
 
 # local env files
+# Includes the release CLI's private .env.release.local configuration.
 .env*.local
 
 # typescript

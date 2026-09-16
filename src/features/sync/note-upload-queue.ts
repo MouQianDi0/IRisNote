@@ -1,5 +1,6 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { enqueueUploadTask, estimateJsonBytes } from "@/core/sync";
+import { enqueueUploadTask } from "@/core/sync/upload-queue.repository";
+import { estimateJsonBytes } from "@/core/sync/upload-queue.utils";
 import type { DraftCommit } from "@/features/notes/data/note-draft.repository";
 import type { Note } from "@/features/notes/notes.types";
 
@@ -18,6 +19,7 @@ export function enqueueNoteUpload(
                     key: draft.key,
                     sessionId: draft.sessionId,
                     sequence: draft.sequence,
+                    removeExplicitFile: draft.removeExplicitFile === true,
                 },
             }
             : {}),

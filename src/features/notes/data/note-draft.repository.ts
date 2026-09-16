@@ -16,7 +16,7 @@ export type NoteDraft = {
     sequence: number;
     updated_at: string;
 };
-export type DraftCommit = { key: string; sessionId: string; sequence: number; beforeDelete?: () => Promise<void> };
+export type DraftCommit = { key: string; sessionId: string; sequence: number; removeExplicitFile?: boolean; beforeDelete?: () => Promise<void> };
 
 export const noteDraftValue = (note: Note): NoteDraftValue => ({
     title: note.title, content: note.content ?? "", categoryId: note.category_id,

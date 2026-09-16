@@ -1,0 +1,16 @@
+// Applied only by the release CLI, never installed in the user's Gradle home.
+def ninjaPath = System.getenv('IRIS_NINJA_PATH')
+if (!ninjaPath || !new File(ninjaPath).isFile()) {
+    throw new GradleException('IRIS_NINJA_PATH must point to the verified Ninja executable')
+}
+gradle.beforeProject { project ->
+    ['com.android.application', 'com.android.library'].each { pluginId ->
+        project.pluginManager.withPlugin(pluginId) {
+            project.extensions.getByName('androidComponents').finalizeDsl { android ->
+                android.defaultConfig.externalNativeBuild.cmake.arguments.add(
+                    '-DCMAKE_MAKE_PROGRAM=' + ninjaPath.replace('\\', '/')
+                )
+            }
+        }
+    }
+}
