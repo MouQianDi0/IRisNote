@@ -1,4 +1,11 @@
-<<<<<<< HEAD
+## 2026-09-16 14:42:13 | 修复问题 / 优化代码：导航器回调类型与 Agent 构建验收规则
+
+- 文件：AGENTS.md、src/core/navigation/components/SwipeTabsNavigator.tsx、tests/notifications/banner.test.cjs、CHANGELOG.md。
+- 已获用户确认。新增类型安全、修改前后检查、合并后复验与发布提交核对等七条规则。
+- withLayoutContext 使用原始 SwipeTabsNavigator 函数类型，避免 Expo Router 工厂返回的 any 丢失组件属性，恢复 screenLayout 与 tabBar 的回调参数推断；不改变界面和运行逻辑。
+- 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
+
+---
 ## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
 
 - 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
@@ -66,7 +73,6 @@
 - 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
 - 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
 - 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
-=======
 # CHANGELOG
 
 ## 2026-09-16 10:58:50 | 新增功能：日历公共组件 AppCalendar（周月双形态，路线 B）并挂载待办页
@@ -492,7 +498,6 @@
     - `npm test`：71 项 69 过 2 挂，失败为 drafts/revisions 两文件既有 Node 24 类型剥离加载问题（kroos/master 双方均有记录）；kroos 侧 banner 测试修复保留生效，master 新增 releases 差量测试全部通过。
     - `npm run lint` 与 `npm run theme:check` 通过。
     - 未做设备验收。注意：master 已升级 SDK 57，现有 SDK 56 的 Expo Go 将无法加载本项目，需升级 Expo Go 或改用 dev build 流程。
->>>>>>> 8017f901387e0f55fa30433e324c1560b3499010
 
 ---
 
