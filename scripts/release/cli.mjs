@@ -21,9 +21,6 @@ import {
     verifyNativeUpdater,
 } from "./delta.mjs";
 import { loadReleaseEnv } from "./env.mjs";
-import { createReleaseWorkspace } from "./workspace.mjs";
-import { setupNinja, releaseNinja } from "./ninja.mjs";
-import { exportBuildSource } from "./source.mjs";
 import {
     certificateDigest,
     fileSha256,
@@ -32,6 +29,9 @@ import {
     run,
     validateApkInfo,
 } from "./lib.mjs";
+import { releaseNinja, setupNinja } from "./ninja.mjs";
+import { exportBuildSource } from "./source.mjs";
+import { createReleaseWorkspace } from "./workspace.mjs";
 
 const root = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -275,7 +275,7 @@ async function build() {
         "android/app/build/outputs/apk/release/app-release.apk",
     );
     const info = await inspect(apk, release);
-    const output = path.join(root, "dist", "releases");
+    const output = path.join(root, "dist", "releases", release.version);
     await mkdir(output, { recursive: true });
     const target = path.join(
         output,
@@ -299,7 +299,7 @@ async function preparePatches(release, apk) {
         return;
     }
     deltaTools();
-    const output = path.join(root, "dist", "releases");
+    const output = path.join(root, "dist", "releases", release.version);
     await mkdir(output, { recursive: true });
     for (const old of bases) {
         if (old.patch_ready) {

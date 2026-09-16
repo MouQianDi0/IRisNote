@@ -1,3 +1,12 @@
+## 2026-09-16 16:28:01 | 优化代码：构建产物按版本号分目录存放
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认（文件夹命名取仅版本号）。build() 的 APK 与 .apk.json 输出目录由 `dist/releases/` 改为 `dist/releases/<版本号>/`，目录递归自动创建，同版本多次构建共处一夹、靠文件名区分；preparePatches() 的差量补丁临时工作目录同步归入版本子目录。
+- 已有顶层旧产物不自动迁移，保留原地；后续 inspect/upload/patches 的 `--apk` 参数需指向新子目录路径，文档示例已同步更新。
+- 验证：node --check 语法检查、定向 ESLint、git diff --check 通过；未执行真实构建、上传或发布。
+
+---
+
 ## 2026-09-16 14:42:13 | 修复问题 / 优化代码：导航器回调类型与 Agent 构建验收规则
 
 - 文件：AGENTS.md、src/core/navigation/components/SwipeTabsNavigator.tsx、tests/notifications/banner.test.cjs、CHANGELOG.md。
