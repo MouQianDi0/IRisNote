@@ -2,6 +2,67 @@
 
 ---
 
+## 2026-09-16 06:47:46 | 新增功能：通知渠道适配文档（Android / iOS / 鸿蒙调研）
+
+- **变更概述**：应用户要求，产出三平台系统通知能力调研与适配文档，按普通/重要/动态三分类对照。关键结论：① Android 渠道自由度最高（任意自建 NotificationChannel，importance 建后锁死、用户可全量覆盖，HIGH 即第三方打扰上限）；iOS 无渠道概念、分级随单条通知（passive/active/timeSensitive/critical，critical 需 Apple 特批、笔记类不适用）；鸿蒙为固定 7 类 SlotType 枚举白名单制（SERVICE_INFORMATION 默认即 LEVEL_HIGH 横幅，LIVE_VIEW 渠道三方不可直接创建，须走 Live View Kit 系统代理 + AGC 场景审核）。② 动态通知：Android 16 Live Updates 政策明令禁止"即将到来的日历事件"，鸿蒙实况窗 11 类模板场景无笔记类且 8 小时上限、需 AGC 申请，iOS Live Activities 需持续变化实时内容——三平台均无本项目合规场景，动态通知暂不立项。③ 项目侧盘点：系统通知零实现（无 expo-notifications 等任何依赖，设置页为 disabled 占位"规划中"），需求散落于 TODO.md L72、后续开发指南 §14、视觉设计规范"系统通知必须独立立项"约束、服务端手册 §19 远期推送；已实现的 src/core/notifications 为应用内横幅，与系统通知分层并行。④ 给出渠道映射草案（提醒=HIGH/timeSensitive/SERVICE_INFORMATION，回执=LOW/passive/CONTENT_INFORMATION）、Expo SDK 57 落点（expo-notifications 渠道 API 与 interruptionLevel 均已支持、Live Activities 不在其内、鸿蒙无 Expo 构建目标）与风险清单（Android 14+ 精确闹钟收紧、鸿蒙授权弹窗仅一次等）。纯文档新增，无业务代码改动。
+- **修改文件列表**
+    - `docs/UI/通知渠道适配.md` - 新增调研与适配文档（版本 1.0）。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：平台事实均以官方文档当日核验（Android developer 文档 Live Updates 硬性要求与政策禁项、Apple HIG 与 WWDC21 时效性通知、华为实况窗文档 8 小时/准入原则/AGC 申请、OpenHarmony API 参考 SlotType/SlotLevel 枚举值与 requestEnableNotification 单次弹窗机制、Expo v57 notifications SDK 文档 API 清单）；项目侧结论来自全库检索（依赖、android 构建配置、src/ 通知引用、docs 需求出处逐条核对）。
+
+---
+
+## 2026-09-16 06:36:33 | 优化代码：待办页连续卡片容器
+
+- **变更概述**：待办页占位内容改置于与笔记页主内容区同高的白色底层卡片；卡片保留笔记页边框和阴影层级、不使用圆角，并在左侧交接边缘增加仅覆盖容器中间 50% 高度的虚线，使横向切换笔记与待办时页面边界连续可辨。
+- **修改文件列表**
+    - `src/features/todos/screens/TodosScreen.tsx` - 新增待办主内容卡片、左侧中段虚线分割线与内容内边距。
+    - `CHANGELOG.md` - 记录本次优化。
+- **验证结果**：`git diff --check` 通过。定向 ESLint 与 `tsc --noEmit` 均因当前 WSL 1 无法解析 Windows Node.js 安装目录而未启动，未产生代码诊断；未启动浏览器、模拟器或真机。
+
+---
+
+## 2026-09-16 06:25:18 | 新增功能：节假日数据源调研与选型文档
+
+- **变更概述**：应用户要求实测五类节假日数据源（date-holidays / Nager.Date / Calendarific / Abstract Holidays API / 中国专项）并落成调研文档。核心实测结论：全球库均不掌握中国"放假安排"（date-holidays 2026 春节仅 2/16–18 三天、Nager CN 仅 6 条单日，实际春节休 2/15–23 且 2/14、2/28 补班）；chinese-days 的 isWorkday/isInLieu/调休区间实测全对（含 10/10 补班周六判定，附赠农历互转与 24 节气）；chinese-workday npm 包 CJS require 直接报错（打包缺陷）；timor.tech API 被 Cloudflare 人机校验拦截。文档给出「本地双源 + 每年更新」分层选型：中国查询层用 chinese-days、全球覆盖用 date-holidays（推荐构建期生成精简 JSON，10.97 MB 全量不可进 RN bundle）、更新通道挂 holiday-cn + 应用内更新，并附 HolidayProvider 统一接口草案衔接 /日历 命令、AI 日程与 AppCalendar 七态打点；另勘误原对比表（Nager 实测 204 国、date-holidays 206 国、全球库"中国调休✅"均为误标）。纯文档新增，无业务代码改动。
+- **修改文件列表**
+    - `docs/学习参考/节假日数据源调研与选型.md` - 新增调研文档。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：数据均为当日实测——Nager.Date 公开 API 实调（CN 2026 六条、AvailableCountries 204 国）；holiday-cn 2026.json 拉取核对（国庆 10/1–7 休、9/20 与 10/10 补班真值）；date-holidays / chinese-days / chinese-workday 于临时目录 npm 安装后 Node 实跑（isHoliday/isWorkday/getHolidaysInRange 输出、包结构 exports 与 `require("fs")` 依赖检查）；GitHub API 核对星数/推送时间/协议（date-holidays 1101★、Nager.Date 1410★、chinese-days 1292★、holiday-cn 2.1k★）；Calendarific 免费档 500/月为官网口径（未注册实测），Abstract 免费档为第三方口径并已在文中标注。
+
+---
+
+## 2026-09-16 06:06:55 | 新增功能：安装日历库依赖 flash-calendar 与 flash-list
+
+- **变更概述**：按用户指令为日历公共组件（见 `docs/UI/日历公共组件规范.md`）启动技术路线 B，执行依赖安装。`npx expo install @shopify/flash-list @marceloterreiro/flash-calendar`：flash-list 由 Expo SDK 57 的 bundledNativeModules 自动定版 2.0.2（官方第三方库列表在列，Expo Go 可用），满足 flash-calendar v2.0.0 的 peer 要求 `@shopify/flash-list >= 2.0.0`；flash-calendar 安装 ^2.0.0（node_modules 实际 2.0.0，dist 入口与类型文件完整）。仅依赖变更，未写任何业务代码。
+- **修改文件列表**
+    - `package.json` / `package-lock.json` - 新增 `@shopify/flash-list@2.0.2`、`@marceloterreiro/flash-calendar@^2.0.0` 两条依赖。
+    - `node_modules`（不入库）- 随安装更新。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：`npx expo install` 退出无错误（尾部仅既有 audit/allow-scripts 提示）；package.json 与 node_modules 双侧版本核对一致（flash-list 2.0.2、flash-calendar 2.0.0）；flash-calendar 包 `dist/index.js` + `dist/index.d.ts` 入口存在。SDK 57 文档 `/versions/v57.0.0/sdk/flash-list` 确认 flash-list 属官方支持第三方库。注意：FlashList 含原生代码，若后续在未内置该版本的 Expo Go 上加载失败，需升级 Expo Go 至 SDK 57 版或改用 dev build。
+
+---
+
+## 2026-09-16 06:02:09 | 新增功能：日历公共组件规范文档（AppCalendar / AppCalendarList）
+
+- **变更概述**：应用户要求，按《IRisNote视觉设计规范》《公共组件规范》的 Token 体系与文档体例，编写日历公共组件的目标规范（未实现）。定义 AppCalendar（单月含导航）与 AppCalendarList（多月滚动）两组件：布局总览 ASCII 图含关键间距标注（单元格 48×48dp 水平无缝、行距 4dp、选中圆 40dp、月份行 44dp、表头 32dp、分隔线 1dp）、日期格七态样式表（默认/今天/选中/范围中间/按压/禁用/非本月，全部映射 semanticColors 语义 Token）、Date ID 数据契约（禁手工 toISOString 转换）、single/range 两种模式的受控 props TS 契约与点击语义、无障碍规格、技术实现路线（路线 A 纯自绘零依赖 vs 路线 B 基于 flash-calendar 的 theme 映射表，并警示项目未安装 FlashList 而 flash-calendar v2 硬性要求 ≥2.0.0）、验收清单。纯文档新增，无业务代码改动。
+- **修改文件列表**
+    - `docs/UI/日历公共组件规范.md` - 新增组件规范文档（版本 1.0）。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：样式数值全部取自既有规范原文（17sp/13sp 字号档、#007AFF 品牌蓝、surfaceSelected #EAF2FF、divider #E0E0E0、pressedOpacity 0.85、borderCurve continuous、IconButton compact 40×40/触控 44 规格）；项目未安装 @shopify/flash-list 的事实经 package.json 核实；`src/shared/ui/` 落位与导出方式经目录核实。
+
+---
+
+## 2026-09-16 05:45:09 | 新增功能：Flash Calendar 调研与自定义方案文档
+
+- **变更概述**：应用户要求调研 React Native 日历库 Flash Calendar（marceloprado/flash-calendar，npm `@marceloterreiro/flash-calendar` v2.0.0，MIT，1505 stars），并将调研结果落成文档。内容含项目概况、核心特点（FlashList 驱动、6kb gzip、仅依赖 mitt、Date ID 时区安全）、组件与核心 API（Calendar / Calendar.List / useDateRange 等）、四个层级的自定义方案（theme prop 三态函数、布局格式 props、组件自组合、行为级定制）、IRisNote 集成注意事项（重点：v2.0.0 peer 依赖要求 @shopify/flash-list >= 2.0.0）、参考链接。纯文档新增，无业务代码改动。
+- **修改文件列表**
+    - `docs/学习参考/FlashCalendar_调研与自定义方案.md` - 新增调研文档。
+    - `CHANGELOG.md` - 记录本次新增。
+- **验证结果**：数据来源均为当日实测核对——GitHub API（stars/协议/最近提交时间）、npm registry（dist-tags/peerDependencies）、官方文档站（usage/customization/tips-and-tricks）、源码（`tokens.ts` 色板、`Calendar.tsx` 的 `CalendarTheme` 类型、`CalendarThemeProvider.tsx`）。
+
+---
+
 ## 2026-09-16 04:31:56 | 修复问题：重写提交消除行尾符假差异污染
 
 - **变更概述**：经用户确认，将 c3993a3（优化 tab ui，因行尾转换失效夹带约 300 个文件的 CRLF 假差异并已经 PR #94 合入 master）重写为规范化版本：回退到 de3fb17 后新增 `.gitattributes`（`* text=auto`）并 `git add --renormalize`，纯行尾文件与污染前逐字节相同自动剔除，重做提交仅含 58 个真实改动文件 + `.gitattributes`，并保留原提交时间戳。随后强推 kroos 与 master（--force-with-lease）。协作者需 `git fetch` 后 `git reset --hard origin/master` 重新对齐；PR #94 在 GitHub 上仍显示 Merged 但提交已被替换，属预期外观现象。
