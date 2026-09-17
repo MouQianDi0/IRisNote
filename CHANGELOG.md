@@ -1,3 +1,24 @@
+## 2026-09-17 11:04:39 | 修复问题：APK 经 CDN 回读并兼容已开启的 COS 版本控制
+
+- 文件：scripts/release/cos.mjs、tests/releases/cos.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。COS 默认域名 APK GET 返回 DownloadForbidden，回读改用已配置的 HTTPS CDN 自定义域名，校验 HTTP 200、大小、ETag 与完整 SHA-256；不发送 COS 凭据、禁止重定向，错误时保留远端文件供重试。
+- 允许 Enabled 和未开启版本控制；暂停/未知状态仍停止。先检查同名对象，已存在只校验；新上传比对 ETag/版本 ID，校验结束再 HEAD 检查对象稳定性。不修改桶设置、不删除历史版本。Enabled 下禁止覆盖请求头无效，检查不提供跨上传者原子互斥，文档明确并发限制。
+- 新增只读 verifyExisting 入口用于已有文件验证；补充 CDN 缓存、大小、摘要、并发版本变化及 Enabled 模式测试。
+- 验证：修改前 npm run typecheck 通过；19 项上传专项测试、定向 ESLint 和最终 npm run check（类型、Lint、主题、163 项测试）通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加未提交修改。真实只读下载 CDN 的 IRisNote-0.1.0-6.apk，122182378 字节，SHA-256 c125580baad40ca7f63bbcba43fd5318490be14183ca228ee8eb9cfb6fceff0d，与本地 APK 一致，ETag 和 COS 对象稳定性检查通过。本次未执行真实 PUT、发布、APK 构建或修改云端配置。
+
+---
+
+## 2026-09-17 09:53:59 | 新增功能：APK 自动上传服务器与 COS 并支持失败续传
+
+- 文件：scripts/release/cli.mjs、scripts/release/cos.mjs、scripts/release/upload.mjs、package.json、package-lock.json、tests/releases/cos.test.cjs、tests/releases/upload.test.cjs、docs/构建发布/release.env.example、docs/构建发布/android-releases.md、CHANGELOG.md；本机忽略文件 .env.release.local 仅补齐缺失配置项。
+- 已获用户确认。自建 APK 构建并校验成功后串联服务器上传、实际文件回读校验、COS 上传和回读 SHA-256 校验及差量生成；upload 支持匹配草稿重试，不自动发布。
+- 默认桶 irisnote-1334342309、地域 ap-guangzhou、CDN https://download.tech-mou.top，无目录前缀；对象名 IRisNote-版本号-构建号.apk。COS 使用官方 SDK 3.0.0，仅作为开发依赖，上传密钥从构建子进程环境移除。
+- 同名文件实际内容一致才跳过，冲突禁止覆盖；版本控制开启/暂停时停止，不自动修改桶配置。服务器/COS 已上传文件在失败时保留。下载侧沿用后端 CDN HEAD 检测及服务器回退，不修改后端。
+- 配置示例敏感值改为占位符；文档说明权限、回读流量、公开对象与发布状态的区别、30 秒缓存和失败恢复。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题与 158 项测试，其中新增 14 项上传/COS 测试含真实 SDK 本地 HTTP 验证）；irisapi 的 npm run test:releases 10 项通过；额外对新增 .cjs 测试执行定向 ESLint，补齐显式 Buffer 导入后通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加本次未提交改动。COS 凭据尚未配置，未进行真实云端上传、发布、APK 构建或设备验收。
+
+---
+
 ## 2026-09-17 03:22:24 | 优化代码：差量包上传成功后删除基础 APK 并保留补丁记录
 
 - 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。

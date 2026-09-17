@@ -22,6 +22,8 @@ import {
     verifyNativeUpdater,
 } from "./delta.mjs";
 import { loadReleaseEnv } from "./env.mjs";
+import { cosConfig, createCosUploader, withoutCosCredentials } from "./cos.mjs";
+import { uploadBoth, verifyArtifactStream } from "./upload.mjs";
 import {
     certificateDigest,
     fileSha256,
@@ -141,6 +143,7 @@ async function build() {
         );
     if (release.status !== "reserved")
         throw new Error("仅允许构建尚未上传的预留版本");
+    if (release.source === "self") cosConfig();
     const ninja = release.source === "self" ? await releaseNinja(root) : null;
     const workspace = await createReleaseWorkspace(root);
     console.log(`独立构建目录：${workspace}`);
@@ -155,7 +158,7 @@ async function build() {
     console.log(`已排除非构建资料：${selection.excluded.join("、") || "无"}`);
     await verifyNativeUpdater(checkout);
     const buildEnv = {
-        ...process.env,
+        ...withoutCosCredentials(process.env),
         IRIS_BUILD_NUMBER: String(release.build_code),
         IRIS_BUILD_VERSION: release.version,
     };
@@ -291,7 +294,46 @@ async function build() {
             2,
         ),
     );
-    console.log(`已构建并校验：${target}\n尚未上传或发布。`);
+    console.log(`已构建并校验：${target}\n开始上传服务器和 COS。`);
+    await uploadRelease(release, target, info);
+}
+async function uploadRelease(release, apk, info) {
+    const cos = createCosUploader(cosConfig());
+    await uploadBoth({
+        release, apk, info, cos,
+        getRelease: () => api(`/${release.build_code}`),
+        putServer: async () => {
+            const body = createReadStream(apk);
+            try {
+                const response = await fetch(`${base()}/${release.build_code}/apk`, {
+                    method: "PUT",
+                    headers: {
+                        Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}`,
+                        "Content-Type": "application/octet-stream",
+                        "Content-Length": String(info.size),
+                        "X-APK-SHA256": info.sha256,
+                        "X-Certificate-SHA256": info.certificate,
+                    },
+                    body, duplex: "half", redirect: "error",
+                    signal: AbortSignal.timeout(30 * 60 * 1000),
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                await response.arrayBuffer();
+            } finally { body.destroy(); }
+        },
+        verifyServer: async () => {
+            const response = await fetch(`${base()}/${release.build_code}/artifact`, {
+                headers: { Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}` },
+                redirect: "error", signal: AbortSignal.timeout(30 * 60 * 1000),
+            });
+            if (!response.ok || !response.body) {
+                await response.body?.cancel();
+                throw new Error(`服务器 APK 回读失败：HTTP ${response.status}`);
+            }
+            await verifyArtifactStream(Readable.fromWeb(response.body), info);
+        },
+        patches: preparePatches,
+    });
 }
 async function preparePatches(release, apk) {
     const bases = await api(`/${release.build_code}/bases`);
@@ -445,23 +487,7 @@ async function main() {
             console.log(JSON.stringify(info, null, 2));
             return;
         }
-        const response = await fetch(`${base()}/${release.build_code}/apk`, {
-            method: "PUT",
-            headers: {
-                Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}`,
-                "Content-Type": "application/octet-stream",
-                "Content-Length": String(info.size),
-                "X-APK-SHA256": info.sha256,
-                "X-Certificate-SHA256": info.certificate,
-            },
-            body: createReadStream(apk),
-            duplex: "half",
-            redirect: "error",
-            signal: AbortSignal.timeout(30 * 60 * 1000),
-        });
-        if (!response.ok) throw new Error(`上传失败：HTTP ${response.status}`);
-        await preparePatches(await api(`/${release.build_code}`), apk);
-        console.log("完整产物及所需差量包已上传为草稿。请核对后运行 publish。");
+        await uploadRelease(release, apk, info);
     } else if (action === "publish" || action === "withdraw") {
         console.log(
             JSON.stringify(await api(`/${code()}/${action}`, "POST"), null, 2),
