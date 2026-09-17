@@ -1,3 +1,30 @@
+## 2026-09-18 04:57:53 | 优化代码：按职责提交待办组件并记录待审阅实施清单
+
+- 已获用户明确授权执行分组本地提交，不推送；分支 kroos_todo，基线 d95fc547c003ac6f77320fb362c9c0e540c345d6。本次不再修改组件逻辑，将此前完成的实现拆成六组代码提交，并将本文档及实现日志单独提交。
+- 修改文件：docs/待办/待办组件实施与提交记录-待审阅.md、CHANGELOG.md。
+- 实际代码提交：377654e（五色主题令牌）、0ba476f（领域规则／内存仓库／测试）、7bb23f9（公共输入／时间与弹窗组件）、cc2da90（状态／表单会话／时钟 hooks）、e15f3b2（四个列表组件）、4d2ecab（弹窗与页面接入）。待审阅 MD 记录完整 SHA、全部文件范围、依赖、保存退出矩阵、时间与五色判断、筛选排序及批量流程，不将中间提交包装成已独立验收。
+- 验证：分组提交前 npm run typecheck 通过；六组代码提交后，对 4d2ecabbb7c1d28c16bece46f125024d0bbaa958 的最终代码运行 npm run check，通过类型、Lint、主题检查及全部 227 项测试（失败／跳过均为 0）。逐组核对暂存范围并运行 git diff --cached --check，通过；本次文件未发现 Git 冲突标记。
+- 明确记录未实施持久化、云同步、通知及系统日历；未运行应用、浏览器／真机验收、构建、上传、推送或发布。本文待审阅，静态检查不等于交互验收。
+
+---
+
+## 2026-09-18 04:39:50 | 新增功能：落实待办新建编辑弹窗与五色列表（内存首版）
+
+- 已获用户确认，按待办创建弹窗与列表设计 v1.2、逻辑层设计 v1.0 实现新建／编辑弹窗和列表。数据仅保存在内存，进程重启或所有者切换不保留；未实现持久化、云同步、系统日历、通知调度、关联笔记及循环待办。
+- 页面与主题文件：src/app/_layout.tsx、src/features/todos/screens/CreateTodoScreen.tsx、src/features/todos/screens/TodosScreen.tsx、src/features/todos/components/TodoCalendarRail.tsx、src/shared/theme/presets/default-light.json、global.css、CHANGELOG.md。
+- 新增业务组件：src/features/todos/components/TodoFormDialog.tsx、src/features/todos/components/TodoCard.tsx、src/features/todos/components/TodoFilterBar.tsx、src/features/todos/components/TodoBatchToolbar.tsx、src/features/todos/components/TodoIconAction.tsx。
+- 新增领域与仓库：src/features/todos/todos.types.ts、src/features/todos/todo-colors.ts、src/features/todos/domain/todo-validation.ts、src/features/todos/domain/todo-state.ts、src/features/todos/domain/todo-query.ts、src/features/todos/data/todo-repository.port.ts、src/features/todos/data/todo-memory.repository.ts、src/features/todos/services/todo-service.ts、src/features/todos/state/todo-store.ts、src/features/todos/hooks/useTodoScope.ts、src/features/todos/hooks/useTodoForm.ts、src/features/todos/hooks/useTodoClock.ts、src/features/todos/testing/todo-seeds.ts。
+- 公共组件文件：src/shared/ui/Input/Input.tsx、src/shared/ui/index.ts、src/shared/ui/BodyInput/BodyInput.tsx、src/shared/ui/BodyInput/index.ts、src/shared/ui/TimePickerField/TimePickerField.tsx、src/shared/ui/TimePickerField/index.ts、src/shared/ui/Dialog/FormDialog.tsx、src/shared/ui/Dialog/dialog.tsx、src/shared/ui/Dialog/dialog.styles.ts、src/shared/ui/Dialog/DeleteConfirmDialog.tsx。
+- 删除确认兼容入口：src/features/notes/components/editor/delete-confirm-dialog.tsx、src/features/notes/components/editor/draft-dialog.tsx、src/features/notes/components/editor/draft-dialog.styles.ts；将通用弹窗、按钮、样式和两秒倒计时删除确认提取到共享 UI，原笔记／分类／草稿调用方通过原入口继续复用，避免待办依赖笔记业务。
+- 弹窗：AppModal／Overlay 外壳，24dp 圆角和内距、144dp 正文输入、日期子弹窗、纯 JS 小时／分钟轮盘（1 分钟步进）、优先级、标星与置顶；新建路由透明承载，默认日期继承当前选中日期。确认、取消、遮罩及系统返回遵循统一校验和保存规则；空编辑不删除，保存失败保留输入，保存中锁定，旧所有者／代次禁止提交。
+- 列表：主题注册五组底色与强调色，按优先级和完成所属日期显示卡片；按日期及全部／待进行／进行中／已过期筛选，支持搜索、三种排序、置顶、单条完成与编辑。长按进入批量，全选当前结果，标星／置顶按全体开启状态统一取反，删除经共享确认；筛选或日期改变清空选择，外部变更移除隐藏／已删除目标。
+- 逻辑：本地日期与任意分钟严格校验，正文统一换行、按 Unicode 码点限制 4000 字，时区缺失不阻断；UUID 会话身份去重、不可变实体、修改字段合并和版本冲突保护、批量全验证后一次广播。统一时钟处理开始／结束边界、午夜、前台刷新和后台暂停。种子仅在开发且 EXPO_PUBLIC_TODO_PREVIEW=1 时进入独立 preview 所有者空间，正常空列表与搜索无结果不注入种子。
+- 验证：基于 d95fc547c003ac6f77320fb362c9c0e540c345d6 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 227 项测试）。新增 tests/todos/todos.test.cjs 的 20 项覆盖校验、退出规则、时间边界、五色、创建去重、编辑冲突、所有者、排序和原子批量；共享提取的三项函数与全部样式配方经 AST 对比保持一致（忽略格式）。git diff --check 与本次源码／测试冲突标记检查通过。
+- 检查过程：修复本次时间轮盘渲染期 ref 读取的 Lint 错误；全量测试首次因本机缺少已声明的 cos-nodejs-sdk-v5@3.0.0 无法加载 COS 测试，隔离安装并恢复本机该包及依赖后通过。未修改 package.json 或锁文件，未升级应用依赖。
+- 未运行应用、浏览器／真机验收、构建、上传或发布；静态检查和领域测试不代表键盘、窄屏、大字体、轮盘、父子弹层及视觉实测已通过。未执行 Git 暂存、提交或推送。
+
+---
+
 ## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
 
 - 文件：docs/待办/待办逻辑层设计.md、docs/待办/待办后端API预留契约.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
