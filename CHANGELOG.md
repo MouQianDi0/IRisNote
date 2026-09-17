@@ -1,3 +1,43 @@
+## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
+
+- 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
+- 已获用户确认。Android 完整原生日志确认：清除应用存储后登录时，密码框右侧眼睛按钮的原生视图仍挂在包装容器 146 下，却被 Fabric 要求插入登录表单容器 182，触发 `The specified child already has a parent` 并使应用退出。
+- `Input` 的 `trailing` 包装 `View` 增加 `collapsable={false}`。密码按钮在登录提交时由可点击切换为不可点击、登录完成后恢复时，该包装层将始终保留为独立原生容器，避免视图扁平化改变按钮父级；不改密码显隐、按钮禁用语义、尺寸、间距、登录请求、路由或数据逻辑。
+- 调用范围已核对：`trailing` 插槽当前仅由认证字段的密码显隐按钮使用；`InputSave` 明确排除此插槽。无新增依赖。
+- 验证：修改前 `npm run typecheck` 通过；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，未发现 Git 冲突标记。未构建、安装或进行真机登录验证；需使用包含此修复且与原复现包同配置的 Android 安装包验证清除系统数据后的登录、失败后重试和密码显隐。
+
+---
+
+## 2026-09-17 13:57:54 | 优化代码：补充清除系统存储后提交登录闪退的定向诊断日志
+
+- 文件：src/features/auth/screens/LoginScreen.tsx、src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 已获用户确认。现象为 Android 系统设置清除应用存储后，填写邮箱、验证码和密码并提交登录时闪退；历史崩溃签名为 Fabric `addViewAt` / `The specified child already has a parent`。现有栈未能对应具体业务组件，本次仅补充诊断，不宣称已修复闪退。
+- 统一使用 `[IRisNoteCrashTrace]` + JSON 输出阶段与 Unix 毫秒时间戳。登录记录请求返回、会话保存、状态刷新、资料同步、用户中心跳转请求/派发、成功提示请求及失败所在阶段，各阶段包含相对提交开始的耗时；导航记录挂载/卸载、实际激活的 Tab 与索引切换请求；用户中心记录挂载/卸载及存活耗时。
+- 笔记页记录挂载/卸载、本地读取、云端获取、对账、列表更新请求、同步完成、失败或账号归属变化导致的跳过，并记录各阶段数量及请求累计耗时；列表数据提交后记录数量。派发路由或提交 React 数据不等同于原生画面成功显示，需与 AndroidRuntime / SurfaceMountingManager 日志对齐判断。
+- 新增日志不含邮箱、密码、验证码、Token、用户资料、笔记正文或响应/错误正文；不改 UI、登录请求、会话写入、路由目标、同步对账、排序与列表裁剪策略。无新增依赖、测试或持久化诊断数据。
+- 验证：修改前 `npm run typecheck` 未报告错误；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，四个改动源码未发现 Git 冲突标记。检查基于 HEAD `61054b3cceafc7c98de84545cd30009090d27e70` 加当前工作区；未构建、安装、清除设备数据或进行真机登录复现，需用户使用包含本次日志的应用版本复现后继续定位。
+
+---
+
+## 2026-09-17 13:26:02 | 优化代码：忽略 irisnote-updater Gradle 构建产物并移出误提交缓存
+
+- 文件：.gitignore、CHANGELOG.md（另通过 `git rm -r --cached` 移出 16 个索引文件，本地文件保留）。
+- 已获用户确认。`.gitignore` 追加 `modules/*/android/build/` 规则；`git rm -r --cached` 将先前误提交的 16 个构建缓存移出索引：`modules/irisnote-updater/android/build/` 下 8 个 debug 产物（BuildConfig.java、R.jar、R.txt 等）与 `modules/irisnote-updater/android/.gradle/` 下 8 个缓存文件。
+- 动机：v3 出包尝试后 git status 被 45 项 build 中间产物刷屏；且规则缺失前已有 16 个缓存文件进入仓库历史。清理后 git status 仅剩真实改动，协作者克隆不再携带二进制垃圾。
+- 验证：`git check-ignore -v` 确认 build 与 .gradle 两类路径分别命中新规则（.gitignore:67）与既有规则（.gitignore:64）；暂存删除恰好 16 项。未触碰任何源码，typecheck 不适用。
+
+---
+
+## 2026-09-17 10:31:10 | 优化代码：待办日期轨道间距对齐笔记页轨道节奏
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 已获用户确认（方案+UI 文字预览）。以笔记页左侧分类轨道实测节奏（1272×2800 截图像素扫描+源码互证：条目 50×60、间距 6、节距 66dp）为基准，统一待办页右侧日期轨道。
+- `DAY_SIZE=50` 拆分为 `DAY_WIDTH=50`/`DAY_HEIGHT=60`/`DAY_GAP=6`：7 张日期卡高 50→60（宽不变）、容器 gap 2→6；「返回今天」按钮与今天占位高 50→60、上边距 8→6（改用 DAY_GAP 联动节奏）；月份头维持 50×50 与笔记页头像位对应。轨道节距由 52dp 变为 66dp，与笔记页一致。
+- 未触碰：轨道总宽 75、页面结构、分隔线 28×2/my-8、AppCalendar 月历弹层（48dp 格，如需统一另行立项）。无新增功能。
+- 验证：修改前后 `npm run typecheck` 均 0 错；`npx eslint --no-cache` 单文件通过；无测试引用该组件。UI 待用户真机验收。
+
+---
+
 ## 2026-09-17 03:27:16 | 新增功能：笔记排序同步与分层列表设计文档
 
 - 文件：docs/架构指南/笔记排序同步与分层列表设计.md、CHANGELOG.md。

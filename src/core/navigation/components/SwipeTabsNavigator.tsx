@@ -16,7 +16,7 @@ import {
     type TabNavigationState,
     type TabRouterOptions,
 } from "expo-router/react-navigation";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { TabView } from "react-native-tab-view";
 
@@ -120,6 +120,27 @@ function SwipeTabsNavigator({
     const { colors } = useTheme();
     const { direction } = useLocale();
     const focusedOptions = descriptors[state.routes[state.index].key].options;
+    const activeTab = state.routes[state.index].name;
+
+    useEffect(() => {
+        const mountedAt = Date.now();
+        console.info("[IRisNoteCrashTrace]", JSON.stringify({
+            scope: "tabs", stage: "mounted", timestamp: mountedAt,
+        }));
+        return () => {
+            console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                scope: "tabs", stage: "unmounted", timestamp: Date.now(),
+                elapsedMs: Date.now() - mountedAt,
+            }));
+        };
+    }, []);
+
+    useEffect(() => {
+        console.info("[IRisNoteCrashTrace]", JSON.stringify({
+            scope: "tabs", stage: "active_tab_committed", timestamp: Date.now(),
+            tab: activeTab, index: state.index,
+        }));
+    }, [activeTab, state.index]);
 
     return (
         <NavigationContent>
@@ -135,6 +156,10 @@ function SwipeTabsNavigator({
                 lazyPreloadDistance={focusedOptions.lazyPreloadDistance}
                 navigationState={state}
                 onIndexChange={(index) => {
+                    console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                        scope: "tabs", stage: "index_change_requested", timestamp: Date.now(),
+                        tab: state.routes[index].name, index,
+                    }));
                     navigation.dispatch({
                         ...CommonActions.navigate(state.routes[index]),
                         target: state.key,

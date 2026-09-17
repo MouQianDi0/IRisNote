@@ -14,7 +14,9 @@ import {
   weekdayLabels,
 } from "@/shared/utils/date-id";
 
-const DAY_SIZE = 50;
+const DAY_WIDTH = 50;
+const DAY_HEIGHT = 60;
+const DAY_GAP = 6;
 const DAYS_PER_WEEK = 7;
 const WEEK_SWIPE_DISTANCE = 24;
 const WEEK_SWIPE_VELOCITY = 450;
@@ -123,9 +125,9 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
         onPress={() => setPickerVisible(true)}
         style={{
           alignItems: "center",
-          height: DAY_SIZE,
+          height: DAY_WIDTH,
           justifyContent: "center",
-          width: DAY_SIZE,
+          width: DAY_WIDTH,
         }}
       >
         <Text className="text-[17px] text-text-primary">{monthLabel}</Text>
@@ -133,7 +135,7 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
       <View className="my-[8px] h-[2px] w-[28px] rounded-full bg-divider opacity-80" />
 
       <GestureDetector gesture={weekSwipeGesture}>
-        <View style={{ gap: 2, width: DAY_SIZE }}>
+        <View style={{ gap: DAY_GAP, width: DAY_WIDTH }}>
           {dates.map((dateId, index) => {
             const isToday = dateId === todayId;
             const isSelected = !isToday && dateId === value;
@@ -161,12 +163,12 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
                   backgroundColor,
                   borderCurve: "continuous",
                   borderRadius: radii.control,
-                  height: DAY_SIZE,
+                  height: DAY_HEIGHT,
                   justifyContent: "center",
                   opacity: pressed
                     ? defaultThemePreset.motion.pressedOpacity
                     : 1,
-                  width: DAY_SIZE,
+                  width: DAY_WIDTH,
                 })}
               >
                 <Text style={{ color: textColor, fontSize: 11, lineHeight: 14 }}>
@@ -181,9 +183,9 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
         </View>
       </GestureDetector>
 
-      <View style={{ marginTop: 8 }}>
+      <View style={{ marginTop: DAY_GAP }}>
         {isAtToday ? (
-          <View style={{ height: DAY_SIZE, width: DAY_SIZE }} />
+          <View style={{ height: DAY_HEIGHT, width: DAY_WIDTH }} />
         ) : (
           <Pressable
             accessibilityLabel="返回今天"
@@ -194,10 +196,10 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
               backgroundColor: semanticColors.brandPrimary,
               borderCurve: "continuous",
               borderRadius: radii.control,
-              height: DAY_SIZE,
+              height: DAY_HEIGHT,
               justifyContent: "center",
               opacity: pressed ? defaultThemePreset.motion.pressedOpacity : 1,
-              width: DAY_SIZE,
+              width: DAY_WIDTH,
             })}
           >
             <Undo2 size={22} color={semanticColors.onBrandPrimary} />
