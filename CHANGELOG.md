@@ -1,3 +1,10 @@
+## 2026-09-18 02:08:28 | 新增文件：IRisNote 0.2.3 更新说明
+
+- 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.3（补丁更新，基准 0.2.2 buildCode 11 / 48bf49a，目标 86d2955）：修复切换底部标签页时毛玻璃区域偶尔出现深灰色闪烁带的问题（a7ba4f9，已通过真机验收）。
+
+---
+
 ## 2026-09-17 21:26:11 | 优化代码 / 修复问题：原生后台校验与安装授权衔接
 
 - 文件：modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt、modules/irisnote-updater/index.ts、modules/irisnote-updater/README.md、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、src/features/notes/hooks/useNoteDraft.ts、src/features/notes/services/active-draft-flush.ts、tests/releases/releases.test.cjs、tests/releases/active-draft-flush.test.cjs、CHANGELOG.md。
@@ -2038,6 +2045,7 @@
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+
 ## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
 
 - 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
