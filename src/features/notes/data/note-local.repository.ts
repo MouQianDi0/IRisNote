@@ -514,6 +514,24 @@ export async function reconcileServerNotes(
                         },
                         currentRevision,
                     );
+                // 服务端未提供排序字段时保留本地值；完全无变化的行整行跳过，
+                // 避免把 local_updated_at（未同步笔记的排序兜底键）从“本地
+                // 最后编辑时间”刷成“上次同步时间”，防止列表顺序漂移。
+                const nextLocalOrder = note.local_order ?? existing.local_order;
+                const nextPinnedOrder =
+                    note.pinned_order ?? existing.pinned_order;
+                const rowChanged =
+                    note.title !== existing.title ||
+                    (note.content ?? null) !== (existing.content ?? null) ||
+                    (note.category_id ?? null) !== existing.category_id ||
+                    note.created_at !== existing.created_at ||
+                    Boolean(note.is_pinned) !== Boolean(existing.is_pinned) ||
+                    Boolean(note.is_starred) !== Boolean(existing.is_starred) ||
+                    nextLocalOrder !== existing.local_order ||
+                    nextPinnedOrder !== existing.pinned_order;
+                if (!rowChanged && !contentChanged) {
+                    continue;
+                }
                 const revisionId = contentChanged
                     ? await insertNoteRevision(
                           transaction,
@@ -551,8 +569,8 @@ export async function reconcileServerNotes(
                         $createdAt: note.created_at,
                         $isPinned: note.is_pinned ? 1 : 0,
                         $isStarred: note.is_starred ? 1 : 0,
-                        $localOrder: note.local_order ?? index,
-                        $pinnedOrder: note.pinned_order ?? null,
+                        $localOrder: nextLocalOrder,
+                        $pinnedOrder: nextPinnedOrder,
                         $revisionId: revisionId,
                         $localUpdatedAt: new Date().toISOString(),
                         $localId: existing.local_id,
