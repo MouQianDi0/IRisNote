@@ -1,3 +1,12 @@
+## 2026-09-18 02:27:59 | 优化代码：本地正式 APK 构建缓存复用
+
+- 文件：scripts/release/cli.mjs、scripts/release/workspace.mjs、scripts/release/cache.mjs、tests/releases/cache.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。自有渠道使用按项目隔离的固定工作区和互斥锁，按预留提交同步源码并清除过期文件；指纹一致时复用依赖与原生编译输出，依赖、配置、本地模块、构建环境变化或上次构建未完成时重新初始化。
+- 每次重新生成 Android 工程后只恢复允许保留的构建输出，避免移除插件后残留原生文件；启用 Gradle Daemon 和构建缓存，增加阶段耗时与 --fresh 全新工作区入口，保留完整检查、版本签名校验及原有上传和差分验证行为。
+- 验证：基于 4e9b6292301b9283dbf47fe3b0286490294a075e 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 196 项测试），其中缓存专项 18 项通过；实际 npm 配置读取确认版本号变化不改变配置指纹输入；脚本语法与 git diff --check 通过，无冲突标记。未运行正式 APK 构建、上传或发布，实际冷热构建耗时、Windows Gradle Daemon 下的原生缓存复用和真机差分升级尚未验收。
+
+---
+
 ## 2026-09-18 02:08:28 | 新增文件：IRisNote 0.2.3 更新说明
 
 - 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
