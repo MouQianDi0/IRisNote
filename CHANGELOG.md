@@ -1,3 +1,39 @@
+## 2026-09-17 11:04:39 | 修复问题：APK 经 CDN 回读并兼容已开启的 COS 版本控制
+
+- 文件：scripts/release/cos.mjs、tests/releases/cos.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。COS 默认域名 APK GET 返回 DownloadForbidden，回读改用已配置的 HTTPS CDN 自定义域名，校验 HTTP 200、大小、ETag 与完整 SHA-256；不发送 COS 凭据、禁止重定向，错误时保留远端文件供重试。
+- 允许 Enabled 和未开启版本控制；暂停/未知状态仍停止。先检查同名对象，已存在只校验；新上传比对 ETag/版本 ID，校验结束再 HEAD 检查对象稳定性。不修改桶设置、不删除历史版本。Enabled 下禁止覆盖请求头无效，检查不提供跨上传者原子互斥，文档明确并发限制。
+- 新增只读 verifyExisting 入口用于已有文件验证；补充 CDN 缓存、大小、摘要、并发版本变化及 Enabled 模式测试。
+- 验证：修改前 npm run typecheck 通过；19 项上传专项测试、定向 ESLint 和最终 npm run check（类型、Lint、主题、163 项测试）通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加未提交修改。真实只读下载 CDN 的 IRisNote-0.1.0-6.apk，122182378 字节，SHA-256 c125580baad40ca7f63bbcba43fd5318490be14183ca228ee8eb9cfb6fceff0d，与本地 APK 一致，ETag 和 COS 对象稳定性检查通过。本次未执行真实 PUT、发布、APK 构建或修改云端配置。
+
+---
+
+## 2026-09-17 09:53:59 | 新增功能：APK 自动上传服务器与 COS 并支持失败续传
+
+- 文件：scripts/release/cli.mjs、scripts/release/cos.mjs、scripts/release/upload.mjs、package.json、package-lock.json、tests/releases/cos.test.cjs、tests/releases/upload.test.cjs、docs/构建发布/release.env.example、docs/构建发布/android-releases.md、CHANGELOG.md；本机忽略文件 .env.release.local 仅补齐缺失配置项。
+- 已获用户确认。自建 APK 构建并校验成功后串联服务器上传、实际文件回读校验、COS 上传和回读 SHA-256 校验及差量生成；upload 支持匹配草稿重试，不自动发布。
+- 默认桶 irisnote-1334342309、地域 ap-guangzhou、CDN https://download.tech-mou.top，无目录前缀；对象名 IRisNote-版本号-构建号.apk。COS 使用官方 SDK 3.0.0，仅作为开发依赖，上传密钥从构建子进程环境移除。
+- 同名文件实际内容一致才跳过，冲突禁止覆盖；版本控制开启/暂停时停止，不自动修改桶配置。服务器/COS 已上传文件在失败时保留。下载侧沿用后端 CDN HEAD 检测及服务器回退，不修改后端。
+- 配置示例敏感值改为占位符；文档说明权限、回读流量、公开对象与发布状态的区别、30 秒缓存和失败恢复。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题与 158 项测试，其中新增 14 项上传/COS 测试含真实 SDK 本地 HTTP 验证）；irisapi 的 npm run test:releases 10 项通过；额外对新增 .cjs 测试执行定向 ESLint，补齐显式 Buffer 导入后通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加本次未提交改动。COS 凭据尚未配置，未进行真实云端上传、发布、APK 构建或设备验收。
+
+---
+
+## 2026-09-17 03:22:24 | 优化代码：差量包上传成功后删除基础 APK 并保留补丁记录
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。preparePatches() 上传差量包成功后，删除临时下载的基础 APK（rm force），保留 `<构建>-from-<基础构建>-*` 目录及 update.hdiff 与元数据作为本机补丁记录；上传失败仍抛异常并保留现场。
+- 文档补充该清理行为说明。验证：node --check、定向 ESLint、修改前后 npm run typecheck、releases 相关 17 项测试、git diff --check 均通过；未执行真实差量上传。
+
+---
+
+## 2026-09-17 01:46:36 | 新增功能：生成 0.2.0 版本更新说明并调整说明文件命名规范
+
+- 文件：releases/notes-0.2.0.txt、docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 已获用户确认。按规范核实版本范围（上一发布 0.1.0 构建 6 提交 10b265a，目标为待构建草稿，范围 10b265a..35e48f3），面向用户改写待办日期轨道与标签栏互换两条可见变化，并保留待办/剪贴占位提醒。
+- 说明文件命名规范调整为 UTF-8 纯文本 `releases/notes-<版本号>.txt`，文件名不加构建号、draft 等附加词，与现有 0.1.0 文件一致；同版本多次构建复用同一文件。
+- 验证：未改应用源码，无需 typecheck；未执行构建、上传、发布或 Git 写操作。目标提交与对比范围见交付说明，0.2.0 构建号尚未预留。
+
 ## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
 
 - 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
@@ -115,6 +151,7 @@
 - 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
 
 ---
+
 ## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
 
 - 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
@@ -182,6 +219,7 @@
 - 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
 - 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
 - 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
+
 # CHANGELOG
 
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
@@ -1275,6 +1313,7 @@
     - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**

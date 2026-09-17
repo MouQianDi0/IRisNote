@@ -23,7 +23,7 @@ APK 更新由自有 `/api/releases` 接口提供；本功能不是 EAS Update �
 2. 核对已有正式 APK 包名、最高构建号和签名证书，初始化序列高于所有已分发构建。
 3. 在自有机器配置 Node.js（满足当前 Expo SDK 要求）、JDK、Android SDK、build-tools、
    Git、tar。Windows 使用 Gradle，不调用 Windows 不支持的 EAS local build。
-4. 将 `docs/release.env.example` 复制为项目根目录的 `.env.release.local` 并填写参数；
+4. 将 `docs/构建发布/release.env.example` 复制为项目根目录的 `.env.release.local` 并填写参数；
    发布工具会自动读取此文件，终端或 CI 中已有的环境变量优先（包括空值）。
    文件不存在时仍可只使用终端环境变量；文件读取失败会停止命令。
    删除不用的空配置项，含 `#` 或空格的值加引号，Windows 路径建议用单引号。
@@ -84,6 +84,46 @@ npm run gradle -- :irisnote-updater:compileDebugKotlin
 
 ## 发布命令
 
+### COS 双端自动上传
+
+自建 `build` / `build:apk` 成功后自动执行：服务器上传 → 服务器实际文件回读并校验
+SHA-256 → COS 上传及 CDN 回读校验 → 差量生成和上传。两端完整 APK 相同，完成后仍是
+草稿，人工核对后执行 `publish`。已有 APK 或 EAS 下载产物执行一次 `upload` 即可。
+
+默认桶 `irisnote-1334342309`、地域 `ap-guangzhou`、CDN 基础地址
+`https://download.tech-mou.top`，目录前缀为空。COS 对象名严格为
+`IRisNote-<version>-<buildCode>.apk`。配置键见 `release.env.example`；必须在
+`.env.release.local` 或当前终端设置 `IRIS_COS_SECRET_ID`、`IRIS_COS_SECRET_KEY`，
+临时凭据还需 `IRIS_COS_SECURITY_TOKEN`。凭据不进入构建子进程或 EAS。
+本机上传配置不会自动修改线上 `RELEASE_CDN_BASE_URL`，后端应配置相同 CDN 基础地址。
+
+凭据需要目标桶的 `cos:GetBucketVersioning` 及对应对象的 `cos:HeadObject`、
+`cos:GetObject`、`cos:PutObject` 权限。工具先检查版本控制，允许未开启或 Enabled；
+Suspended/未知状态停止，不修改桶权限或版本控制。上传采用流式 PUT 并携带禁止覆盖请求头。
+未开启版本控制时由 COS 原子禁止覆盖；Enabled 时此请求头不生效，脚本先查询同名对象，
+存在则只校验、不上传，不存在才创建新版本，并核对 PUT 返回的 ETag/版本 ID 是否仍为当前对象。
+校验后再次 HEAD 检查对象未变。Enabled 下保留历史版本，但这些检查不提供跨机器原子互斥，
+不能阻止其他上传者在检查和 PUT 之间写入；发现版本变化会报错，不自动删除或回滚历史版本。
+同一个构建号应只由一个发布进程处理。
+
+COS 默认域名会拒绝 APK GET（DownloadForbidden），因此回读使用配置的 CDN 自定义域名，
+不向 CDN 发送 COS 密钥/签名。CDN 必须返回 200、正确 Content-Length 和与 COS HEAD 一致的
+ETag，并通过完整流式 SHA-256 校验；携带 If-Match、Accept-Encoding: identity 和 Cache-Control:
+no-cache，禁止重定向。旧缓存、404、大小/ETag/摘要错误均报错，保留文件供重试，不自动覆盖或
+刷新 CDN。请求头不保证所有 CDN 都绕过缓存；失败时需核对 CDN 缓存和回源配置。
+校验会读取服务器和 CDN 完整文件，会产生额外下载流量；不以元数据或 ETag 代替 SHA-256。
+
+任一步失败时保留本地 APK 和已成功上传的文件，报告失败阶段并返回非零退出码。
+重新执行相同 `upload --build <编号> --apk <路径>`：服务器为匹配草稿时回读校验并跳过
+上传，然后补齐 COS 与差量包。上传请求成功但响应丢失也可以这样恢复。
+只接受预留/草稿状态，不改写已发布或撤回版本；失败不自动删除远端文件，也不自动发布。
+COS/CDN 若允许公开读取，未发布对象也可能通过已知链接访问。
+
+官网首装及跨主版本完整更新由现有后端选择地址：CDN HEAD 返回 200 且大小匹配时
+返回 CDN，否则文件缺失、异常或 5 秒超时回退服务器，结果缓存 30 秒。
+桶中存在对象不等于 CDN 可访问；非法 CDN 地址配置仍报错。下载开始后不自动切换线路。
+同主版本差量补丁仍走服务器，服务器完整 APK 必须保留。该改动无需修改后端代码。
+
 以下命令在 IRisNote 根目录执行。`28` 是示例，必须换成 reserve 返回的实际编号。
 
 ```powershell
@@ -92,6 +132,7 @@ npm run release -- doctor
 npm run release -- reserve --source self --version 1.1.0 --notes D:\releases\notes-1.1.0.txt
 npm run release -- build --build 28
 npm run release -- inspect --build 28 --apk .\dist\releases\1.1.0\IRisNote-1.1.0-28.apk
+# build 已自动上传；仅已有 APK、EAS 产物或失败重试时执行下一条
 npm run release -- upload --build 28 --apk .\dist\releases\1.1.0\IRisNote-1.1.0-28.apk
 npm run release -- status --build 28
 ```
@@ -104,6 +145,8 @@ npm run release -- publish --build 28
 
 上传 APK 后，工具会为同主版本的历史已发布构建（含已撤回版本）自动生成补丁。
 每个补丁都在本机实际合并并比较完整 SHA-256；上传时服务器也会合并并复核。
+每个补丁上传成功后，工具会删除临时下载的基础 APK，仅在该版本目录下保留
+`<构建>-from-<基础构建>-*` 目录（含 update.hdiff 及其元数据）作为本机补丁记录。
 补丁生成/上传中断后，运行以下命令恢复，已成功上传的补丁会跳过：
 
 ```powershell
@@ -141,7 +184,8 @@ Windows 的参数路径不能包含命令解释器元字符；使用普通绝对
 自有构建输出按版本号保存到 `dist/releases/<版本号>/`（例如 `dist/releases/1.1.0/`），
 旁边 JSON 记录提交、包信息和摘要；差量补丁的临时工作目录也在同一版本子目录下。
 独立临时目录路径会打印出来并保留供诊断；清理前确认构建完成及产物已保存。
-构建成功、上传草稿和发布是三个不同结果。
+构建成功、双端上传完成和发布是三个不同结果。自建构建串联上传，上传失败不代表 APK 构建失败；
+应使用日志给出的 upload 命令重试，不必重新打包。
 
 ## 验收
 
