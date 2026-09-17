@@ -1,3 +1,13 @@
+## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
+
+- 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
+- 已获用户确认。Android 完整原生日志确认：清除应用存储后登录时，密码框右侧眼睛按钮的原生视图仍挂在包装容器 146 下，却被 Fabric 要求插入登录表单容器 182，触发 `The specified child already has a parent` 并使应用退出。
+- `Input` 的 `trailing` 包装 `View` 增加 `collapsable={false}`。密码按钮在登录提交时由可点击切换为不可点击、登录完成后恢复时，该包装层将始终保留为独立原生容器，避免视图扁平化改变按钮父级；不改密码显隐、按钮禁用语义、尺寸、间距、登录请求、路由或数据逻辑。
+- 调用范围已核对：`trailing` 插槽当前仅由认证字段的密码显隐按钮使用；`InputSave` 明确排除此插槽。无新增依赖。
+- 验证：修改前 `npm run typecheck` 通过；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，未发现 Git 冲突标记。未构建、安装或进行真机登录验证；需使用包含此修复且与原复现包同配置的 Android 安装包验证清除系统数据后的登录、失败后重试和密码显隐。
+
+---
+
 ## 2026-09-17 13:57:54 | 优化代码：补充清除系统存储后提交登录闪退的定向诊断日志
 
 - 文件：src/features/auth/screens/LoginScreen.tsx、src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
