@@ -1,3 +1,26 @@
+## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
+
+- 文件：docs/待办/待办逻辑层设计.md、docs/待办/待办后端API预留契约.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认。本次仅落地方案文档，不实现页面、组件、数据存储、后端路由、云同步、日历或通知，不新增依赖。
+- 逻辑层：定义领域模型、UI/表单/业务/仓库边界、内存首版、校验与时间状态刷新、确认/取消/遮罩/返回退出矩阵、自动保存会话结束、编辑字段合并及并发保护、确定筛选排序、原子批量、账号隔离、开发种子与后续验收清单。
+- API 预留：定义独立创建/查询/更新/删除、批量及增量端点；字段和默认值、客户端稳定身份、幂等重试、基础版本冲突、设备字段隔离、快照分页、提交序列、删除防复活、游标过期恢复、错误及后端迁移/联调清单。明确为尚未实现的待评审契约，不作为真实后端已支持的证据。
+- 时间规格：按用户要求改为 1 分钟步进，小时 0–23、分钟 0–59，允许 09:01、09:37 等任意分钟；原界面设计 v1.1 → v1.2，更新 §5.2 与文档变更记录，保留其余既有设计内容。
+- 验证：文档章节顺序、代码围栏、相对 Markdown 链接、11 段 JSON 示例及冲突标记检查通过；原设计内容逆向还原后 SHA-256 与修改前一致，既有 TodoCalendarRail.tsx 哈希未变。普通 git diff --check 提示原设计元信息的 Markdown 双空格换行，保留既有格式；git -c core.whitespace=-blank-at-eol diff --check 通过。不运行 typecheck、应用测试、构建、真实 API 请求、数据库迁移或浏览器/设备验收；未执行暂存、提交或推送。
+- 开放决策：云同步启用策略、跨设备时区及夏令时语义、幂等/快照/墓碑保留期限和真实后端存量迁移，均留待独立立项评审。
+
+---
+
+## 2026-09-18 03:12:47 | 优化代码：待办设计文档升版 v1.1，定稿五色状态卡与筛选批量方案
+
+- 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认（方向确认后指定先改设计文档，代码未动）。为待办列表新方案定稿设计规范，文档 v1.0 → v1.1。
+- 设计要点（按方案推荐值写入，待用户审阅数值）：§10 重写为「五色状态体系（底色/强调色五对：不重要 #C5DFFC/#64A9F7、正常 #FDEBC4/#F9C962 基准、重要 #FCCADB/#F76998、已完成 #CDF9DB/#71EF9B、已结束 #E6E8EA/#ACB2B9）+ 顶部筛选栏（全部/待进行/进行中/已过期 + ⏱排序菜单 + 🔍内联搜索）+ 4dp 强调色竖线卡片 + 长按批量模式（删除/标星/置顶）」；状态推导规则（当日完成浅绿、隔日回看灰+删除线、无时刻当天视为进行中）落入 §10.1。
+- 弹窗变更：§3 明确新增/编辑复用同一弹窗（标题「编辑待办」、编辑态删除走共享确认弹窗），新增 §3.4 优先级三段行（替代颜色行）；§6 自由颜色选择器 ContainerColorPicker 移出首版；§5.2 增加纯 JS 时间轮盘实现约束（不引原生依赖，保持 Expo Go 可加载）；§9 增加卡片铃铛为展示态的边界。
+- 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
+- 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
+
+---
+
 ## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
 
 - 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
@@ -20,6 +43,20 @@
 
 - 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
 - 已获用户确认。按更新说明编写规范生成 0.2.3（补丁更新，基准 0.2.2 buildCode 11 / 48bf49a，目标 86d2955）：修复切换底部标签页时毛玻璃区域偶尔出现深灰色闪烁带的问题（a7ba4f9，已通过真机验收）。
+
+---
+
+## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
+- 已获用户确认。将各页面独立的毛玻璃采样目标改为包裹整个切页容器的固定 BlurTargetView，悬浮导航作为同级覆盖层置于采样区域之外，避免采样自身；移除随 activeTab 改变的 BlurView key，切页时复用原生毛玻璃实例。
+- 切页容器及采样区域补齐主题背景色，保留页面滑动、懒加载、底栏图标动画、15dp 顶部渐变、66dp 控件高度及 20dp 底部间隔。
+- 验证基线：HEAD 48bf49a9b85aa2c6a573b74e98f61fd9f2af9b85 加本次未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题及全部 178 项测试）。首次 Lint 的渲染阶段 ref 传递警告已通过稳定的 Tab 栏组件边界修正并完整重检；git diff --check 通过，无冲突标记。
+- 原包复现：USB 真机 Android 17 / API 37，原安装包 0.2.2 buildCode 11 的 712 帧录像中，点击底栏时毛玻璃区域出现横向深灰带（连续第 299～301 帧）；固定采样区域共 30 帧平均亮度低于 150/255，最低 106.05。仅检查按钮下方间隔会漏检；Expo Go 同区域未出现此现象。
+- 原生构建：通过本机 Gradle 执行 :app:assembleRelease --offline --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a，并沿用项目 Ninja init script 与正式签名配置，11m 23s BUILD SUCCESSFUL。测试包使用现有构建号 11 / 0.2.2；仅限本机验收，未预留版本、上传、发布或提交 Git。source map 内 3 个改动源码与工作区一致，APK 内 JS bundle 与本次生成产物一致；签名与手机原正式包一致，非 debuggable。
+- 修复后真机验收：保留应用数据覆盖安装测试包。首轮混入用户进入设置页的操作，仅采用前 14 秒有效片段（1260 帧），无同类深灰带。用户确认暂停操作后完成独立一轮 21 次底栏点击、4 次横向滑动、2 次纵向滚动，1970 帧中未见同类深灰闪屏（上述阈值异常帧 0）；底栏滚动隐藏与恢复正常。测试进程日志未发现 FATAL EXCEPTION / TypeError / ReferenceError。
+- 证据：本机临时目录 irisnote-tab-flash-48bf49a 中保存旧包、测试包、切页录像、异常连续帧、最终时间序列图、操作记录及 source-verification.json / apk-verification.json；测试 APK SHA-256 为 1c108ddba92307eebbe2ea017481202a1ad9169e20b0d05bde91ca58ed8af118。
+- 验收收尾：按用户明确选择，以 adb install -r 保留应用数据恢复原正式包 0.2.2 buildCode 11，并通过手机已安装 APK 的 SHA-256 与保存的原包比对确认一致；恢复结果保存在 restoration-verification.json。修复保留在工作区，等待正式发布，手机当前原正式包尚不含此修复。
 
 ---
 
@@ -96,6 +133,8 @@
 - 说明文件命名规范调整为 UTF-8 纯文本 `releases/notes-<版本号>.txt`，文件名不加构建号、draft 等附加词，与现有 0.1.0 文件一致；同版本多次构建复用同一文件。
 - 验证：未改应用源码，无需 typecheck；未执行构建、上传、发布或 Git 写操作。目标提交与对比范围见交付说明，0.2.0 构建号尚未预留。
 
+=========
+
 ## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
 
 - 文件：docs/待办/待办逻辑层设计.md、docs/待办/待办后端API预留契约.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
@@ -118,6 +157,8 @@
 - 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
 
 ---
+
+> > > > > > > > > Temporary merge branch 2
 
 ## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
 
@@ -2086,17 +2127,3 @@
   - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
   - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
   - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
-
-## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
-
-- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
-- 已获用户确认。将各页面独立的毛玻璃采样目标改为包裹整个切页容器的固定 BlurTargetView，悬浮导航作为同级覆盖层置于采样区域之外，避免采样自身；移除随 activeTab 改变的 BlurView key，切页时复用原生毛玻璃实例。
-- 切页容器及采样区域补齐主题背景色，保留页面滑动、懒加载、底栏图标动画、15dp 顶部渐变、66dp 控件高度及 20dp 底部间隔。
-- 验证基线：HEAD 48bf49a9b85aa2c6a573b74e98f61fd9f2af9b85 加本次未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题及全部 178 项测试）。首次 Lint 的渲染阶段 ref 传递警告已通过稳定的 Tab 栏组件边界修正并完整重检；git diff --check 通过，无冲突标记。
-- 原包复现：USB 真机 Android 17 / API 37，原安装包 0.2.2 buildCode 11 的 712 帧录像中，点击底栏时毛玻璃区域出现横向深灰带（连续第 299～301 帧）；固定采样区域共 30 帧平均亮度低于 150/255，最低 106.05。仅检查按钮下方间隔会漏检；Expo Go 同区域未出现此现象。
-- 原生构建：通过本机 Gradle 执行 :app:assembleRelease --offline --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a，并沿用项目 Ninja init script 与正式签名配置，11m 23s BUILD SUCCESSFUL。测试包使用现有构建号 11 / 0.2.2；仅限本机验收，未预留版本、上传、发布或提交 Git。source map 内 3 个改动源码与工作区一致，APK 内 JS bundle 与本次生成产物一致；签名与手机原正式包一致，非 debuggable。
-- 修复后真机验收：保留应用数据覆盖安装测试包。首轮混入用户进入设置页的操作，仅采用前 14 秒有效片段（1260 帧），无同类深灰带。用户确认暂停操作后完成独立一轮 21 次底栏点击、4 次横向滑动、2 次纵向滚动，1970 帧中未见同类深灰闪屏（上述阈值异常帧 0）；底栏滚动隐藏与恢复正常。测试进程日志未发现 FATAL EXCEPTION / TypeError / ReferenceError。
-- 证据：本机临时目录 irisnote-tab-flash-48bf49a 中保存旧包、测试包、切页录像、异常连续帧、最终时间序列图、操作记录及 source-verification.json / apk-verification.json；测试 APK SHA-256 为 1c108ddba92307eebbe2ea017481202a1ad9169e20b0d05bde91ca58ed8af118。
-- 验收收尾：按用户明确选择，以 adb install -r 保留应用数据恢复原正式包 0.2.2 buildCode 11，并通过手机已安装 APK 的 SHA-256 与保存的原包比对确认一致；恢复结果保存在 restoration-verification.json。修复保留在工作区，等待正式发布，手机当前原正式包尚不含此修复。
-
----
