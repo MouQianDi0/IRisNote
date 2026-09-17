@@ -1,3 +1,14 @@
+## 2026-09-17 21:26:11 | 优化代码 / 修复问题：原生后台校验与安装授权衔接
+
+- 文件：modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt、modules/irisnote-updater/index.ts、modules/irisnote-updater/README.md、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、src/features/notes/hooks/useNoteDraft.ts、src/features/notes/services/active-draft-flush.ts、tests/releases/releases.test.cjs、tests/releases/active-draft-flush.test.cjs、CHANGELOG.md。
+- 已获用户确认。完整目标 APK 摘要校验由正常差量安装流程的 5 次收敛为原生准备完成、实际安装前各 1 次，保留旧包、补丁、目标包身份与签名检查；原生独立线程报告真实读取进度和阶段耗时。
+- 更新弹窗可收起并继续编辑笔记；完成后按前台状态衔接安装授权，拒绝授权不循环跳转，授权返回后继续；拉起系统页面前等待草稿写入。
+- 后台范围为应用进程存活期间的应用内任务；切到其他应用时延迟拉起安装器，未引入系统常驻服务或自动发布。
+- 验证：基于 d70cd4a70fc5f9d95931ec984e48f390d1f324b6 的未提交工作区；修改前后 npm run typecheck 通过，npm run check 通过（类型、Lint、主题及全部 178 项测试），其中更新和草稿协调专项测试 23 项通过。首次 Lint 的计时器纯渲染错误已修正并完整重检。原生 npm run gradle -- :irisnote-updater:compileReleaseKotlin --offline 通过（BUILD SUCCESSFUL，1m 36s）；Debug 检查因 HTTPS 依赖读取长时间等待主动中止，改用已缓存的 Release 依赖完成编译。无冲突标记。
+- 真机验收：adb devices -l 无设备，尚未验证实际 UI、授权跳转、编辑流畅度与 10～15 秒校验目标；原生模块编译成功不代表已生成完整 APK 或通过真机安装。
+
+---
+
 ## 2026-09-17 18:30:00 | 优化代码：更新 README 至当前项目状态
 
 - 文件：README.md。

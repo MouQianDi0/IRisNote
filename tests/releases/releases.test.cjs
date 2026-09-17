@@ -12,7 +12,7 @@ function load(relative, dependencies = {}, globals = {}) {
   const file = path.resolve(__dirname, '../..', relative);
   const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require(name) { if (Object.hasOwn(dependencies, name)) return dependencies[name]; throw Error(`Unexpected dependency: ${name}`); }, URL, URLSearchParams, console, process: { env: {} }, setTimeout, clearTimeout, AbortController, ...globals }, { filename: file });
+  vm.runInNewContext(code, { exports, require(name) { if (Object.hasOwn(dependencies, name)) return dependencies[name]; throw Error(`Unexpected dependency: ${name}`); }, URL, URLSearchParams, console, Error, process: { env: {} }, setTimeout, clearTimeout, AbortController, ...globals }, { filename: file });
   return exports;
 }
 const policy = load('src/features/updates/release.ts');
@@ -68,24 +68,44 @@ test('Windows batch lookup preserves npm installation directory', { skip: proces
 });
 
 async function sandbox(options = {}) {
-  const files = new Map();
-  const calls = [];
-  let lastCheck = null;
-  let finish;
+  const files = new Map(), calls = [], scans = [], order = [];
+  const progressListeners = new Set(), appListeners = new Set();
+  let allowed = options.permission !== false;
+  const appState = { currentState: options.background ? 'background' : 'active', addEventListener(_event, listener) { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
+  const setPermission = (value) => { allowed = value; };
+  const setAppState = (value) => { appState.currentState = value; for (const listener of appListeners) listener(value); };
+  const emit = (event) => { for (const listener of progressListeners) listener(event); };
+  const verify = async (args) => {
+    scans.push(args.verificationStage); order.push(args.verificationStage);
+    await options.onVerify?.(args, { files, emit, setAppState });
+    const bytes = files.get(args.outputUri);
+    if (!bytes || bytes.length !== Number(args.targetSize) || hash(bytes) !== args.targetSha256) throw Error('安装包校验失败');
+    return { timingsMs: { [args.verificationStage]: 10 } };
+  };
+  let lastCheck = null, finish;
   const servedRelease = options.delta ? { ...release, delivery: deltaDelivery } : release;
   if (options.unavailable) servedRelease.delivery = { mode: 'unavailable', reason: '缺少匹配的差量包' };
   const downloaded = options.delta ? patchBytes : payload;
   const dependencies = {
     '@react-native-async-storage/async-storage': { getItem: async () => lastCheck, setItem: async (_key, value) => { lastCheck = value; } },
     'expo-application': { applicationId: release.packageName, nativeBuildVersion: '27', nativeApplicationVersion: options.delta ? '1.0.0' : '0.9.0' },
-    '../../../modules/irisnote-updater': {
+    '../../../modules/irisnote-updater': options.missingNative ? null : {
       getInstalledApk: async () => ({ ...installed, version: options.delta ? '1.0.0' : '0.9.0' }),
-      applyPatch: async (args) => { if (options.mergeFailure) throw Error('差量合并失败'); files.set(args.outputUri, payload); return args.outputUri; },
-      verifyApk: async () => {},
+      applyPatch: async (args) => {
+        if (options.mergeFailure) throw Error('差量合并失败');
+        scans.push('base', 'patch');
+        assert.equal(args.baseSha256, installed.sha256);
+        const patch = files.get(args.patchUri);
+        if (!patch || patch.length !== Number(args.patchSize) || hash(patch) !== args.patchSha256) throw Error('差量包校验失败');
+        files.set(args.outputUri, payload);
+        return { ...await verify(args), outputUri: args.outputUri };
+      },
+      verifyApk: verify,
+      canInstallPackages: async () => { order.push('permission'); return allowed; },
+      addListener(_event, listener) { progressListeners.add(listener); return { remove: () => progressListeners.delete(listener) }; },
     },
-    'expo-file-system': { File: class { constructor(uri) { this.uri = uri; } get exists() { return files.has(this.uri); } get size() { return files.get(this.uri)?.length; } open() { let offset = 0; const bytes = files.get(this.uri); return { readBytes(n) { const data = bytes.subarray(offset, offset + n); offset += data.length; return data; }, close() {} }; } } },
     'expo-file-system/legacy': {
-      cacheDirectory: 'file:///cache/', deleteAsync: async (uri) => { files.delete(uri); }, getContentUriAsync: async (uri) => `content://${uri}`,
+      cacheDirectory: 'file:///cache/', deleteAsync: async (uri) => { files.delete(uri); }, getContentUriAsync: async (uri) => 'content://' + uri,
       createDownloadResumable(_url, uri, _options, progress) { return {
         async downloadAsync() {
           if (options.wait) return new Promise((resolve) => { finish = resolve; });
@@ -96,34 +116,41 @@ async function sandbox(options = {}) {
         async pauseAsync() { finish?.(undefined); },
       }; },
     },
-    'expo-intent-launcher': { startActivityAsync: async (...args) => { calls.push(args); } },
-    'react-native': { Platform: { OS: 'android' } },
-    '@noble/hashes/sha2.js': await import('@noble/hashes/sha2.js'),
-    '@noble/hashes/utils.js': await import('@noble/hashes/utils.js'),
+    'expo-intent-launcher': { startActivityAsync: async (...args) => {
+      calls.push(args); order.push(args[0]);
+      if (args[0] === 'android.settings.MANAGE_UNKNOWN_APP_SOURCES') await options.onSettings?.({ setPermission, setAppState, scans });
+      else await options.onInstaller?.({ setAppState });
+    } },
+    'react-native': { Platform: { OS: 'android' }, AppState: appState },
+    '@/features/notes/services/active-draft-flush': { flushActiveDrafts: async () => { order.push('flush'); await options.onFlush?.(); } },
     zustand: { create(init) { let state = init(); return { getState: () => state, setState: (patch) => { state = { ...state, ...patch }; } }; } },
     '@/shared/http/client': { API_BASE_URL: 'https://example.com/api' },
     './release': policy,
   };
   const store = load('src/features/updates/update-store.ts', dependencies, { fetch: async () => ({ ok: true, json: async () => ({ release: servedRelease }) }) });
-  return { store, calls, files };
+  return { store, calls, files, scans, order, setPermission, setAppState, emit, progressListeners, appListeners };
 }
-test('successful check and download require separate explicit installation', async () => {
-  const { store, calls } = await sandbox();
+
+test('download and install performs two native target scans and flushes before installer', async () => {
+  const { store, calls, scans, order } = await sandbox();
   await store.checkForUpdate(true);
   assert.equal(store.useUpdateStore.getState().phase, 'available');
   await store.downloadUpdate();
   assert.equal(store.useUpdateStore.getState().phase, 'ready');
-  assert.equal(calls.length, 0);
-  await store.installUpdate();
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'android.intent.action.VIEW');
+  assert.deepEqual(scans, ['target', 'install']);
+  assert.equal(order.at(-2), 'flush');
+  assert.ok(order.indexOf('permission') < order.indexOf('install'));
 });
+
 test('corrupt downloads are removed and never installed', async () => {
   const { store, calls, files } = await sandbox({ corrupt: true });
   await store.checkForUpdate(true); await store.downloadUpdate(); await store.installUpdate();
   assert.equal(store.useUpdateStore.getState().phase, 'error');
   assert.equal(files.size, 0); assert.equal(calls.length, 0);
 });
+
 test('cancelled download does not become ready or trigger installation', async () => {
   const { store, calls } = await sandbox({ wait: true });
   await store.checkForUpdate(true);
@@ -133,26 +160,127 @@ test('cancelled download does not become ready or trigger installation', async (
   assert.equal(store.useUpdateStore.getState().phase, 'available');
   assert.equal(calls.length, 0);
 });
+
 test('cached APK is rechecked before installation', async () => {
-  const { store, calls, files } = await sandbox();
+  const { store, calls, files, setAppState } = await sandbox({ background: true });
   await store.checkForUpdate(true); await store.downloadUpdate();
   files.set(store.useUpdateStore.getState().fileUri, Buffer.alloc(payload.length));
-  await store.installUpdate(); assert.equal(calls.length, 0);
+  setAppState('active'); await store.installUpdate();
+  assert.equal(calls.length, 0);
+  assert.equal(files.size, 0);
   assert.match(store.useUpdateStore.getState().error, /校验失败/);
 });
-test('delta download merges before ready and deletes patch file', async () => {
-  const { store, calls, files } = await sandbox({ delta: true });
+
+test('delta preparation and installation scan target only twice and remove patch', async () => {
+  const { store, calls, files, scans } = await sandbox({ delta: true });
   await store.checkForUpdate(true); await store.downloadUpdate();
   assert.equal(store.useUpdateStore.getState().phase, 'ready');
   assert.equal([...files.keys()].some((key) => key.endsWith('.hdiff')), false);
-  assert.equal(calls.length, 0);
-  await store.installUpdate(); assert.equal(calls.length, 1);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(scans, ['base', 'patch', 'target', 'install']);
 });
+
 test('failed merge and missing patch never fall back to full APK', async () => {
   for (const options of [{ delta: true, mergeFailure: true }, { delta: true, unavailable: true }]) {
     const { store, files, calls } = await sandbox(options);
     await store.checkForUpdate(true); await store.downloadUpdate(); await store.installUpdate();
     assert.equal(files.size, 0); assert.equal(calls.length, 0);
     assert.notEqual(store.useUpdateStore.getState().phase, 'ready');
+  }
+});
+
+test('permission refusal preserves APK and never scans for install or loops settings', async () => {
+  const { store, calls, files, scans } = await sandbox({ permission: false });
+  await store.checkForUpdate(true); await store.downloadUpdate(); await store.resumePendingInstallation();
+  assert.equal(store.useUpdateStore.getState().phase, 'permission');
+  assert.equal(files.size, 1); assert.deepEqual(scans, ['target']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'android.settings.MANAGE_UNKNOWN_APP_SOURCES');
+  assert.equal(calls[0][1].data, 'package:' + policy.ANDROID_PACKAGE);
+});
+
+test('returning from authorization automatically continues once, even with resume event', async () => {
+  const { store, calls, scans, order } = await sandbox({ permission: false, onSettings: async ({ setPermission, setAppState, scans }) => {
+    assert.deepEqual(scans, ['target']);
+    setAppState('background'); setPermission(true); setAppState('active');
+  } });
+  const unsubscribe = store.observeUpdateLifecycle();
+  await store.checkForUpdate(true); await store.downloadUpdate();
+  assert.deepEqual(calls.map(([action]) => action), ['android.settings.MANAGE_UNKNOWN_APP_SOURCES', 'android.intent.action.VIEW']);
+  assert.deepEqual(scans, ['target', 'install']);
+  assert.equal(order[order.indexOf('android.settings.MANAGE_UNKNOWN_APP_SOURCES') - 1], 'flush');
+  unsubscribe();
+});
+
+test('settings result before foreground defers installation until active', async () => {
+  const { store, calls, setAppState, scans } = await sandbox({ permission: false, onSettings: async ({ setPermission, setAppState }) => {
+    setAppState('background'); setPermission(true);
+  } });
+  await store.checkForUpdate(true); await store.downloadUpdate();
+  assert.equal(calls.length, 1); assert.deepEqual(scans, ['target']);
+  setAppState('active'); await store.resumePendingInstallation();
+  assert.equal(calls.length, 2); assert.deepEqual(scans, ['target', 'install']);
+});
+
+test('background completion waits for foreground; installer cancellation does not reopen', async () => {
+  const { store, calls, setAppState, scans } = await sandbox({ background: true });
+  await store.checkForUpdate(true); await store.downloadUpdate();
+  assert.deepEqual(scans, ['target']); assert.equal(calls.length, 0);
+  const unsubscribe = store.observeUpdateLifecycle();
+  setAppState('active'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  setAppState('background'); setAppState('active'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+  unsubscribe();
+});
+
+test('closing dialog keeps native work running; progress is scoped and duplicate actions ignored', async () => {
+  let finish, entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const gate = new Promise((resolve) => { finish = resolve; });
+  const { store, calls, progressListeners, scans } = await sandbox({ onVerify: async (args, { emit }) => {
+    if (args.verificationStage !== 'target') return;
+    emit({ requestId: args.requestId, stage: 'target', processed: 50, total: 100, elapsedMs: 25 });
+    emit({ requestId: 'obsolete', stage: 'merge', processed: 0, total: 0, elapsedMs: 0 });
+    entered(); await gate;
+  } });
+  await store.checkForUpdate(true);
+  const work = store.downloadUpdate(); await started;
+  store.hideUpdateDialog();
+  assert.equal(store.useUpdateStore.getState().visible, false);
+  assert.equal(store.useUpdateStore.getState().stageProgress, 0.5);
+  await store.downloadUpdate(); await store.installUpdate(); await store.cancelUpdate();
+  assert.equal(store.useUpdateStore.getState().phase, 'verifying');
+  finish(); await work;
+  assert.equal(store.useUpdateStore.getState().visible, false);
+  assert.equal(calls.length, 1); assert.equal(progressListeners.size, 0);
+  assert.deepEqual(scans, ['target', 'install']);
+});
+
+test('draft flush failure prevents external screens and allows explicit retry', async () => {
+  for (const permission of [true, false]) {
+    let fail = true;
+    const { store, calls } = await sandbox({ permission, onFlush: async () => { if (fail) throw Error('草稿保存失败'); } });
+    await store.checkForUpdate(true); await store.downloadUpdate();
+    assert.equal(calls.length, 0); assert.match(store.useUpdateStore.getState().error, /草稿保存失败/);
+    await store.resumePendingInstallation(); assert.equal(calls.length, 0);
+    fail = false; await store.installUpdate(); assert.equal(calls.length, 1);
+  }
+});
+
+test('permission revoked during install verification blocks installer', async () => {
+  let revoke;
+  const environment = await sandbox({ onVerify: async (args) => { if (args.verificationStage === 'install') revoke(); } });
+  revoke = () => environment.setPermission(false);
+  await environment.store.checkForUpdate(true); await environment.store.downloadUpdate();
+  assert.equal(environment.calls.length, 0);
+  assert.equal(environment.store.useUpdateStore.getState().phase, 'permission');
+});
+
+test('corrupt patch and absent native module fail closed without installation', async () => {
+  for (const options of [{ delta: true, corrupt: true }, { missingNative: true }]) {
+    const { store, calls, files } = await sandbox(options);
+    await store.checkForUpdate(true); await store.downloadUpdate();
+    assert.equal(calls.length, 0); assert.equal(files.size, 0);
   }
 });
