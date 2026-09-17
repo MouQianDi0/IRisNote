@@ -8,6 +8,7 @@ import {
 } from "../data/note-draft.repository";
 import { getLocalNoteByClientId } from "../data/note-local.repository";
 import { NoteDraftSession, type DraftWriteState } from "../services/note-draft-session";
+import { registerActiveDraftFlush } from "../services/active-draft-flush";
 import type { Note } from "../notes.types";
 
 type DraftResource = {
@@ -62,6 +63,7 @@ export function useNoteDraft(
     useEffect(() => {
         let disposed = false;
         let session: NoteDraftSession | undefined;
+        let unregisterUpdateFlush: (() => void) | undefined;
         async function initialize() {
             const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
             const latestNote = seed.note ? await getLocalNoteByClientId(database, seed.owner, seed.note.id) : null;
@@ -90,6 +92,10 @@ export function useNoteDraft(
                 });
             const next = { row, session, initial: draftValue(row), current, conflict };
             active.current = next;
+            unregisterUpdateFlush = registerActiveDraftFlush(async () => {
+                if (!disposed && busy.current) throw new Error("笔记正在保存，请稍后重试安装");
+                await session?.flush();
+            });
             complete.current = false;
             busy.current = false;
             setError("");
@@ -102,6 +108,7 @@ export function useNoteDraft(
         });
         return () => {
             disposed = true;
+            unregisterUpdateFlush?.();
             active.current = null;
             void session?.close().catch(() => {
                 console.warn("[Note draft] 页面卸载补写失败", { owner: seed.owner, key: seed.key });

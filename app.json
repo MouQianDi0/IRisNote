@@ -40,7 +40,7 @@
             [
                 "expo-splash-screen",
                 {
-                    "backgroundColor": "white",
+                    "backgroundColor": "#FFFFFF",
                     "android": {
                         "image": "./assets/images/IRisNote.png",
                         "imageWidth": 76
