@@ -335,3 +335,9 @@
 [CodeGraph MCP] File watcher active — graph will auto-sync on changes
 [CodeGraph MCP] Query pool: up to 16 worker thread(s) for concurrent reads.
 [CodeGraph MCP] Caught up 8 file(s) changed since last run
+[CodeGraph MCP] Auto-synced 1 file(s) in 263ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 138ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 48ms
+[CodeGraph MCP] Auto-synced 3 file(s) in 1454ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 63ms
+[CodeGraph MCP] Auto-synced 1 file(s) in 91ms

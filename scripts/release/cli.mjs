@@ -15,6 +15,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { gradleEnvironment } from "../android/gradle-env.mjs";
+import { cosConfig, createCosUploader, withoutCosCredentials } from "./cos.mjs";
 import {
     deltaTools,
     generatePatch,
@@ -22,8 +23,6 @@ import {
     verifyNativeUpdater,
 } from "./delta.mjs";
 import { loadReleaseEnv } from "./env.mjs";
-import { cosConfig, createCosUploader, withoutCosCredentials } from "./cos.mjs";
-import { uploadBoth, verifyArtifactStream } from "./upload.mjs";
 import {
     certificateDigest,
     fileSha256,
@@ -34,6 +33,7 @@ import {
 } from "./lib.mjs";
 import { releaseNinja, setupNinja } from "./ninja.mjs";
 import { exportBuildSource } from "./source.mjs";
+import { uploadBoth, verifyArtifactStream } from "./upload.mjs";
 import { createReleaseWorkspace } from "./workspace.mjs";
 
 const root = path.resolve(
@@ -300,32 +300,48 @@ async function build() {
 async function uploadRelease(release, apk, info) {
     const cos = createCosUploader(cosConfig());
     await uploadBoth({
-        release, apk, info, cos,
+        release,
+        apk,
+        info,
+        cos,
         getRelease: () => api(`/${release.build_code}`),
         putServer: async () => {
             const body = createReadStream(apk);
             try {
-                const response = await fetch(`${base()}/${release.build_code}/apk`, {
-                    method: "PUT",
-                    headers: {
-                        Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}`,
-                        "Content-Type": "application/octet-stream",
-                        "Content-Length": String(info.size),
-                        "X-APK-SHA256": info.sha256,
-                        "X-Certificate-SHA256": info.certificate,
+                const response = await fetch(
+                    `${base()}/${release.build_code}/apk`,
+                    {
+                        method: "PUT",
+                        headers: {
+                            Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}`,
+                            "Content-Type": "application/octet-stream",
+                            "Content-Length": String(info.size),
+                            "X-APK-SHA256": info.sha256,
+                            "X-Certificate-SHA256": info.certificate,
+                        },
+                        body,
+                        duplex: "half",
+                        redirect: "error",
+                        signal: AbortSignal.timeout(30 * 60 * 1000),
                     },
-                    body, duplex: "half", redirect: "error",
-                    signal: AbortSignal.timeout(30 * 60 * 1000),
-                });
+                );
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 await response.arrayBuffer();
-            } finally { body.destroy(); }
+            } finally {
+                body.destroy();
+            }
         },
         verifyServer: async () => {
-            const response = await fetch(`${base()}/${release.build_code}/artifact`, {
-                headers: { Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}` },
-                redirect: "error", signal: AbortSignal.timeout(30 * 60 * 1000),
-            });
+            const response = await fetch(
+                `${base()}/${release.build_code}/artifact`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${envRequired("IRIS_RELEASE_TOKEN")}`,
+                    },
+                    redirect: "error",
+                    signal: AbortSignal.timeout(30 * 60 * 1000),
+                },
+            );
             if (!response.ok || !response.body) {
                 await response.body?.cancel();
                 throw new Error(`服务器 APK 回读失败：HTTP ${response.status}`);
