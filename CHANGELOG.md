@@ -1,3 +1,14 @@
+## 2026-09-17 13:57:54 | 优化代码：补充清除系统存储后提交登录闪退的定向诊断日志
+
+- 文件：src/features/auth/screens/LoginScreen.tsx、src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 已获用户确认。现象为 Android 系统设置清除应用存储后，填写邮箱、验证码和密码并提交登录时闪退；历史崩溃签名为 Fabric `addViewAt` / `The specified child already has a parent`。现有栈未能对应具体业务组件，本次仅补充诊断，不宣称已修复闪退。
+- 统一使用 `[IRisNoteCrashTrace]` + JSON 输出阶段与 Unix 毫秒时间戳。登录记录请求返回、会话保存、状态刷新、资料同步、用户中心跳转请求/派发、成功提示请求及失败所在阶段，各阶段包含相对提交开始的耗时；导航记录挂载/卸载、实际激活的 Tab 与索引切换请求；用户中心记录挂载/卸载及存活耗时。
+- 笔记页记录挂载/卸载、本地读取、云端获取、对账、列表更新请求、同步完成、失败或账号归属变化导致的跳过，并记录各阶段数量及请求累计耗时；列表数据提交后记录数量。派发路由或提交 React 数据不等同于原生画面成功显示，需与 AndroidRuntime / SurfaceMountingManager 日志对齐判断。
+- 新增日志不含邮箱、密码、验证码、Token、用户资料、笔记正文或响应/错误正文；不改 UI、登录请求、会话写入、路由目标、同步对账、排序与列表裁剪策略。无新增依赖、测试或持久化诊断数据。
+- 验证：修改前 `npm run typecheck` 未报告错误；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，四个改动源码未发现 Git 冲突标记。检查基于 HEAD `61054b3cceafc7c98de84545cd30009090d27e70` 加当前工作区；未构建、安装、清除设备数据或进行真机登录复现，需用户使用包含本次日志的应用版本复现后继续定位。
+
+---
+
 ## 2026-09-17 13:26:02 | 优化代码：忽略 irisnote-updater Gradle 构建产物并移出误提交缓存
 
 - 文件：.gitignore、CHANGELOG.md（另通过 `git rm -r --cached` 移出 16 个索引文件，本地文件保留）。

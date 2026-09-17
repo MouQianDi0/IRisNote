@@ -4,6 +4,7 @@ import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview"
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import { router, type Href } from "expo-router";
+import { useEffect } from "react";
 import {
     Archive,
     BookOpenText,
@@ -109,6 +110,19 @@ export default function ProfileScreen() {
     const { avatarSource, avatarKey, avatarUploading, showAvatarOptions } =
         useAvatar();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
+
+    useEffect(() => {
+        const mountedAt = Date.now();
+        console.info("[IRisNoteCrashTrace]", JSON.stringify({
+            scope: "profile", stage: "mounted", timestamp: mountedAt,
+        }));
+        return () => {
+            console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                scope: "profile", stage: "unmounted", timestamp: Date.now(),
+                elapsedMs: Date.now() - mountedAt,
+            }));
+        };
+    }, []);
 
     if (authLoading) {
         return (
