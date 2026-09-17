@@ -32,9 +32,18 @@ import {
     validateApkInfo,
 } from "./lib.mjs";
 import { releaseNinja, setupNinja } from "./ninja.mjs";
+import {
+    prepareCachedSource,
+    regenerateAndroid,
+    resetBuildSnapshot,
+    timed,
+} from "./cache.mjs";
 import { exportBuildSource } from "./source.mjs";
 import { uploadBoth, verifyArtifactStream } from "./upload.mjs";
-import { createReleaseWorkspace } from "./workspace.mjs";
+import {
+    acquireReleaseWorkspace,
+    createReleaseWorkspace,
+} from "./workspace.mjs";
 
 const root = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -145,157 +154,205 @@ async function build() {
         throw new Error("仅允许构建尚未上传的预留版本");
     if (release.source === "self") cosConfig();
     const ninja = release.source === "self" ? await releaseNinja(root) : null;
-    const workspace = await createReleaseWorkspace(root);
-    console.log(`独立构建目录：${workspace}`);
-    const checkout = path.join(workspace, "source");
-    await mkdir(checkout);
-    const selection = exportBuildSource(
-        root,
-        release.commit_sha,
-        workspace,
-        checkout,
-    );
-    console.log(`已排除非构建资料：${selection.excluded.join("、") || "无"}`);
-    await verifyNativeUpdater(checkout);
-    const buildEnv = {
-        ...withoutCosCredentials(process.env),
-        IRIS_BUILD_NUMBER: String(release.build_code),
-        IRIS_BUILD_VERSION: release.version,
-    };
-    // Build scripts never receive the release service's administrative credential.
-    delete buildEnv.IRIS_RELEASE_TOKEN;
-    delete buildEnv.IRIS_KEYSTORE_PASSWORD;
-    delete buildEnv.IRIS_KEY_PASSWORD;
-    run(npm, ["ci"], { cwd: checkout, env: buildEnv });
-    run(npm, ["run", "check"], { cwd: checkout, env: buildEnv });
-    if (release.source === "eas") {
-        const easFile = path.join(checkout, "eas.json");
-        const eas = JSON.parse(await readFile(easFile, "utf8"));
-        const profile = format === "aab" ? "production" : "preview";
-        eas.build[profile].env = {
-            ...eas.build[profile].env,
+    const reusable = release.source === "self" && !args.includes("--fresh");
+    const lease = reusable ? await acquireReleaseWorkspace(root) : null;
+    try {
+        const workspace =
+            lease?.workspace ?? (await createReleaseWorkspace(root));
+        console.log(`独立构建目录：${workspace}`);
+        const snapshot = reusable
+            ? await resetBuildSnapshot(workspace)
+            : path.join(workspace, "source");
+        if (!reusable) await mkdir(snapshot);
+        const selection = await timed("导出预留提交", () =>
+            exportBuildSource(root, release.commit_sha, workspace, snapshot),
+        );
+        console.log(
+            `已排除非构建资料：${selection.excluded.join("、") || "无"}`,
+        );
+        await verifyNativeUpdater(snapshot);
+        const buildEnv = {
+            ...withoutCosCredentials(process.env),
             IRIS_BUILD_NUMBER: String(release.build_code),
             IRIS_BUILD_VERSION: release.version,
         };
-        for (const key of [
-            "EXPO_PUBLIC_BASE_URL",
-            "EXPO_PUBLIC_RELEASE_API_URL",
-        ]) {
-            if (process.env[key])
-                eas.build[profile].env[key] = process.env[key];
-        }
-        await writeFile(easFile, JSON.stringify(eas, null, 2) + "\n");
-        // EAS receives a deterministic checkout and persists the exact reservation in its profile.
-        run("git", ["init"], { cwd: checkout });
-        run("git", ["add", "."], { cwd: checkout });
-        run(
-            "git",
-            [
-                "-c",
-                "user.name=IRisNote Builder",
-                "-c",
-                "user.email=builder@localhost",
-                "commit",
-                "-m",
-                `Build ${release.build_code}`,
-            ],
-            { cwd: checkout },
-        );
+        // Build scripts never receive the release service's administrative credential.
+        delete buildEnv.IRIS_RELEASE_TOKEN;
         delete buildEnv.IRIS_KEYSTORE_PASSWORD;
         delete buildEnv.IRIS_KEY_PASSWORD;
-        delete buildEnv.IRIS_RELEASE_SIGNING;
-        run(
-            npm,
-            [
-                "run",
-                "eas",
-                "--",
-                "build",
-                "--platform",
-                "android",
-                "--profile",
-                profile,
-                "--non-interactive",
-                "--wait",
-            ],
-            { cwd: checkout, env: buildEnv },
+        const cache = reusable
+            ? await timed("同步源码与检查缓存", () =>
+                  prepareCachedSource(
+                      workspace,
+                      snapshot,
+                      buildEnv,
+                      JSON.stringify([
+                          run(npm, ["--version"], { capture: true }),
+                          run(npm, ["config", "list", "--json"], {
+                              cwd: snapshot,
+                              env: buildEnv,
+                              capture: true,
+                          }),
+                      ]),
+                  ),
+              )
+            : null;
+        const checkout = cache?.checkout ?? snapshot;
+        if (cache?.reuse)
+            console.log("依赖指纹匹配：复用 node_modules 和原生编译缓存。");
+        else
+            await timed("安装依赖 npm ci", () =>
+                run(npm, ["ci"], { cwd: checkout, env: buildEnv }),
+            );
+        await timed("完整代码检查", () =>
+            run(npm, ["run", "check"], { cwd: checkout, env: buildEnv }),
         );
-        console.log(
-            format === "aab"
-                ? "AAB 已交由 EAS 构建；AAB 用于商店提交，不上传到 APK 更新接口。"
-                : `从此次 EAS 构建下载 APK，然后执行 upload --build ${release.build_code} --apk <path>。上传时会核对真实产物。`,
+        if (release.source === "eas") {
+            const easFile = path.join(checkout, "eas.json");
+            const eas = JSON.parse(await readFile(easFile, "utf8"));
+            const profile = format === "aab" ? "production" : "preview";
+            eas.build[profile].env = {
+                ...eas.build[profile].env,
+                IRIS_BUILD_NUMBER: String(release.build_code),
+                IRIS_BUILD_VERSION: release.version,
+            };
+            for (const key of [
+                "EXPO_PUBLIC_BASE_URL",
+                "EXPO_PUBLIC_RELEASE_API_URL",
+            ]) {
+                if (process.env[key])
+                    eas.build[profile].env[key] = process.env[key];
+            }
+            await writeFile(easFile, JSON.stringify(eas, null, 2) + "\n");
+            // EAS receives a deterministic checkout and persists the exact reservation in its profile.
+            run("git", ["init"], { cwd: checkout });
+            run("git", ["add", "."], { cwd: checkout });
+            run(
+                "git",
+                [
+                    "-c",
+                    "user.name=IRisNote Builder",
+                    "-c",
+                    "user.email=builder@localhost",
+                    "commit",
+                    "-m",
+                    `Build ${release.build_code}`,
+                ],
+                { cwd: checkout },
+            );
+            delete buildEnv.IRIS_KEYSTORE_PASSWORD;
+            delete buildEnv.IRIS_KEY_PASSWORD;
+            delete buildEnv.IRIS_RELEASE_SIGNING;
+            run(
+                npm,
+                [
+                    "run",
+                    "eas",
+                    "--",
+                    "build",
+                    "--platform",
+                    "android",
+                    "--profile",
+                    profile,
+                    "--non-interactive",
+                    "--wait",
+                ],
+                { cwd: checkout, env: buildEnv },
+            );
+            console.log(
+                format === "aab"
+                    ? "AAB 已交由 EAS 构建；AAB 用于商店提交，不上传到 APK 更新接口。"
+                    : `从此次 EAS 构建下载 APK，然后执行 upload --build ${release.build_code} --apk <path>。上传时会核对真实产物。`,
+            );
+            return;
+        }
+        for (const name of [
+            "IRIS_KEYSTORE_PATH",
+            "IRIS_KEYSTORE_PASSWORD",
+            "IRIS_KEY_ALIAS",
+            "IRIS_KEY_PASSWORD",
+            "IRIS_CERTIFICATE_SHA256",
+        ])
+            envRequired(name);
+        buildEnv.IRIS_KEYSTORE_PATH = path.resolve(
+            envRequired("IRIS_KEYSTORE_PATH"),
         );
-        return;
-    }
-    for (const name of [
-        "IRIS_KEYSTORE_PATH",
-        "IRIS_KEYSTORE_PASSWORD",
-        "IRIS_KEY_ALIAS",
-        "IRIS_KEY_PASSWORD",
-        "IRIS_CERTIFICATE_SHA256",
-    ])
-        envRequired(name);
-    buildEnv.IRIS_KEYSTORE_PATH = path.resolve(
-        envRequired("IRIS_KEYSTORE_PATH"),
-    );
-    buildEnv.IRIS_RELEASE_SIGNING = "true";
-    buildEnv.IRIS_KEYSTORE_PASSWORD = envRequired("IRIS_KEYSTORE_PASSWORD");
-    buildEnv.IRIS_KEY_PASSWORD = envRequired("IRIS_KEY_PASSWORD");
-    run(
-        process.execPath,
-        [
-            "node_modules/expo/bin/cli",
-            "prebuild",
-            "--platform",
-            "android",
-            "--no-install",
-        ],
-        { cwd: checkout, env: buildEnv },
-    );
-    // Use the original project's socket directory, not the isolated checkout under
-    // the Windows user Temp directory that triggered the AF_UNIX failure.
-    const nativeBuildEnv = await gradleEnvironment(root, buildEnv);
-    if (ninja) nativeBuildEnv.IRIS_NINJA_PATH = ninja;
-    run(
-        path.join(
+        buildEnv.IRIS_RELEASE_SIGNING = "true";
+        buildEnv.IRIS_KEYSTORE_PASSWORD = envRequired("IRIS_KEYSTORE_PASSWORD");
+        buildEnv.IRIS_KEY_PASSWORD = envRequired("IRIS_KEY_PASSWORD");
+        const prebuild = () =>
+            run(
+                process.execPath,
+                [
+                    "node_modules/expo/bin/cli",
+                    "prebuild",
+                    "--platform",
+                    "android",
+                    "--no-install",
+                ],
+                { cwd: checkout, env: buildEnv },
+            );
+        await timed("生成 Android 工程", () =>
+            reusable
+                ? regenerateAndroid(workspace, checkout, prebuild)
+                : prebuild(),
+        );
+        // Use the original project's socket directory, not the isolated checkout under
+        // the Windows user Temp directory that triggered the AF_UNIX failure.
+        const nativeBuildEnv = await gradleEnvironment(root, buildEnv);
+        if (ninja) nativeBuildEnv.IRIS_NINJA_PATH = ninja;
+        await timed("Gradle 正式 APK", () =>
+            run(
+                path.join(
+                    checkout,
+                    "android",
+                    process.platform === "win32" ? "gradlew.bat" : "gradlew",
+                ),
+                [
+                    "assembleRelease",
+                    "--daemon",
+                    "--build-cache",
+                    ...(ninja
+                        ? [
+                              "--init-script",
+                              path.join(
+                                  root,
+                                  "scripts/android/ninja.init.gradle",
+                              ),
+                          ]
+                        : []),
+                ],
+                { cwd: path.join(checkout, "android"), env: nativeBuildEnv },
+            ),
+        );
+        const apk = path.join(
             checkout,
-            "android",
-            process.platform === "win32" ? "gradlew.bat" : "gradlew",
-        ),
-        [
-            "assembleRelease",
-            "--no-daemon",
-            ...(ninja
-                ? [
-                      "--init-script",
-                      path.join(root, "scripts/android/ninja.init.gradle"),
-                  ]
-                : []),
-        ],
-        { cwd: path.join(checkout, "android"), env: nativeBuildEnv },
-    );
-    const apk = path.join(
-        checkout,
-        "android/app/build/outputs/apk/release/app-release.apk",
-    );
-    const info = await inspect(apk, release);
-    const output = path.join(root, "dist", "releases", release.version);
-    await mkdir(output, { recursive: true });
-    const target = path.join(
-        output,
-        `IRisNote-${release.version}-${release.build_code}.apk`,
-    );
-    await copyFile(apk, target);
-    await writeFile(
-        `${target}.json`,
-        JSON.stringify(
-            { ...info, commit: release.commit_sha, source: release.source },
-            null,
-            2,
-        ),
-    );
-    console.log(`已构建并校验：${target}\n开始上传服务器和 COS。`);
-    await uploadRelease(release, target, info);
+            "android/app/build/outputs/apk/release/app-release.apk",
+        );
+        const info = await timed("APK 身份与签名校验", () =>
+            inspect(apk, release),
+        );
+        const output = path.join(root, "dist", "releases", release.version);
+        await mkdir(output, { recursive: true });
+        const target = path.join(
+            output,
+            `IRisNote-${release.version}-${release.build_code}.apk`,
+        );
+        await copyFile(apk, target);
+        await writeFile(
+            `${target}.json`,
+            JSON.stringify(
+                { ...info, commit: release.commit_sha, source: release.source },
+                null,
+                2,
+            ),
+        );
+        await cache?.complete();
+        console.log(`已构建并校验：${target}\n开始上传服务器和 COS。`);
+        await uploadRelease(release, target, info);
+    } finally {
+        await lease?.release();
+    }
 }
 async function uploadRelease(release, apk, info) {
     const cos = createCosUploader(cosConfig());
@@ -353,10 +410,15 @@ async function uploadRelease(release, apk, info) {
 }
 async function preparePatches(release, apk) {
     const bases = await api(`/${release.build_code}/bases`);
+    if (bases.length > 3)
+        throw new Error(
+            "发布服务尚未启用最近三版差分策略，请先部署对应服务端版本后重试。",
+        );
     if (!bases.length) {
         console.log("此主版本没有历史已发布包，无需差量包。");
         return;
     }
+    console.log(`为最近 ${bases.length} 个已发布基础版本准备差量包。`);
     deltaTools();
     const output = path.join(root, "dist", "releases", release.version);
     await mkdir(output, { recursive: true });
@@ -512,7 +574,7 @@ async function main() {
         console.log(JSON.stringify(await api(`/${code()}`), null, 2));
     else
         console.log(
-            "IRisNote 发布工具\n  setup-ninja\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file>\n  build --build <code>\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
+            "IRisNote 发布工具\n  setup-ninja\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file>\n  build --build <code> [--fresh]\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
         );
 }
 main().catch((error) => {

@@ -1,3 +1,28 @@
+## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
+
+- 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 用户已确认规则与原有弹窗交互：落后 1～2 个已发布版本可跳过，落后 3 版强制差分更新，超过 3 版强制完整 APK 覆盖更新；跨主版本仍使用完整 APK。强制弹窗只保留更新按钮，返回或取消安装时先保存草稿再退出。
+- 服务端统一限制差分基础版本与发布校验范围；新客户端协商策略版本 2，保留历史补丁供旧客户端兼容升级。保留完整包身份、摘要、签名及安装授权检查。
+- 验证：当前源码基于 02d0b6cfff7e2186fb4f9e2b0e95945cbedd7ccd 的未提交改动；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题与全部 207 项测试），其中更新专项 30 项通过。服务端基于 7bc85889019bb5eb71fbffa4b5298a7266540b5d，npm run build、test:releases（15 项）及 test:installer（4 项）通过。git diff --check 通过，无冲突标记。服务端新增路由测试使用注入式数据库/文件响应，未访问生产数据库；UI 断言不是实际渲染验收。未部署服务、未构建上传发布，Android 真机弹窗、退出、完整包覆盖保留数据及旧客户端分步升级待验收。
+
+---
+
+## 2026-09-18 02:27:59 | 优化代码：本地正式 APK 构建缓存复用
+
+- 文件：scripts/release/cli.mjs、scripts/release/workspace.mjs、scripts/release/cache.mjs、tests/releases/cache.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。自有渠道使用按项目隔离的固定工作区和互斥锁，按预留提交同步源码并清除过期文件；指纹一致时复用依赖与原生编译输出，依赖、配置、本地模块、构建环境变化或上次构建未完成时重新初始化。
+- 每次重新生成 Android 工程后只恢复允许保留的构建输出，避免移除插件后残留原生文件；启用 Gradle Daemon 和构建缓存，增加阶段耗时与 --fresh 全新工作区入口，保留完整检查、版本签名校验及原有上传和差分验证行为。
+- 验证：基于 4e9b6292301b9283dbf47fe3b0286490294a075e 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 196 项测试），其中缓存专项 18 项通过；实际 npm 配置读取确认版本号变化不改变配置指纹输入；脚本语法与 git diff --check 通过，无冲突标记。未运行正式 APK 构建、上传或发布，实际冷热构建耗时、Windows Gradle Daemon 下的原生缓存复用和真机差分升级尚未验收。
+
+---
+
+## 2026-09-18 02:08:28 | 新增文件：IRisNote 0.2.3 更新说明
+
+- 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.3（补丁更新，基准 0.2.2 buildCode 11 / 48bf49a，目标 86d2955）：修复切换底部标签页时毛玻璃区域偶尔出现深灰色闪烁带的问题（a7ba4f9，已通过真机验收）。
+
+---
+
 ## 2026-09-17 21:26:11 | 优化代码 / 修复问题：原生后台校验与安装授权衔接
 
 - 文件：modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt、modules/irisnote-updater/index.ts、modules/irisnote-updater/README.md、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、src/features/notes/hooks/useNoteDraft.ts、src/features/notes/services/active-draft-flush.ts、tests/releases/releases.test.cjs、tests/releases/active-draft-flush.test.cjs、CHANGELOG.md。
@@ -2038,6 +2063,7 @@
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+
 ## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
 
 - 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
