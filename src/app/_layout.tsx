@@ -23,7 +23,12 @@ export default function RootLayout() {
                         />
                         <Stack.Screen
                             name="pages/todo/create"
-                            options={{ headerShown: false }}
+                            options={{
+                                headerShown: false,
+                                presentation: "transparentModal",
+                                contentStyle: { backgroundColor: "transparent" },
+                                animation: "none",
+                            }}
                         />
                         <Stack.Screen
                             name="pages/excerpt/create"

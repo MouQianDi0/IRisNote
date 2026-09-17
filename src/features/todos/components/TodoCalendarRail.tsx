@@ -1,5 +1,5 @@
 import { Undo2 } from "lucide-react-native";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
@@ -38,19 +38,30 @@ const CHINESE_MONTH_LABELS = [
 type TodoCalendarRailProps = {
   value: string | null;
   onChange: (dateId: string) => void;
+  todayId?: string;
 };
 
 /**
  * 待办页右侧日期轨道：固定展示周一至周日七项，上滑下一周、下滑上一周；
  * 月份标题跟随当前周内的选中日期；底部按钮返回今天所在周并选中今天。
  */
-export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
-  const todayId = todayDateId();
+export function TodoCalendarRail({
+  value,
+  onChange,
+  todayId = todayDateId(),
+}: TodoCalendarRailProps) {
   const [visibleWeekId, setVisibleWeekId] = useState(() =>
     startOfWeekId(value ?? todayId, "monday"),
   );
   const [pickerVisible, setPickerVisible] = useState(false);
+  const previousToday = useRef(todayId);
   const monthAnchorRef = useRef<View>(null);
+
+  useLayoutEffect(() => {
+    if (previousToday.current !== todayId && value === null)
+      setVisibleWeekId(startOfWeekId(todayId, "monday"));
+    previousToday.current = todayId;
+  }, [todayId, value]);
 
   const weekdays = useMemo(
     () => weekdayLabels("monday").map((label) => `周${label}`),
