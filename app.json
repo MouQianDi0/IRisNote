@@ -1,86 +1,84 @@
 {
-  "expo": {
-    "name": "IRisNote",
-    "slug": "IRisNote",
-    "owner": "miao233",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/images/IRisNote.png",
-    "scheme": "irisnote",
-    "userInterfaceStyle": "automatic",
-    "ios": {
-      "icon": "./assets/images/IRisNote.png"
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/IRisNote.png",
-        "backgroundImage": "./assets/images/IRisNote.png",
-        "monochromeImage": "./assets/images/IRisNote.png"
-      },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.mouqiandi.irisNote",
-      "versionCode": 1,
-      "permissions": [
-        "android.permission.REQUEST_INSTALL_PACKAGES"
-      ]
-    },
-    "web": {
-      "output": "server",
-      "favicon": "./assets/images/IRisNote.png"
-    },
-    "plugins": [
-      [
-        "expo-router",
-        {
-          "headers": {
-            "Cross-Origin-Embedder-Policy": "credentialless",
-            "Cross-Origin-Opener-Policy": "same-origin"
-          }
+    "expo": {
+        "name": "IRisNote",
+        "slug": "IRisNote",
+        "owner": "miao233",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/images/IRisNote.png",
+        "scheme": "irisnote",
+        "userInterfaceStyle": "automatic",
+        "ios": {
+            "icon": "./assets/images/IRisNote.png"
+        },
+        "android": {
+            "adaptiveIcon": {
+                "backgroundColor": "#E6F4FE",
+                "foregroundImage": "./assets/images/IRisNote.png",
+                "backgroundImage": "./assets/images/IRisNote.png",
+                "monochromeImage": "./assets/images/IRisNote.png"
+            },
+            "predictiveBackGestureEnabled": false,
+            "package": "com.mouqiandi.irisNote",
+            "versionCode": 1,
+            "permissions": ["android.permission.REQUEST_INSTALL_PACKAGES"]
+        },
+        "web": {
+            "output": "server",
+            "favicon": "./assets/images/IRisNote.png"
+        },
+        "plugins": [
+            [
+                "expo-router",
+                {
+                    "headers": {
+                        "Cross-Origin-Embedder-Policy": "credentialless",
+                        "Cross-Origin-Opener-Policy": "same-origin"
+                    }
+                }
+            ],
+            [
+                "expo-splash-screen",
+                {
+                    "backgroundColor": "#FFFFFF",
+                    "android": {
+                        "image": "./assets/images/IRisNote.png",
+                        "imageWidth": 76
+                    }
+                }
+            ],
+            [
+                "expo-font",
+                {
+                    "fonts": [
+                        "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
+                    ]
+                }
+            ],
+            "react-native-edge-to-edge",
+            "expo-image",
+            [
+                "expo-image-picker",
+                {
+                    "photosPermission": "Allow IRisNote to access your photos so you can choose an avatar.",
+                    "cameraPermission": "Allow IRisNote to use the camera so you can take an avatar photo.",
+                    "microphonePermission": false
+                }
+            ],
+            "expo-sharing",
+            "expo-web-browser",
+            "expo-sqlite",
+            "./plugins/with-release-signing"
+        ],
+        "experiments": {
+            "typedRoutes": true,
+            "reactCompiler": true
+        },
+        "extra": {
+            "router": {},
+            "eas": {
+                "projectId": "0512b06c-4b53-4b8c-b81f-352914e615b4"
+            }
         }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#208AEF",
-          "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
-          }
-        }
-      ],
-      [
-        "expo-font",
-        {
-          "fonts": [
-            "node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf"
-          ]
-        }
-      ],
-      "react-native-edge-to-edge",
-      "expo-image",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Allow IRisNote to access your photos so you can choose an avatar.",
-          "cameraPermission": "Allow IRisNote to use the camera so you can take an avatar photo.",
-          "microphonePermission": false
-        }
-      ],
-      "expo-sharing",
-      "expo-web-browser",
-      "expo-sqlite",
-      "./plugins/with-release-signing"
-    ],
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "0512b06c-4b53-4b8c-b81f-352914e615b4"
-      }
     }
-  }
 }

@@ -21,6 +21,118 @@
 
 ---
 
+## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
+
+- 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 用户已确认规则与原有弹窗交互：落后 1～2 个已发布版本可跳过，落后 3 版强制差分更新，超过 3 版强制完整 APK 覆盖更新；跨主版本仍使用完整 APK。强制弹窗只保留更新按钮，返回或取消安装时先保存草稿再退出。
+- 服务端统一限制差分基础版本与发布校验范围；新客户端协商策略版本 2，保留历史补丁供旧客户端兼容升级。保留完整包身份、摘要、签名及安装授权检查。
+- 验证：当前源码基于 02d0b6cfff7e2186fb4f9e2b0e95945cbedd7ccd 的未提交改动；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题与全部 207 项测试），其中更新专项 30 项通过。服务端基于 7bc85889019bb5eb71fbffa4b5298a7266540b5d，npm run build、test:releases（15 项）及 test:installer（4 项）通过。git diff --check 通过，无冲突标记。服务端新增路由测试使用注入式数据库/文件响应，未访问生产数据库；UI 断言不是实际渲染验收。未部署服务、未构建上传发布，Android 真机弹窗、退出、完整包覆盖保留数据及旧客户端分步升级待验收。
+
+---
+
+## 2026-09-18 02:27:59 | 优化代码：本地正式 APK 构建缓存复用
+
+- 文件：scripts/release/cli.mjs、scripts/release/workspace.mjs、scripts/release/cache.mjs、tests/releases/cache.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。自有渠道使用按项目隔离的固定工作区和互斥锁，按预留提交同步源码并清除过期文件；指纹一致时复用依赖与原生编译输出，依赖、配置、本地模块、构建环境变化或上次构建未完成时重新初始化。
+- 每次重新生成 Android 工程后只恢复允许保留的构建输出，避免移除插件后残留原生文件；启用 Gradle Daemon 和构建缓存，增加阶段耗时与 --fresh 全新工作区入口，保留完整检查、版本签名校验及原有上传和差分验证行为。
+- 验证：基于 4e9b6292301b9283dbf47fe3b0286490294a075e 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 196 项测试），其中缓存专项 18 项通过；实际 npm 配置读取确认版本号变化不改变配置指纹输入；脚本语法与 git diff --check 通过，无冲突标记。未运行正式 APK 构建、上传或发布，实际冷热构建耗时、Windows Gradle Daemon 下的原生缓存复用和真机差分升级尚未验收。
+
+---
+
+## 2026-09-18 02:08:28 | 新增文件：IRisNote 0.2.3 更新说明
+
+- 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.3（补丁更新，基准 0.2.2 buildCode 11 / 48bf49a，目标 86d2955）：修复切换底部标签页时毛玻璃区域偶尔出现深灰色闪烁带的问题（a7ba4f9，已通过真机验收）。
+
+---
+
+## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
+- 已获用户确认。将各页面独立的毛玻璃采样目标改为包裹整个切页容器的固定 BlurTargetView，悬浮导航作为同级覆盖层置于采样区域之外，避免采样自身；移除随 activeTab 改变的 BlurView key，切页时复用原生毛玻璃实例。
+- 切页容器及采样区域补齐主题背景色，保留页面滑动、懒加载、底栏图标动画、15dp 顶部渐变、66dp 控件高度及 20dp 底部间隔。
+- 验证基线：HEAD 48bf49a9b85aa2c6a573b74e98f61fd9f2af9b85 加本次未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题及全部 178 项测试）。首次 Lint 的渲染阶段 ref 传递警告已通过稳定的 Tab 栏组件边界修正并完整重检；git diff --check 通过，无冲突标记。
+- 原包复现：USB 真机 Android 17 / API 37，原安装包 0.2.2 buildCode 11 的 712 帧录像中，点击底栏时毛玻璃区域出现横向深灰带（连续第 299～301 帧）；固定采样区域共 30 帧平均亮度低于 150/255，最低 106.05。仅检查按钮下方间隔会漏检；Expo Go 同区域未出现此现象。
+- 原生构建：通过本机 Gradle 执行 :app:assembleRelease --offline --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a，并沿用项目 Ninja init script 与正式签名配置，11m 23s BUILD SUCCESSFUL。测试包使用现有构建号 11 / 0.2.2；仅限本机验收，未预留版本、上传、发布或提交 Git。source map 内 3 个改动源码与工作区一致，APK 内 JS bundle 与本次生成产物一致；签名与手机原正式包一致，非 debuggable。
+- 修复后真机验收：保留应用数据覆盖安装测试包。首轮混入用户进入设置页的操作，仅采用前 14 秒有效片段（1260 帧），无同类深灰带。用户确认暂停操作后完成独立一轮 21 次底栏点击、4 次横向滑动、2 次纵向滚动，1970 帧中未见同类深灰闪屏（上述阈值异常帧 0）；底栏滚动隐藏与恢复正常。测试进程日志未发现 FATAL EXCEPTION / TypeError / ReferenceError。
+- 证据：本机临时目录 irisnote-tab-flash-48bf49a 中保存旧包、测试包、切页录像、异常连续帧、最终时间序列图、操作记录及 source-verification.json / apk-verification.json；测试 APK SHA-256 为 1c108ddba92307eebbe2ea017481202a1ad9169e20b0d05bde91ca58ed8af118。
+- 验收收尾：按用户明确选择，以 adb install -r 保留应用数据恢复原正式包 0.2.2 buildCode 11，并通过手机已安装 APK 的 SHA-256 与保存的原包比对确认一致；恢复结果保存在 restoration-verification.json。修复保留在工作区，等待正式发布，手机当前原正式包尚不含此修复。
+
+---
+
+## 2026-09-17 21:26:11 | 优化代码 / 修复问题：原生后台校验与安装授权衔接
+
+- 文件：modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt、modules/irisnote-updater/index.ts、modules/irisnote-updater/README.md、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、src/features/notes/hooks/useNoteDraft.ts、src/features/notes/services/active-draft-flush.ts、tests/releases/releases.test.cjs、tests/releases/active-draft-flush.test.cjs、CHANGELOG.md。
+- 已获用户确认。完整目标 APK 摘要校验由正常差量安装流程的 5 次收敛为原生准备完成、实际安装前各 1 次，保留旧包、补丁、目标包身份与签名检查；原生独立线程报告真实读取进度和阶段耗时。
+- 更新弹窗可收起并继续编辑笔记；完成后按前台状态衔接安装授权，拒绝授权不循环跳转，授权返回后继续；拉起系统页面前等待草稿写入。
+- 后台范围为应用进程存活期间的应用内任务；切到其他应用时延迟拉起安装器，未引入系统常驻服务或自动发布。
+- 验证：基于 d70cd4a70fc5f9d95931ec984e48f390d1f324b6 的未提交工作区；修改前后 npm run typecheck 通过，npm run check 通过（类型、Lint、主题及全部 178 项测试），其中更新和草稿协调专项测试 23 项通过。首次 Lint 的计时器纯渲染错误已修正并完整重检。原生 npm run gradle -- :irisnote-updater:compileReleaseKotlin --offline 通过（BUILD SUCCESSFUL，1m 36s）；Debug 检查因 HTTPS 依赖读取长时间等待主动中止，改用已缓存的 Release 依赖完成编译。无冲突标记。
+- 真机验收：adb devices -l 无设备，尚未验证实际 UI、授权跳转、编辑流畅度与 10～15 秒校验目标；原生模块编译成功不代表已生成完整 APK 或通过真机安装。
+
+---
+
+## 2026-09-17 22:00:00 | 新增文件：IRisNote 0.2.2 更新说明
+
+- 文件：releases/notes-0.2.2.txt。
+- 已获用户确认。按更新说明编写规范生成 0.2.2（补丁更新，基准 0.2.1 buildCode 10 / d70cd4a，目标 301aa45）：修复更新安装授权循环、安装前自动保存活动草稿；优化后台下载衔接与下载进度显示、更新弹窗 UI。仅生成文案，未执行预留、构建、上传或发布。
+
+---
+
+## 2026-09-17 18:30:00 | 优化代码：更新 README 至当前项目状态
+
+- 文件：README.md。
+- 已获用户确认。技术栈版本修正为 Expo SDK 57 / React Native 0.86 / Reanimated 4，补充 Zustand、Flash List。
+- 功能状态表更新：笔记编辑与恢复、阅读统计、分享导出、本地存储与同步、应用内更新等已实现能力；待办改为开发中（日历轨道）；新增应用内更新模块行。
+- 开发检查命令改为实际 npm scripts（check/typecheck/lint/test/theme:check）。
+- Android 构建章节更新为已上线能力描述（差量更新、COS 上传）；开发文档链接修正为 docs 重组后的分类路径（架构指南/UI/构建发布/API后端），并新增更新说明编写规范入口；后端描述改为本地同目录项目（GitHub 仓库已不存在）；License 移至文末。
+
+---
+
+## 2026-09-17 18:00:42 | 优化代码：补充更新说明的版本号判断规范
+
+- 文件：docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 已获用户确认。更新说明规范新增版本号递增类型判断：按 `X.Y.Z` 区分主版本、第二位功能更新版本号和尾号补丁版本号，并要求先依据上一已发布版本与目标差异判断功能更新、补丁更新、需评估主版本或信息不足。
+- 补充功能更新与补丁更新的判定规则、混合更新优先级、纯开发维护记录处理、指定版本号一致性核对，以及维护者交付中需列出的建议版本号和待确认事项。
+- 后续调用示例改写为可直接要求 AI 先判断版本类型、再生成用户可见更新说明；交付前检查同步增加版本判断核对项。未修改应用源码、发布脚本或版本配置。
+
+---
+
+## 2026-09-17 11:04:39 | 修复问题：APK 经 CDN 回读并兼容已开启的 COS 版本控制
+
+- 文件：scripts/release/cos.mjs、tests/releases/cos.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。COS 默认域名 APK GET 返回 DownloadForbidden，回读改用已配置的 HTTPS CDN 自定义域名，校验 HTTP 200、大小、ETag 与完整 SHA-256；不发送 COS 凭据、禁止重定向，错误时保留远端文件供重试。
+- 允许 Enabled 和未开启版本控制；暂停/未知状态仍停止。先检查同名对象，已存在只校验；新上传比对 ETag/版本 ID，校验结束再 HEAD 检查对象稳定性。不修改桶设置、不删除历史版本。Enabled 下禁止覆盖请求头无效，检查不提供跨上传者原子互斥，文档明确并发限制。
+- 新增只读 verifyExisting 入口用于已有文件验证；补充 CDN 缓存、大小、摘要、并发版本变化及 Enabled 模式测试。
+- 验证：修改前 npm run typecheck 通过；19 项上传专项测试、定向 ESLint 和最终 npm run check（类型、Lint、主题、163 项测试）通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加未提交修改。真实只读下载 CDN 的 IRisNote-0.1.0-6.apk，122182378 字节，SHA-256 c125580baad40ca7f63bbcba43fd5318490be14183ca228ee8eb9cfb6fceff0d，与本地 APK 一致，ETag 和 COS 对象稳定性检查通过。本次未执行真实 PUT、发布、APK 构建或修改云端配置。
+
+---
+
+## 2026-09-17 09:53:59 | 新增功能：APK 自动上传服务器与 COS 并支持失败续传
+
+- 文件：scripts/release/cli.mjs、scripts/release/cos.mjs、scripts/release/upload.mjs、package.json、package-lock.json、tests/releases/cos.test.cjs、tests/releases/upload.test.cjs、docs/构建发布/release.env.example、docs/构建发布/android-releases.md、CHANGELOG.md；本机忽略文件 .env.release.local 仅补齐缺失配置项。
+- 已获用户确认。自建 APK 构建并校验成功后串联服务器上传、实际文件回读校验、COS 上传和回读 SHA-256 校验及差量生成；upload 支持匹配草稿重试，不自动发布。
+- 默认桶 irisnote-1334342309、地域 ap-guangzhou、CDN https://download.tech-mou.top，无目录前缀；对象名 IRisNote-版本号-构建号.apk。COS 使用官方 SDK 3.0.0，仅作为开发依赖，上传密钥从构建子进程环境移除。
+- 同名文件实际内容一致才跳过，冲突禁止覆盖；版本控制开启/暂停时停止，不自动修改桶配置。服务器/COS 已上传文件在失败时保留。下载侧沿用后端 CDN HEAD 检测及服务器回退，不修改后端。
+- 配置示例敏感值改为占位符；文档说明权限、回读流量、公开对象与发布状态的区别、30 秒缓存和失败恢复。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题与 158 项测试，其中新增 14 项上传/COS 测试含真实 SDK 本地 HTTP 验证）；irisapi 的 npm run test:releases 10 项通过；额外对新增 .cjs 测试执行定向 ESLint，补齐显式 Buffer 导入后通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加本次未提交改动。COS 凭据尚未配置，未进行真实云端上传、发布、APK 构建或设备验收。
+
+---
+
+## 2026-09-17 03:22:24 | 优化代码：差量包上传成功后删除基础 APK 并保留补丁记录
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。preparePatches() 上传差量包成功后，删除临时下载的基础 APK（rm force），保留 `<构建>-from-<基础构建>-*` 目录及 update.hdiff 与元数据作为本机补丁记录；上传失败仍抛异常并保留现场。
+- 文档补充该清理行为说明。验证：node --check、定向 ESLint、修改前后 npm run typecheck、releases 相关 17 项测试、git diff --check 均通过；未执行真实差量上传。
+
+---
+
+## 2026-09-17 01:46:36 | 新增功能：生成 0.2.0 版本更新说明并调整说明文件命名规范
+
+- 文件：releases/notes-0.2.0.txt、docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 已获用户确认。按规范核实版本范围（上一发布 0.1.0 构建 6 提交 10b265a，目标为待构建草稿，范围 10b265a..35e48f3），面向用户改写待办日期轨道与标签栏互换两条可见变化，并保留待办/剪贴占位提醒。
+- 说明文件命名规范调整为 UTF-8 纯文本 `releases/notes-<版本号>.txt`，文件名不加构建号、draft 等附加词，与现有 0.1.0 文件一致；同版本多次构建复用同一文件。
+- 验证：未改应用源码，无需 typecheck；未执行构建、上传、发布或 Git 写操作。目标提交与对比范围见交付说明，0.2.0 构建号尚未预留。
+
 ## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
 
 - 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
@@ -138,6 +250,7 @@
 - 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
 
 ---
+
 ## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
 
 - 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
@@ -205,6 +318,7 @@
 - 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
 - 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
 - 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
+
 # CHANGELOG
 
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
@@ -1298,6 +1412,7 @@
     - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**
@@ -1985,3 +2100,4 @@
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+

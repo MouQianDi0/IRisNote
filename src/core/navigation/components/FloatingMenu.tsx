@@ -2,7 +2,7 @@ import { colors } from "@/shared/theme";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { useCallback, useEffect, useMemo, type RefObject } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -219,9 +219,7 @@ export default function FloatingMenu({
   state,
   blurTarget,
   navigation,
-}: SwipeTabsBarProps & {
-  blurTarget: RefObject<View | null>;
-}) {
+}: SwipeTabsBarProps) {
   const activeTab = state.routes[state.index]?.name ?? "note";
   const activeTabIndex = getTabIndexByKey(activeTab);
   const hiddenOffsetY = useSharedValue(initialHiddenOffsetY);
@@ -411,7 +409,6 @@ export default function FloatingMenu({
         }
       >
         <BlurView
-          key={activeTab}
           blurTarget={blurTarget}
           blurMethod="dimezisBlurViewSdk31Plus"
           intensity={20}

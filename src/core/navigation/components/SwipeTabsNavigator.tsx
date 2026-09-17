@@ -1,3 +1,5 @@
+import { colors as appColors } from "@/shared/theme";
+import { BlurTargetView } from "expo-blur";
 import { withLayoutContext } from "expo-router";
 import {
     CommonActions,
@@ -16,8 +18,8 @@ import {
     type TabNavigationState,
     type TabRouterOptions,
 } from "expo-router/react-navigation";
-import { useEffect, type ReactNode } from "react";
-import type { StyleProp, ViewStyle } from "react-native";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { TabView } from "react-native-tab-view";
 
 export type SwipeTabOptions = {
@@ -57,6 +59,7 @@ type SwipeTabDescriptor = Descriptor<
 >;
 
 export type SwipeTabsBarProps = {
+    blurTarget: RefObject<View | null>;
     descriptors: Record<string, SwipeTabDescriptor>;
     navigation: NavigationHelpers<ParamListBase, SwipeTabEventMap>;
     state: TabNavigationState<ParamListBase>;
@@ -80,6 +83,15 @@ type SwipeTabsNavigatorProps = DefaultNavigatorOptions<
 > &
     TabRouterOptions &
     SwipeTabsConfig;
+
+function SwipeTabsBar({
+    renderBar,
+    ...props
+}: SwipeTabsBarProps & {
+    renderBar: NonNullable<SwipeTabsConfig["tabBar"]>;
+}) {
+    return renderBar(props);
+}
 
 function SwipeTabsNavigator({
     id,
@@ -121,6 +133,16 @@ function SwipeTabsNavigator({
     const { direction } = useLocale();
     const focusedOptions = descriptors[state.routes[state.index].key].options;
     const activeTab = state.routes[state.index].name;
+    const blurTarget = useRef<View>(null);
+    const bar = tabBar ? (
+        <SwipeTabsBar
+            renderBar={tabBar}
+            state={state}
+            navigation={navigation}
+            descriptors={descriptors}
+            blurTarget={blurTarget}
+        />
+    ) : null;
 
     useEffect(() => {
         const mountedAt = Date.now();
@@ -144,55 +166,66 @@ function SwipeTabsNavigator({
 
     return (
         <NavigationContent>
-            <TabView
-                animationEnabled={focusedOptions.animationEnabled}
-                direction={direction}
-                initialLayout={initialLayout}
-                keyboardDismissMode={keyboardDismissMode}
-                lazy={({ route }) =>
-                    descriptors[route.key].options.lazy === true &&
-                    !state.preloadedRouteKeys.includes(route.key)
-                }
-                lazyPreloadDistance={focusedOptions.lazyPreloadDistance}
-                navigationState={state}
-                onIndexChange={(index) => {
-                    console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                        scope: "tabs", stage: "index_change_requested", timestamp: Date.now(),
-                        tab: state.routes[index].name, index,
-                    }));
-                    navigation.dispatch({
-                        ...CommonActions.navigate(state.routes[index]),
-                        target: state.key,
-                    });
-                }}
-                onSwipeEnd={() => navigation.emit({ type: "swipeEnd" })}
-                onSwipeStart={() => navigation.emit({ type: "swipeStart" })}
-                options={Object.fromEntries(
-                    state.routes.map((route) => [
-                        route.key,
-                        {
-                            sceneStyle: [
-                                { backgroundColor: colors.background },
-                                descriptors[route.key].options.sceneStyle,
-                            ],
-                        },
-                    ]),
-                )}
-                overScrollMode={overScrollMode}
-                renderScene={({ route }) => descriptors[route.key].render()}
-                renderTabBar={() =>
-                    tabBar?.({
-                        state,
-                        navigation,
-                        descriptors,
-                    }) ?? null
-                }
-                swipeEnabled={focusedOptions.swipeEnabled}
-                tabBarPosition={tabBarPosition}
-            />
+            <View style={styles.container}>
+                {tabBarPosition === "top" ? bar : null}
+                {/* Keep the sampling surface fixed while its pages slide underneath. */}
+                <BlurTargetView ref={blurTarget} style={styles.container}>
+                    <TabView
+                        style={styles.container}
+                        pagerStyle={styles.container}
+                        animationEnabled={focusedOptions.animationEnabled}
+                        direction={direction}
+                        initialLayout={initialLayout}
+                        keyboardDismissMode={keyboardDismissMode}
+                        lazy={({ route }) =>
+                            descriptors[route.key].options.lazy === true &&
+                            !state.preloadedRouteKeys.includes(route.key)
+                        }
+                        lazyPreloadDistance={focusedOptions.lazyPreloadDistance}
+                        navigationState={state}
+                        onIndexChange={(index) => {
+                            console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                                scope: "tabs", stage: "index_change_requested", timestamp: Date.now(),
+                                tab: state.routes[index].name, index,
+                            }));
+                            navigation.dispatch({
+                                ...CommonActions.navigate(state.routes[index]),
+                                target: state.key,
+                            });
+                        }}
+                        onSwipeEnd={() => navigation.emit({ type: "swipeEnd" })}
+                        onSwipeStart={() => navigation.emit({ type: "swipeStart" })}
+                        options={Object.fromEntries(
+                            state.routes.map((route) => [
+                                route.key,
+                                {
+                                    sceneStyle: [
+                                        { backgroundColor: colors.background },
+                                        descriptors[route.key].options.sceneStyle,
+                                    ],
+                                },
+                            ]),
+                        )}
+                        overScrollMode={overScrollMode}
+                        renderScene={({ route }) => descriptors[route.key].render()}
+                        renderTabBar={() => null}
+                        swipeEnabled={focusedOptions.swipeEnabled}
+                        tabBarPosition={tabBarPosition}
+                    />
+                </BlurTargetView>
+                {/* The menu must stay outside its own blur sampling surface. */}
+                {tabBarPosition === "bottom" ? bar : null}
+            </View>
         </NavigationContent>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: appColors.appBackground,
+    },
+});
 
 const SwipeTabsNavigatorFactory = createNavigatorFactory(SwipeTabsNavigator)();
 
