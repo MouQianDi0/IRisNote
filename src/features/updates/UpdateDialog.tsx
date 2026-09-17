@@ -18,9 +18,11 @@ import {
     observeUpdateLifecycle,
     useUpdateStore,
 } from "./update-store";
+import { isRequiredUpdate } from "./release";
 
 export function UpdateDialog() {
     const state = useUpdateStore();
+    const required = isRequiredUpdate(state.release);
     useEffect(() => {
         const stopObserving = observeUpdateLifecycle();
         void checkForUpdate();
@@ -261,51 +263,18 @@ export function UpdateDialog() {
                                     color: colors.textSecondary,
                                 }}
                             >
-                                可在后台继续处理并记笔记。完成后将打开安装器；未授权时将打开安装权限设置。
+                                {required
+                                    ? "更新后方可继续使用；返回或取消安装将退出应用。"
+                                    : "可在后台继续处理并记笔记。完成后将打开安装器；未授权时将打开安装权限设置。"}
                             </Text>
                         )}
                     <View
                         style={{ flexDirection: "row", gap: 12, marginTop: 16 }}
                     >
-                        <Pressable
-                            accessibilityRole="button"
-                            onPress={close}
-                            style={{
-                                flex: 1,
-                                minHeight: 48,
-                                padding: 8,
-                                justifyContent: "center",
-                                alignItems: "center",
-                                borderRadius: 12,
-                                backgroundColor: backgroundWork
-                                    ? colors.primary
-                                    : colors.surfaceMuted,
-                            }}
-                        >
-                            <Text
-                                style={{
-                                    color: backgroundWork
-                                        ? "white"
-                                        : colors.textPrimary,
-                                }}
-                            >
-                                {backgroundWork || state.phase === "downloading"
-                                    ? "后台继续"
-                                    : state.phase === "permission"
-                                      ? "稍后安装"
-                                      : state.phase === "latest"
-                                        ? "知道了"
-                                        : "稍后再说"}
-                            </Text>
-                        </Pressable>
-                        {!processing && state.phase !== "latest" && (
+                        {!required && (
                             <Pressable
                                 accessibilityRole="button"
-                                onPress={
-                                    state.phase === "downloading"
-                                        ? () => void cancelUpdate()
-                                        : act
-                                }
+                                onPress={close}
                                 style={{
                                     flex: 1,
                                     minHeight: 48,
@@ -313,16 +282,73 @@ export function UpdateDialog() {
                                     justifyContent: "center",
                                     alignItems: "center",
                                     borderRadius: 12,
-                                    backgroundColor: colors.primary,
+                                    backgroundColor: backgroundWork
+                                        ? colors.primary
+                                        : colors.surfaceMuted,
                                 }}
                             >
-                                <Text style={{ color: "white" }}>
-                                    {state.phase === "downloading"
-                                        ? "取消下载"
-                                        : primary}
+                                <Text
+                                    style={{
+                                        color: backgroundWork
+                                            ? "white"
+                                            : colors.textPrimary,
+                                    }}
+                                >
+                                    {backgroundWork ||
+                                    state.phase === "downloading"
+                                        ? "后台继续"
+                                        : state.phase === "permission"
+                                          ? "稍后安装"
+                                          : state.phase === "latest"
+                                            ? "知道了"
+                                            : "稍后再说"}
                                 </Text>
                             </Pressable>
                         )}
+                        {(required || !processing) &&
+                            state.phase !== "latest" && (
+                                <Pressable
+                                    accessibilityRole="button"
+                                    disabled={
+                                        required &&
+                                        (processing ||
+                                            state.phase === "downloading")
+                                    }
+                                    accessibilityState={{
+                                        disabled:
+                                            required &&
+                                            (processing ||
+                                                state.phase === "downloading"),
+                                    }}
+                                    onPress={
+                                        !required &&
+                                        state.phase === "downloading"
+                                            ? () => void cancelUpdate()
+                                            : act
+                                    }
+                                    style={{
+                                        flex: 1,
+                                        minHeight: 48,
+                                        padding: 8,
+                                        justifyContent: "center",
+                                        alignItems: "center",
+                                        borderRadius: 12,
+                                        backgroundColor: colors.primary,
+                                    }}
+                                >
+                                    <Text style={{ color: "white" }}>
+                                        {required &&
+                                        (processing ||
+                                            state.phase === "downloading")
+                                            ? state.phase === "downloading"
+                                                ? "正在下载…"
+                                                : "正在处理…"
+                                            : state.phase === "downloading"
+                                              ? "取消下载"
+                                              : primary}
+                                    </Text>
+                                </Pressable>
+                            )}
                     </View>
                 </View>
             </View>

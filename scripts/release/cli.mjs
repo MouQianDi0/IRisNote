@@ -410,10 +410,15 @@ async function uploadRelease(release, apk, info) {
 }
 async function preparePatches(release, apk) {
     const bases = await api(`/${release.build_code}/bases`);
+    if (bases.length > 3)
+        throw new Error(
+            "发布服务尚未启用最近三版差分策略，请先部署对应服务端版本后重试。",
+        );
     if (!bases.length) {
         console.log("此主版本没有历史已发布包，无需差量包。");
         return;
     }
+    console.log(`为最近 ${bases.length} 个已发布基础版本准备差量包。`);
     deltaTools();
     const output = path.join(root, "dist", "releases", release.version);
     await mkdir(output, { recursive: true });

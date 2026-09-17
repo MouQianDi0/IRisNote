@@ -10,7 +10,7 @@ const crypto = require('node:crypto');
 
 function load(relative, dependencies = {}, globals = {}) {
   const file = path.resolve(__dirname, '../..', relative);
-  const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const code = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const exports = {};
   vm.runInNewContext(code, { exports, require(name) { if (Object.hasOwn(dependencies, name)) return dependencies[name]; throw Error(`Unexpected dependency: ${name}`); }, URL, URLSearchParams, console, Error, process: { env: {} }, setTimeout, clearTimeout, AbortController, ...globals }, { filename: file });
   return exports;
@@ -44,6 +44,20 @@ test('major upgrades are full, feature and patch upgrades require matching delta
   }
   assert.throws(() => policy.parseRelease({ ...release, delivery: deltaDelivery }, release.packageName, installed), /不符合版本规则/);
   assert.throws(() => policy.parseRelease({ ...release, delivery: { ...deltaDelivery, baseSha256: 'c'.repeat(64) } }, release.packageName, sameMajor), /旧版本不匹配/);
+});
+
+test('policy v2 accepts only the declared three-release window and validates the full APK', () => {
+  const current = { ...installed, version: '1.0.0' };
+  for (const behind of [1, 2, 3, 4, 9]) {
+    const candidate = { ...release, updatePolicy: { version: 2, releasesBehind: behind, mandatory: behind >= 3 }, delivery: behind > 3 ? release.delivery : deltaDelivery };
+    const parsed = policy.parseRelease(candidate, release.packageName, current);
+    assert.equal(policy.isRequiredUpdate(parsed), behind >= 3);
+    assert.equal(parsed.delivery.mode, behind > 3 ? 'full' : 'delta');
+    assert.throws(() => policy.parseRelease({ ...candidate, delivery: behind > 3 ? deltaDelivery : release.delivery }, release.packageName, current), /不符合版本规则/);
+  }
+  for (const updatePolicy of [null, { version: 1, releasesBehind: 4, mandatory: true }, { version: 2, releasesBehind: 0, mandatory: false }, { version: 2, releasesBehind: 2.5, mandatory: false }, { version: 2, releasesBehind: 3, mandatory: false }, { version: 2, releasesBehind: 2, mandatory: true }])
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy }, release.packageName, current), /无效更新策略/);
+  assert.throws(() => policy.parseRelease({ ...release, updatePolicy: { version: 2, releasesBehind: 4, mandatory: true }, delivery: { ...release.delivery, sha256: 'c'.repeat(64) } }, release.packageName, current), /完整包信息不匹配/);
 });
 test('tool verifies APK identity and sole certificate', async () => {
   const lib = await import('../../scripts/release/lib.mjs');
@@ -82,12 +96,19 @@ async function sandbox(options = {}) {
     if (!bytes || bytes.length !== Number(args.targetSize) || hash(bytes) !== args.targetSha256) throw Error('安装包校验失败');
     return { timingsMs: { [args.verificationStage]: 10 } };
   };
-  let lastCheck = null, finish;
-  const servedRelease = options.delta ? { ...release, delivery: deltaDelivery } : release;
+  let finish;
+  const storage = options.storage ?? new Map();
+  const queries = [];
+  const servedRelease = { ...release, delivery: options.delta ? { ...deltaDelivery } : { ...release.delivery } };
+  if (options.behind) servedRelease.updatePolicy = { version: 2, releasesBehind: options.behind, mandatory: options.behind >= 3 };
   if (options.unavailable) servedRelease.delivery = { mode: 'unavailable', reason: '缺少匹配的差量包' };
   const downloaded = options.delta ? patchBytes : payload;
   const dependencies = {
-    '@react-native-async-storage/async-storage': { getItem: async () => lastCheck, setItem: async (_key, value) => { lastCheck = value; } },
+    '@react-native-async-storage/async-storage': {
+      getItem: async key => storage.get(key) ?? null,
+      setItem: async (key, value) => { storage.set(key, value); },
+      removeItem: async key => { storage.delete(key); },
+    },
     'expo-application': { applicationId: release.packageName, nativeBuildVersion: '27', nativeApplicationVersion: options.delta ? '1.0.0' : '0.9.0' },
     '../../../modules/irisnote-updater': options.missingNative ? null : {
       getInstalledApk: async () => ({ ...installed, version: options.delta ? '1.0.0' : '0.9.0' }),
@@ -116,20 +137,151 @@ async function sandbox(options = {}) {
         async pauseAsync() { finish?.(undefined); },
       }; },
     },
-    'expo-intent-launcher': { startActivityAsync: async (...args) => {
+    'expo-intent-launcher': { ResultCode: { Success: -1, Canceled: 0, FirstUser: 1 }, startActivityAsync: async (...args) => {
       calls.push(args); order.push(args[0]);
       if (args[0] === 'android.settings.MANAGE_UNKNOWN_APP_SOURCES') await options.onSettings?.({ setPermission, setAppState, scans });
       else await options.onInstaller?.({ setAppState });
+      return { resultCode: options.resultCode ?? 0 };
     } },
-    'react-native': { Platform: { OS: 'android' }, AppState: appState },
+    'react-native': { Platform: { OS: 'android' }, AppState: appState, BackHandler: { exitApp: () => { order.push('exit'); } } },
     '@/features/notes/services/active-draft-flush': { flushActiveDrafts: async () => { order.push('flush'); await options.onFlush?.(); } },
     zustand: { create(init) { let state = init(); return { getState: () => state, setState: (patch) => { state = { ...state, ...patch }; } }; } },
     '@/shared/http/client': { API_BASE_URL: 'https://example.com/api' },
     './release': policy,
   };
-  const store = load('src/features/updates/update-store.ts', dependencies, { fetch: async () => ({ ok: true, json: async () => ({ release: servedRelease }) }) });
-  return { store, calls, files, scans, order, setPermission, setAppState, emit, progressListeners, appListeners };
+  const store = load('src/features/updates/update-store.ts', dependencies, { fetch: async url => {
+    queries.push(url);
+    if (options.offline) throw Error('offline');
+    return { ok: true, json: async () => ({ release: servedRelease }) };
+  } });
+  return { store, calls, files, scans, order, storage, queries, servedRelease, setPermission, setAppState, emit, progressListeners, appListeners };
 }
+
+test('startup queries policy v2 despite a recent check in an earlier session', async () => {
+  const storage = new Map([['irisnote.release.last-check', String(Date.now())]]);
+  const s = await sandbox({ storage, behind: 4 });
+  await s.store.checkForUpdate();
+  assert.equal(new URL(s.queries[0]).searchParams.get('updatePolicy'), '2');
+  assert.equal(s.store.useUpdateStore.getState().visible, true);
+  await s.store.checkForUpdate();
+  assert.equal(s.queries.length, 1);
+});
+
+test('mandatory updates survive an offline restart, but not installation of another build', async () => {
+  const first = await sandbox({ behind: 4 });
+  await first.store.checkForUpdate();
+  const next = await sandbox({ storage: first.storage, offline: true });
+  await next.store.checkForUpdate();
+  assert.equal(policy.isRequiredUpdate(next.store.useUpdateStore.getState().release), true);
+  assert.equal(next.store.useUpdateStore.getState().visible, true);
+  const record = JSON.parse(first.storage.get('irisnote.release.required-update'));
+  record.installedBuildCode = 20;
+  first.storage.set('irisnote.release.required-update', JSON.stringify(record));
+  const upgraded = await sandbox({ storage: first.storage, offline: true });
+  await upgraded.store.checkForUpdate();
+  assert.equal(upgraded.store.useUpdateStore.getState().release, null);
+});
+
+test('mandatory back action saves drafts then exits without dismissing the gate', async () => {
+  const s = await sandbox({ behind: 3, delta: true });
+  await s.store.checkForUpdate();
+  await s.store.exitForRequiredUpdate();
+  assert.deepEqual(s.order, ['flush', 'exit']);
+  assert.equal(s.store.useUpdateStore.getState().visible, true);
+});
+
+test('draft-save failure blocks mandatory exit and permits retry', async () => {
+  let fail = true;
+  const s = await sandbox({ behind: 4, onFlush: () => { if (fail) throw Error('disk failed'); } });
+  await s.store.checkForUpdate();
+  await s.store.exitForRequiredUpdate();
+  assert.equal(s.order.includes('exit'), false);
+  assert.match(s.store.useUpdateStore.getState().error, /未退出应用/);
+  assert.equal(s.store.useUpdateStore.getState().visible, true);
+  fail = false;
+  await s.store.exitForRequiredUpdate();
+  assert.equal(s.order.at(-1), 'exit');
+});
+
+test('optional update remains dismissible and never exits on back', async () => {
+  const s = await sandbox({ behind: 2, delta: true });
+  await s.store.checkForUpdate(); s.store.hideUpdateDialog();
+  await s.store.exitForRequiredUpdate();
+  assert.equal(s.store.useUpdateStore.getState().visible, false);
+  assert.equal(s.order.includes('exit'), false);
+});
+
+test('mandatory installer cancellation requests a result, saves and exits; installer failure permits retry', async () => {
+  for (const resultCode of [0, 1, -1]) {
+    const s = await sandbox({ behind: 4, resultCode });
+    await s.store.checkForUpdate(); await s.store.downloadUpdate();
+    assert.equal(s.calls[0][0], 'android.intent.action.INSTALL_PACKAGE');
+    assert.equal(s.calls[0][1].extra['android.intent.extra.RETURN_RESULT'], true);
+    assert.equal(s.order.includes('exit'), resultCode === 0);
+    if (resultCode === 0) assert.equal(s.order.at(-2), 'flush');
+    if (resultCode === 1) assert.match(s.store.useUpdateStore.getState().error, /安装未成功/);
+  }
+});
+
+test('mandatory permission refusal exits without reopening settings', async () => {
+  const s = await sandbox({ behind: 3, delta: true, permission: false });
+  await s.store.checkForUpdate(); await s.store.downloadUpdate();
+  assert.equal(s.calls.length, 1);
+  assert.equal(s.order.at(-1), 'exit');
+  assert.equal(s.scans.includes('install'), false);
+});
+
+test('mandatory exit invalidates an in-flight merge so it cannot launch the installer afterwards', async () => {
+  let finish, began;
+  const started = new Promise(resolve => { began = resolve; });
+  const blocked = new Promise(resolve => { finish = resolve; });
+  const s = await sandbox({ behind: 3, delta: true, onVerify: async args => {
+    if (args.verificationStage === 'target') { began(); await blocked; }
+  } });
+  await s.store.checkForUpdate();
+  const work = s.store.downloadUpdate(); await started;
+  await s.store.exitForRequiredUpdate(); finish(); await work;
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.order.at(-1), 'exit');
+});
+
+test('installer cancellation before foreground defers exit until the app resumes', async () => {
+  const s = await sandbox({ behind: 4, onInstaller: ({ setAppState }) => setAppState('background') });
+  const stop = s.store.observeUpdateLifecycle();
+  await s.store.checkForUpdate(); await s.store.downloadUpdate();
+  assert.equal(s.order.includes('exit'), false);
+  s.setAppState('active');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(s.order.at(-1), 'exit');
+  stop();
+});
+
+test('mandatory update dialog retains one update button and disables it while processing', async () => {
+  const s = await sandbox({ behind: 4 });
+  await s.store.checkForUpdate();
+  const element = (type, props) => ({ type, props });
+  const ui = load('src/features/updates/UpdateDialog.tsx', {
+    '@/shared/theme': { colors: {} }, '@/shared/ui/Overlay/app-modal': { AppModal: 'Modal' },
+    'expo-application': { nativeApplicationVersion: '0.9.0' },
+    'react': { useEffect() {}, useState: () => [0, () => {}] },
+    'react/jsx-runtime': { jsx: element, jsxs: element },
+    'react-native': Object.fromEntries(['ActivityIndicator', 'Pressable', 'ScrollView', 'Text', 'View'].map(name => [name, name])),
+    './update-store': { ...s.store, useUpdateStore: () => s.store.useUpdateStore.getState() }, './release': policy,
+  });
+  const buttons = node => {
+    if (!node || typeof node !== 'object') return [];
+    if (Array.isArray(node)) return node.flatMap(buttons);
+    return [...(node.type === 'Pressable' ? [node] : []), ...buttons(node.props?.children)];
+  };
+  assert.equal(buttons(ui.UpdateDialog()).length, 1);
+  assert.equal(buttons(ui.UpdateDialog())[0].props.disabled, false);
+  for (const phase of ['downloading', 'verifying', 'merging', 'installing', 'saving']) {
+    s.store.useUpdateStore.setState({ phase });
+    assert.equal(buttons(ui.UpdateDialog()).length, 1);
+    assert.equal(buttons(ui.UpdateDialog())[0].props.disabled, true);
+  }
+  assert.equal(ui.UpdateDialog().props.onRequestClose, s.store.hideUpdateDialog);
+});
 
 test('download and install performs two native target scans and flushes before installer', async () => {
   const { store, calls, scans, order } = await sandbox();

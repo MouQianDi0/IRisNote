@@ -1,3 +1,12 @@
+## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
+
+- 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 用户已确认规则与原有弹窗交互：落后 1～2 个已发布版本可跳过，落后 3 版强制差分更新，超过 3 版强制完整 APK 覆盖更新；跨主版本仍使用完整 APK。强制弹窗只保留更新按钮，返回或取消安装时先保存草稿再退出。
+- 服务端统一限制差分基础版本与发布校验范围；新客户端协商策略版本 2，保留历史补丁供旧客户端兼容升级。保留完整包身份、摘要、签名及安装授权检查。
+- 验证：当前源码基于 02d0b6cfff7e2186fb4f9e2b0e95945cbedd7ccd 的未提交改动；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题与全部 207 项测试），其中更新专项 30 项通过。服务端基于 7bc85889019bb5eb71fbffa4b5298a7266540b5d，npm run build、test:releases（15 项）及 test:installer（4 项）通过。git diff --check 通过，无冲突标记。服务端新增路由测试使用注入式数据库/文件响应，未访问生产数据库；UI 断言不是实际渲染验收。未部署服务、未构建上传发布，Android 真机弹窗、退出、完整包覆盖保留数据及旧客户端分步升级待验收。
+
+---
+
 ## 2026-09-18 02:27:59 | 优化代码：本地正式 APK 构建缓存复用
 
 - 文件：scripts/release/cli.mjs、scripts/release/workspace.mjs、scripts/release/cache.mjs、tests/releases/cache.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。

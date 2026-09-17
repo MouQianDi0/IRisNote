@@ -7,6 +7,7 @@ export type AppRelease = {
     sha256: string;
     size: number;
     publishedAt: string;
+    updatePolicy?: { version: 2; releasesBehind: number; mandatory: boolean };
     delivery: Delivery;
 };
 export type InstalledVersion = {
@@ -59,12 +60,24 @@ export function parseRelease(
     ) {
         throw new Error("版本信息不完整或与当前应用不匹配");
     }
-    const expectedMode =
+    let expectedMode =
         majorVersion(v.version) === majorVersion(installed.version)
             ? "delta"
             : "full";
     if (majorVersion(v.version) < majorVersion(installed.version))
         throw new Error("禁止版本降级");
+    if (v.updatePolicy !== undefined) {
+        const policy = v.updatePolicy;
+        if (
+            !policy ||
+            policy.version !== 2 ||
+            !Number.isSafeInteger(policy.releasesBehind) ||
+            policy.releasesBehind < 1 ||
+            policy.mandatory !== policy.releasesBehind >= 3
+        )
+            throw new Error("无效更新策略");
+        if (policy.releasesBehind > 3) expectedMode = "full";
+    }
     const delivery = v.delivery;
     if (delivery.mode === "unavailable") {
         if (
@@ -100,6 +113,10 @@ export function parseRelease(
     if (url.protocol !== "https:" || url.username || url.password)
         throw new Error("下载地址必须使用 HTTPS");
     return v as AppRelease;
+}
+
+export function isRequiredUpdate(release: AppRelease | null) {
+    return release?.updatePolicy?.mandatory === true;
 }
 
 export function isNewerRelease(
