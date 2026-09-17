@@ -4,21 +4,10 @@ import { SwipeTabs } from "@/core/navigation/components/SwipeTabsNavigator";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { colors } from "@/shared/theme";
 import { Redirect } from "expo-router";
-import { BlurTargetView } from "expo-blur";
-import { createRef, useState, type RefObject } from "react";
 import { ActivityIndicator, Dimensions, View } from "react-native";
 
 export default function TabsLayout() {
   const { isLoggedIn, loading } = useAuth();
-  // Each mounted scene keeps its own target; the menu samples only the active tab.
-  const [blurTargets] = useState<Record<string, RefObject<View | null>>>(
-    () => ({
-      note: createRef<View>(),
-      todo: createRef<View>(),
-      excerpt: createRef<View>(),
-      user: createRef<View>(),
-    }),
-  );
 
   if (loading) {
     return (
@@ -46,17 +35,7 @@ export default function TabsLayout() {
         tabBarPosition="bottom"
         keyboardDismissMode="auto"
         overScrollMode="never"
-        screenLayout={({ children, route }) => (
-          <BlurTargetView ref={blurTargets[route.name]} style={{ flex: 1 }}>
-            {children}
-          </BlurTargetView>
-        )}
-        tabBar={(props) => (
-          <FloatingMenu
-            {...props}
-            blurTarget={blurTargets[props.state.routes[props.state.index].name]}
-          />
-        )}
+        tabBar={(props) => <FloatingMenu {...props} />}
         screenOptions={{
           headerShown: false,
           swipeEnabled: true,

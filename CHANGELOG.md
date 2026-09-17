@@ -2038,3 +2038,16 @@
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
+- 已获用户确认。将各页面独立的毛玻璃采样目标改为包裹整个切页容器的固定 BlurTargetView，悬浮导航作为同级覆盖层置于采样区域之外，避免采样自身；移除随 activeTab 改变的 BlurView key，切页时复用原生毛玻璃实例。
+- 切页容器及采样区域补齐主题背景色，保留页面滑动、懒加载、底栏图标动画、15dp 顶部渐变、66dp 控件高度及 20dp 底部间隔。
+- 验证基线：HEAD 48bf49a9b85aa2c6a573b74e98f61fd9f2af9b85 加本次未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题及全部 178 项测试）。首次 Lint 的渲染阶段 ref 传递警告已通过稳定的 Tab 栏组件边界修正并完整重检；git diff --check 通过，无冲突标记。
+- 原包复现：USB 真机 Android 17 / API 37，原安装包 0.2.2 buildCode 11 的 712 帧录像中，点击底栏时毛玻璃区域出现横向深灰带（连续第 299～301 帧）；固定采样区域共 30 帧平均亮度低于 150/255，最低 106.05。仅检查按钮下方间隔会漏检；Expo Go 同区域未出现此现象。
+- 原生构建：通过本机 Gradle 执行 :app:assembleRelease --offline --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a，并沿用项目 Ninja init script 与正式签名配置，11m 23s BUILD SUCCESSFUL。测试包使用现有构建号 11 / 0.2.2；仅限本机验收，未预留版本、上传、发布或提交 Git。source map 内 3 个改动源码与工作区一致，APK 内 JS bundle 与本次生成产物一致；签名与手机原正式包一致，非 debuggable。
+- 修复后真机验收：保留应用数据覆盖安装测试包。首轮混入用户进入设置页的操作，仅采用前 14 秒有效片段（1260 帧），无同类深灰带。用户确认暂停操作后完成独立一轮 21 次底栏点击、4 次横向滑动、2 次纵向滚动，1970 帧中未见同类深灰闪屏（上述阈值异常帧 0）；底栏滚动隐藏与恢复正常。测试进程日志未发现 FATAL EXCEPTION / TypeError / ReferenceError。
+- 证据：本机临时目录 irisnote-tab-flash-48bf49a 中保存旧包、测试包、切页录像、异常连续帧、最终时间序列图、操作记录及 source-verification.json / apk-verification.json；测试 APK SHA-256 为 1c108ddba92307eebbe2ea017481202a1ad9169e20b0d05bde91ca58ed8af118。
+- 验收收尾：按用户明确选择，以 adb install -r 保留应用数据恢复原正式包 0.2.2 buildCode 11，并通过手机已安装 APK 的 SHA-256 与保存的原包比对确认一致；恢复结果保存在 restoration-verification.json。修复保留在工作区，等待正式发布，手机当前原正式包尚不含此修复。
+
+---
