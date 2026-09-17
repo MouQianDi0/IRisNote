@@ -154,7 +154,10 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                 />
             )}
             {!!trailing && !showClear && (
-                <View pointerEvents={disabled ? "none" : "auto"}>
+                <View
+                    collapsable={false}
+                    pointerEvents={disabled ? "none" : "auto"}
+                >
                     {trailing}
                 </View>
             )}

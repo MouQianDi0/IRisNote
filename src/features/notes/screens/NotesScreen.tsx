@@ -123,6 +123,19 @@ export default function NotesScreen() {
     const openedNoteIdRef = useRef<number | null>(null);
 
     useEffect(() => {
+        const mountedAt = Date.now();
+        console.info("[IRisNoteCrashTrace]", JSON.stringify({
+            scope: "notes", stage: "mounted", timestamp: mountedAt,
+        }));
+        return () => {
+            console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                scope: "notes", stage: "unmounted", timestamp: Date.now(),
+                elapsedMs: Date.now() - mountedAt,
+            }));
+        };
+    }, []);
+
+    useEffect(() => {
         if (!user) return;
         const userId = user.id;
         let active = true;
@@ -162,9 +175,17 @@ export default function NotesScreen() {
         }
 
         const ownerUserId = user.id;
+        const startedAt = Date.now();
+        const trace = (stage: string, count?: number) => {
+            const timestamp = Date.now();
+            console.info("[IRisNoteCrashTrace]", JSON.stringify({
+                scope: "notes", stage, timestamp, elapsedMs: timestamp - startedAt, count,
+            }));
+        };
         let request: Promise<{ addedCount: number } | undefined> | undefined;
         request = (async () => {
             try {
+                trace("local_load_started");
                 if (recoveredSyncUserIdRef.current !== ownerUserId) {
                     await recoverInterruptedNoteSyncs(database, ownerUserId);
                     recoveredSyncUserIdRef.current = ownerUserId;
@@ -172,9 +193,15 @@ export default function NotesScreen() {
                 const localNotes = withLocalOrder(
                     await getLocalNotes(database, ownerUserId),
                 );
-                if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+                trace("local_load_completed", localNotes.length);
+                if (notesRequestOwnerIdRef.current !== ownerUserId) {
+                    trace("local_apply_skipped_owner_changed");
+                    return;
+                }
+                trace("local_apply_requested", localNotes.length);
                 applyNotes(localNotes);
             } catch (err: any) {
+                trace("local_load_failed");
                 console.error(
                     "加载本地笔记失败:",
                     err.response?.status,
@@ -184,8 +211,11 @@ export default function NotesScreen() {
             }
 
             try {
+                trace("cloud_fetch_started");
                 const serverNotes = withLocalOrder(await getNotes());
+                trace("cloud_fetch_completed", serverNotes.length);
                 let addedCount = 0;
+                trace("reconcile_started", serverNotes.length);
                 const reconciledNotes = withLocalOrder(
                     await reconcileServerNotes(
                         database,
@@ -196,13 +226,20 @@ export default function NotesScreen() {
                         },
                     ),
                 );
-                if (notesRequestOwnerIdRef.current !== ownerUserId) return;
+                trace("reconcile_completed", reconciledNotes.length);
+                if (notesRequestOwnerIdRef.current !== ownerUserId) {
+                    trace("cloud_apply_skipped_owner_changed");
+                    return;
+                }
+                trace("cloud_apply_requested", reconciledNotes.length);
                 applyNotes(reconciledNotes);
                 const timestamp = Date.now();
                 setSyncHistory({ userId: ownerUserId, timestamp });
                 await saveNoteSyncTime(ownerUserId, timestamp);
+                trace("sync_completed", reconciledNotes.length);
                 return { addedCount };
             } catch (err: any) {
+                trace("cloud_sync_failed");
                 console.warn(
                     "云端笔记同步失败，继续使用本地数据:",
                     err.response?.status,
@@ -584,6 +621,13 @@ export default function NotesScreen() {
                 : nextNotes,
         );
     }, [contentView, currentCategory, notes]);
+
+    useEffect(() => {
+        console.info("[IRisNoteCrashTrace]", JSON.stringify({
+            scope: "notes", stage: "list_data_committed", timestamp: Date.now(),
+            count: filteredNotes.length,
+        }));
+    }, [filteredNotes]);
 
     const keyExtractor = useCallback((item: Note) => String(item.id), []);
 
