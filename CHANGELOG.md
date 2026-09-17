@@ -1,3 +1,12 @@
+## 2026-09-17 13:26:02 | 优化代码：忽略 irisnote-updater Gradle 构建产物并移出误提交缓存
+
+- 文件：.gitignore、CHANGELOG.md（另通过 `git rm -r --cached` 移出 16 个索引文件，本地文件保留）。
+- 已获用户确认。`.gitignore` 追加 `modules/*/android/build/` 规则；`git rm -r --cached` 将先前误提交的 16 个构建缓存移出索引：`modules/irisnote-updater/android/build/` 下 8 个 debug 产物（BuildConfig.java、R.jar、R.txt 等）与 `modules/irisnote-updater/android/.gradle/` 下 8 个缓存文件。
+- 动机：v3 出包尝试后 git status 被 45 项 build 中间产物刷屏；且规则缺失前已有 16 个缓存文件进入仓库历史。清理后 git status 仅剩真实改动，协作者克隆不再携带二进制垃圾。
+- 验证：`git check-ignore -v` 确认 build 与 .gradle 两类路径分别命中新规则（.gitignore:67）与既有规则（.gitignore:64）；暂存删除恰好 16 项。未触碰任何源码，typecheck 不适用。
+
+---
+
 ## 2026-09-17 03:27:16 | 新增功能：笔记排序同步与分层列表设计文档
 
 - 文件：docs/架构指南/笔记排序同步与分层列表设计.md、CHANGELOG.md。

@@ -63,6 +63,9 @@ example
 # Gradle 构建缓存（含 modules/* 子项目）
 .gradle/
 
+# Gradle 构建产物（含 modules/* 子项目）
+modules/*/android/build/
+
 # 运行日志与进程文件
 *.log
 *.pid
