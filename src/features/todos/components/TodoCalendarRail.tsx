@@ -1,11 +1,11 @@
+import { Undo2 } from "lucide-react-native";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { Undo2 } from "lucide-react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 
-import { AnchoredPopover, AppCalendar } from "@/shared/ui";
 import { defaultThemePreset, radii, semanticColors } from "@/shared/theme";
+import { AnchoredPopover, AppCalendar } from "@/shared/ui";
 import {
   addDays,
   addWeeks,
@@ -15,7 +15,7 @@ import {
 } from "@/shared/utils/date-id";
 
 const DAY_WIDTH = 50;
-const DAY_HEIGHT = 60;
+const DAY_HEIGHT = 50;
 const DAY_GAP = 6;
 const DAYS_PER_WEEK = 7;
 const WEEK_SWIPE_DISTANCE = 24;
@@ -171,10 +171,14 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
                   width: DAY_WIDTH,
                 })}
               >
-                <Text style={{ color: textColor, fontSize: 11, lineHeight: 14 }}>
+                <Text
+                  style={{ color: textColor, fontSize: 11, lineHeight: 14 }}
+                >
                   {weekday}
                 </Text>
-                <Text style={{ color: textColor, fontSize: 16, lineHeight: 20 }}>
+                <Text
+                  style={{ color: textColor, fontSize: 16, lineHeight: 20 }}
+                >
                   {dateId.slice(-2)}
                 </Text>
               </Pressable>
