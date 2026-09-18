@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-09-18 11:34:14 | 修复问题：更换头像菜单改为锚点气泡样式
+
+- 文件：src/features/profile/hooks/useAvatar.ts、src/features/profile/screens/ProfileScreen.tsx、CHANGELOG.md。
+- 已获用户确认。点击用户中心头像后，“从相册选择/拍照”不再使用 Android 原生系统 Alert 对话框，改为共享 AnchoredPopover 锚点气泡菜单：白底 24dp 圆角面板、三角箭头指向头像、进入/退出动画、点击外部或返回键关闭；行规格为最小高 56dp、内边距 16/12dp、22dp 主题蓝图标、17sp 文字、行间不贯通分割线，触发按钮增加 300ms 防重复打开冷却锁与 expanded 无障碍状态；上传中沿用原位遮罩并禁止打开菜单。
+- 附带按《全局横幅通知设计与调用规范》将头像上传成功/失败的系统 Alert 反馈改为全局横幅（稳定 ID avatar-update，成功 success 5 秒自动关闭，失败 important 常驻可关闭并保留具体原因），异步回调经通知会话校验；移除原 Alert 选择菜单的“取消”按钮（点外部即取消）。SettingsScreen 中两处引用原 showAvatarOptions 的代码均在注释块内，未受影响；CategoryBar 只读取头像展示，不受影响。
+- 验证：修改前 npm run typecheck 通过（无既有错误）；修改后 npm run typecheck 通过、npm run check 通过（类型、Lint、主题一致性与全部 217 项测试）。静态检查通过不代表真机视觉验收；气泡位置、动画、返回键关闭及横幅反馈待用户在 Android 真机验收。
+
+---
+
 ## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
 
 - 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。

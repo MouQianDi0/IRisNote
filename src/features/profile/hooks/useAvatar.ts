@@ -1,11 +1,12 @@
+import { banner, captureNotificationSession } from "@/core/notifications";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import {
     collectAndUploadAvatarFromCamera,
     collectAndUploadAvatarFromLibrary,
 } from "@/features/profile/services/avatar-picker.service";
-import { useAuth } from "@/features/auth/hooks/useAuth";
 import { normalizeAvatarUrl } from "@/shared/utils/avatar";
 import { useState } from "react";
-import { Alert, type ImageSourcePropType } from "react-native";
+import type { ImageSourcePropType } from "react-native";
 
 export function useAvatar() {
     const { user, syncProfile } = useAuth();
@@ -25,6 +26,7 @@ export function useAvatar() {
     const updateAvatar = async (source: "library" | "camera") => {
         if (!user || avatarUploading) return;
 
+        const isCurrentSession = captureNotificationSession();
         setAvatarUploading(true);
         try {
             const result =
@@ -36,27 +38,32 @@ export function useAvatar() {
 
             setAvatarKey((k) => k + 1);
             await syncProfile();
-            Alert.alert("成功", "头像已更新");
+            if (isCurrentSession()) {
+                banner.show({
+                    id: "avatar-update",
+                    type: "success",
+                    title: "头像已更新",
+                });
+            }
         } catch (err: any) {
-            const message =
-                err.response?.data?.error ||
-                (err.message === "Media library permission is required."
-                    ? "需要相册权限才能选择头像"
-                    : err.message === "Camera permission is required."
-                      ? "需要相机权限才能拍摄头像"
-                      : err.message || "头像更新失败，请稍后再试");
-            Alert.alert("提示", message);
+            if (isCurrentSession()) {
+                const message =
+                    err.response?.data?.error ||
+                    (err.message === "Media library permission is required."
+                        ? "需要相册权限才能选择头像"
+                        : err.message === "Camera permission is required."
+                          ? "需要相机权限才能拍摄头像"
+                          : err.message || "头像更新失败，请稍后再试");
+                banner.show({
+                    id: "avatar-update",
+                    type: "important",
+                    title: "头像更新失败",
+                    message,
+                });
+            }
         } finally {
             setAvatarUploading(false);
         }
-    };
-
-    const showAvatarOptions = () => {
-        Alert.alert("更换头像", "请选择头像来源", [
-            { text: "从相册选择", onPress: () => updateAvatar("library") },
-            { text: "拍照", onPress: () => updateAvatar("camera") },
-            { text: "取消", style: "cancel" },
-        ]);
     };
 
     return {
@@ -64,6 +71,6 @@ export function useAvatar() {
         avatarSource,
         avatarKey,
         avatarUploading,
-        showAvatarOptions,
+        updateAvatar,
     };
 }
