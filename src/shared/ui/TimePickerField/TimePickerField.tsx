@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { semanticColors, radii } from "@/shared/theme";
 import { AppButton } from "../AppButton";
 import { FormDialog } from "../Dialog/FormDialog";
@@ -18,7 +18,7 @@ function TimeWheel({
   onChange: (value: number) => void;
   label: string;
 }) {
-  const ref = useRef<FlatList<number>>(null);
+  const ref = useRef<ScrollView>(null);
   const [initialIndex] = useState(value);
   return (
     <View
@@ -41,17 +41,11 @@ function TimeWheel({
           backgroundColor: semanticColors.surfaceSelected,
         }}
       />
-      <FlatList
+      <ScrollView
         ref={ref}
-        data={Array.from({ length: count }, (_, index) => index)}
-        keyExtractor={(item) => String(item)}
-        initialScrollIndex={initialIndex}
+        style={{ flex: 1 }}
+        contentOffset={{ x: 0, y: initialIndex * ROW_HEIGHT }}
         nestedScrollEnabled
-        getItemLayout={(_, index) => ({
-          length: ROW_HEIGHT,
-          offset: index * ROW_HEIGHT,
-          index,
-        })}
         contentContainerStyle={{ paddingVertical: ROW_HEIGHT * 2 }}
         snapToInterval={ROW_HEIGHT}
         decelerationRate="fast"
@@ -68,14 +62,16 @@ function TimeWheel({
             ),
           )
         }
-        renderItem={({ item }) => (
+      >
+        {Array.from({ length: count }, (_, item) => (
           <Pressable
+            key={item}
             accessibilityRole="button"
             accessibilityLabel={`${item}${label}`}
             accessibilityState={{ selected: item === value }}
             onPress={() => {
-              ref.current?.scrollToOffset({
-                offset: item * ROW_HEIGHT,
+              ref.current?.scrollTo({
+                y: item * ROW_HEIGHT,
                 animated: true,
               });
               onChange(item);
@@ -99,8 +95,8 @@ function TimeWheel({
               {pad(item)}
             </Text>
           </Pressable>
-        )}
-      />
+        ))}
+      </ScrollView>
     </View>
   );
 }
