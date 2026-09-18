@@ -1,3 +1,41 @@
+## 2026-09-18 12:09:56 | 修复问题：分离圆角背景和边框以避免滑动接缝露灰
+
+- 文件：src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 用户反馈上一轮调整后滑动时仍有竖向细线，并确认本轮方案及文字预览。当前 React Native 0.86.3 Android BackgroundDrawable 在圆角与边框同时存在时将背景四边各缩进 0.8 个物理像素；笔记右侧、待办左侧没有边框覆盖，可能露出灰色父背景。
+- 将笔记和待办的白色背景及对应 30dp 圆角移至现有无边框父容器，内层保留圆角边框和内容布局，避免白色填充触发上述缩进。保留 15dp 顶部间隔、75dp 侧栏、1dp 边框、16dp 内容内边距及 24dp 底部内边距；保留上一轮弹性高度和分页底色修改。
+- 验证：基于 6f44167 的未提交修改，修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无冲突标记。源码机制与现象吻合，但 ADB 无连接设备，滑动接缝消除效果及圆角外观仍待 Android 真机验证。未构建、发布 APK 或执行 Git 提交。
+
+---
+
+## 2026-09-18 11:58:10 | 修复问题：分页白色底层与内容区高度对齐
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 已获用户确认方案及文字预览。分页承托层和默认场景背景改为纯白主题色 surface，减少页面接缝露出灰底的可能；外层背景及毛玻璃采样结构保持原样。
+- 笔记和待办白色容器由 100% 高度加 8dp 底部外边距改为 flex: 1，与摘录页面既有弹性填充规则统一。保留三页 15dp 顶部间距、75dp 侧栏、30dp 外侧圆角、现有边框、内容内边距和底部导航交互。摘录页面本身已符合该规则，无需修改。
+- 验证：基于 6f44167 的未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无遗留冲突标记。截图接缝的具体来源尚未真机证实，滑动细缝与像素级高度对齐仍需 Android 真机验收；未执行 APK 构建、发布或 Git 提交。
+
+---
+
+## 2026-09-18 11:14:17 | 修复问题：笔记编辑时间记录与新旧内容同步保护
+
+- 文件：src/features/notes/notes.types.ts、src/features/notes/api/notes.api.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-save.service.ts、src/features/sync/upload-task-adapters.ts、tests/editor/revisions.test.cjs、tests/editor/drafts.test.cjs、CHANGELOG.md。
+- 已获用户确认。标题/正文实际变化时生成本地编辑时间，连续编辑与时钟回拨时保持递增；重复保存、置顶、标星、分类调整及上传重试不刷新内容修改时间。
+- 上传携带 updated_at；服务端回传时间持久化到已有 server_updated_at 列。较旧云端内容不覆盖本地，较新云端内容生成本地历史版本后合并；同一时间不同内容保留本地并报告冲突。
+- 409 冲突快照只对对应笔记及请求版本合并，旧响应不能覆盖新编辑；队列已同步任务不重复上传，旧上传成功但本地还有新版本时继续重试。
+- 历史已同步笔记的旧 local_updated_at 可能是同步时间，因此 server_updated_at 为 NULL 时不伪造已知编辑时间；首次有时间的云端同步建立基线。时间规则不能消除不同设备时钟偏差。
+- 验证：基于 d00c6b7542aaf22ca29c29d2fd8a8486d8766392 的未提交修改；修改前 npm run typecheck 通过，最终 npm run check 通过（TypeScript、Lint、主题、217/217 测试）。git diff --check 通过，无遗留冲突标记。保留同期出现的 app.json 其他修改。未执行线上迁移、部署、APK 构建或真机验收。
+
+---
+
+## 2026-09-18 11:34:14 | 修复问题：更换头像菜单改为锚点气泡样式
+
+- 文件：src/features/profile/hooks/useAvatar.ts、src/features/profile/screens/ProfileScreen.tsx、CHANGELOG.md。
+- 已获用户确认。点击用户中心头像后，“从相册选择/拍照”不再使用 Android 原生系统 Alert 对话框，改为共享 AnchoredPopover 锚点气泡菜单：白底 24dp 圆角面板、三角箭头指向头像、进入/退出动画、点击外部或返回键关闭；行规格为最小高 56dp、内边距 16/12dp、22dp 主题蓝图标、17sp 文字、行间不贯通分割线，触发按钮增加 300ms 防重复打开冷却锁与 expanded 无障碍状态；上传中沿用原位遮罩并禁止打开菜单。
+- 附带按《全局横幅通知设计与调用规范》将头像上传成功/失败的系统 Alert 反馈改为全局横幅（稳定 ID avatar-update，成功 success 5 秒自动关闭，失败 important 常驻可关闭并保留具体原因），异步回调经通知会话校验；移除原 Alert 选择菜单的“取消”按钮（点外部即取消）。SettingsScreen 中两处引用原 showAvatarOptions 的代码均在注释块内，未受影响；CategoryBar 只读取头像展示，不受影响。
+- 验证：修改前 npm run typecheck 通过（无既有错误）；修改后 npm run typecheck 通过、npm run check 通过（类型、Lint、主题一致性与全部 217 项测试）。静态检查通过不代表真机视觉验收；气泡位置、动画、返回键关闭及横幅反馈待用户在 Android 真机验收。
+
+---
+
 ## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
 
 - 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。

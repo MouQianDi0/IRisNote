@@ -9,8 +9,9 @@ export default function TodosScreen() {
   return (
     <View className="mt-[15px] flex-1 bg-app-background">
       <View className="flex-1 flex-row">
-        <View className="relative flex-1">
-          <View className="mb-2 h-[100%] rounded-tr-content border-b border-r border-t border-note-page-border bg-white p-4 pb-6">
+        {/* Separate fill from borders to avoid Android's rounded background inset. */}
+        <View className="relative flex-1 bg-white rounded-tr-content">
+          <View className="flex-1 rounded-tr-content border-b border-r border-t border-note-page-border p-4 pb-6">
             <View className="flex-1 items-center justify-center px-4">
               <Text className="mb-[10px] text-2xl font-bold">待办事项</Text>
               <Text className="mb-5 text-base text-text-secondary">

@@ -14,9 +14,9 @@
         "android": {
             "adaptiveIcon": {
                 "backgroundColor": "#E6F4FE",
-                "foregroundImage": "./assets/images/IRisNote.png",
-                "backgroundImage": "./assets/images/IRisNote.png",
-                "monochromeImage": "./assets/images/IRisNote.png"
+                "foregroundImage": "./assets/images/IRisNote_black.png",
+                "backgroundImage": "./assets/images/IRisNote_black.png",
+                "monochromeImage": "./assets/images/IRisNote_black.png"
             },
             "predictiveBackGestureEnabled": false,
             "package": "com.mouqiandi.irisNote",

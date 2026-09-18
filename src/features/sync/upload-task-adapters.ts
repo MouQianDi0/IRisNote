@@ -1,7 +1,7 @@
 import type { ApplicationDatabase } from "@/core/database";
 import type { UploadQueueTask } from "@/core/sync";
 import { deleteNoteDraft, type DraftCommit } from "@/features/notes/data/note-draft.repository";
-import { uploadNoteNow } from "@/features/notes/services/note-save.service";
+import { uploadNoteNow, type NoteSaveResult } from "@/features/notes/services/note-save.service";
 import { getLocalNoteByClientId } from "@/features/notes/data/note-local.repository";
 import {
     createCategory,
@@ -88,7 +88,9 @@ async function executeNoteTask(
         };
     }
     let transferredBytes = 0;
-    const result = await uploadNoteNow(database, task.ownerUserId, clientId, (event) => {
+    const result: NoteSaveResult = localNote.sync_status === "synced"
+        ? { note: localNote, cloudState: "accepted" }
+        : await uploadNoteNow(database, task.ownerUserId, clientId, (event) => {
         transferredBytes = Math.max(transferredBytes, event.loaded);
     });
     if (result.cloudState !== "accepted") {
