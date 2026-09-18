@@ -1,3 +1,21 @@
+## 2026-09-18 12:09:56 | 修复问题：分离圆角背景和边框以避免滑动接缝露灰
+
+- 文件：src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 用户反馈上一轮调整后滑动时仍有竖向细线，并确认本轮方案及文字预览。当前 React Native 0.86.3 Android BackgroundDrawable 在圆角与边框同时存在时将背景四边各缩进 0.8 个物理像素；笔记右侧、待办左侧没有边框覆盖，可能露出灰色父背景。
+- 将笔记和待办的白色背景及对应 30dp 圆角移至现有无边框父容器，内层保留圆角边框和内容布局，避免白色填充触发上述缩进。保留 15dp 顶部间隔、75dp 侧栏、1dp 边框、16dp 内容内边距及 24dp 底部内边距；保留上一轮弹性高度和分页底色修改。
+- 验证：基于 6f44167 的未提交修改，修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无冲突标记。源码机制与现象吻合，但 ADB 无连接设备，滑动接缝消除效果及圆角外观仍待 Android 真机验证。未构建、发布 APK 或执行 Git 提交。
+
+---
+
+## 2026-09-18 11:58:10 | 修复问题：分页白色底层与内容区高度对齐
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 已获用户确认方案及文字预览。分页承托层和默认场景背景改为纯白主题色 surface，减少页面接缝露出灰底的可能；外层背景及毛玻璃采样结构保持原样。
+- 笔记和待办白色容器由 100% 高度加 8dp 底部外边距改为 flex: 1，与摘录页面既有弹性填充规则统一。保留三页 15dp 顶部间距、75dp 侧栏、30dp 外侧圆角、现有边框、内容内边距和底部导航交互。摘录页面本身已符合该规则，无需修改。
+- 验证：基于 6f44167 的未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无遗留冲突标记。截图接缝的具体来源尚未真机证实，滑动细缝与像素级高度对齐仍需 Android 真机验收；未执行 APK 构建、发布或 Git 提交。
+
+---
+
 ## 2026-09-18 11:14:17 | 修复问题：笔记编辑时间记录与新旧内容同步保护
 
 - 文件：src/features/notes/notes.types.ts、src/features/notes/api/notes.api.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-save.service.ts、src/features/sync/upload-task-adapters.ts、tests/editor/revisions.test.cjs、tests/editor/drafts.test.cjs、CHANGELOG.md。
