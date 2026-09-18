@@ -1,3 +1,13 @@
+## 2026-09-18 13:17:10 | 修复问题：临时发布构建工作区结束后自动清理
+
+- 文件：scripts/release/workspace.mjs、scripts/release/cli.mjs、tests/releases/workspace.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。默认本地正式构建继续复用当前项目的 reuse-* 缓存；--fresh 和 EAS 的一次性 r-* 工作区在成功、提前返回或构建/上传报错后自动尝试清理，防止正常结束的构建反复累积完整依赖与编译产物。
+- 清理能力只绑定本次创建的目录，校验真实父路径、目录类型及文件系统身份，拒绝清理被替换或重定向的工作区。不扫描其他构建，不删除 dist/releases 的正式 APK 或差分基础包。清理失败警告包含残留路径并保留原始结果；强制结束或断电仍可能残留。
+- 新增真实临时目录测试，覆盖产物保留、错误退出、上传重试、缓存复用、锁释放、路径替换和目录联接保护。验证：node --test tests/releases/workspace.test.cjs tests/releases/cache.test.cjs 通过（27/27）；npm run check 通过（类型检查、Lint、主题检查、224/224 测试）；另对修改的两个脚本和测试文件直接执行 ESLint，通过；git diff --check 通过，无冲突标记。未执行真实 APK 构建或真机验证。
+- 变更前 npm run typecheck 通过（基于 821bc9a）。现有 14 个旧 r-* 的删除预演被工具策略拦截，尚未清理；没有停止已有构建，没有执行正式打包、上传、发布或 Git 提交。
+
+---
+
 ## 2026-09-18 12:37:33 | 新增文件：IRisNote 0.2.4 更新说明
 
 - 文件：releases/notes-0.2.4.txt、CHANGELOG.md。
