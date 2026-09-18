@@ -1,3 +1,14 @@
+## 2026-09-18 11:14:17 | 修复问题：笔记编辑时间记录与新旧内容同步保护
+
+- 文件：src/features/notes/notes.types.ts、src/features/notes/api/notes.api.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-save.service.ts、src/features/sync/upload-task-adapters.ts、tests/editor/revisions.test.cjs、tests/editor/drafts.test.cjs、CHANGELOG.md。
+- 已获用户确认。标题/正文实际变化时生成本地编辑时间，连续编辑与时钟回拨时保持递增；重复保存、置顶、标星、分类调整及上传重试不刷新内容修改时间。
+- 上传携带 updated_at；服务端回传时间持久化到已有 server_updated_at 列。较旧云端内容不覆盖本地，较新云端内容生成本地历史版本后合并；同一时间不同内容保留本地并报告冲突。
+- 409 冲突快照只对对应笔记及请求版本合并，旧响应不能覆盖新编辑；队列已同步任务不重复上传，旧上传成功但本地还有新版本时继续重试。
+- 历史已同步笔记的旧 local_updated_at 可能是同步时间，因此 server_updated_at 为 NULL 时不伪造已知编辑时间；首次有时间的云端同步建立基线。时间规则不能消除不同设备时钟偏差。
+- 验证：基于 d00c6b7542aaf22ca29c29d2fd8a8486d8766392 的未提交修改；修改前 npm run typecheck 通过，最终 npm run check 通过（TypeScript、Lint、主题、217/217 测试）。git diff --check 通过，无遗留冲突标记。保留同期出现的 app.json 其他修改。未执行线上迁移、部署、APK 构建或真机验收。
+
+---
+
 ## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
 
 - 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。

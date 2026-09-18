@@ -2,7 +2,7 @@ import type { ApplicationDatabase } from "@/core/database";
 import { deleteNoteDraft, type DraftCommit } from "../data/note-draft.repository";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { isAxiosError, type AxiosProgressEvent } from "axios";
-import { createNote, updateNote } from "../api/notes.api";
+import { createNote, updateNote, normalizeConflictNote } from "../api/notes.api";
 import {
     acceptServerNote,
     getLocalNoteByClientId,
@@ -11,6 +11,7 @@ import {
     markLocalNoteSyncFailed,
     markLocalNoteSyncing,
     updatePendingLocalNote,
+    reconcileServerNotes,
 } from "../data/note-local.repository";
 import { setCachedNote } from "../notes.cache";
 import { notifyNotesChanged } from "../notes.events";
@@ -117,6 +118,7 @@ async function syncPendingNote(
                       {
                           title: note.title,
                           content: note.content ?? "",
+                          ...(note.updated_at ? { updated_at: note.updated_at } : {}),
                           ...(note.category_id == null
                               ? {}
                               : { category_id: note.category_id }),
@@ -129,6 +131,7 @@ async function syncPendingNote(
                           title: note.title,
                           content: note.content,
                           category_id: note.category_id,
+                          updated_at: note.updated_at ?? null,
                       },
                       uploadOptions,
                   );
@@ -150,8 +153,34 @@ async function syncPendingNote(
             httpStatus: responseStatus ?? null,
             status: acceptedNote.sync_status,
         });
-        return { note: acceptedNote, cloudState: "accepted" };
+        return {
+            note: acceptedNote,
+            cloudState: acceptedNote.sync_status === "synced" ? "accepted" : "queued",
+            retryable: acceptedNote.sync_status !== "synced",
+        };
     } catch (error: unknown) {
+        if (isAxiosError<{ code?: string; note?: unknown }>(error) &&
+            error.response?.status === 409 &&
+            error.response.data?.code === "NOTE_EDIT_CONFLICT" && note.server_id != null) {
+            try {
+                const remote = normalizeConflictNote(error.response.data.note, note.server_id);
+                await reconcileServerNotes(database, ownerUserId, [remote], undefined, {
+                    clientId: note.id,
+                    revisionId: note.current_revision_id ?? null,
+                });
+                const current = await getLocalNoteByClientId(database, ownerUserId, note.id);
+                if (current?.sync_status === "synced") {
+                    publishNote(current);
+                    return { note: current, cloudState: "accepted", message: "已同步云端较新的内容，本地历史版本已保留。" };
+                }
+                if (current && current.current_revision_id !== note.current_revision_id) {
+                    publishNote(current);
+                    return { note: current, cloudState: "queued", retryable: true };
+                }
+            } catch {
+                // 无效冲突快照/本地合并失败走普通失败处理，不能把未落库的内容标为成功。
+            }
+        }
         const cloudState = classifyCloudFailure(error);
         const httpStatus = isAxiosError(error) ? error.response?.status : undefined;
         const retryable =

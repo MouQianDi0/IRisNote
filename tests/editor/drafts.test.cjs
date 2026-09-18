@@ -28,6 +28,7 @@ const { createLocalNotes } = require('../../src/core/database/migrations/0002-cr
 const { createNoteDrafts } = require('../../src/core/database/migrations/0003-create-note-drafts.ts');
 const { createNoteRevisions } = require('../../src/core/database/migrations/0004-create-note-revisions.ts');
 const { createUploadQueue } = require('../../src/core/database/migrations/0005-create-upload-queue.ts');
+const { addServerUpdatedAt } = require('../../src/core/database/migrations/0006-add-server-updated-at.ts');
 const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 const api = { createNote: async () => { throw new Error('test network unavailable'); }, updateNote: async () => { throw new Error('test network unavailable'); } };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
@@ -278,6 +279,7 @@ async function database(t, filename = ':memory:') {
     await createNoteDrafts.up(migrationPort);
     await createNoteRevisions.up(migrationPort);
     await createUploadQueue.up(migrationPort);
+    await addServerUpdatedAt.up(migrationPort);
     return { port, sql, migrationPort };
 }
 
