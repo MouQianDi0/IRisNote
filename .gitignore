@@ -69,3 +69,5 @@ modules/*/android/build/
 # 运行日志与进程文件
 *.log
 *.pid
+
+.codegraph/

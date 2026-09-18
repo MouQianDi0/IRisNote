@@ -5,11 +5,11 @@
         "owner": "miao233",
         "version": "1.0.0",
         "orientation": "portrait",
-        "icon": "./assets/images/IRisNote.png",
+        "icon": "./assets/images/IRisNote_black.png",
         "scheme": "irisnote",
         "userInterfaceStyle": "automatic",
         "ios": {
-            "icon": "./assets/images/IRisNote.png"
+            "icon": "./assets/images/IRisNote_black.png"
         },
         "android": {
             "adaptiveIcon": {
@@ -25,7 +25,7 @@
         },
         "web": {
             "output": "server",
-            "favicon": "./assets/images/IRisNote.png"
+            "favicon": "./assets/images/IRisNote_black.png"
         },
         "plugins": [
             [
@@ -42,8 +42,8 @@
                 {
                     "backgroundColor": "#FFFFFF",
                     "android": {
-                        "image": "./assets/images/IRisNote.png",
-                        "imageWidth": 76
+                        "image": "./assets/images/IRisNote_black.png",
+                        "imageWidth": 100
                     }
                 }
             ],
