@@ -1,3 +1,30 @@
+## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
+
+- 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
+- 用户已确认方案和文字预览。基于客户端 73b664cf543b9bc72c8ff36dd806d36c78dbd310 与服务端 898440c8ea35936e6e355cdce61e5433d448d6a4，绘制页面/本地 SQLite 与 AsyncStorage/上传队列/Axios/Express/PostgreSQL 主链路，补充 Redis、Resend、MinIO，以及本地 Gradle/EAS、源站/COS 分发和 Android 原生更新器。
+- HTML 支持浅深色和内置交互，保留可维护 JSON、14 个固定提交源码引用、源码依据与校验收据。明确待办/摘录仍待业务接入；图示为源码架构，不代表线上部署已验收。记录当前完整包与差量策略以及差量补丁由源站分发的边界。
+- 验证：修改前 npm run typecheck 通过；npm run check 通过（类型、Lint、主题检查及 224/224 测试）；Archify showcase 9/9、0 错误、0 警告，14 个源码引用验证通过。首版纵向溢出经布局调整解决；最终四种桌面尺寸浏览器检查通过，四张浅深色截图已逐张视觉审阅。
+- 仅新增架构文档与生成制品，未修改应用业务逻辑，未执行 APK 构建、上传、发布、Git 提交或服务重启。Archify visual-check 不支持 --headed --persistent，实际使用默认截图检查，未宣称使用上述参数。
+
+---
+
+## 2026-09-18 13:17:10 | 修复问题：临时发布构建工作区结束后自动清理
+
+- 文件：scripts/release/workspace.mjs、scripts/release/cli.mjs、tests/releases/workspace.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。默认本地正式构建继续复用当前项目的 reuse-* 缓存；--fresh 和 EAS 的一次性 r-* 工作区在成功、提前返回或构建/上传报错后自动尝试清理，防止正常结束的构建反复累积完整依赖与编译产物。
+- 清理能力只绑定本次创建的目录，校验真实父路径、目录类型及文件系统身份，拒绝清理被替换或重定向的工作区。不扫描其他构建，不删除 dist/releases 的正式 APK 或差分基础包。清理失败警告包含残留路径并保留原始结果；强制结束或断电仍可能残留。
+- 新增真实临时目录测试，覆盖产物保留、错误退出、上传重试、缓存复用、锁释放、路径替换和目录联接保护。验证：node --test tests/releases/workspace.test.cjs tests/releases/cache.test.cjs 通过（27/27）；npm run check 通过（类型检查、Lint、主题检查、224/224 测试）；另对修改的两个脚本和测试文件直接执行 ESLint，通过；git diff --check 通过，无冲突标记。未执行真实 APK 构建或真机验证。
+- 变更前 npm run typecheck 通过（基于 821bc9a）。现有 14 个旧 r-* 的删除预演被工具策略拦截，尚未清理；没有停止已有构建，没有执行正式打包、上传、发布或 Git 提交。
+
+---
+
+## 2026-09-18 12:37:33 | 新增文件：IRisNote 0.2.4 更新说明
+
+- 文件：releases/notes-0.2.4.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.4（补丁更新，基准 0.2.3 / 86d2955，目标 c7b2b42，工作区干净）：更新应用图标；头像更换改为气泡菜单并增加横幅反馈；更新提示策略对落后较多版本强制更新（用户确认服务端已部署）；修复左右滑动页面时页面边缘灰色细线；修复多设备同步时云端较旧内容可能覆盖本地较新编辑及编辑时间记录问题。排除构建缓存复用、.codegraph 清理等纯开发记录。仅生成文案，未执行预留、构建、上传或发布。
+
+---
+
 ## 2026-09-18 12:09:56 | 修复问题：分离圆角背景和边框以避免滑动接缝露灰
 
 - 文件：src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。

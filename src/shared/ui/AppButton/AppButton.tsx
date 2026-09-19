@@ -1,8 +1,5 @@
-import {
-    componentRecipes,
-    defaultThemePreset,
-    radii,
-} from "@/shared/theme";
+import { componentRecipes, defaultThemePreset, radii } from "@/shared/theme";
+import * as Haptics from "expo-haptics";
 import type { ReactNode } from "react";
 import {
     ActivityIndicator,
@@ -14,11 +11,7 @@ import {
 import { AppText, type AppTextTone } from "../AppText";
 
 export type AppButtonVariant =
-    | "primary"
-    | "secondary"
-    | "tonal"
-    | "danger"
-    | "text";
+    "primary" | "secondary" | "tonal" | "danger" | "text";
 export type AppButtonSize = "standard" | "compact";
 
 export type AppButtonProps = Omit<
@@ -77,6 +70,7 @@ export function AppButton({
     accessibilityLabel,
     accessibilityState,
     className,
+    onPress,
     ...props
 }: AppButtonProps) {
     const unavailable = disabled || loading;
@@ -109,6 +103,10 @@ export function AppButton({
                                 : 1,
                     },
                 ]}
+                onPress={(e) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onPress?.(e);
+                }}
             >
                 {loading ? (
                     <ActivityIndicator size="small" color={recipe.content} />

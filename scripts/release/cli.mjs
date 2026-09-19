@@ -40,10 +40,7 @@ import {
 } from "./cache.mjs";
 import { exportBuildSource } from "./source.mjs";
 import { uploadBoth, verifyArtifactStream } from "./upload.mjs";
-import {
-    acquireReleaseWorkspace,
-    createReleaseWorkspace,
-} from "./workspace.mjs";
+import { withReleaseWorkspace } from "./workspace.mjs";
 
 const root = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -155,10 +152,7 @@ async function build() {
     if (release.source === "self") cosConfig();
     const ninja = release.source === "self" ? await releaseNinja(root) : null;
     const reusable = release.source === "self" && !args.includes("--fresh");
-    const lease = reusable ? await acquireReleaseWorkspace(root) : null;
-    try {
-        const workspace =
-            lease?.workspace ?? (await createReleaseWorkspace(root));
+    return withReleaseWorkspace(root, { reusable }, async (workspace) => {
         console.log(`独立构建目录：${workspace}`);
         const snapshot = reusable
             ? await resetBuildSnapshot(workspace)
@@ -350,9 +344,7 @@ async function build() {
         await cache?.complete();
         console.log(`已构建并校验：${target}\n开始上传服务器和 COS。`);
         await uploadRelease(release, target, info);
-    } finally {
-        await lease?.release();
-    }
+    });
 }
 async function uploadRelease(release, apk, info) {
     const cos = createCosUploader(cosConfig());

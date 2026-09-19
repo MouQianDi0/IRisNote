@@ -1,6 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 export function run(command, args = [], options = {}) {
@@ -69,7 +69,7 @@ export function validateApkInfo(info, release) {
 export function certificateDigest(output) {
     const digests = [
         ...output.matchAll(
-            /^(?:Signer #\d+ certificate|V(?:1|2|3(?:\.1)?) Signer: certificate) SHA-256 digest:[ \t]*([a-f0-9]{64})[ \t]*\r?$/gmi,
+            /^(?:Signer #\d+ certificate|V(?:1|2|3(?:\.1)?) Signer: certificate) SHA-256 digest:[ \t]*([a-f0-9]{64})[ \t]*\r?$/gim,
         ),
     ].map((m) => m[1].toLowerCase());
     if (digests.length !== 1)
