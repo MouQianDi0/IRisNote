@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, FlatList, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { banner } from "@/core/notifications";
@@ -43,6 +43,7 @@ function TodoList({
     new Set(),
   );
   const [batch, setBatch] = useState(false);
+  const running = useRef(false);
   const [editing, setEditing] = useState<TodoEntity | null>(null);
   const [deleting, setDeleting] = useState<readonly TodoVersionTarget[] | null>(
     null,
@@ -94,16 +95,25 @@ function TodoList({
     }, [batch, clearSelection]),
   );
 
-  const run = (command: () => void) => {
+  const run = async (command: () => unknown | Promise<unknown>) => {
+    if (running.current) return;
+    running.current = true;
     try {
       assertTodoSession(todoRepository, ownerKey, generation);
-      command();
+      await command();
     } catch (cause) {
+      if (
+        todoRepository.ownerKey !== ownerKey ||
+        todoRepository.generation !== generation
+      )
+        return;
       banner.show({
         title: "待办操作失败",
         message: cause instanceof Error ? cause.message : "请重试",
         type: "important",
       });
+    } finally {
+      running.current = false;
     }
   };
   const toggleSelection = (id: string) =>
@@ -264,7 +274,21 @@ function TodoList({
           onClose={() => setDeleting(null)}
           onConfirm={async () => {
             assertTodoSession(todoRepository, ownerKey, generation);
-            todoRepository.delete(ownerKey, deleting);
+            try {
+              await todoRepository.delete(ownerKey, deleting);
+              assertTodoSession(todoRepository, ownerKey, generation);
+            } catch (cause) {
+              if (
+                todoRepository.ownerKey === ownerKey &&
+                todoRepository.generation === generation
+              )
+                banner.show({
+                  title: "待办删除失败",
+                  message: cause instanceof Error ? cause.message : "请重试",
+                  type: "important",
+                });
+              throw cause;
+            }
             clearSelection();
           }}
         />

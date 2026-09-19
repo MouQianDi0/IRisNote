@@ -3,7 +3,7 @@ import type { TodoRepository } from "../data/todo-repository.port";
 import { emptyTodoFields } from "../services/todo-service";
 
 /** Called only for an explicit development preview owner, never a normal empty list. */
-export function seedTodoPreview(
+export async function seedTodoPreview(
   repository: TodoRepository,
   ownerKey: string,
   now: Date,
@@ -41,13 +41,24 @@ export function seedTodoPreview(
     },
     { body: "明天的新计划", dateId: addDays(today, 1), startTime: "10:00" },
   ];
-  samples.forEach(({ completed, ...sample }, index) => {
-    const entity = repository.create(
+  const generation = repository.generation;
+  for (const [index, { completed, ...sample }] of samples.entries()) {
+    if (
+      repository.ownerKey !== ownerKey ||
+      repository.generation !== generation
+    )
+      return;
+    const entity = await repository.create(
       ownerKey,
       `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
       { ...emptyTodoFields(today), ...sample },
       new Date(now.getTime() + index),
     );
-    if (completed) repository.complete(ownerKey, entity, true, now);
-  });
+    if (
+      repository.ownerKey !== ownerKey ||
+      repository.generation !== generation
+    )
+      return;
+    if (completed) await repository.complete(ownerKey, entity, true, now);
+  }
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { banner } from "@/core/notifications";
 import { ChevronRight, Pin, Star, Trash2 } from "lucide-react-native";
 import {
   Pressable,
@@ -338,7 +339,21 @@ export function TodoFormDialog({
           onClose={() => setDeleteTarget(null)}
           onConfirm={async () => {
             assertTodoSession(todoRepository, ownerKey, generation);
-            todoRepository.delete(ownerKey, [deleteTarget]);
+            try {
+              await todoRepository.delete(ownerKey, [deleteTarget]);
+              assertTodoSession(todoRepository, ownerKey, generation);
+            } catch (cause) {
+              if (
+                todoRepository.ownerKey === ownerKey &&
+                todoRepository.generation === generation
+              )
+                banner.show({
+                  title: "待办删除失败",
+                  message: cause instanceof Error ? cause.message : "请重试",
+                  type: "important",
+                });
+              throw cause;
+            }
             onClose();
           }}
         />

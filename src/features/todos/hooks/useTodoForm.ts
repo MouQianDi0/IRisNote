@@ -75,7 +75,7 @@ export function useTodoForm(
           : { ...prepared, timeZone: deviceTimeZone() };
       const instant = new Date();
       createdAt.current ??= instant;
-      saveTodoForm(
+      await saveTodoForm(
         todoRepository,
         ownerKey,
         generation,

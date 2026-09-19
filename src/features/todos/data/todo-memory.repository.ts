@@ -17,6 +17,19 @@ export class TodoMemoryRepository implements TodoRepository {
   private entities = new Map<string, TodoEntity>();
   private listeners = new Set<() => void>();
 
+  /** Hydrate an isolated working set; SQLite publishes it only after commit. */
+  constructor(
+    ownerKey: string | null = null,
+    entities: readonly TodoEntity[] = [],
+  ) {
+    this.ownerKey = ownerKey;
+    for (const entity of entities) {
+      if (entity.ownerKey !== ownerKey)
+        throw new TodoError("owner", "待办数据归属不匹配");
+      this.entities.set(entity.clientId, Object.freeze({ ...entity }));
+    }
+  }
+
   activate(ownerKey: string) {
     if (this.ownerKey === ownerKey) return;
     this.ownerKey = ownerKey;

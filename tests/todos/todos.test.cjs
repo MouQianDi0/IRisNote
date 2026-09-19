@@ -373,20 +373,20 @@ test("置顶先于时间、全天末尾、倒序和优先级均具有确定次�
   assert.deepEqual(ordered("priority"), [1, 3, 5, 2, 4]);
 });
 
-test("种子只写独立预览命名空间，覆盖动态日期与五种显示态", () => {
+test("种子只写独立预览命名空间，覆盖动态日期与五种显示态", async () => {
   const repo = setup();
-  seedTodoPreview(repo, owner, instant);
+  await seedTodoPreview(repo, owner, instant);
   assert.equal(repo.list(owner).length, 0);
   const preview = "preview:user:one";
   repo.activate(preview);
-  seedTodoPreview(repo, preview, instant);
+  await seedTodoPreview(repo, preview, instant);
   const samples = repo.list(preview);
   assert.equal(samples.length, 8);
   assert.deepEqual(
     [...new Set(samples.map((todo) => todoDisplayState(todo, instant)))].sort(),
     ["done", "ended", "high", "low", "normal"],
   );
-  seedTodoPreview(repo, preview, instant);
+  await seedTodoPreview(repo, preview, instant);
   assert.equal(repo.list(preview).length, 8);
 });
 

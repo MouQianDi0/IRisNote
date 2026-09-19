@@ -82,6 +82,7 @@ export function assertTodoSession(
     throw new TodoError("owner", "账号会话已失效，请重新打开待办");
 }
 
+/** Callers must await the receipt before closing; the memory test adapter may return immediately. */
 export function saveTodoForm(
   repository: TodoRepository,
   ownerKey: string,

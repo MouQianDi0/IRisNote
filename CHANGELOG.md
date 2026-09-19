@@ -1,3 +1,16 @@
+## 2026-09-19 16:10:44 | 新增功能：待办 SQLite 本地持久化与异步会话保护
+
+- 已获用户确认实施方案及保持原布局的文字预览；基线 840d7a4881b5820da8e9c560fec4b9dce5a94bd8。范围限本地持久化，不实现云同步、后端 API、通知、系统日历、循环或笔记关联，不新增依赖。
+- 数据库文件：src/core/database/migrations/0007-create-local-todos.ts、src/core/database/migrations/index.ts。注册版本 7，创建独立 local_todos 表、所有者与稳定 ID 复合主键、所有者/日期索引及身份、日期时间、布尔、优先级、版本和完成状态检查；已有笔记、草稿、版本及上传队列表不改动。
+- 仓库文件：src/features/todos/data/todo-local.repository.ts、src/features/todos/data/todo-memory.repository.ts、src/features/todos/data/todo-repository.port.ts。复用公共数据库生命周期/事务队列；事务内读取当前所有者最新数据，用隔离内存工作集复用既有领域规则，仅差异行执行参数化 SQL。保留稳定 ID 幂等、非重叠字段合并、版本冲突、无变化不写入/不增版本/不广播、批量全部成功或回滚；提交后才发布不可变页面快照。
+- 生命周期文件：src/features/todos/state/todo-store.ts、src/features/todos/hooks/useTodoScope.ts。游客采用数据库内稳定 guest:local，账号采用 user:<ID>；切换立即清空快照并加载新归属，落盘数据独立保留且不合并；认证加载、数据库端口更换使旧代次失效，过期加载/写入回执不覆盖新会话。加载失败使用重要横幅重试，旧横幅不能重新激活旧账号。
+- 调用方文件：src/features/todos/services/todo-service.ts、src/features/todos/hooks/useTodoForm.ts、src/features/todos/screens/TodosScreen.tsx、src/features/todos/components/TodoFormDialog.tsx、src/features/todos/testing/todo-seeds.ts。保存、完成、批量及删除等待 SQLite 事务回执，失败保留输入/选择并报告；列表抑制重复命令，保存沿用“保存中…”锁定；开发种子按异步回执写入独立 preview 命名空间。布局、配色和 dp 尺寸保持不变。
+- 测试与文档：tests/todos/todo-local.test.cjs、tests/todos/todos.test.cjs、docs/待办/待办逻辑层设计.md、CHANGELOG.md。新增 13 项本地仓库/状态层测试并保留 20 项既有领域/内存测试，覆盖 Node SQLite 隔离文件关闭重开、全部字段映射、迁移旧表保留与约束、游客/账号隔离、冲突、批量写入/删除回滚、提交失败重试及切换竞争；设计文档更新到 1.1，明确已实现与后续边界。
+- 验证：修改前及第一轮修改后 npm run typecheck 通过；node --test "tests/todos/*.test.cjs" 最终 33/33 通过。追加无变化快照复用和状态层测试后，最终 npm run check 通过（类型、Lint、主题及全部 240 项测试）；git -c core.whitespace=-blank-at-eol diff --check、冲突标记、文档链接/代码围栏及历史日志内容保留检查通过。检查对应上述基线的未提交工作区，不代表新提交或发布版本。
+- 限制：旧进程内数据没有可靠迁移来源，首次升级为空表；每次写入读取当前所有者全部待办，大规模数据增量优化未实施；COMMIT 期间切换账号可能留下原所有者的合法写入，但不向新账号发布。Node SQLite 文件测试不代表 Expo 原生 SQLite、真机杀进程恢复或交互验收通过；未运行应用、浏览器、设备、构建、上传或发布，未执行 Git 暂存、提交或推送。
+
+---
+
 ## 2026-09-18 17:05:50 | 修复问题：修正时间轮盘的同方向虚拟列表嵌套
 
 - 已获用户确认修复方案及尺寸预览，基线 a967f521ff00ebd75c936db42a269c4c289ddd0e。用户提供的日志与源码一致：时间弹窗的纵向 ScrollView 包含两个纵向 FlatList，触发 React Native 的虚拟列表同方向嵌套告警；此前静态和领域测试未覆盖这项运行时问题。
