@@ -1,3 +1,36 @@
+## 2026-09-20 04:42:02 | 新增功能：App 笔记快照与增量同步接入完成
+
+- 变更概述：用户已确认方案及实施范围。在 a49c363 工作区接入后端 notes/snapshot 与 notes/changes；首次快照后追赶增量，后续复用持久游标，业务读取入口不再调用旧 getNotes()。
+- 修改文件：src/core/database/migrations/0007-add-note-sync-state.ts、src/core/database/migrations/index.ts、src/core/notifications/notification-provider.tsx、src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/services/note-save.service.ts、src/features/notes/notes.events.ts、src/features/notes/screens/NotesScreen.tsx、src/features/notes/screens/NoteDetailScreen.tsx、src/features/profile/hooks/useProfileOverview.ts、src/features/sync/upload-task-adapters.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 数据：SQLite v7 新建账号隔离的同步状态、云端镜像和快照暂存表，不改写旧笔记、历史版本和草稿。快照分页暂存，收齐后原子替换云端镜像；增量每页镜像与游标同事务提交，追上本轮及一次新水位后再投影本地，防止中间历史事件回退已接受写入。无变化同步仍需读取本地镜像，不等于本地存储层也只访问变化行。
+- 保护：镜像版本识别重复事件、保留删除身份、拒绝异常复活；dirty/syncing 本地内容与云端候选分别保留。云端删除有本地编辑/草稿时保留内容及历史、阻止自动上传；无变化保存不能清除这一保护。旧正文编辑时间冲突协议及不确定创建保护保留，未将客户端时间当作增量顺序。
+- 调度：列表、详情、个人页使用共用同步入口；登录、前台恢复、连接恢复及笔记/分类写入后触发，同账号并发请求合并，后台/退出/切账号取消并在事务提交前检查。观察现有 Axios 写入与本地上传回执全过程，写入交叉时停止投影并重试。分类删除仍按最新云端镜像删除分类内笔记后删除分类，未改变既有业务语义。
+- 错误：410 有限次重建基线并保留本地候选；401/400/503 等失败不当成空列表、不回退旧全量接口；结构化同步错误按文字显示。密钥留在服务器，App 不持有 SYNC_CURSOR_SECRET。
+- 验证：修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、Expo lint、theme:check、243 项测试，0 失败/0 跳过）。新增 19 项测试使用真实 Node SQLite、可控网络/会话替身和 Axios adapter，覆盖分页续传、事务回滚、快照/游标过期、账号切换、并发上传、删除草稿、旧结构保留、大整数序号等；不能替代生产 HTTP 或 Expo 真机验收。首次完整回归发现静态网络导入影响纯草稿测试，已改为分类删除按需加载，35 项旧草稿测试及最终全量检查均通过。
+- 收尾：git diff --check 通过，src 与新增测试未发现 Git 冲突标记。保留原有 package.json、package-lock.json、connection-events.ts 和日志改动；没有新增依赖、提交、推送、服务器迁移、部署、APK 构建/发布，也未停止已有开发服务。
+- 上线边界：真实后端需完成 006/007、固定 SYNC_CURSOR_SECRET 及全部实例切换；仍需真实账号、双设备离线/冲突/删除验收。本地状态按账号隔离，测试/生产使用同一 App 数据空间的整体环境隔离不在本轮范围。
+
+---
+
+## 2026-09-20 04:30:50 | 新增功能：App 笔记增量同步接入（实施中）
+
+- 已获用户明确确认。新增账号隔离的云端镜像、快照暂存及游标，分离下载进度与本地编辑。
+- 文件：src/core/database/migrations/0007-add-note-sync-state.ts、migrations/index.ts；src/features/notes/api/notes-sync.types.ts、notes-sync.api.ts；data/note-sync.repository.ts、note-local.repository.ts；services/note-sync.service.ts、note-sync-coordinator.ts、note-save.service.ts；notes.events.ts；screens/NotesScreen.tsx、NoteDetailScreen.tsx；src/features/profile/hooks/useProfileOverview.ts；src/core/notifications/notification-provider.tsx；src/features/sync/upload-task-adapters.ts；CHANGELOG.md。
+- 增量每页与游标同事务，完整快照先暂存，追上增量后投影；未上传内容与草稿保留，写入期间停止投影。列表、详情和个人页改用共用同步入口；分类删除保留现有删除分类内笔记的语义。
+- 修改前基线：a49c363，npm run typecheck 通过。当前实施与测试尚未完成；没有执行服务器迁移、部署或构建发布。保留原有 package.json、package-lock.json、connection-events.ts 与日志改动。
+
+---
+
+## 2026-09-20 04:01:36 | 新增功能：start:test 命令一键切换测试环境启动
+
+- 文件：package.json（新增 start:test 脚本、devDependencies 新增 cross-env）、.env.local（删除）、package-lock.json（cross-env 安装产物）、CHANGELOG.md。
+- 已获用户确认。目标：`npm start` 默认连接生产地址（代码默认值 https://tech-mou.top/api），`npm run start:test` 通过命令行注入 EXPO_PUBLIC_BASE_URL=http://test.tech-mou.top/api 连接测试服，实现一条命令切换。
+- 删除 .env.local 的原因：Expo CLI 启动时自动加载且优先级最高，其常驻的测试地址会覆盖生产默认值，导致"默认生产"不成立；其中 EXPO_PUBLIC_BASE_URL_LOCAL 无任何代码读取，一并清除。.env.release.local 为发布脚本专用，开发模式不加载，保持不动。
+- 使用 cross-env 保证 Windows 下 npm 脚本的变量注入跨平台生效。src/shared/http/client.ts 现有"环境变量优先 + 默认值兜底"逻辑零改动。
+- 验证：npm start 启动 Metro 正常（[API] 地址日志需客户端加载 bundle 后出现，未在本次验证）；npm run typecheck 通过，无新增类型错误。未执行构建、上传或发布。
+
+---
+
 ## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
 
 - 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。

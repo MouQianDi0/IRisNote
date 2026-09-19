@@ -29,7 +29,7 @@ import Animated, {
     withRepeat,
     withTiming,
 } from "react-native-reanimated";
-import { deleteNote, getNotes } from "../api/notes.api";
+import { deleteNote } from "../api/notes.api";
 import { getCategories } from "../categories/api/categories.api";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import {
@@ -45,7 +45,6 @@ import DeleteConfirmDialog from "../components/editor/delete-confirm-dialog";
 import NoteContextMenu from "../components/viewer/NoteContextMenu";
 import {
     getLocalNotes,
-    reconcileServerNotes,
     recoverInterruptedNoteSyncs,
     removeLocalNote,
 } from "../data/note-local.repository";
@@ -62,6 +61,7 @@ import {
     queueNoteUploadNow,
     saveEditedNoteLocalFirst,
 } from "../services/note-save.service";
+import { syncNotes } from "../services/note-sync-coordinator";
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
 
@@ -124,14 +124,24 @@ export default function NotesScreen() {
 
     useEffect(() => {
         const mountedAt = Date.now();
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "notes", stage: "mounted", timestamp: mountedAt,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "notes",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
         return () => {
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "notes", stage: "unmounted", timestamp: Date.now(),
-                elapsedMs: Date.now() - mountedAt,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "notes",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
         };
     }, []);
 
@@ -178,9 +188,16 @@ export default function NotesScreen() {
         const startedAt = Date.now();
         const trace = (stage: string, count?: number) => {
             const timestamp = Date.now();
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "notes", stage, timestamp, elapsedMs: timestamp - startedAt, count,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "notes",
+                    stage,
+                    timestamp,
+                    elapsedMs: timestamp - startedAt,
+                    count,
+                }),
+            );
         };
         let request: Promise<{ addedCount: number } | undefined> | undefined;
         request = (async () => {
@@ -212,21 +229,9 @@ export default function NotesScreen() {
 
             try {
                 trace("cloud_fetch_started");
-                const serverNotes = withLocalOrder(await getNotes());
-                trace("cloud_fetch_completed", serverNotes.length);
-                let addedCount = 0;
-                trace("reconcile_started", serverNotes.length);
-                const reconciledNotes = withLocalOrder(
-                    await reconcileServerNotes(
-                        database,
-                        ownerUserId,
-                        serverNotes,
-                        (stats) => {
-                            addedCount = stats.addedCount;
-                        },
-                    ),
-                );
-                trace("reconcile_completed", reconciledNotes.length);
+                const result = await syncNotes(database, ownerUserId);
+                const addedCount = result.addedCount;
+                const reconciledNotes = withLocalOrder(result.notes);
                 if (notesRequestOwnerIdRef.current !== ownerUserId) {
                     trace("cloud_apply_skipped_owner_changed");
                     return;
@@ -314,7 +319,11 @@ export default function NotesScreen() {
     // 本地事务提交后直接增量覆盖列表，禁止再用整表请求覆盖刚保存的内容。
     useEffect(() => {
         const unsub = onNotesChanged((event) => {
-            if (!user) return;
+            if (
+                !user ||
+                (event.ownerUserId != null && event.ownerUserId !== user.id)
+            )
+                return;
 
             if (event.type === "upsert" && event.note) {
                 const changedNote = event.note;
@@ -623,10 +632,15 @@ export default function NotesScreen() {
     }, [contentView, currentCategory, notes]);
 
     useEffect(() => {
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "notes", stage: "list_data_committed", timestamp: Date.now(),
-            count: filteredNotes.length,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "notes",
+                stage: "list_data_committed",
+                timestamp: Date.now(),
+                count: filteredNotes.length,
+            }),
+        );
     }, [filteredNotes]);
 
     const keyExtractor = useCallback((item: Note) => String(item.id), []);

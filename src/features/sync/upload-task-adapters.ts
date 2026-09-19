@@ -1,17 +1,24 @@
 import type { ApplicationDatabase } from "@/core/database";
 import type { UploadQueueTask } from "@/core/sync";
-import { deleteNoteDraft, type DraftCommit } from "@/features/notes/data/note-draft.repository";
-import { uploadNoteNow, type NoteSaveResult } from "@/features/notes/services/note-save.service";
-import { getLocalNoteByClientId } from "@/features/notes/data/note-local.repository";
+import { deleteNote } from "@/features/notes/api/notes.api";
 import {
     createCategory,
     deleteCategory,
     updateCategory,
 } from "@/features/notes/categories/api/categories.api";
-import { isAxiosError } from "axios";
-import { deleteNote, getNotes } from "@/features/notes/api/notes.api";
 import { notifyCategoriesChanged } from "@/features/notes/categories/categories.events";
 import type { UpdateCategoryPayload } from "@/features/notes/categories/categories.types";
+import {
+    deleteNoteDraft,
+    type DraftCommit,
+} from "@/features/notes/data/note-draft.repository";
+import { getLocalNoteByClientId } from "@/features/notes/data/note-local.repository";
+import { readCloudMirror } from "@/features/notes/data/note-sync.repository";
+import {
+    uploadNoteNow,
+    type NoteSaveResult,
+} from "@/features/notes/services/note-save.service";
+import { isAxiosError } from "axios";
 
 export type UploadTaskExecution = {
     state: "accepted" | "retry" | "blocked";
@@ -24,7 +31,10 @@ export type UploadTaskAdapter = (
     task: UploadQueueTask,
 ) => Promise<UploadTaskExecution>;
 
-const registeredAdapters = new Map<UploadQueueTask["kind"], UploadTaskAdapter>();
+const registeredAdapters = new Map<
+    UploadQueueTask["kind"],
+    UploadTaskAdapter
+>();
 
 /** Future services such as settings sync register their executor once at startup. */
 export function registerUploadTaskAdapter(
@@ -33,7 +43,8 @@ export function registerUploadTaskAdapter(
 ) {
     registeredAdapters.set(kind, adapter);
     return () => {
-        if (registeredAdapters.get(kind) === adapter) registeredAdapters.delete(kind);
+        if (registeredAdapters.get(kind) === adapter)
+            registeredAdapters.delete(kind);
     };
 }
 
@@ -61,7 +72,12 @@ const classifyFailure = (
     const retryable =
         status == null || status === 408 || status === 429 || status >= 500;
     return {
-        state: unsafeCreate && status == null ? "blocked" : retryable ? "retry" : "blocked",
+        state:
+            unsafeCreate && status == null
+                ? "blocked"
+                : retryable
+                  ? "retry"
+                  : "blocked",
         message,
         transferredBytes: estimatedBytes,
     };
@@ -88,13 +104,23 @@ async function executeNoteTask(
         };
     }
     let transferredBytes = 0;
-    const result: NoteSaveResult = localNote.sync_status === "synced"
-        ? { note: localNote, cloudState: "accepted" }
-        : await uploadNoteNow(database, task.ownerUserId, clientId, (event) => {
-        transferredBytes = Math.max(transferredBytes, event.loaded);
-    });
+    const result: NoteSaveResult =
+        localNote.sync_status === "synced"
+            ? { note: localNote, cloudState: "accepted" }
+            : await uploadNoteNow(
+                  database,
+                  task.ownerUserId,
+                  clientId,
+                  (event) => {
+                      transferredBytes = Math.max(
+                          transferredBytes,
+                          event.loaded,
+                      );
+                  },
+              );
     if (result.cloudState !== "accepted") {
-        const unknownCreate = result.note.server_id == null && result.cloudState === "unknown";
+        const unknownCreate =
+            result.note.server_id == null && result.cloudState === "unknown";
         return {
             state: unknownCreate || !result.retryable ? "blocked" : "retry",
             message: result.message ?? "云端同步未完成",
@@ -115,10 +141,17 @@ async function executeNoteTask(
                     key: draft.key,
                     sessionId: draft.sessionId,
                     sequence: draft.sequence,
-                    beforeDelete: draft.removeExplicitFile === true ? async () => {
-                        const { removeExplicitDraft } = await import("@/features/notes/data/new-note-draft.repository");
-                        await removeExplicitDraft(task.ownerUserId, draft.key!);
-                    } : undefined,
+                    beforeDelete:
+                        draft.removeExplicitFile === true
+                            ? async () => {
+                                  const { removeExplicitDraft } =
+                                      await import("@/features/notes/data/new-note-draft.repository");
+                                  await removeExplicitDraft(
+                                      task.ownerUserId,
+                                      draft.key!,
+                                  );
+                              }
+                            : undefined,
                 });
             } catch {
                 console.info("[Upload queue] 笔记已同步，草稿由新会话接管", {
@@ -133,32 +166,56 @@ async function executeNoteTask(
     };
 }
 
-async function executeCategoryTask(task: UploadQueueTask): Promise<UploadTaskExecution> {
+async function executeCategoryTask(
+    database: ApplicationDatabase,
+    task: UploadQueueTask,
+): Promise<UploadTaskExecution> {
     try {
         if (task.kind === "category-create") {
             await createCategory({
                 name: stringValue(task.payload.name, "name"),
-                ...(typeof task.payload.icon === "string" ? { icon: task.payload.icon } : {}),
+                ...(typeof task.payload.icon === "string"
+                    ? { icon: task.payload.icon }
+                    : {}),
             });
         } else if (task.kind === "category-update") {
-            const categoryId = numberValue(task.payload.categoryId, "categoryId");
+            const categoryId = numberValue(
+                task.payload.categoryId,
+                "categoryId",
+            );
             const changes = task.payload.changes;
             if (!changes || typeof changes !== "object") {
                 throw new Error("[Upload queue] 分类更新内容无效");
             }
             await updateCategory(categoryId, changes as UpdateCategoryPayload);
         } else if (task.kind === "category-delete") {
-            const categoryId = numberValue(task.payload.categoryId, "categoryId");
-            const notes = (await getNotes()).filter((note) => note.category_id === categoryId);
+            const categoryId = numberValue(
+                task.payload.categoryId,
+                "categoryId",
+            );
+            const { syncNotes } =
+                await import("@/features/notes/services/note-sync-coordinator");
+            await syncNotes(database, task.ownerUserId);
+            const notes = (
+                await readCloudMirror(database, task.ownerUserId)
+            ).filter((note) => note.category_id === categoryId);
             for (let index = 0; index < notes.length; index += 3) {
-                await Promise.all(notes.slice(index, index + 3).map((note) => deleteNote(note.id)));
+                await Promise.all(
+                    notes
+                        .slice(index, index + 3)
+                        .map((note) => deleteNote(note.id)),
+                );
             }
             await deleteCategory(categoryId);
         }
         notifyCategoriesChanged();
         return { state: "accepted", transferredBytes: task.estimatedBytes };
     } catch (error) {
-        return classifyFailure(error, task.estimatedBytes, task.kind === "category-create");
+        return classifyFailure(
+            error,
+            task.estimatedBytes,
+            task.kind === "category-create",
+        );
     }
 }
 
@@ -169,7 +226,8 @@ export async function executeUploadTask(
     const registered = registeredAdapters.get(task.kind);
     if (registered) return registered(database, task);
     if (task.kind === "note-sync") return executeNoteTask(database, task);
-    if (task.kind.startsWith("category-")) return executeCategoryTask(task);
+    if (task.kind.startsWith("category-"))
+        return executeCategoryTask(database, task);
     return {
         state: "blocked" as const,
         message: `尚未注册 ${task.kind} 上传服务`,

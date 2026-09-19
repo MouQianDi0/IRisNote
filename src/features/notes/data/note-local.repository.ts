@@ -2,6 +2,7 @@ import type {
     ApplicationDatabase,
     ApplicationDatabaseTransaction,
 } from "@/core/database";
+import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import type {
     CreateNotePayload,
     Note,
@@ -9,8 +10,11 @@ import type {
     NoteSyncStatus,
     UpdateNotePayload,
 } from "../notes.types";
-import { assertDraftCommit, linkCommittedDraft, type DraftCommit } from "./note-draft.repository";
-import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
+import {
+    assertDraftCommit,
+    linkCommittedDraft,
+    type DraftCommit,
+} from "./note-draft.repository";
 import {
     deleteNoteRevisions,
     getCurrentNoteRevision,
@@ -77,7 +81,10 @@ const toNote = (row: LocalNoteRow): Note => ({
     sync_operation: row.sync_operation,
     last_sync_error: row.last_sync_error,
     local_updated_at: row.local_updated_at,
-    updated_at: row.sync_status === "synced" ? row.server_updated_at : row.local_updated_at,
+    updated_at:
+        row.sync_status === "synced"
+            ? row.server_updated_at
+            : row.local_updated_at,
     server_updated_at: row.server_updated_at,
     current_revision_id: row.current_revision_id,
 });
@@ -85,7 +92,9 @@ const toNote = (row: LocalNoteRow): Note => ({
 /** 同设备连续编辑至少递增 1ms，设备时钟回拨也不能使下一次编辑变旧。 */
 function nextEditTime(previous?: string | null) {
     const timestamp = previous ? Date.parse(previous) : NaN;
-    return new Date(Math.max(Date.now(), Number.isFinite(timestamp) ? timestamp + 1 : 0)).toISOString();
+    return new Date(
+        Math.max(Date.now(), Number.isFinite(timestamp) ? timestamp + 1 : 0),
+    ).toISOString();
 }
 
 async function readNoteByClientId(
@@ -249,7 +258,12 @@ export async function updatePendingLocalNote(
             ownerUserId,
             note.id,
         );
-        await assertDraftCommit(transaction, ownerUserId, draft, existing ?? note);
+        await assertDraftCommit(
+            transaction,
+            ownerUserId,
+            draft,
+            existing ?? note,
+        );
         const serverId =
             existing?.server_id ??
             note.server_id ??
@@ -264,16 +278,18 @@ export async function updatePendingLocalNote(
             ...payload,
             server_id: serverId,
             user_id: ownerUserId,
-            content: payload.content === undefined ? base.content : payload.content,
+            content:
+                payload.content === undefined ? base.content : payload.content,
             category_id:
                 payload.category_id === undefined
                     ? base.category_id
                     : payload.category_id,
         };
-        const textChanged = nextNote.title !== base.title || nextNote.content !== base.content;
+        const textChanged =
+            nextNote.title !== base.title || nextNote.content !== base.content;
         const editTime = textChanged
             ? nextEditTime(base.updated_at ?? base.local_updated_at)
-            : base.local_updated_at ?? base.updated_at ?? base.created_at;
+            : (base.local_updated_at ?? base.updated_at ?? base.created_at);
 
         // 无变化不建版本；但 pending 状态照写，上传重试仍会执行。
         const currentRevision = await getCurrentNoteRevision(
@@ -350,7 +366,8 @@ export async function updatePendingLocalNote(
                 pinned_order = excluded.pinned_order,
                 sync_status = 'pending',
                 sync_operation = excluded.sync_operation,
-                last_sync_error = NULL,
+                last_sync_error = CASE WHEN local_notes.last_sync_error LIKE '云端笔记已删除%'
+                    THEN local_notes.last_sync_error ELSE NULL END,
                 local_updated_at = excluded.local_updated_at,
                 current_revision_id = COALESCE(
                     excluded.current_revision_id,
@@ -497,117 +514,151 @@ export async function acceptServerNote(
     return getLocalNoteByClientId(database, ownerUserId, clientId);
 }
 
-export async function reconcileServerNotes(
-    database: ApplicationDatabase,
+/** Apply inside the caller transaction; mirror mode never infers deletions from a partial set. */
+export async function reconcileNotesInTransaction(
+    transaction: ApplicationDatabaseTransaction,
     ownerUserId: number,
     serverNotes: Note[],
-    onReconciled?: (stats: { addedCount: number }) => void,
+    uploadIds: Set<number> = new Set(),
     guard?: { clientId: number; revisionId: string | null },
+    mirror = false,
 ) {
-    const uploadIds = new Set<number>();
-    const addedCount = await database.transaction(async (transaction) => {
-        let added = 0;
-        const serverIds = new Set<number>();
+    let added = 0;
+    const serverIds = new Set<number>();
 
-        for (const [index, note] of serverNotes.entries()) {
-            const serverId = note.server_id ?? note.id;
-            serverIds.add(serverId);
-            const existing = await transaction.getFirst<LocalNoteRow>(
-                `SELECT ${LOCAL_NOTE_COLUMNS}
+    for (const [index, note] of serverNotes.entries()) {
+        const serverId = note.server_id ?? note.id;
+        serverIds.add(serverId);
+        const existing = await transaction.getFirst<LocalNoteRow>(
+            `SELECT ${LOCAL_NOTE_COLUMNS}
                  FROM local_notes
                  WHERE owner_user_id = $ownerUserId AND server_id = $serverId`,
-                { $ownerUserId: ownerUserId, $serverId: serverId },
-            );
+            { $ownerUserId: ownerUserId, $serverId: serverId },
+        );
 
-            // 冲突响应只允许合并它对应的版本，且不能执行整表删除对账。
-            if (guard && (!existing || existing.client_id !== guard.clientId ||
-                existing.current_revision_id !== guard.revisionId)) continue;
+        // 冲突响应只允许合并它对应的版本，且不能执行整表删除对账。
+        if (
+            guard &&
+            (!existing ||
+                existing.client_id !== guard.clientId ||
+                existing.current_revision_id !== guard.revisionId)
+        )
+            continue;
 
-            if (existing) {
-                if (!guard && existing.sync_status === "syncing") continue;
-                const incomingTime = note.updated_at == null ? null : Date.parse(note.updated_at);
-                // 历史已同步行的 local_updated_at 曾被同步刷新，不能拿它冒充编辑时间。
-                const localTime = existing.sync_status === "synced" && existing.server_updated_at == null
-                    ? null : Date.parse(existing.local_updated_at);
-                const textDiffers = note.title !== existing.title ||
-                    (note.content ?? null) !== (existing.content ?? null);
-                if (localTime !== null && incomingTime !== null && incomingTime < localTime) {
-                    if (textDiffers && existing.sync_status === "synced") {
-                        await transaction.run(
-                            "UPDATE local_notes SET sync_status = 'pending', sync_operation = 'update' WHERE local_id = ?",
-                            [existing.local_id],
-                        );
-                        uploadIds.add(existing.client_id);
-                    }
-                    continue;
-                }
-                if (localTime !== null && incomingTime !== null && incomingTime === localTime && textDiffers) {
+        if (existing) {
+            if (mirror && existing.sync_status !== "synced") continue;
+            if (!guard && existing.sync_status === "syncing") continue;
+            const incomingTime =
+                note.updated_at == null ? null : Date.parse(note.updated_at);
+            // 历史已同步行的 local_updated_at 曾被同步刷新，不能拿它冒充编辑时间。
+            const localTime =
+                existing.sync_status === "synced" &&
+                existing.server_updated_at == null
+                    ? null
+                    : Date.parse(existing.local_updated_at);
+            const textDiffers =
+                note.title !== existing.title ||
+                (note.content ?? null) !== (existing.content ?? null);
+            if (
+                !mirror &&
+                localTime !== null &&
+                incomingTime !== null &&
+                incomingTime < localTime
+            ) {
+                if (textDiffers && existing.sync_status === "synced") {
                     await transaction.run(
-                        "UPDATE local_notes SET sync_status = 'rejected', sync_operation = 'update', last_sync_error = ? WHERE local_id = ?",
-                        ["修改时间相同但内容不同，已保留本地内容，请核对后修改并保存。", existing.local_id],
+                        "UPDATE local_notes SET sync_status = 'pending', sync_operation = 'update' WHERE local_id = ?",
+                        [existing.local_id],
                     );
-                    continue;
+                    uploadIds.add(existing.client_id);
                 }
-                if (existing.sync_status !== "synced" &&
-                    (incomingTime === null || localTime === null || incomingTime <= localTime)) continue;
-                // 服务器缺少时间时不能覆盖已知时间的内容；旧服务端仅兼容未建立时间基线的已同步行。
-                if (incomingTime === null && existing.server_updated_at !== null) continue;
+                continue;
             }
-
-            if (existing) {
-                // 服务器内容与当前版本不同才追加 server-reconcile 版本，维持
-                // “local_notes 内容 ≡ 当前版本内容”的不变量。
-                const currentRevision = await getCurrentNoteRevision(
-                    transaction,
-                    ownerUserId,
-                    existing.client_id,
-                );
-                const contentChanged =
-                    !currentRevision ||
-                    !revisionContentEquals(
-                        {
-                            title: note.title,
-                            content: note.content,
-                            categoryId: note.category_id ?? null,
-                        },
-                        currentRevision,
-                    );
-                // 服务端未提供排序字段时保留本地值；完全无变化的行整行跳过，
-                // 避免把 local_updated_at（未同步笔记的排序兜底键）从“本地
-                // 最后编辑时间”刷成“上次同步时间”，防止列表顺序漂移。
-                const nextLocalOrder = note.local_order ?? existing.local_order;
-                const nextPinnedOrder =
-                    note.pinned_order ?? existing.pinned_order;
-                const rowChanged =
-                    (note.updated_at ?? null) !== existing.server_updated_at ||
-                    existing.sync_status !== "synced" ||
-                    note.title !== existing.title ||
-                    (note.content ?? null) !== (existing.content ?? null) ||
-                    (note.category_id ?? null) !== existing.category_id ||
-                    note.created_at !== existing.created_at ||
-                    Boolean(note.is_pinned) !== Boolean(existing.is_pinned) ||
-                    Boolean(note.is_starred) !== Boolean(existing.is_starred) ||
-                    nextLocalOrder !== existing.local_order ||
-                    nextPinnedOrder !== existing.pinned_order;
-                if (!rowChanged && !contentChanged) {
-                    continue;
-                }
-                const revisionId = contentChanged
-                    ? await insertNoteRevision(
-                          transaction,
-                          ownerUserId,
-                          existing.client_id,
-                          {
-                              parentId: currentRevision?.revision_id ?? null,
-                              title: note.title,
-                              content: note.content,
-                              categoryId: note.category_id ?? null,
-                              origin: "server-reconcile",
-                          },
-                      )
-                    : null;
+            if (
+                !mirror &&
+                localTime !== null &&
+                incomingTime !== null &&
+                incomingTime === localTime &&
+                textDiffers
+            ) {
                 await transaction.run(
-                    `UPDATE local_notes
+                    "UPDATE local_notes SET sync_status = 'rejected', sync_operation = 'update', last_sync_error = ? WHERE local_id = ?",
+                    [
+                        "修改时间相同但内容不同，已保留本地内容，请核对后修改并保存。",
+                        existing.local_id,
+                    ],
+                );
+                continue;
+            }
+            if (
+                existing.sync_status !== "synced" &&
+                (incomingTime === null ||
+                    localTime === null ||
+                    incomingTime <= localTime)
+            )
+                continue;
+            // 服务器缺少时间时不能覆盖已知时间的内容；旧服务端仅兼容未建立时间基线的已同步行。
+            if (
+                !mirror &&
+                incomingTime === null &&
+                existing.server_updated_at !== null
+            )
+                continue;
+        }
+
+        if (existing) {
+            // 服务器内容与当前版本不同才追加 server-reconcile 版本，维持
+            // “local_notes 内容 ≡ 当前版本内容”的不变量。
+            const currentRevision = await getCurrentNoteRevision(
+                transaction,
+                ownerUserId,
+                existing.client_id,
+            );
+            const contentChanged =
+                !currentRevision ||
+                !revisionContentEquals(
+                    {
+                        title: note.title,
+                        content: note.content,
+                        categoryId: note.category_id ?? null,
+                    },
+                    currentRevision,
+                );
+            // 服务端未提供排序字段时保留本地值；完全无变化的行整行跳过，
+            // 避免把 local_updated_at（未同步笔记的排序兜底键）从“本地
+            // 最后编辑时间”刷成“上次同步时间”，防止列表顺序漂移。
+            const nextLocalOrder = note.local_order ?? existing.local_order;
+            const nextPinnedOrder = note.pinned_order ?? existing.pinned_order;
+            const rowChanged =
+                (note.updated_at ?? null) !== existing.server_updated_at ||
+                existing.sync_status !== "synced" ||
+                note.title !== existing.title ||
+                (note.content ?? null) !== (existing.content ?? null) ||
+                (note.category_id ?? null) !== existing.category_id ||
+                note.created_at !== existing.created_at ||
+                Boolean(note.is_pinned) !== Boolean(existing.is_pinned) ||
+                Boolean(note.is_starred) !== Boolean(existing.is_starred) ||
+                nextLocalOrder !== existing.local_order ||
+                nextPinnedOrder !== existing.pinned_order;
+            if (!rowChanged && !contentChanged) {
+                continue;
+            }
+            const revisionId = contentChanged
+                ? await insertNoteRevision(
+                      transaction,
+                      ownerUserId,
+                      existing.client_id,
+                      {
+                          parentId: currentRevision?.revision_id ?? null,
+                          title: note.title,
+                          content: note.content,
+                          categoryId: note.category_id ?? null,
+                          origin: "server-reconcile",
+                      },
+                  )
+                : null;
+            await transaction.run(
+                `UPDATE local_notes
                      SET title = $title,
                          content = $content,
                          category_id = $categoryId,
@@ -626,38 +677,39 @@ export async function reconcileServerNotes(
                          sync_operation = NULL,
                          last_sync_error = NULL
                      WHERE local_id = $localId`,
-                    {
-                        $title: note.title,
-                        $content: note.content,
-                        $categoryId: note.category_id,
-                        $createdAt: note.created_at,
-                        $isPinned: note.is_pinned ? 1 : 0,
-                        $isStarred: note.is_starred ? 1 : 0,
-                        $localOrder: nextLocalOrder,
-                        $pinnedOrder: nextPinnedOrder,
-                        $revisionId: revisionId,
-                        $localUpdatedAt: note.updated_at ?? existing.local_updated_at,
-                        $serverUpdatedAt: note.updated_at ?? null,
-                        $localId: existing.local_id,
-                    },
-                );
-                continue;
-            }
-
-            const insertedRevisionId = await insertNoteRevision(
-                transaction,
-                ownerUserId,
-                serverId,
                 {
-                    parentId: null,
-                    title: note.title,
-                    content: note.content,
-                    categoryId: note.category_id ?? null,
-                    origin: "server-reconcile",
+                    $title: note.title,
+                    $content: note.content,
+                    $categoryId: note.category_id,
+                    $createdAt: note.created_at,
+                    $isPinned: note.is_pinned ? 1 : 0,
+                    $isStarred: note.is_starred ? 1 : 0,
+                    $localOrder: nextLocalOrder,
+                    $pinnedOrder: nextPinnedOrder,
+                    $revisionId: revisionId,
+                    $localUpdatedAt:
+                        note.updated_at ?? existing.local_updated_at,
+                    $serverUpdatedAt: note.updated_at ?? null,
+                    $localId: existing.local_id,
                 },
             );
-            await transaction.run(
-                `INSERT INTO local_notes (
+            continue;
+        }
+
+        const insertedRevisionId = await insertNoteRevision(
+            transaction,
+            ownerUserId,
+            serverId,
+            {
+                parentId: null,
+                title: note.title,
+                content: note.content,
+                categoryId: note.category_id ?? null,
+                origin: "server-reconcile",
+            },
+        );
+        await transaction.run(
+            `INSERT INTO local_notes (
                     owner_user_id,
                     client_id,
                     server_id,
@@ -692,45 +744,63 @@ export async function reconcileServerNotes(
                     $serverUpdatedAt,
                     $revisionId
                  )`,
-                {
-                    $ownerUserId: ownerUserId,
-                    $clientId: serverId,
-                    $serverId: serverId,
-                    $title: note.title,
-                    $content: note.content,
-                    $categoryId: note.category_id,
-                    $createdAt: note.created_at,
-                    $isPinned: note.is_pinned ? 1 : 0,
-                    $isStarred: note.is_starred ? 1 : 0,
-                    $localOrder: note.local_order ?? index,
-                    $pinnedOrder: note.pinned_order ?? null,
-                    $localUpdatedAt: note.updated_at ?? note.created_at,
-                    $serverUpdatedAt: note.updated_at ?? null,
-                    $revisionId: insertedRevisionId,
-                },
-            );
-            added++;
-        }
+            {
+                $ownerUserId: ownerUserId,
+                $clientId: serverId,
+                $serverId: serverId,
+                $title: note.title,
+                $content: note.content,
+                $categoryId: note.category_id,
+                $createdAt: note.created_at,
+                $isPinned: note.is_pinned ? 1 : 0,
+                $isStarred: note.is_starred ? 1 : 0,
+                $localOrder: note.local_order ?? index,
+                $pinnedOrder: note.pinned_order ?? null,
+                $localUpdatedAt: note.updated_at ?? note.created_at,
+                $serverUpdatedAt: note.updated_at ?? null,
+                $revisionId: insertedRevisionId,
+            },
+        );
+        added++;
+    }
 
-        const syncedRows = await transaction.getAll<LocalNoteRow>(
-            `SELECT ${LOCAL_NOTE_COLUMNS}
+    const syncedRows = await transaction.getAll<LocalNoteRow>(
+        `SELECT ${LOCAL_NOTE_COLUMNS}
              FROM local_notes
              WHERE owner_user_id = $ownerUserId AND sync_status = 'synced'`,
-            { $ownerUserId: ownerUserId },
-        );
-        for (const row of syncedRows) {
-            if (guard) break;
-            if (row.server_id != null && !serverIds.has(row.server_id)) {
-                // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
-                await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
-                await transaction.run(
-                    "DELETE FROM local_notes WHERE local_id = $localId",
-                    { $localId: row.local_id },
-                );
-            }
+        { $ownerUserId: ownerUserId },
+    );
+    for (const row of syncedRows) {
+        if (guard || mirror) break;
+        if (row.server_id != null && !serverIds.has(row.server_id)) {
+            // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
+            await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
+            await transaction.run(
+                "DELETE FROM local_notes WHERE local_id = $localId",
+                { $localId: row.local_id },
+            );
         }
-        return added;
-    });
+    }
+    return added;
+}
+
+export async function reconcileServerNotes(
+    database: ApplicationDatabase,
+    ownerUserId: number,
+    serverNotes: Note[],
+    onReconciled?: (stats: { addedCount: number }) => void,
+    guard?: { clientId: number; revisionId: string | null },
+) {
+    const uploadIds = new Set<number>();
+    const addedCount = await database.transaction((transaction) =>
+        reconcileNotesInTransaction(
+            transaction,
+            ownerUserId,
+            serverNotes,
+            uploadIds,
+            guard,
+        ),
+    );
 
     const notes = await getLocalNotes(database, ownerUserId);
     for (const note of notes) {
@@ -766,13 +836,18 @@ export async function restoreLocalNoteToRevision(
             throw new Error("[Note revision] 该版本已是当前内容");
         }
 
-        const nextRevisionId = await insertNoteRevision(tx, ownerUserId, clientId, {
-            parentId: current?.revision_id ?? null,
-            title: revision.title,
-            content: revision.content,
-            categoryId: revision.category_id,
-            origin: "restore",
-        });
+        const nextRevisionId = await insertNoteRevision(
+            tx,
+            ownerUserId,
+            clientId,
+            {
+                parentId: current?.revision_id ?? null,
+                title: revision.title,
+                content: revision.content,
+                categoryId: revision.category_id,
+                origin: "restore",
+            },
+        );
         const operation: NoteSyncOperation =
             existing.sync_operation === "create" || existing.server_id == null
                 ? "create"
@@ -794,9 +869,13 @@ export async function restoreLocalNoteToRevision(
                 $categoryId: revision.category_id,
                 $revisionId: nextRevisionId,
                 $syncOperation: operation,
-                $localUpdatedAt: revision.title !== existing.title || revision.content !== existing.content
-                    ? nextEditTime(existing.updated_at ?? existing.local_updated_at)
-                    : existing.local_updated_at ?? existing.created_at,
+                $localUpdatedAt:
+                    revision.title !== existing.title ||
+                    revision.content !== existing.content
+                        ? nextEditTime(
+                              existing.updated_at ?? existing.local_updated_at,
+                          )
+                        : (existing.local_updated_at ?? existing.created_at),
                 $ownerUserId: ownerUserId,
                 $clientId: clientId,
             },
@@ -811,8 +890,7 @@ export async function restoreLocalNoteToRevision(
 }
 
 export type NoteQueueRollbackAvailability =
-    | { allowed: true }
-    | { allowed: false; reason: string };
+    { allowed: true } | { allowed: false; reason: string };
 
 /** 删除暂存任务前的只读检查；版本指针不匹配时禁止覆盖更新后的内容。 */
 export async function getNoteQueueRollbackAvailability(
@@ -898,11 +976,7 @@ export async function rollbackQueuedLocalNoteToPreviousRevision(
           ? "synced"
           : "pending";
     const syncOperation: NoteSyncOperation | null =
-        syncStatus === "synced"
-            ? null
-            : hasServerCopy
-              ? "update"
-              : "create";
+        syncStatus === "synced" ? null : hasServerCopy ? "update" : "create";
     const lastSyncError = uploadAttempted
         ? "已取消自动上传；云端接收状态未知，请在笔记页核对后同步。"
         : hasServerCopy
@@ -928,19 +1002,19 @@ export async function rollbackQueuedLocalNoteToPreviousRevision(
             $syncStatus: syncStatus,
             $syncOperation: syncOperation,
             $lastSyncError: lastSyncError,
-            $localUpdatedAt: previous.title !== existing.title || previous.content !== existing.content
-                ? nextEditTime(existing.updated_at ?? existing.local_updated_at)
-                : existing.local_updated_at ?? existing.created_at,
+            $localUpdatedAt:
+                previous.title !== existing.title ||
+                previous.content !== existing.content
+                    ? nextEditTime(
+                          existing.updated_at ?? existing.local_updated_at,
+                      )
+                    : (existing.local_updated_at ?? existing.created_at),
             $ownerUserId: ownerUserId,
             $clientId: clientId,
         },
     );
 
-    const note = await readNoteByClientId(
-        transaction,
-        ownerUserId,
-        clientId,
-    );
+    const note = await readNoteByClientId(transaction, ownerUserId, clientId);
     if (!note) throw new Error("[Note rollback] 回滚后无法重新读取笔记");
     return note;
 }
