@@ -1,3 +1,26 @@
+## 2026-09-20 08:31:35 | 修复问题：整周分组列表滚动时序、跨午夜跟随与重试生命周期
+
+- 依据用户提交的外部代码审查意见（P0×2、P1×2、P2×2）修复，已获用户确认修复范围（P0+P1+P2 全部）。仅审查方未改文件，本次修复均落在上一条新增的整周分组功能改动内。
+- 跨周选日滚动时序（P0-1）：src/features/todos/screens/TodosScreen.tsx。原实现跨周选日时在旧 `sections` 里定位必然失败，选日只切周不滚动。改为 `deferredScrollDateId` 挂起意图 + `useLayoutEffect([weekId, sections])` 统一消费：目标不在当前渲染则挂起，新数据渲染后滚动；有挂起目标优先滚目标，无目标换周后回顶部（原 `scrollToTop` 移入该 effect）；目标所在周与当前周不符（用户又导航离开）时丢弃陈旧意图。effect 无 setState，仅 ref 与滚动命令，时钟 tick 重建 `sections` 只空跑短路判断。
+- 跨午夜跟随（P0-2）：`onWeekChange` 写入 `browsedWeekId` 时归一为 `next === derivedWeekId ? null : next`——点"返回今天"或浏览回派生周即清除覆盖、恢复跨午夜跟随今天所在周；停留其它周时覆盖保留。逻辑层设计 §6.3 同步为现状语义，审查问题 10（文档写意图非现状）一并消除。
+- 滚动重试生命周期（P1-3）：重试状态收敛为 `{ dateId, attempts, issuedAt, timer }`——2 秒窗口内最多重试 3 次、重试期间不叠加定时器、卸载时 `clearTimeout`；每次主动发起滚动重置状态，避免陈旧目标被无关失败触发。已知不对称：换周回顶部仍不加重试（首屏失败概率极低）。
+- 分组头可见性与无障碍（P2）：`scrollToLocation` 增加 `viewOffset` 补偿（分组头显式 `lineHeight: 18`，常量推算首组 26dp、非首组 42dp），定位后"M月D日"分组头不再被顶出可视区；分组头增加 `accessibilityRole="header"`。
+- 测试：tests/todos/todos.test.cjs 新增"整周查询组内排序与单日一致，筛选、空周与非周一 weekId 行为确定"用例，覆盖组内置顶/时刻/优先级三种排序、`filter: "pending"` + 整周、关键词无结果、非周一 `weekId` 的 7 天窗口语义与空周返回 `[]`。初版断言误算 09-21（下周一）在周一周边界内，已按实际周边界语义修正。
+- 验证：修改后 `node --test "tests/todos/*.test.cjs"` 35/35 通过；`npm run check` 结果见本条目验证说明（类型、Lint、主题检查及全量测试）。
+- 限制：未运行应用或真机交互验收；挂起滚动在"目标日被筛选条件排除且停留当前周"期间保持等待，行为可预期但属新边界。
+
+---
+
+## 2026-09-20 07:57:34 | 新增功能：待办列表按周条可见周整周分组展示
+
+- 已获用户确认实施方案及保持整体布局的文字预览（空白天选择"只显示有待办的天"）。列表从"选中单日"改为跟随右侧周条可见周：周一至周日整周范围内的待办按所属日期分节展示，每天显示"M月D日 周X"分组头（13sp；今天组追加主题蓝"今天"标记，分组头右侧接 1dp `divider` 通栏分隔线；非首节分组头上间距 16dp，头部下缘距首卡 8dp，节内卡片间距 12dp 不变），当天无待办的日期不显示分节；整周无结果显示"本周暂无待办"（搜索无结果仍为"无匹配待办"）。
+- 类型与查询层：src/features/todos/todos.types.ts、src/features/todos/domain/todo-query.ts。按逻辑层设计"引入日期范围需新增明确查询类型"的约定新增 `TodoWeekQuery` 与 `queryTodosByWeek`（weekId 起覆盖 7 天，日期升序在前，节内沿用置顶/时刻/优先级统一排序）；原 `queryTodos` 单日查询保留不动，筛选与排序逻辑抽取为共用内部函数，语义不变。
+- 组件与页面：src/features/todos/components/TodoCalendarRail.tsx、src/features/todos/screens/TodosScreen.tsx。日期轨道新增受控 `weekId`/`onWeekChange`（不传时保持内部自持，行为不变），可见周状态上提到页面；页面换用 SectionList 按天分节渲染，点选轨道某天滚动到对应分节（`scrollToLocation` + `onScrollToIndexFailed` 延时重试兜底），滑动换周后列表回到顶部；未主动浏览其他周时列表默认跟随今天所在周并随跨午夜更新（`browsedWeekId` 覆盖派生周，无 effect 内 setState）。点选日期仍不改变列表查询范围语义之外的业务：`selectTodoDate` 保留用于周条高亮、滚动定位与新建默认日期。
+- 测试与文档：tests/todos/todos.test.cjs、docs/待办/待办逻辑层设计.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。新增整周查询用例（周边界过滤、跨周数据不串、日期升序、关键词过滤）；逻辑层设计更新到 1.2（§2、§6.3、§9.1–9.3 同步整周查询与分节语义），界面基线更新到 1.3（§10 分组头规格、空态与滚动联动）。
+- 限制：未运行应用或真机交互验收；`scrollToLocation` 在卡片高度不定时的远距离定位依赖失败重试兜底，极端情况落点可能略偏，待真机验证。
+
+---
+
 ## 2026-09-19 16:10:44 | 新增功能：待办 SQLite 本地持久化与异步会话保护
 
 - 已获用户确认实施方案及保持原布局的文字预览；基线 840d7a4881b5820da8e9c560fec4b9dce5a94bd8。范围限本地持久化，不实现云同步、后端 API、通知、系统日历、循环或笔记关联，不新增依赖。

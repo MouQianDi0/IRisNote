@@ -38,7 +38,10 @@ const {
   todoTimeLabel,
   nextTodoRefresh,
 } = require("@/features/todos/domain/todo-state.ts");
-const { queryTodos } = require("@/features/todos/domain/todo-query.ts");
+const {
+  queryTodos,
+  queryTodosByWeek,
+} = require("@/features/todos/domain/todo-query.ts");
 const {
   emptyTodoFields,
   saveTodoForm,
@@ -371,6 +374,72 @@ test("置顶先于时间、全天末尾、倒序和优先级均具有确定次�
   assert.deepEqual(ordered("timeAsc"), [1, 2, 5, 3, 4]);
   assert.deepEqual(ordered("timeDesc"), [1, 3, 2, 5, 4]);
   assert.deepEqual(ordered("priority"), [1, 3, 5, 2, 4]);
+});
+
+test("整周查询覆盖周一至周日、日期升序且关键词可过滤", () => {
+  const repo = setup();
+  const mondayId = addDays(dateId, -4);
+  const sundayId = addDays(mondayId, 6);
+  create(repo, 1, { dateId: sundayId, body: "周例会\n完整正文" });
+  create(repo, 2, { dateId: mondayId });
+  create(repo, 3, { dateId: addDays(mondayId, -1) });
+  create(repo, 4, { dateId: addDays(dateId, 7) });
+  const weekQuery = {
+    weekId: mondayId,
+    filter: "all",
+    keyword: "",
+    sort: "timeAsc",
+  };
+  assert.deepEqual(
+    queryTodosByWeek(repo.list(owner), weekQuery, instant).map((todo) =>
+      Number(todo.clientId.slice(-12)),
+    ),
+    [2, 1],
+  );
+  assert.deepEqual(
+    queryTodosByWeek(
+      repo.list(owner),
+      { ...weekQuery, keyword: "周例会" },
+      instant,
+    ).map((todo) => Number(todo.clientId.slice(-12))),
+    [1],
+  );
+});
+
+test("整周查询组内排序与单日一致，筛选、空周与非周一 weekId 行为确定", () => {
+  const repo = setup();
+  const mondayId = addDays(dateId, -4);
+  create(repo, 1, { startTime: "09:00", priority: "low" });
+  create(repo, 2, { startTime: "10:00", priority: "high" });
+  create(repo, 3, { startTime: "11:00", isPinned: true });
+  create(repo, 4, { priority: "high" });
+  const done = create(repo, 5, { startTime: "08:00" });
+  repo.complete(owner, done, true, instant);
+  create(repo, 6, { dateId: addDays(mondayId, 7) });
+  create(repo, 7, { dateId: addDays(mondayId, 9) });
+  const weekQuery = {
+    weekId: mondayId,
+    filter: "all",
+    keyword: "",
+    sort: "timeAsc",
+  };
+  const ordered = (patch = {}) =>
+    queryTodosByWeek(repo.list(owner), { ...weekQuery, ...patch }, instant).map(
+      (todo) => Number(todo.clientId.slice(-12)),
+    );
+  assert.deepEqual(ordered(), [3, 5, 1, 2, 4]);
+  assert.deepEqual(ordered({ sort: "priority" }), [3, 2, 5, 1, 4]);
+  assert.deepEqual(ordered({ filter: "pending" }), [3, 2]);
+  assert.deepEqual(ordered({ keyword: "不存在" }), []);
+  assert.deepEqual(ordered({ weekId: addDays(mondayId, 2) }), [3, 5, 1, 2, 4, 6]);
+  assert.deepEqual(
+    queryTodosByWeek(
+      repo.list(owner),
+      { ...weekQuery, weekId: addDays(mondayId, 14) },
+      instant,
+    ),
+    [],
+  );
 });
 
 test("种子只写独立预览命名空间，覆盖动态日期与五种显示态", async () => {

@@ -47,6 +47,13 @@ export type TodoQuery = {
   keyword: string;
   sort: TodoSort;
 };
+/** 整周查询：`weekId` 为该周周一的 Date ID，范围覆盖起 7 天。 */
+export type TodoWeekQuery = {
+  weekId: string;
+  filter: TodoFilter;
+  keyword: string;
+  sort: TodoSort;
+};
 export type TodoVersionTarget = { clientId: string; localVersion: number };
 
 export class TodoError extends Error {

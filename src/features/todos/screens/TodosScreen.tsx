@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, FlatList, Text, View } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { BackHandler, SectionList, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { banner } from "@/core/notifications";
 import { semanticColors } from "@/shared/theme";
 import { Input } from "@/shared/ui";
 import DeleteConfirmDialog from "@/shared/ui/Dialog/DeleteConfirmDialog";
-import { toDateId } from "@/shared/utils/date-id";
+import { fromDateId, startOfWeekId, toDateId } from "@/shared/utils/date-id";
 import { TodoCalendarRail } from "../components/TodoCalendarRail";
 import { TodoCard } from "../components/TodoCard";
 import { TodoFilterBar } from "../components/TodoFilterBar";
@@ -13,7 +20,7 @@ import { TodoBatchToolbar } from "../components/TodoBatchToolbar";
 import { TodoFormDialog } from "../components/TodoFormDialog";
 import { useTodoScope } from "../hooks/useTodoScope";
 import { useTodoClock } from "../hooks/useTodoClock";
-import { queryTodos } from "../domain/todo-query";
+import { queryTodosByWeek } from "../domain/todo-query";
 import { assertTodoSession } from "../services/todo-service";
 import { todoRepository, selectTodoDate } from "../state/todo-store";
 import type {
@@ -22,6 +29,89 @@ import type {
   TodoSort,
   TodoVersionTarget,
 } from "../todos.types";
+
+type TodoDaySection = {
+  key: string;
+  dateId: string;
+  isFirst: boolean;
+  data: TodoEntity[];
+};
+
+const WEEKDAY_CHARACTERS = "日一二三四五六";
+
+const DAY_HEADER_LINE_HEIGHT = 18;
+const DAY_HEADER_BOTTOM_GAP = 8;
+const DAY_HEADER_TOP_MARGIN = 16;
+const SCROLL_RETRY_LIMIT = 3;
+const SCROLL_RETRY_DELAY_MS = 150;
+const SCROLL_RETRY_WINDOW_MS = 2000;
+
+/** 滚动定位的 viewOffset 补偿：把分组头留在可视区内。 */
+function dayHeaderViewOffset(isFirst: boolean): number {
+  return (
+    DAY_HEADER_LINE_HEIGHT +
+    DAY_HEADER_BOTTOM_GAP +
+    (isFirst ? 0 : DAY_HEADER_TOP_MARGIN)
+  );
+}
+
+function dayHeaderLabel(dateId: string): string {
+  const date = fromDateId(dateId);
+  return `${date.getMonth() + 1}月${date.getDate()}日 周${
+    WEEKDAY_CHARACTERS[date.getDay()]
+  }`;
+}
+
+function TodoDaySectionHeader({
+  section,
+  todayId,
+}: {
+  section: TodoDaySection;
+  todayId: string;
+}) {
+  const isToday = section.dateId === todayId;
+  return (
+    <View
+      accessibilityRole="header"
+      style={{
+        marginTop: section.isFirst ? 0 : DAY_HEADER_TOP_MARGIN,
+        marginBottom: DAY_HEADER_BOTTOM_GAP,
+      }}
+    >
+      <View style={{ alignItems: "center", flexDirection: "row", gap: 8 }}>
+        <Text
+          style={{
+            fontSize: 13,
+            lineHeight: DAY_HEADER_LINE_HEIGHT,
+            color: isToday
+              ? semanticColors.brandPrimary
+              : semanticColors.textSecondary,
+          }}
+        >
+          {dayHeaderLabel(section.dateId)}
+        </Text>
+        {isToday && (
+          <Text
+            style={{
+              fontSize: 13,
+              lineHeight: DAY_HEADER_LINE_HEIGHT,
+              color: semanticColors.brandPrimary,
+            }}
+          >
+            今天
+          </Text>
+        )}
+        <View
+          style={{
+            flex: 1,
+            height: 1,
+            backgroundColor: semanticColors.divider,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
 
 function TodoList({
   ownerKey,
@@ -49,20 +139,117 @@ function TodoList({
     null,
   );
   const today = toDateId(now);
-  const dateId = selectedDateId ?? today;
+  const derivedWeekId = startOfWeekId(selectedDateId ?? today, "monday");
+  const [browsedWeekId, setBrowsedWeekId] = useState<string | null>(null);
+  const weekId = browsedWeekId ?? derivedWeekId;
   const visible = useMemo(
-    () => queryTodos(entities, { dateId, filter, sort, keyword }, now),
-    [entities, dateId, filter, sort, keyword, now],
+    () => queryTodosByWeek(entities, { weekId, filter, sort, keyword }, now),
+    [entities, weekId, filter, sort, keyword, now],
   );
   const visibleIds = useMemo(
     () => new Set(visible.map((todo) => todo.clientId)),
     [visible],
   );
+  const sections = useMemo<TodoDaySection[]>(() => {
+    const groups = new Map<string, TodoEntity[]>();
+    for (const todo of visible) {
+      const group = groups.get(todo.dateId);
+      if (group) group.push(todo);
+      else groups.set(todo.dateId, [todo]);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([dateId, data], index) => ({
+        key: dateId,
+        dateId,
+        isFirst: index === 0,
+        data,
+      }));
+  }, [visible]);
+  const listRef = useRef<SectionList<TodoEntity, TodoDaySection>>(null);
+  const deferredScrollDateId = useRef<string | null>(null);
+  const lastAutoWeekId = useRef(weekId);
+  const scrollRetry = useRef({
+    dateId: "",
+    attempts: 0,
+    issuedAt: 0,
+    timer: null as ReturnType<typeof setTimeout> | null,
+  });
   const selected = visible.filter((todo) => selectedIds.has(todo.clientId));
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
     setBatch(false);
   }, []);
+
+  const issueScrollToDate = useCallback(
+    (targetId: string, isRetry: boolean) => {
+      const sectionIndex = sections.findIndex(
+        (section) => section.dateId === targetId,
+      );
+      const section = sections[sectionIndex];
+      if (sectionIndex < 0 || !section) return false;
+      if (!isRetry)
+        scrollRetry.current = {
+          dateId: targetId,
+          attempts: 0,
+          issuedAt: Date.now(),
+          timer: scrollRetry.current.timer,
+        };
+      listRef.current?.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        viewOffset: dayHeaderViewOffset(section.isFirst),
+        viewPosition: 0,
+        animated: true,
+      });
+      return true;
+    },
+    [sections],
+  );
+
+  // 目标分节不在当前渲染中（如跨周选日）时挂起，待新数据渲染后统一滚动：
+  // 有挂起目标优先滚目标，否则换周后回到顶部；用户导航到其它周则丢弃陈旧意图。
+  useLayoutEffect(() => {
+    if (
+      lastAutoWeekId.current === weekId &&
+      deferredScrollDateId.current === null
+    )
+      return;
+    lastAutoWeekId.current = weekId;
+    const target = deferredScrollDateId.current;
+    if (target !== null) {
+      if (startOfWeekId(target, "monday") !== weekId) {
+        deferredScrollDateId.current = null;
+        return;
+      }
+      if (issueScrollToDate(target, false)) deferredScrollDateId.current = null;
+      return;
+    }
+    const [first] = sections;
+    if (first)
+      listRef.current?.scrollToLocation({
+        sectionIndex: 0,
+        itemIndex: 0,
+        viewOffset: dayHeaderViewOffset(first.isFirst),
+        viewPosition: 0,
+        animated: false,
+      });
+  }, [weekId, sections, issueScrollToDate]);
+
+  const scrollToDate = useCallback(
+    (targetId: string) => {
+      if (!issueScrollToDate(targetId, false))
+        deferredScrollDateId.current = targetId;
+    },
+    [issueScrollToDate],
+  );
+
+  useEffect(
+    () => () => {
+      if (scrollRetry.current.timer) clearTimeout(scrollRetry.current.timer);
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -192,13 +379,35 @@ function TodoList({
                 />
               </View>
             )}
-            <FlatList
+            <SectionList
+              ref={listRef}
               style={{ marginTop: 12, flex: 1 }}
-              data={visible}
+              sections={sections}
               keyExtractor={(todo) => todo.clientId}
               keyboardShouldPersistTaps="handled"
+              stickySectionHeadersEnabled={false}
               contentContainerStyle={{ paddingBottom: 90, flexGrow: 1 }}
               ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+              renderSectionHeader={({ section }) => (
+                <TodoDaySectionHeader section={section} todayId={today} />
+              )}
+              onScrollToIndexFailed={() => {
+                const retry = scrollRetry.current;
+                if (
+                  retry.timer ||
+                  Date.now() - retry.issuedAt > SCROLL_RETRY_WINDOW_MS ||
+                  retry.attempts >= SCROLL_RETRY_LIMIT
+                )
+                  return;
+                retry.attempts += 1;
+                retry.timer = setTimeout(
+                  () => {
+                    retry.timer = null;
+                    issueScrollToDate(retry.dateId, true);
+                  },
+                  SCROLL_RETRY_DELAY_MS,
+                );
+              }}
               ListEmptyComponent={
                 <View
                   style={{
@@ -214,7 +423,7 @@ function TodoList({
                       color: semanticColors.textSecondary,
                     }}
                   >
-                    {keyword.trim() ? "无匹配待办" : "该日期暂无待办"}
+                    {keyword.trim() ? "无匹配待办" : "本周暂无待办"}
                   </Text>
                 </View>
               }
@@ -250,9 +459,14 @@ function TodoList({
           <TodoCalendarRail
             value={selectedDateId}
             todayId={today}
+            weekId={weekId}
+            onWeekChange={(next) => {
+              setBrowsedWeekId(next === derivedWeekId ? null : next);
+            }}
             onChange={(value) => {
               selectTodoDate(ownerKey, value);
               clearSelection();
+              scrollToDate(value);
             }}
           />
         </View>
