@@ -105,6 +105,68 @@
 - 弹窗变更：§3 明确新增/编辑复用同一弹窗（标题「编辑待办」、编辑态删除走共享确认弹窗），新增 §3.4 优先级三段行（替代颜色行）；§6 自由颜色选择器 ContainerColorPicker 移出首版；§5.2 增加纯 JS 时间轮盘实现约束（不引原生依赖，保持 Expo Go 可加载）；§9 增加卡片铃铛为展示态的边界。
 - 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
 - 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
+## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
+
+- 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
+- 用户已确认方案和文字预览。基于客户端 73b664cf543b9bc72c8ff36dd806d36c78dbd310 与服务端 898440c8ea35936e6e355cdce61e5433d448d6a4，绘制页面/本地 SQLite 与 AsyncStorage/上传队列/Axios/Express/PostgreSQL 主链路，补充 Redis、Resend、MinIO，以及本地 Gradle/EAS、源站/COS 分发和 Android 原生更新器。
+- HTML 支持浅深色和内置交互，保留可维护 JSON、14 个固定提交源码引用、源码依据与校验收据。明确待办/摘录仍待业务接入；图示为源码架构，不代表线上部署已验收。记录当前完整包与差量策略以及差量补丁由源站分发的边界。
+- 验证：修改前 npm run typecheck 通过；npm run check 通过（类型、Lint、主题检查及 224/224 测试）；Archify showcase 9/9、0 错误、0 警告，14 个源码引用验证通过。首版纵向溢出经布局调整解决；最终四种桌面尺寸浏览器检查通过，四张浅深色截图已逐张视觉审阅。
+- 仅新增架构文档与生成制品，未修改应用业务逻辑，未执行 APK 构建、上传、发布、Git 提交或服务重启。Archify visual-check 不支持 --headed --persistent，实际使用默认截图检查，未宣称使用上述参数。
+
+---
+
+## 2026-09-18 13:17:10 | 修复问题：临时发布构建工作区结束后自动清理
+
+- 文件：scripts/release/workspace.mjs、scripts/release/cli.mjs、tests/releases/workspace.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。默认本地正式构建继续复用当前项目的 reuse-* 缓存；--fresh 和 EAS 的一次性 r-* 工作区在成功、提前返回或构建/上传报错后自动尝试清理，防止正常结束的构建反复累积完整依赖与编译产物。
+- 清理能力只绑定本次创建的目录，校验真实父路径、目录类型及文件系统身份，拒绝清理被替换或重定向的工作区。不扫描其他构建，不删除 dist/releases 的正式 APK 或差分基础包。清理失败警告包含残留路径并保留原始结果；强制结束或断电仍可能残留。
+- 新增真实临时目录测试，覆盖产物保留、错误退出、上传重试、缓存复用、锁释放、路径替换和目录联接保护。验证：node --test tests/releases/workspace.test.cjs tests/releases/cache.test.cjs 通过（27/27）；npm run check 通过（类型检查、Lint、主题检查、224/224 测试）；另对修改的两个脚本和测试文件直接执行 ESLint，通过；git diff --check 通过，无冲突标记。未执行真实 APK 构建或真机验证。
+- 变更前 npm run typecheck 通过（基于 821bc9a）。现有 14 个旧 r-* 的删除预演被工具策略拦截，尚未清理；没有停止已有构建，没有执行正式打包、上传、发布或 Git 提交。
+
+---
+
+## 2026-09-18 12:37:33 | 新增文件：IRisNote 0.2.4 更新说明
+
+- 文件：releases/notes-0.2.4.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.4（补丁更新，基准 0.2.3 / 86d2955，目标 c7b2b42，工作区干净）：更新应用图标；头像更换改为气泡菜单并增加横幅反馈；更新提示策略对落后较多版本强制更新（用户确认服务端已部署）；修复左右滑动页面时页面边缘灰色细线；修复多设备同步时云端较旧内容可能覆盖本地较新编辑及编辑时间记录问题。排除构建缓存复用、.codegraph 清理等纯开发记录。仅生成文案，未执行预留、构建、上传或发布。
+
+---
+
+## 2026-09-18 12:09:56 | 修复问题：分离圆角背景和边框以避免滑动接缝露灰
+
+- 文件：src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 用户反馈上一轮调整后滑动时仍有竖向细线，并确认本轮方案及文字预览。当前 React Native 0.86.3 Android BackgroundDrawable 在圆角与边框同时存在时将背景四边各缩进 0.8 个物理像素；笔记右侧、待办左侧没有边框覆盖，可能露出灰色父背景。
+- 将笔记和待办的白色背景及对应 30dp 圆角移至现有无边框父容器，内层保留圆角边框和内容布局，避免白色填充触发上述缩进。保留 15dp 顶部间隔、75dp 侧栏、1dp 边框、16dp 内容内边距及 24dp 底部内边距；保留上一轮弹性高度和分页底色修改。
+- 验证：基于 6f44167 的未提交修改，修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无冲突标记。源码机制与现象吻合，但 ADB 无连接设备，滑动接缝消除效果及圆角外观仍待 Android 真机验证。未构建、发布 APK 或执行 Git 提交。
+
+---
+
+## 2026-09-18 11:58:10 | 修复问题：分页白色底层与内容区高度对齐
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 已获用户确认方案及文字预览。分页承托层和默认场景背景改为纯白主题色 surface，减少页面接缝露出灰底的可能；外层背景及毛玻璃采样结构保持原样。
+- 笔记和待办白色容器由 100% 高度加 8dp 底部外边距改为 flex: 1，与摘录页面既有弹性填充规则统一。保留三页 15dp 顶部间距、75dp 侧栏、30dp 外侧圆角、现有边框、内容内边距和底部导航交互。摘录页面本身已符合该规则，无需修改。
+- 验证：基于 6f44167 的未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无遗留冲突标记。截图接缝的具体来源尚未真机证实，滑动细缝与像素级高度对齐仍需 Android 真机验收；未执行 APK 构建、发布或 Git 提交。
+
+---
+
+## 2026-09-18 11:14:17 | 修复问题：笔记编辑时间记录与新旧内容同步保护
+
+- 文件：src/features/notes/notes.types.ts、src/features/notes/api/notes.api.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-save.service.ts、src/features/sync/upload-task-adapters.ts、tests/editor/revisions.test.cjs、tests/editor/drafts.test.cjs、CHANGELOG.md。
+- 已获用户确认。标题/正文实际变化时生成本地编辑时间，连续编辑与时钟回拨时保持递增；重复保存、置顶、标星、分类调整及上传重试不刷新内容修改时间。
+- 上传携带 updated_at；服务端回传时间持久化到已有 server_updated_at 列。较旧云端内容不覆盖本地，较新云端内容生成本地历史版本后合并；同一时间不同内容保留本地并报告冲突。
+- 409 冲突快照只对对应笔记及请求版本合并，旧响应不能覆盖新编辑；队列已同步任务不重复上传，旧上传成功但本地还有新版本时继续重试。
+- 历史已同步笔记的旧 local_updated_at 可能是同步时间，因此 server_updated_at 为 NULL 时不伪造已知编辑时间；首次有时间的云端同步建立基线。时间规则不能消除不同设备时钟偏差。
+- 验证：基于 d00c6b7542aaf22ca29c29d2fd8a8486d8766392 的未提交修改；修改前 npm run typecheck 通过，最终 npm run check 通过（TypeScript、Lint、主题、217/217 测试）。git diff --check 通过，无遗留冲突标记。保留同期出现的 app.json 其他修改。未执行线上迁移、部署、APK 构建或真机验收。
+
+---
+
+## 2026-09-18 11:34:14 | 修复问题：更换头像菜单改为锚点气泡样式
+
+- 文件：src/features/profile/hooks/useAvatar.ts、src/features/profile/screens/ProfileScreen.tsx、CHANGELOG.md。
+- 已获用户确认。点击用户中心头像后，“从相册选择/拍照”不再使用 Android 原生系统 Alert 对话框，改为共享 AnchoredPopover 锚点气泡菜单：白底 24dp 圆角面板、三角箭头指向头像、进入/退出动画、点击外部或返回键关闭；行规格为最小高 56dp、内边距 16/12dp、22dp 主题蓝图标、17sp 文字、行间不贯通分割线，触发按钮增加 300ms 防重复打开冷却锁与 expanded 无障碍状态；上传中沿用原位遮罩并禁止打开菜单。
+- 附带按《全局横幅通知设计与调用规范》将头像上传成功/失败的系统 Alert 反馈改为全局横幅（稳定 ID avatar-update，成功 success 5 秒自动关闭，失败 important 常驻可关闭并保留具体原因），异步回调经通知会话校验；移除原 Alert 选择菜单的“取消”按钮（点外部即取消）。SettingsScreen 中两处引用原 showAvatarOptions 的代码均在注释块内，未受影响；CategoryBar 只读取头像展示，不受影响。
+- 验证：修改前 npm run typecheck 通过（无既有错误）；修改后 npm run typecheck 通过、npm run check 通过（类型、Lint、主题一致性与全部 217 项测试）。静态检查通过不代表真机视觉验收；气泡位置、动画、返回键关闭及横幅反馈待用户在 Android 真机验收。
 
 ---
 
@@ -220,7 +282,7 @@
 - 说明文件命名规范调整为 UTF-8 纯文本 `releases/notes-<版本号>.txt`，文件名不加构建号、draft 等附加词，与现有 0.1.0 文件一致；同版本多次构建复用同一文件。
 - 验证：未改应用源码，无需 typecheck；未执行构建、上传、发布或 Git 写操作。目标提交与对比范围见交付说明，0.2.0 构建号尚未预留。
 
-=========
+---
 
 ## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
 
@@ -2214,3 +2276,11 @@
   - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
   - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
   - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+## 2026-09-20 10:26:11 | 修复问题：解决本地 Git 合并冲突
+
+- 文件：CHANGELOG.md、app.json、src/features/todos/screens/TodosScreen.tsx。
+- 合并 `kroos_todo` 与进入工作区的 0.2.4 配置及文档变更：保留待办整周列表、日历和本地提醒实现；合并应用图标、启动页、EAS 项目配置与 Expo 本地通知插件；合并双方历史日志并移除三个真实冲突文件中的 Git 冲突标记。
+- 验证：`git ls-files -u` 无输出，暂存区 `git diff --cached --check` 通过；`npm run check` 的类型检查、Lint、主题检查通过，Node 并发测试运行器出现一次异步反序列化异常后，串行全量测试 282/282 通过；`npx expo config --type public --json` 通过。
+- 未执行 Git 提交、推送、构建或设备验收。
+
+---

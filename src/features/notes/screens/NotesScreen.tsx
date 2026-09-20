@@ -734,8 +734,9 @@ export default function NotesScreen() {
                         </Text>
                     </Pressable>
                 </View>
-                <View className="relative flex-1">
-                    <View className="bg-white rounded-tl-content p-4 pb-6 h-[100%] border-b border-l border-t border-note-page-border mb-2">
+                {/* Separate fill from borders to avoid Android's rounded background inset. */}
+                <View className="relative flex-1 bg-white rounded-tl-content">
+                    <View className="flex-1 rounded-tl-content p-4 pb-6 border-b border-l border-t border-note-page-border">
                         <NotesSyncHeader
                             key={user?.id ?? "signed-out"}
                             count={filteredNotes.length}

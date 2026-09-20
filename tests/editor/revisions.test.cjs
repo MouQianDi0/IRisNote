@@ -28,12 +28,17 @@ const { createLocalNotes } = require('../../src/core/database/migrations/0002-cr
 const { createNoteDrafts } = require('../../src/core/database/migrations/0003-create-note-drafts.ts');
 const { createNoteRevisions } = require('../../src/core/database/migrations/0004-create-note-revisions.ts');
 const { createUploadQueue } = require('../../src/core/database/migrations/0005-create-upload-queue.ts');
+const { addServerUpdatedAt } = require('../../src/core/database/migrations/0006-add-server-updated-at.ts');
 const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 let createCalls = 0;
 let updateCalls = 0;
 const api = {
     createNote: async () => { createCalls++; throw new Error('test network unavailable'); },
     updateNote: async () => { updateCalls++; throw new Error('test network unavailable'); },
+    normalizeConflictNote: (value, id) => {
+        assert.equal(value.id, id);
+        return { ...value, server_id: id };
+    },
 };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
@@ -71,6 +76,165 @@ const serverNote = (id, content, title = '标题') => ({
     sync_status: 'synced', sync_operation: null, last_sync_error: null, current_revision_id: null,
 });
 
+const timedServerNote = (id, content, time) => ({ ...serverNote(id, content), updated_at: time });
+const time1 = '2099-01-01T00:00:00.000Z';
+const time2 = '2099-01-01T00:00:01.000Z';
+const time3 = '2099-01-01T00:00:02.000Z';
+
+test('edit time increases despite clock rollback; unchanged save and flags preserve it', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(101, 'V1', time1)]);
+    const { note: edited } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
+    assert.ok(Date.parse(edited.updated_at) > Date.parse(time1));
+    const { note: same } = await notes.updatePendingLocalNote(port, 1, edited, payload('V2'));
+    assert.equal(same.updated_at, edited.updated_at);
+    const { note: starred } = await notes.updatePendingLocalNote(port, 1, same, { is_starred: true });
+    assert.equal(starred.updated_at, edited.updated_at);
+    assert.equal(starred.server_updated_at, time1);
+});
+
+test('newer local edit survives old server data and upload retry uses the original edit time', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(102, 'V1', time1)]);
+    const { note: edited } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(102, 'V1', time1)]);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 102)).content, 'V2');
+    const uploads = [];
+    t.mock.method(api, 'updateNote', async (id, body) => {
+        uploads.push(body.updated_at);
+        if (uploads.length === 1) throw new Error('offline');
+        return timedServerNote(id, body.content, body.updated_at);
+    });
+    await saves.uploadNoteNow(port, 1, 102);
+    await saves.uploadNoteNow(port, 1, 102);
+    assert.deepEqual(uploads, [edited.updated_at, edited.updated_at]);
+    const accepted = await notes.getLocalNoteByClientId(port, 1, 102);
+    assert.equal(accepted.updated_at, edited.updated_at);
+    assert.equal(accepted.local_updated_at, edited.updated_at);
+    assert.equal(accepted.server_updated_at, edited.updated_at);
+});
+
+test('server-newer reconciliation preserves local revision history and remote edit time', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(103, 'V1', time1)]);
+    await notes.updatePendingLocalNote(port, 1, original, payload('V2 local'));
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(103, 'V3 remote', time2)]);
+    const current = await notes.getLocalNoteByClientId(port, 1, 103);
+    assert.equal(current.content, 'V3 remote');
+    assert.equal(current.updated_at, time2);
+    assert.equal(current.local_updated_at, time2);
+    assert.equal(current.sync_status, 'synced');
+    assert.ok((await revisions.listNoteRevisions(port, 1, 103)).some(row => row.content === 'V2 local'));
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(103, 'V1', time1)]);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 103)).content, 'V3 remote');
+    assert.equal((await listUploadTasks(port, 1)).length, 1);
+});
+
+test('equal timestamps with different text block overwrite; NULL remote cannot replace pending text', async t => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(104, 'local', time1)]);
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(104, 'different', time1)]);
+    let current = await notes.getLocalNoteByClientId(port, 1, 104);
+    assert.equal(current.content, 'local');
+    assert.equal(current.sync_status, 'rejected');
+    await notes.reconcileServerNotes(port, 1, [serverNote(104, 'unknown-time')]);
+    current = await notes.getLocalNoteByClientId(port, 1, 104);
+    assert.equal(current.content, 'local');
+    assert.equal(current.updated_at, time1);
+});
+
+test('legacy synced NULL time is unknown and first server timestamp establishes the baseline', async t => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [serverNote(105, 'old')]);
+    await port.run("UPDATE local_notes SET local_updated_at = ? WHERE client_id = 105", [time3]);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 105)).updated_at, null);
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(105, 'remote', time1)]);
+    const current = await notes.getLocalNoteByClientId(port, 1, 105);
+    assert.equal(current.content, 'remote');
+    assert.equal(current.updated_at, time1);
+});
+
+test('old success response preserves newer local edit timestamp and requests another upload', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(106, 'V1', time1)]);
+    const { note: uploading } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
+    let newer;
+    t.mock.method(api, 'updateNote', async (id, body) => {
+        newer = (await notes.updatePendingLocalNote(port, 1, uploading, payload('V3'))).note;
+        return timedServerNote(id, body.content, body.updated_at);
+    });
+    const result = await saves.uploadNoteNow(port, 1, 106);
+    assert.equal(result.cloudState, 'queued');
+    assert.equal(result.retryable, true);
+    assert.equal(result.note.content, 'V3');
+    assert.equal(result.note.updated_at, newer.updated_at);
+    assert.equal(result.note.server_updated_at, time1);
+});
+
+test('409 newer snapshot reconciles only its note, preserving unrelated notes', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [
+        timedServerNote(107, 'V1', time1), timedServerNote(108, 'other', time1),
+    ]);
+    await notes.updatePendingLocalNote(port, 1, original, payload('local'));
+    t.mock.method(api, 'updateNote', async () => {
+        throw { isAxiosError: true, response: { status: 409, data: {
+            code: 'NOTE_EDIT_CONFLICT', note: timedServerNote(107, 'newest remote', time2),
+        } } };
+    });
+    const result = await saves.uploadNoteNow(port, 1, 107);
+    assert.equal(result.cloudState, 'accepted');
+    assert.equal(result.note.content, 'newest remote');
+    assert.equal(result.note.updated_at, time2);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 108)).content, 'other');
+});
+
+test('409 response cannot overwrite an edit committed while the request was in flight', async t => {
+    const { port } = await database(t);
+    const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(109, 'V1', time1)]);
+    const { note: uploading } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
+    t.mock.method(api, 'updateNote', async () => {
+        await notes.updatePendingLocalNote(port, 1, uploading, payload('V3 local'));
+        throw { isAxiosError: true, response: { status: 409, data: {
+            code: 'NOTE_EDIT_CONFLICT', note: timedServerNote(109, 'V4 remote', time3),
+        } } };
+    });
+    const result = await saves.uploadNoteNow(port, 1, 109);
+    assert.equal(result.cloudState, 'queued');
+    assert.equal(result.note.content, 'V3 local');
+    assert.equal(result.note.sync_status, 'pending');
+});
+
+test('timestamp-only and flag-only remote updates do not create content revisions', async t => {
+    const { port } = await database(t);
+    await notes.reconcileServerNotes(port, 1, [timedServerNote(110, 'V1', time1)]);
+    await notes.reconcileServerNotes(port, 1, [{ ...timedServerNote(110, 'V1', time1), is_starred: true }]);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 110)).updated_at, time1);
+    await notes.reconcileServerNotes(port, 1, [{ ...timedServerNote(110, 'V1', time2), is_starred: true }]);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, 110)).updated_at, time2);
+    assert.equal((await revisions.listNoteRevisions(port, 1, 110)).length, 1);
+});
+
+test('new upload carries the saved creation time and legacy manual upload explicitly sends unknown time', async t => {
+    const { port } = await database(t);
+    const { note: created } = await notes.createPendingLocalNote(port, 1, payload('created'));
+    t.mock.method(api, 'createNote', async body => {
+        assert.equal(body.updated_at, created.updated_at);
+        return timedServerNote(111, body.content, body.updated_at);
+    });
+    const uploaded = await saves.uploadNoteNow(port, 1, created.id);
+    assert.equal(uploaded.note.updated_at, created.updated_at);
+    await notes.reconcileServerNotes(port, 1, [
+        timedServerNote(111, 'created', created.updated_at), serverNote(112, 'legacy'),
+    ]);
+    t.mock.method(api, 'updateNote', async (id, body) => {
+        assert.equal(body.updated_at, null);
+        return serverNote(id, body.content);
+    });
+    const legacy = await saves.uploadNoteNow(port, 1, 112);
+    assert.equal(legacy.note.updated_at, null);
+});
+
 async function database(t, { withRevisions = true } = {}) {
     const sql = new DatabaseSync(':memory:');
     t.after(() => sql.close());
@@ -102,6 +266,7 @@ async function database(t, { withRevisions = true } = {}) {
     await createNoteDrafts.up(migrationPort);
     if (withRevisions) await createNoteRevisions.up(migrationPort);
     await createUploadQueue.up(migrationPort);
+    await addServerUpdatedAt.up(migrationPort);
     return { port, sql, migrationPort };
 }
 
@@ -342,7 +507,7 @@ test('reconcile without ordering fields preserves local order and timestamp', as
     assert.equal(row.local_updated_at, '2026-09-16T10:00:00.000Z');
 });
 
-test('reconcile applies flag changes and bumps local_updated_at', async (t) => {
+test('reconcile applies flag changes without changing edit time', async (t) => {
     const { port } = await database(t);
     await notes.reconcileServerNotes(port, 1, [serverNote(52, '正文')]);
     await port.run(
@@ -355,7 +520,7 @@ test('reconcile applies flag changes and bumps local_updated_at', async (t) => {
     const row = await port.getFirst(
         `SELECT is_starred, local_updated_at FROM local_notes WHERE server_id = 52`);
     assert.equal(row.is_starred, 1);
-    assert.notEqual(row.local_updated_at, '2026-09-16T10:00:00.000Z');
+    assert.equal(row.local_updated_at, '2026-09-16T10:00:00.000Z');
 });
 
 test('reconcile adopts server ordering fields when provided', async (t) => {

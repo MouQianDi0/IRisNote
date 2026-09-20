@@ -2,19 +2,21 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { AnchoredPopover, Card, Screen } from "@/shared/ui";
 import { router, type Href } from "expo-router";
-import { useEffect } from "react";
 import {
     Archive,
     BookOpenText,
+    Camera,
     ChevronRight,
     FileText,
     Folder,
+    Image as ImageIcon,
     Star,
     User as UserIcon,
     type LucideIcon,
 } from "lucide-react-native";
+import { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -25,6 +27,48 @@ import {
 } from "react-native";
 
 const cardStyle = { borderCurve: "continuous" as const };
+
+const OPEN_COOLDOWN_MS = 300;
+
+type AvatarSource = "library" | "camera";
+
+const AVATAR_OPTIONS: {
+    key: AvatarSource;
+    label: string;
+    icon: LucideIcon;
+}[] = [
+    { key: "library", label: "从相册选择", icon: ImageIcon },
+    { key: "camera", label: "拍照", icon: Camera },
+];
+
+function AvatarOptionRow({
+    icon: Icon,
+    label,
+    last,
+    onPress,
+}: {
+    icon: LucideIcon;
+    label: string;
+    last?: boolean;
+    onPress: () => void;
+}) {
+    return (
+        <>
+            <Pressable
+                accessibilityLabel={label}
+                accessibilityRole="button"
+                className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-hyper-card-selected active:opacity-[0.85]"
+                onPress={onPress}
+            >
+                <Icon size={22} color={colors.primary} />
+                <Text className="min-w-0 flex-1 text-[17px] text-text-primary">
+                    {label}
+                </Text>
+            </Pressable>
+            {!last ? <View className="mx-4 h-px bg-hyper-divider" /> : null}
+        </>
+    );
+}
 
 function SectionTitle({ children }: { children: string }) {
     return (
@@ -107,20 +151,74 @@ function ContentRow({
 
 export default function ProfileScreen() {
     const { user, isLoggedIn, loading: authLoading } = useAuth();
-    const { avatarSource, avatarKey, avatarUploading, showAvatarOptions } =
+    const { avatarSource, avatarKey, avatarUploading, updateAvatar } =
         useAvatar();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
 
+    const avatarAnchorRef = useRef<View>(null);
+    const [avatarMenuVisible, setAvatarMenuVisible] = useState(false);
+    const openLockedRef = useRef(false);
+    const closeStartedRef = useRef(false);
+    const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(
+        () => () => {
+            if (cooldownTimerRef.current !== null) {
+                clearTimeout(cooldownTimerRef.current);
+            }
+        },
+        [],
+    );
+
+    const handleOpenAvatarMenu = () => {
+        if (openLockedRef.current) return;
+
+        openLockedRef.current = true;
+        closeStartedRef.current = false;
+        setAvatarMenuVisible(true);
+    };
+
+    const handleCloseAvatarMenu = () => {
+        if (closeStartedRef.current) return;
+
+        closeStartedRef.current = true;
+        setAvatarMenuVisible(false);
+
+        if (cooldownTimerRef.current !== null) {
+            clearTimeout(cooldownTimerRef.current);
+        }
+        cooldownTimerRef.current = setTimeout(() => {
+            cooldownTimerRef.current = null;
+            openLockedRef.current = false;
+            closeStartedRef.current = false;
+        }, OPEN_COOLDOWN_MS);
+    };
+
+    const handlePickAvatarSource = (source: AvatarSource) => {
+        handleCloseAvatarMenu();
+        updateAvatar(source);
+    };
+
     useEffect(() => {
         const mountedAt = Date.now();
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "profile", stage: "mounted", timestamp: mountedAt,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "profile",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
         return () => {
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "profile", stage: "unmounted", timestamp: Date.now(),
-                elapsedMs: Date.now() - mountedAt,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "profile",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
         };
     }, []);
 
@@ -199,14 +297,16 @@ export default function ProfileScreen() {
                             style={cardStyle}
                         >
                             <Pressable
+                                ref={avatarAnchorRef}
                                 accessibilityLabel={`更换${displayName}的头像`}
                                 accessibilityRole="button"
                                 accessibilityState={{
                                     disabled: avatarUploading,
+                                    expanded: avatarMenuVisible,
                                 }}
                                 className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected active:opacity-[0.85]"
                                 disabled={avatarUploading}
-                                onPress={showAvatarOptions}
+                                onPress={handleOpenAvatarMenu}
                             >
                                 {avatarSource ? (
                                     <Image
@@ -229,6 +329,33 @@ export default function ProfileScreen() {
                                     </View>
                                 ) : null}
                             </Pressable>
+                            <AnchoredPopover
+                                visible={avatarMenuVisible}
+                                anchorRef={avatarAnchorRef}
+                                onClose={handleCloseAvatarMenu}
+                                width={232}
+                                maxHeight={180}
+                                accessibilityLabel="更换头像来源菜单"
+                            >
+                                <View>
+                                    {AVATAR_OPTIONS.map((option, index) => (
+                                        <AvatarOptionRow
+                                            key={option.key}
+                                            icon={option.icon}
+                                            label={option.label}
+                                            last={
+                                                index ===
+                                                AVATAR_OPTIONS.length - 1
+                                            }
+                                            onPress={() =>
+                                                handlePickAvatarSource(
+                                                    option.key,
+                                                )
+                                            }
+                                        />
+                                    ))}
+                                </View>
+                            </AnchoredPopover>
                             <View className="ml-[14px] min-w-0 flex-1">
                                 <Text
                                     className="text-xl text-text-primary"

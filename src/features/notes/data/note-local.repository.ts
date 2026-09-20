@@ -10,6 +10,7 @@ import type {
     UpdateNotePayload,
 } from "../notes.types";
 import { assertDraftCommit, linkCommittedDraft, type DraftCommit } from "./note-draft.repository";
+import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import {
     deleteNoteRevisions,
     getCurrentNoteRevision,
@@ -35,6 +36,7 @@ type LocalNoteRow = {
     sync_operation: NoteSyncOperation | null;
     last_sync_error: string | null;
     local_updated_at: string;
+    server_updated_at: string | null;
     current_revision_id: string | null;
 };
 
@@ -55,6 +57,7 @@ const LOCAL_NOTE_COLUMNS = `
     sync_operation,
     last_sync_error,
     local_updated_at,
+    server_updated_at,
     current_revision_id
 `;
 
@@ -74,8 +77,16 @@ const toNote = (row: LocalNoteRow): Note => ({
     sync_operation: row.sync_operation,
     last_sync_error: row.last_sync_error,
     local_updated_at: row.local_updated_at,
+    updated_at: row.sync_status === "synced" ? row.server_updated_at : row.local_updated_at,
+    server_updated_at: row.server_updated_at,
     current_revision_id: row.current_revision_id,
 });
+
+/** 同设备连续编辑至少递增 1ms，设备时钟回拨也不能使下一次编辑变旧。 */
+function nextEditTime(previous?: string | null) {
+    const timestamp = previous ? Date.parse(previous) : NaN;
+    return new Date(Math.max(Date.now(), Number.isFinite(timestamp) ? timestamp + 1 : 0)).toISOString();
+}
 
 async function readNoteByClientId(
     database: ApplicationDatabaseTransaction,
@@ -247,18 +258,22 @@ export async function updatePendingLocalNote(
             existing?.sync_operation === "create" || serverId == null
                 ? "create"
                 : "update";
-        const now = new Date().toISOString();
+        const base = existing ?? note;
         const nextNote: Note = {
-            ...note,
+            ...base,
             ...payload,
             server_id: serverId,
             user_id: ownerUserId,
-            content: payload.content ?? note.content,
+            content: payload.content === undefined ? base.content : payload.content,
             category_id:
                 payload.category_id === undefined
-                    ? note.category_id
+                    ? base.category_id
                     : payload.category_id,
         };
+        const textChanged = nextNote.title !== base.title || nextNote.content !== base.content;
+        const editTime = textChanged
+            ? nextEditTime(base.updated_at ?? base.local_updated_at)
+            : base.local_updated_at ?? base.updated_at ?? base.created_at;
 
         // 无变化不建版本；但 pending 状态照写，上传重试仍会执行。
         const currentRevision = await getCurrentNoteRevision(
@@ -303,6 +318,7 @@ export async function updatePendingLocalNote(
                 sync_operation,
                 last_sync_error,
                 local_updated_at,
+                server_updated_at,
                 current_revision_id
              ) VALUES (
                 $ownerUserId,
@@ -320,6 +336,7 @@ export async function updatePendingLocalNote(
                 $syncOperation,
                 NULL,
                 $localUpdatedAt,
+                $serverUpdatedAt,
                 $revisionId
              )
              ON CONFLICT (owner_user_id, client_id) DO UPDATE SET
@@ -352,7 +369,8 @@ export async function updatePendingLocalNote(
                 $localOrder: nextNote.local_order ?? null,
                 $pinnedOrder: nextNote.pinned_order ?? null,
                 $syncOperation: operation,
-                $localUpdatedAt: now,
+                $localUpdatedAt: editTime,
+                $serverUpdatedAt: base.server_updated_at ?? null,
                 $revisionId: revisionId,
             },
         );
@@ -458,8 +476,13 @@ export async function acceptServerNote(
                  ELSE 'update'
              END,
              last_sync_error = NULL,
+             server_updated_at = CASE
+                 WHEN current_revision_id IS $expectedRevisionId THEN $serverUpdatedAt
+                 ELSE server_updated_at
+             END,
              local_updated_at = CASE
-                 WHEN current_revision_id IS $expectedRevisionId THEN $localUpdatedAt
+                 WHEN current_revision_id IS $expectedRevisionId
+                     THEN COALESCE($serverUpdatedAt, local_updated_at)
                  ELSE local_updated_at
              END
          WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
@@ -468,7 +491,7 @@ export async function acceptServerNote(
             $clientId: clientId,
             $serverId: serverNote.server_id ?? serverNote.id,
             $expectedRevisionId: expectedRevisionId,
-            $localUpdatedAt: new Date().toISOString(),
+            $serverUpdatedAt: serverNote.updated_at ?? null,
         },
     );
     return getLocalNoteByClientId(database, ownerUserId, clientId);
@@ -479,7 +502,9 @@ export async function reconcileServerNotes(
     ownerUserId: number,
     serverNotes: Note[],
     onReconciled?: (stats: { addedCount: number }) => void,
+    guard?: { clientId: number; revisionId: string | null },
 ) {
+    const uploadIds = new Set<number>();
     const addedCount = await database.transaction(async (transaction) => {
         let added = 0;
         const serverIds = new Set<number>();
@@ -494,7 +519,40 @@ export async function reconcileServerNotes(
                 { $ownerUserId: ownerUserId, $serverId: serverId },
             );
 
-            if (existing && existing.sync_status !== "synced") continue;
+            // 冲突响应只允许合并它对应的版本，且不能执行整表删除对账。
+            if (guard && (!existing || existing.client_id !== guard.clientId ||
+                existing.current_revision_id !== guard.revisionId)) continue;
+
+            if (existing) {
+                if (!guard && existing.sync_status === "syncing") continue;
+                const incomingTime = note.updated_at == null ? null : Date.parse(note.updated_at);
+                // 历史已同步行的 local_updated_at 曾被同步刷新，不能拿它冒充编辑时间。
+                const localTime = existing.sync_status === "synced" && existing.server_updated_at == null
+                    ? null : Date.parse(existing.local_updated_at);
+                const textDiffers = note.title !== existing.title ||
+                    (note.content ?? null) !== (existing.content ?? null);
+                if (localTime !== null && incomingTime !== null && incomingTime < localTime) {
+                    if (textDiffers && existing.sync_status === "synced") {
+                        await transaction.run(
+                            "UPDATE local_notes SET sync_status = 'pending', sync_operation = 'update' WHERE local_id = ?",
+                            [existing.local_id],
+                        );
+                        uploadIds.add(existing.client_id);
+                    }
+                    continue;
+                }
+                if (localTime !== null && incomingTime !== null && incomingTime === localTime && textDiffers) {
+                    await transaction.run(
+                        "UPDATE local_notes SET sync_status = 'rejected', sync_operation = 'update', last_sync_error = ? WHERE local_id = ?",
+                        ["修改时间相同但内容不同，已保留本地内容，请核对后修改并保存。", existing.local_id],
+                    );
+                    continue;
+                }
+                if (existing.sync_status !== "synced" &&
+                    (incomingTime === null || localTime === null || incomingTime <= localTime)) continue;
+                // 服务器缺少时间时不能覆盖已知时间的内容；旧服务端仅兼容未建立时间基线的已同步行。
+                if (incomingTime === null && existing.server_updated_at !== null) continue;
+            }
 
             if (existing) {
                 // 服务器内容与当前版本不同才追加 server-reconcile 版本，维持
@@ -521,6 +579,8 @@ export async function reconcileServerNotes(
                 const nextPinnedOrder =
                     note.pinned_order ?? existing.pinned_order;
                 const rowChanged =
+                    (note.updated_at ?? null) !== existing.server_updated_at ||
+                    existing.sync_status !== "synced" ||
                     note.title !== existing.title ||
                     (note.content ?? null) !== (existing.content ?? null) ||
                     (note.category_id ?? null) !== existing.category_id ||
@@ -560,7 +620,11 @@ export async function reconcileServerNotes(
                              $revisionId,
                              current_revision_id
                          ),
-                         local_updated_at = $localUpdatedAt
+                         local_updated_at = $localUpdatedAt,
+                         server_updated_at = $serverUpdatedAt,
+                         sync_status = 'synced',
+                         sync_operation = NULL,
+                         last_sync_error = NULL
                      WHERE local_id = $localId`,
                     {
                         $title: note.title,
@@ -572,7 +636,8 @@ export async function reconcileServerNotes(
                         $localOrder: nextLocalOrder,
                         $pinnedOrder: nextPinnedOrder,
                         $revisionId: revisionId,
-                        $localUpdatedAt: new Date().toISOString(),
+                        $localUpdatedAt: note.updated_at ?? existing.local_updated_at,
+                        $serverUpdatedAt: note.updated_at ?? null,
                         $localId: existing.local_id,
                     },
                 );
@@ -607,6 +672,7 @@ export async function reconcileServerNotes(
                     sync_status,
                     sync_operation,
                     local_updated_at,
+                    server_updated_at,
                     current_revision_id
                  ) VALUES (
                     $ownerUserId,
@@ -623,6 +689,7 @@ export async function reconcileServerNotes(
                     'synced',
                     NULL,
                     $localUpdatedAt,
+                    $serverUpdatedAt,
                     $revisionId
                  )`,
                 {
@@ -637,7 +704,8 @@ export async function reconcileServerNotes(
                     $isStarred: note.is_starred ? 1 : 0,
                     $localOrder: note.local_order ?? index,
                     $pinnedOrder: note.pinned_order ?? null,
-                    $localUpdatedAt: new Date().toISOString(),
+                    $localUpdatedAt: note.updated_at ?? note.created_at,
+                    $serverUpdatedAt: note.updated_at ?? null,
                     $revisionId: insertedRevisionId,
                 },
             );
@@ -651,6 +719,7 @@ export async function reconcileServerNotes(
             { $ownerUserId: ownerUserId },
         );
         for (const row of syncedRows) {
+            if (guard) break;
             if (row.server_id != null && !serverIds.has(row.server_id)) {
                 // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
                 await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
@@ -664,6 +733,11 @@ export async function reconcileServerNotes(
     });
 
     const notes = await getLocalNotes(database, ownerUserId);
+    for (const note of notes) {
+        if (uploadIds.has(note.id) && note.sync_status === "pending") {
+            await enqueueNoteUpload(database, ownerUserId, note);
+        }
+    }
     onReconciled?.({ addedCount });
     return notes;
 }
@@ -720,7 +794,9 @@ export async function restoreLocalNoteToRevision(
                 $categoryId: revision.category_id,
                 $revisionId: nextRevisionId,
                 $syncOperation: operation,
-                $localUpdatedAt: new Date().toISOString(),
+                $localUpdatedAt: revision.title !== existing.title || revision.content !== existing.content
+                    ? nextEditTime(existing.updated_at ?? existing.local_updated_at)
+                    : existing.local_updated_at ?? existing.created_at,
                 $ownerUserId: ownerUserId,
                 $clientId: clientId,
             },
@@ -852,7 +928,9 @@ export async function rollbackQueuedLocalNoteToPreviousRevision(
             $syncStatus: syncStatus,
             $syncOperation: syncOperation,
             $lastSyncError: lastSyncError,
-            $localUpdatedAt: new Date().toISOString(),
+            $localUpdatedAt: previous.title !== existing.title || previous.content !== existing.content
+                ? nextEditTime(existing.updated_at ?? existing.local_updated_at)
+                : existing.local_updated_at ?? existing.created_at,
             $ownerUserId: ownerUserId,
             $clientId: clientId,
         },

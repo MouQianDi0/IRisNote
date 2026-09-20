@@ -7,7 +7,6 @@ import {
     TabRouter,
     useLocale,
     useNavigationBuilder,
-    useTheme,
     type DefaultNavigatorOptions,
     type Descriptor,
     type NavigationHelpers,
@@ -129,7 +128,6 @@ function SwipeTabsNavigator({
             screenLayout,
             UNSTABLE_router,
         });
-    const { colors } = useTheme();
     const { direction } = useLocale();
     const focusedOptions = descriptors[state.routes[state.index].key].options;
     const activeTab = state.routes[state.index].name;
@@ -172,7 +170,7 @@ function SwipeTabsNavigator({
                 <BlurTargetView ref={blurTarget} style={styles.container}>
                     <TabView
                         style={styles.container}
-                        pagerStyle={styles.container}
+                        pagerStyle={styles.pageSurface}
                         animationEnabled={focusedOptions.animationEnabled}
                         direction={direction}
                         initialLayout={initialLayout}
@@ -200,7 +198,7 @@ function SwipeTabsNavigator({
                                 route.key,
                                 {
                                     sceneStyle: [
-                                        { backgroundColor: colors.background },
+                                        styles.pageSurface,
                                         descriptors[route.key].options.sceneStyle,
                                     ],
                                 },
@@ -224,6 +222,10 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: appColors.appBackground,
+    },
+    pageSurface: {
+        flex: 1,
+        backgroundColor: appColors.surface,
     },
 });
 

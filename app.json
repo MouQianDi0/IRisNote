@@ -1,23 +1,23 @@
 {
     "expo": {
         "name": "IRisNote",
-        "slug": "IRisNote",
-        "owner": "miao233",
-        "version": "1.0.0",
+        "slug": "irisnote",
+        "owner": "mouqiandi",
+        "version": "0.2.4",
         "orientation": "portrait",
-        "icon": "./assets/images/IRisNote.png",
+        "icon": "./assets/images/IRisNote_black.png",
         "scheme": "irisnote",
         "userInterfaceStyle": "automatic",
         "ios": {
             "bundleIdentifier": "com.mouqiandi.irisNote",
-            "icon": "./assets/images/IRisNote.png"
+            "icon": "./assets/images/IRisNote_black.png"
         },
         "android": {
             "adaptiveIcon": {
                 "backgroundColor": "#E6F4FE",
-                "foregroundImage": "./assets/images/IRisNote.png",
-                "backgroundImage": "./assets/images/IRisNote.png",
-                "monochromeImage": "./assets/images/IRisNote.png"
+                "foregroundImage": "./assets/images/IRisNote_iris.png",
+                "backgroundImage": "./assets/images/IRisNote_iris.png",
+                "monochromeImage": "./assets/images/IRisNote_iris.png"
             },
             "predictiveBackGestureEnabled": false,
             "package": "com.mouqiandi.irisNote",
@@ -26,7 +26,7 @@
         },
         "web": {
             "output": "server",
-            "favicon": "./assets/images/IRisNote.png"
+            "favicon": "./assets/images/IRisNote_iris.png"
         },
         "plugins": [
             "./plugins/with-local-notification-entitlements",
@@ -45,8 +45,17 @@
                 {
                     "backgroundColor": "#FFFFFF",
                     "android": {
-                        "image": "./assets/images/IRisNote.png",
-                        "imageWidth": 76
+                        "image": "./assets/images/IRisNote_iris.png",
+                        "imageWidth": 150
+                    },
+                    "ios": {
+                        "image": "./assets/images/IRisNote_iris.png",
+                        "imageWidth": 150
+                    },
+                    "dark": {
+                        "backgroundColor": "#000000",
+                        "image": "./assets/images/IRisNote_black.png",
+                        "imageWidth": 150
                     }
                 }
             ],
@@ -78,9 +87,14 @@
             "reactCompiler": true
         },
         "extra": {
-            "router": {},
+            "router": {
+                "headers": {
+                    "Cross-Origin-Embedder-Policy": "credentialless",
+                    "Cross-Origin-Opener-Policy": "same-origin"
+                }
+            },
             "eas": {
-                "projectId": "0512b06c-4b53-4b8c-b81f-352914e615b4"
+                "projectId": "af1689b8-05fe-4160-bf3d-762ec7b00e91"
             }
         }
     }
