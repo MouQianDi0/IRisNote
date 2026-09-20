@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Host, Switch } from "@expo/ui";
 import { banner } from "@/core/notifications";
 import { ChevronRight, Pin, Star, Trash2 } from "lucide-react-native";
 import {
@@ -270,6 +271,16 @@ export function TodoFormDialog({
             />
           </View>
           <FieldError message={form.errors.startTime ?? form.errors.endTime} />
+          <View style={{ marginTop: 12, height: 48, paddingHorizontal: 16, gap: 12,
+            flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+            backgroundColor: semanticColors.surfaceControl, borderRadius: radii.control }}>
+            <Text style={{ color: semanticColors.textPrimary, fontSize: 14, flexShrink: 1 }}>开始时提醒</Text>
+            <Host matchContents accessibilityLabel="开始时提醒">
+              <Switch value={!!form.fields.startTime && form.fields.reminderEnabled}
+                disabled={form.busy || !form.fields.startTime}
+                onValueChange={value => form.change("reminderEnabled", value)} />
+            </Host>
+          </View>
           <View
             accessibilityRole="radiogroup"
             style={{

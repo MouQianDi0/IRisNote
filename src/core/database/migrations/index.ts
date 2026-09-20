@@ -6,6 +6,7 @@ import { createNoteRevisions } from "./0004-create-note-revisions";
 import { createUploadQueue } from "./0005-create-upload-queue";
 import { addServerUpdatedAt } from "./0006-add-server-updated-at";
 import { createLocalTodos } from "./0007-create-local-todos";
+import { createTodoReminderBindings } from "./0008-create-todo-reminder-bindings";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -15,6 +16,7 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     createUploadQueue,
     addServerUpdatedAt,
     createLocalTodos,
+    createTodoReminderBindings,
 ];
 
 export const CURRENT_DATABASE_VERSION = databaseMigrations.at(-1)?.version ?? 0;

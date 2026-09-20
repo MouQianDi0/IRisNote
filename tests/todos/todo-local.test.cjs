@@ -145,7 +145,7 @@ test("迁移 1–6 升级到 7，保留既有表数据，迁移可重复且具�
   );
   await createLocalTodos.up(database);
   await createLocalTodos.up(database);
-  assert.equal(CURRENT_DATABASE_VERSION, 7);
+  assert.equal(CURRENT_DATABASE_VERSION, 8);
   assert.equal(
     sqlite.prepare("SELECT title FROM local_notes").get().title,
     "保留笔记",

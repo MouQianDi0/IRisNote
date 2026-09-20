@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { BackHandler, SectionList, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { banner } from "@/core/notifications";
 import { semanticColors } from "@/shared/theme";
 import { Input } from "@/shared/ui";
@@ -118,11 +118,13 @@ function TodoList({
   generation,
   entities,
   selectedDateId,
+  initialReminderDate,
 }: {
   ownerKey: string;
   generation: number;
   entities: readonly TodoEntity[];
   selectedDateId: string | null;
+  initialReminderDate: string | null;
 }) {
   const now = useTodoClock(entities);
   const [filter, setFilter] = useState<TodoFilter>("all");
@@ -167,7 +169,7 @@ function TodoList({
       }));
   }, [visible]);
   const listRef = useRef<SectionList<TodoEntity, TodoDaySection>>(null);
-  const deferredScrollDateId = useRef<string | null>(null);
+  const deferredScrollDateId = useRef<string | null>(initialReminderDate);
   const lastAutoWeekId = useRef(weekId);
   const scrollRetry = useRef({
     dateId: "",
@@ -513,13 +515,15 @@ function TodoList({
 
 export default function TodosScreen() {
   const scope = useTodoScope();
+  const { reminderVisit } = useLocalSearchParams<{ reminderVisit?: string }>();
   return scope.ready ? (
     <TodoList
-      key={`${scope.ownerKey}:${scope.generation}`}
+      key={`${scope.ownerKey}:${scope.generation}:${reminderVisit ?? ""}`}
       ownerKey={scope.ownerKey}
       generation={scope.generation}
       entities={scope.entities}
       selectedDateId={scope.selectedDateId}
+      initialReminderDate={reminderVisit ? scope.selectedDateId : null}
     />
   ) : (
     <View className="flex-1 bg-app-background" />

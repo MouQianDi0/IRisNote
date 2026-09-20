@@ -1,3 +1,16 @@
+## 2026-09-20 10:08:19 | 新增功能：Android/iOS 本地系统通知与待办开始提醒
+
+- 已获用户确认附件中的实现方案、48dp 提醒行预览及 iOS Bundle ID `com.mouqiandi.irisNote`；基线为 `e6ca2d5`，本记录对应未提交工作区。
+- 依赖与原生配置：package.json、package-lock.json、app.json、plugins/with-local-notification-entitlements.js、assets/images/notification-icon.svg、assets/images/notification-icon.png、scripts/generate-notification-icon.cjs。使用 Expo 安装 expo-notifications ~57.0.20，其依赖令 expo-constants 锁定至 57.0.19；白色透明 96px 图标可由脚本重建。Android 为 Git 忽略的预构建目录，无强制加入生成文件；iOS 本地通知插件移除官方插件默认 APNs entitlement，不接入远程推送或后台推送模式。
+- 通知核心：src/core/system-notifications/{system-notification.types.ts,system-notification.service.ts,system-notification-provider.tsx,index.ts}、src/core/providers/AppProviders.tsx。建立 irisnote.reminders.v1 HIGH 渠道，默认声音/振动、PRIVATE、无角标；sync 只保留语义。启动不请求权限；前台系统展示、不重复横幅；冷启动/运行中点击等待归属与导航就绪，进入对应日期，失效通知仅显示通用提示。
+- 持久化与恢复：src/core/database/migrations/{0008-create-todo-reminder-bindings.ts,index.ts}、src/features/todos/data/todo-reminder.repository.ts、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts。独立设备绑定表保存 owner/todo、系统 ID、实体版本、触发时刻、状态和错误，不污染实体/后端契约；调度前写意图、串行对账、取消失败阻止重建、删除保留清理记录、系统孤儿清理、账号切换保护。按设备民用时刻解析，DST 缺失报错，重复小时采用较早时刻；失败不回滚保存。
+- 交互：src/features/todos/hooks/useTodoForm.ts、src/features/todos/components/TodoFormDialog.tsx、src/features/todos/screens/TodosScreen.tsx、src/features/settings/screens/SettingsScreen.tsx。明确确认未来提醒后才申请权限，自动保存仅提供“开启”横幅操作；增加 @expo/ui 原生 Switch，无开始时间禁用；设置入口显示权限状态并进入系统设置；通知导航重置列表筛选并滚动对应日期，不打开编辑。
+- 测试与文档：tests/todos/{todo-local.test.cjs,todo-reminders.test.cjs,system-notifications.test.cjs}、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/待办/待办逻辑层设计.md、CHANGELOG.md。覆盖时间/DST、调度幂等、修改/完成/删除、取消失败、权限、会话竞态、重启恢复、SQLite 文件重开、原生配置及图标。
+- 验证：修改前 npm run typecheck 通过；最终检查与 Android 本地编译结果在完成后补充。iOS 配置 introspect 已证明无 aps-environment / remote-notification；Windows 未编译 iOS，未进行真机/浏览器验收、EAS 构建、上传、发布、暂存或提交。
+- 已知偏差：当前 expo-notifications 的本地调度输入及 iOS 原生构造不支持 threadIdentifier，只有结果读取字段；iOS 使用 active，自定义分组尚未实现。未宣称支持 timeSensitive/critical、精确闹钟或准点必达。前台恢复前的时区变动、系统容量限制、专注模式与 OEM 行为仍需设备验收。
+
+---
+
 ## 2026-09-20 08:31:35 | 修复问题：整周分组列表滚动时序、跨午夜跟随与重试生命周期
 
 - 依据用户提交的外部代码审查意见（P0×2、P1×2、P2×2）修复，已获用户确认修复范围（P0+P1+P2 全部）。仅审查方未改文件，本次修复均落在上一条新增的整周分组功能改动内。

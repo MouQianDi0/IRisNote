@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { banner } from "@/core/notifications";
+import { useSystemNotifications } from "@/core/system-notifications/system-notification-provider";
 import { todoRepository } from "../state/todo-store";
 import {
   emptyTodoFields,
@@ -25,6 +26,7 @@ export function useTodoForm(
   dateId: string,
   onClose: () => void,
 ) {
+  const { afterSave } = useSystemNotifications();
   const [fields, setFields] = useState(() =>
     base ? todoFields(base) : emptyTodoFields(dateId),
   );
@@ -86,6 +88,8 @@ export function useTodoForm(
       );
       assertTodoSession(todoRepository, ownerKey, generation);
       if (mounted.current) onClose();
+      // This side effect cannot turn a committed save into a form failure.
+      void afterSave(todoRepository.get(ownerKey, clientId.current), reason);
     } catch (cause) {
       if (!mounted.current) return;
       const message =

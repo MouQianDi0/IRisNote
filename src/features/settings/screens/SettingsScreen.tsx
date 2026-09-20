@@ -1,4 +1,5 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useSystemNotifications } from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
@@ -63,6 +64,7 @@ function SettingsGroupTitle({ children }: { children: string }) {
 }
 
 export default function SettingsScreen() {
+    const { permission, openSettings } = useSystemNotifications();
     const { isLoggedIn, loading, logout, user } = useAuth();
     const [loggingOut, setLoggingOut] = useState(false);
     const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "—";
@@ -256,9 +258,9 @@ export default function SettingsScreen() {
                             <SettingsRow
                                 icon={Bell}
                                 label="通知设置"
-                                value="规划中"
-                                description="当前站内提示由业务状态自动触发"
-                                disabled
+                                value={permission === null ? "读取中" : permission.granted ? "已开启" : "未开启"}
+                                description="管理系统待办提醒的权限、声音和展示方式"
+                                onPress={openSettings}
                                 last
                             />
                         </Card>
