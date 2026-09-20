@@ -241,3 +241,25 @@ test("Android 通知图标为 96px 白色透明 PNG，且有非空图形和透�
   assert.equal(alpha.has(0), true);
   assert.equal(alpha.has(255), true);
 });
+
+test("Expo Go 安全入口不静态加载通知原生模块，原生实现单独保留", () => {
+  const provider = fs.readFileSync(
+    path.join(
+      root,
+      "src/core/system-notifications/system-notification-provider.tsx",
+    ),
+    "utf8",
+  );
+  const nativeProvider = fs.readFileSync(
+    path.join(
+      root,
+      "src/core/system-notifications/system-notification-native-provider.tsx",
+    ),
+    "utf8",
+  );
+  assert.match(provider, /isRunningInExpoGo/);
+  assert.match(provider, /lazy\(\(\)\s*=>\s*import\("\.\/system-notification-native-provider"\)/);
+  assert.doesNotMatch(provider, /from "expo-notifications"/);
+  assert.doesNotMatch(provider, /from "\.\/system-notification\.service"/);
+  assert.match(nativeProvider, /from "expo-notifications"/);
+});

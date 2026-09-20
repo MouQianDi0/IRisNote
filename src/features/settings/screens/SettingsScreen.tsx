@@ -1,5 +1,8 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useSystemNotifications } from "@/core/system-notifications/system-notification-provider";
+import {
+    systemNotificationsAvailable,
+    useSystemNotifications,
+} from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
@@ -258,9 +261,10 @@ export default function SettingsScreen() {
                             <SettingsRow
                                 icon={Bell}
                                 label="通知设置"
-                                value={permission === null ? "读取中" : permission.granted ? "已开启" : "未开启"}
-                                description="管理系统待办提醒的权限、声音和展示方式"
-                                onPress={openSettings}
+                                value={!systemNotificationsAvailable ? "Expo Go 中不可用" : permission === null ? "读取中" : permission.granted ? "已开启" : "未开启"}
+                                description={!systemNotificationsAvailable ? "请使用开发构建启用系统待办提醒" : "管理系统待办提醒的权限、声音和展示方式"}
+                                disabled={!systemNotificationsAvailable}
+                                onPress={systemNotificationsAvailable ? openSettings : undefined}
                                 last
                             />
                         </Card>
