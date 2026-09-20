@@ -46,7 +46,7 @@ export function todoFromRow(row: TodoRow): TodoEntity {
     !Number.isSafeInteger(row.local_version) ||
     row.local_version < 1 ||
     !row.owner_key ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       row.client_id,
     ) ||
     (row.is_completed === 1
@@ -81,9 +81,10 @@ export function todoFromRow(row: TodoRow): TodoEntity {
   return entity;
 }
 
-const columns =
+export const todoColumns =
   "owner_key, client_id, body, priority, date_id, start_time, end_time, is_starred, is_pinned, reminder_enabled, time_zone, is_completed, completed_at, local_version, created_at, updated_at";
-function values(entity: TodoEntity) {
+const columns = todoColumns;
+export function todoValues(entity: TodoEntity) {
   return [
     entity.ownerKey,
     entity.clientId,
@@ -103,6 +104,14 @@ function values(entity: TodoEntity) {
     entity.updatedAt,
   ];
 }
+const values = todoValues;
+
+export type TodoCommitObserver = (
+  transaction: ApplicationDatabaseTransaction,
+  ownerKey: string,
+  before: readonly TodoEntity[],
+  after: readonly TodoEntity[],
+) => Promise<void>;
 
 async function readOwner(
   database: ApplicationDatabaseTransaction,
@@ -126,7 +135,10 @@ export class TodoLocalRepository implements TodoRepository {
   private queue: Promise<unknown> = Promise.resolve();
   private activation: Promise<void> | null = null;
 
-  constructor(database: ApplicationDatabase | null = null) {
+  constructor(
+    database: ApplicationDatabase | null = null,
+    private readonly onCommit?: TodoCommitObserver,
+  ) {
     this.database = database;
   }
 
@@ -261,6 +273,7 @@ export class TodoLocalRepository implements TodoRepository {
             throw new TodoError("conflict", "待办已变化，请重试");
           this.assertSession(ownerKey, generation);
         }
+        await this.onCommit?.(transaction, ownerKey, before, after);
         this.assertSession(ownerKey, generation);
         return { result, entities: after };
       });
@@ -284,6 +297,42 @@ export class TodoLocalRepository implements TodoRepository {
         this.broadcast();
       }
       return committed.result;
+    });
+  }
+
+  /** Cloud application uses the same queue as local edits, then publishes committed facts. */
+  syncTransaction<T>(
+    ownerKey: string,
+    task: (tx: ApplicationDatabaseTransaction) => Promise<T>,
+  ): Promise<T> {
+    const generation = this.generation;
+    const database = this.database;
+    this.assertSession(ownerKey, generation);
+    if (!database || !this.ready)
+      return Promise.reject(new Error("待办数据库未就绪"));
+    return this.enqueue(async () => {
+      this.assertSession(ownerKey, generation);
+      const result = await database.transaction(async (tx) => {
+        this.assertSession(ownerKey, generation);
+        const value = await task(tx);
+        this.assertSession(ownerKey, generation);
+        return { value, entities: await readOwner(tx, ownerKey) };
+      });
+      this.assertSession(ownerKey, generation);
+      const prior = new Map(this.entities.map((item) => [item.clientId, item]));
+      const next = result.entities.map((item) =>
+        prior.get(item.clientId)?.localVersion === item.localVersion
+          ? prior.get(item.clientId)!
+          : item,
+      );
+      if (
+        next.length !== this.entities.length ||
+        next.some((item, i) => item !== this.entities[i])
+      ) {
+        this.entities = Object.freeze(next);
+        this.broadcast();
+      }
+      return result.value;
     });
   }
 
