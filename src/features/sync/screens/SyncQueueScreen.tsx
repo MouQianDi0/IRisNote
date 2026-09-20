@@ -24,9 +24,17 @@ import {
     Wifi,
     WifiOff,
 } from "lucide-react-native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { SyncTaskDeleteDialog } from "../components/sync-task-delete-dialog";
+import { listTodoSyncRecords } from "@/features/todos/data/todo-sync.repository";
+import { onTodoSyncChanged, notifyTodoSyncChanged } from "@/features/todos/state/todo-sync-events";
+import { requestTodoSync } from "@/features/todos/state/todo-sync-runtime";
+import { TODO_CLOUD_SYNC_ENABLED } from "@/features/todos/state/todo-sync-provider";
+import { TodoConflictDialog } from "@/features/todos/components/TodoConflictDialog";
+import { TodoSyncQueueRow } from "@/features/todos/components/TodoSyncQueueRow";
+import type { TodoSyncRecord } from "@/features/todos/sync.types";
+import { todoRepository } from "@/features/todos/state/todo-store";
 
 const statusText: Record<UploadQueueTask["status"], string> = {
     queued: "等待服务器确认",
@@ -47,44 +55,70 @@ export default function SyncQueueScreen() {
     const { user } = useAuth();
     const runtime = useUploadQueueRuntime();
     const [tasks, setTasks] = useState<UploadQueueTask[]>([]);
+    const [todoTasks, setTodoTasks] = useState<TodoSyncRecord[]>([]);
+    const [todoConflict, setTodoConflict] = useState<TodoSyncRecord | null>(null);
     const [cancellationAvailability, setCancellationAvailability] = useState<
         Record<string, UploadTaskCancellationAvailability>
     >({});
     const [deleteTarget, setDeleteTarget] = useState<UploadQueueTask | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const loadSequence = useRef(0);
+    const currentUser = useRef(user?.id);
+    useLayoutEffect(() => {
+        currentUser.current = user?.id;
+        loadSequence.current += 1;
+    }, [user?.id]);
 
     useFocusEffect(useCallback(() => suppressServerConnectionBanner(), []));
 
     const load = useCallback(async () => {
+        const sequence = ++loadSequence.current;
+        const current = () => sequence === loadSequence.current && currentUser.current === user?.id;
         if (!user) {
             setTasks([]);
+            setTodoTasks([]);
             setCancellationAvailability({});
             setLoading(false);
             return;
         }
         try {
             const nextTasks = await listUploadTasks(database, user.id);
+            const nextTodos = TODO_CLOUD_SYNC_ENABLED ? await listTodoSyncRecords(database, `user:${user.id}`) : [];
             const availabilityEntries = await Promise.all(
                 nextTasks.map(async (task) => [
                     task.taskId,
                     await getUploadTaskCancellationAvailability(database, task),
                 ] as const),
             );
+            if (!current()) return;
             setTasks(nextTasks);
+            setTodoTasks(nextTodos);
             setCancellationAvailability(Object.fromEntries(availabilityEntries));
             setError("");
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "暂存列表读取失败");
+            if (current()) setError(cause instanceof Error ? cause.message : "暂存列表读取失败");
         } finally {
-            setLoading(false);
+            if (current()) setLoading(false);
         }
     }, [database, user]);
 
     useFocusEffect(useCallback(() => {
         void load();
-        return onUploadQueueChanged(() => void load());
+        const upload = onUploadQueueChanged(() => void load());
+        const todo = onTodoSyncChanged(() => void load());
+        return () => { loadSequence.current += 1; upload(); todo(); };
     }, [load]));
+
+    const retryTodo = useCallback(async (record: TodoSyncRecord) => {
+        try {
+            await todoRepository.syncTransaction(record.ownerKey, async tx => {
+                await tx.run("UPDATE todo_outbox SET next_attempt_at=0 WHERE owner_key=? AND client_id=?", [record.ownerKey, record.clientId]);
+                await tx.run("UPDATE todo_sync_state SET status='pending',error=NULL WHERE owner_key=? AND client_id=? AND status='blocked'", [record.ownerKey, record.clientId]);
+            });
+            notifyTodoSyncChanged(); requestTodoSync();
+        } catch (cause) { setError(cause instanceof Error ? cause.message : "重试失败"); }
+    }, []);
 
     const estimatedBytes = useMemo(
         () => tasks.reduce((total, task) => total + task.estimatedBytes, 0),
@@ -166,11 +200,11 @@ export default function SyncQueueScreen() {
             <View style={{ marginHorizontal: 16, marginBottom: 20, padding: 16, borderRadius: 16, backgroundColor: colors.surface, gap: 8 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                     <Database size={20} color={colors.primary} />
-                    <Text style={{ color: colors.textPrimary, fontSize: 16 }}>{tasks.length} 项暂存任务</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 16 }}>{tasks.length + todoTasks.length} 项暂存任务</Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                     <Cloud size={20} color={colors.primary} />
-                    <Text selectable style={{ color: colors.textSecondary, fontSize: 14 }}>预计上传 {formatUploadBytes(estimatedBytes)}</Text>
+                    <Text selectable style={{ color: colors.textSecondary, fontSize: 14 }}>通用上传预计 {formatUploadBytes(estimatedBytes)} · 待办 {todoTasks.length} 项</Text>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                     <NetworkIcon size={20} color={runtime.connected ? colors.primary : colors.danger} />
@@ -198,9 +232,14 @@ export default function SyncQueueScreen() {
                 >
                     <FlatList
                         style={{ flexGrow: 0, flexShrink: 1 }}
-                        data={tasks}
-                        keyExtractor={(item) => item.taskId}
-                        renderItem={renderItem}
+                        data={[
+                            ...todoTasks.filter(record => record.ownerKey === `user:${user?.id}`).map(record => ({ type: "todo" as const, record })),
+                            ...tasks.filter(task => task.ownerUserId === user?.id).map(task => ({ type: "upload" as const, task })),
+                        ]}
+                        keyExtractor={item => item.type === "todo" ? `todo:${item.record.clientId}` : item.task.taskId}
+                        renderItem={info => info.item.type === "todo"
+                            ? <TodoSyncQueueRow record={info.item.record} onConflict={() => setTodoConflict(info.item.type === "todo" ? info.item.record : null)} onRetry={() => { if (info.item.type === "todo") void retryTodo(info.item.record); }} />
+                            : renderItem({ item: info.item.task })}
                         contentInsetAdjustmentBehavior="automatic"
                         ItemSeparatorComponent={() => <View style={{ height: 1, marginHorizontal: 16, backgroundColor: colors.divider }} />}
                         ListEmptyComponent={<View style={{ padding: 24, alignItems: "center" }}><Text style={{ color: colors.textSecondary }}>暂无暂存任务</Text></View>}
@@ -214,6 +253,9 @@ export default function SyncQueueScreen() {
                     onClose={() => setDeleteTarget(null)}
                     onConfirm={confirmDelete}
                 />
+            )}
+            {todoConflict?.ownerKey === `user:${user?.id}` && (
+                <TodoConflictDialog record={todoConflict} onClose={() => setTodoConflict(null)} />
             )}
         </View>
     );
