@@ -1,3 +1,24 @@
+## 2026-09-20 21:19:42 | 修复问题：Expo Go 安全降级系统待办提醒
+
+- 变更概述：Android Expo Go 运行时不再加载 `expo-notifications` 原生模块，避免 SDK 57 通知包初始化触发远程推送限制并中断 Expo Router 路由加载；开发构建和正式包保留原有待办系统提醒。
+- 修改文件：src/core/system-notifications/{system-notification-provider.tsx,system-notification-native-provider.tsx,system-notification-context.ts}、src/features/settings/screens/SettingsScreen.tsx、tests/todos/system-notifications.test.cjs、CHANGELOG.md。
+- 具体内容：安全入口使用 `isRunningInExpoGo()` 选择实现。Expo Go 直接透传页面、不创建渠道、不申请权限、不监听点击、不对账或调度；保存带提醒的待办仍会保存并显示开发构建提示。通知原生 Provider 被移至按需加载文件。设置页通知行保持既有 56dp 最小行高、16dp 内边距与 12dp 图文间隔，在 Expo Go 显示“Expo Go 中不可用”、禁用点击且不展示跳转箭头。
+- 验证：修改前、后 `npm run typecheck` 均通过；`expo lint`、主题检查与通知定向测试 8/8 通过。`npm run check` 的类型、Lint、主题均通过，但默认并行 Node 运行器在 `tests/releases/workspace.test.cjs` 复现既有反序列化错误；串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 最终 314/314 通过。未启动 Expo Go、未构建或进行真机验收。
+
+---
+
+## 2026-09-20 19:35:19 | 新增功能：Todo 前后端交接与客户端云同步
+
+- 变更概述：按用户确认的云同步及冲突界面方案，将既有本地 Todo 接入后端正式契约；基线 `8ea6cca1c1e7fa7d0b367762c04dd312a945b34c`，本条对应未提交工作区。默认关闭网络同步，构建环境 `EXPO_PUBLIC_TODO_CLOUD_SYNC=1` 才启用登录账号同步。
+- 数据文件：src/core/database/migrations/{0009-create-todo-sync.ts,index.ts}、src/features/todos/{sync.types.ts,data/todo-local.repository.ts,data/todo-sync.repository.ts,state/todo-store.ts}。新增独立同步镜像、outbox、游标与快照暂存表；本地修改与待提交意图同事务；已冻结操作保持原键和请求，后续编辑保存独立序号；迁移保留原 Todo 数据并对齐后端通用 UUID 契约，设备提醒绑定独立保留。
+- 接口与生命周期文件：src/features/todos/api/{todo-wire.ts,todos.api.ts}、src/features/todos/services/todo-sync.service.ts、src/features/todos/state/{todo-sync-coordinator.ts,todo-sync-provider.tsx,todo-sync-events.ts,todo-sync-runtime.ts}、src/core/providers/AppProviders.tsx、src/shared/http/client.ts。校验资源身份、版本、分页和批量回执；复用共享 HTTP 客户端并保留显式捕获的账号 token；全量完整后原子对账，增量事件和游标同事务；账号切换取消、前台/联网/本地变化唤醒、退避重试、401 暂停；仅拉取成功不能宣称上传已完成。
+- 界面文件：src/features/todos/components/{TodoConflictDialog.tsx,TodoSyncQueueRow.tsx}、src/features/sync/screens/SyncQueueScreen.tsx。同步队列显示待办及重试/冲突入口；保留本机、基础、云端版本，提供采用云端、保留本地重试、另存新身份；删除冲突禁止原身份复活。沿用 24dp 内边距/圆角、440dp 最大宽度、85% 最大高度、16dp 区块间隔、10dp 按钮间隔；Todo 任务不提供直接删除队列功能。
+- 测试与文档：tests/todos/{todo-local.test.cjs,todo-sync.test.cjs,todo-api.test.cjs}、docs/待办/{待办逻辑层设计.md,待办后端API预留契约.md,Todo前后端交接与验收.md,TODO.md}、CHANGELOG.md。覆盖真实隔离 SQLite、本机 HTTP、请求冻结、旧回执、增量回滚、部分批量成功、账号切换和删除冲突。
+- 当前验证：修改前类型检查通过；新增 23 项同步与 8 项本机 HTTP 测试通过。最终 `npm run check` 的类型检查、Lint 与主题检查通过；其默认并行 Node 测试在 `tests/releases/workspace.test.cjs` 复现运行器反序列化错误（非断言失败），故命令退出 1。按项目稳定回退 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 复跑，313/313 通过、0 失败。早期 SQLite 文件测试清理钩子先删目录后关连接导致 Windows EPERM，已修正关闭顺序并复测通过。
+- 边界：未连接生产数据库、迁移 006/007、部署后端、构建/发布 App 或开展浏览器/设备验收；正式环境启用和真实 APK 双端联调仍待完成。云端通知副作用复用本地提醒协调器，不上传通知 ID，不请求新的系统权限；游客/预览数据不上传、不自动迁入账号。
+
+---
+
 ## 2026-09-20 10:08:19 | 新增功能：Android/iOS 本地系统通知与待办开始提醒
 
 - 已获用户确认附件中的实现方案、48dp 提醒行预览及 iOS Bundle ID `com.mouqiandi.irisNote`；基线为 `e6ca2d5`，本记录对应未提交工作区。
