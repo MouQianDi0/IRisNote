@@ -1,3 +1,99 @@
+## 2026-09-20 05:24:33 | 修复问题：历史笔记空值兼容及正式接口真机验证通过
+
+- 用户已确认修复，并要求使用 npx expo start 局域网调试。文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 根因证据：设备连接 https://tech-mou.top/api；05:16:50、05:17:32 的真实 /api/notes/snapshot HTTP 200 响应校验失败，data[0].is_pinned 为 null。后端 NoteSyncDTO 明确允许 is_pinned/is_starred 为 boolean|null，原客户端校验不匹配。
+- 修复：CloudNote 和解析器仅对这两个字段接受合法 null，镜像保留原值，cloudNoteToLocal 映射为 false；true/false 原样保留。缺失、数字、字符串、对象仍拒绝，其他字段及分页校验不变。未修改线上笔记或数据库结构。
+- 自动验证：基于 88495fe 加前轮已授权未提交改动，修改前 typecheck 通过；最终 npm run check 通过（类型、lint、主题、251 项测试，0 失败/0 跳过）。同步测试 27 项通过，包括九种标星/置顶组合、非法类型、SQLite 原值镜像、增量转换、重复事件和编辑时间保持。
+- 真机结果：Xiaomi 23113RKC6C（ADB 77b6a943）05:22:15 日志确认正式 API；05:22:18 首次 sync_completed，count=11，elapsedMs=1263；05:23:46 手动刷新 sync_completed，count=11，elapsedMs=655。修复后这两次操作未出现响应校验失败或账号变化警告；未做线上新增/编辑/删除实验，不代表完整多端冲突验收。
+- 环境：停止本任务先前的 localhost 服务，执行 npx expo start，默认 LAN 地址 192.168.31.67:8081，按 s 切至 Expo Go；设备以 exp://192.168.31.67:8081 加载，移除本任务的 USB 8081 reverse。开发服务保持运行，加载入口 http://192.168.31.67:8081/_expo/loading。
+- 证据边界：同步完成来自实际设备日志；没有取得独立逐请求网络抓包，Inspector WebSocket 返回 401 后未继续。未提交、推送、打包、发布或更改服务端配置，保留此前修复。
+
+---
+
+## 2026-09-20 05:20:44 | 修复问题：历史笔记置顶与标星空值兼容（实施中）
+
+- 用户明确确认修复，并指定后续使用 npx expo start 局域网调试、连接正式后端。此前真机正式请求 /api/notes/snapshot 返回 HTTP 200，data[0].is_pinned 为 null；后端 NoteSyncDTO 继承 boolean|null，与客户端原 boolean 校验不一致。
+- 文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 修改：只允许 is_pinned / is_starred 的合法 null，镜像保留原值，转成本地领域对象时映射为 false；缺失字段、数字、字符串、对象、分页布尔值仍严格拒绝，不修改历史数据库。
+- 验证基线：88495fe 加此前未提交修复，修改前 npm run typecheck 通过。新增测试覆盖两个字段的 true/false/null 组合、错误类型拒绝、SQLite 镜像/增量转换和编辑时间不变；最终检查及局域网真机结果待完成。
+
+---
+
+## 2026-09-20 05:11:45 | 修复问题：热更新后笔记同步账号绑定恢复
+
+- 变更概述：用户确认后修复同步模块重新加载、Provider 保留同账号 ref 时直接返回而不恢复 currentOwner 的缺陷；不把本修复等同于原“同步响应无效”问题已解决。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 具体内容：同账号 layout effect 仍调用幂等 setNoteSyncOwner，不重置通知、不重复欢迎、不取消同账号请求；实际账号变化推进会话代际并 abort 旧请求，阻止 A→B→A 后旧任务继续提交。退出/重登仍使用现有连接会话重置。
+- 复现：新增测试执行真实 Provider 源码的 layout effect，模拟保留 refs 与重新加载同步模块；修复前同账号恢复与直接切换再切回两项失败、退出重登通过，修复后三项均通过。使用真实 Node SQLite 和显式网络/React hook 测试替身，不冒充设备运行结果。
+- 验证：基于 88495fe 工作区，修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、lint、theme:check、249 项测试，0 失败/0 跳过），同步测试 25 项通过。git diff --check 通过，修改文件未发现冲突标记。
+- 真机边界：ADB 设备 77b6a943 为 device 状态。读取日志仍仅有 05:05:52 的旧“笔记同步账号已变化”；本机未检测到 Expo 启动进程、8081/status 不可达，未重载设备现有应用或宣称真机修复通过。仍需开发服务提供新 bundle 后验证同步及原字段级错误。
+- 保留前轮已授权字段诊断改动；本轮未修改后端、数据库、密钥或启动/停止开发服务，未提交、推送、打包、部署。
+
+---
+
+## 2026-09-20 05:10:30 | 修复问题：笔记同步账号重绑定（实施中）
+
+- 用户已确认修复。基于 88495fe 工作区保留前轮字段级诊断改动，修改前 npm run typecheck 通过。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 同账号 Provider layout effect 重新执行时也绑定同步模块账号，以恢复 Fast Refresh 重建的模块状态，不重复清空通知或显示欢迎提示；setter 同账号幂等，实际账号变化推进会话代际并取消旧请求，阻止 A→B→A 恢复旧任务。
+- 修改前新增测试已复现同账号模块重载无法同步、直接切账号再切回未取消旧请求；退出/重新登录场景原先通过。修复后的全量检查与设备验收待完成。
+- 本轮不修改响应校验、后端、数据库、密钥或运行中的开发服务，不将账号状态问题视为原响应字段错误已解决。
+
+---
+
+## 2026-09-20 04:57:49 | 修复问题：笔记同步响应字段级诊断完成
+
+- 变更概述：用户确认后，为快照和增量响应校验增加可定位且不含原始数据的错误信息，解决所有不匹配均显示同一句提示、无法确定失败字段的问题；本轮没有修复尚未确认的实际响应差异。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 解析器：新增 NotesSyncResponseError，标明 data[i] / data[i].data / page / sync 等具体字段路径、预期类型或约束、实际类型；区分缺失、null、格式、账号、序号顺序等问题。所有原校验规则保留，不将非法响应转换成可用数据。
+- 请求：只在本地响应校验失败时附加固定接口路径和实际 HTTP 状态。response 仅包含 status，供现有日志显示；不保存响应对象、请求参数、正文、标题、用户 ID、Token、游标或原异常 cause。网络/HTTP 失败与其他异常原样传播。
+- 验证：基于提交 88495fe，修改前 npm run typecheck 通过；最终 npm run check 通过（类型、lint、主题、246 项测试，0 失败/0 跳过）。同步测试 22 项通过，新增 3 组覆盖具体字段、嵌套增量、分页结构、敏感值不泄漏、200 响应校验失败上下文，以及 503 错误不被替换；git diff --check 通过，无冲突标记。
+- 边界：测试使用显式构造响应和 Axios adapter，并非问题设备的实际响应。需在 App 重载本次代码并再次刷新后，根据新日志确认真正不匹配项。未修改数据库、密钥、后台服务、部署、打包、提交或推送。
+
+---
+
+## 2026-09-20 04:55:01 | 修复问题：笔记同步响应字段级诊断（实施中）
+
+- 用户已确认诊断改造。基线 88495fe，工作区干净，修改前 npm run typecheck 通过。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 保留现有拒绝规则，错误补充字段路径、预期类型/约束、实际类型以及快照/增量接口和 HTTP 状态。不保存原始响应、正文、标题、用户 ID、Token 或游标，不触及数据、密钥、后端部署。
+- 正在补充脱敏诊断与校验回归测试；本轮只增强诊断，原设备响应不匹配的具体原因尚待新日志定位。
+
+---
+
+## 2026-09-20 04:42:02 | 新增功能：App 笔记快照与增量同步接入完成
+
+- 变更概述：用户已确认方案及实施范围。在 a49c363 工作区接入后端 notes/snapshot 与 notes/changes；首次快照后追赶增量，后续复用持久游标，业务读取入口不再调用旧 getNotes()。
+- 修改文件：src/core/database/migrations/0007-add-note-sync-state.ts、src/core/database/migrations/index.ts、src/core/notifications/notification-provider.tsx、src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/services/note-save.service.ts、src/features/notes/notes.events.ts、src/features/notes/screens/NotesScreen.tsx、src/features/notes/screens/NoteDetailScreen.tsx、src/features/profile/hooks/useProfileOverview.ts、src/features/sync/upload-task-adapters.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 数据：SQLite v7 新建账号隔离的同步状态、云端镜像和快照暂存表，不改写旧笔记、历史版本和草稿。快照分页暂存，收齐后原子替换云端镜像；增量每页镜像与游标同事务提交，追上本轮及一次新水位后再投影本地，防止中间历史事件回退已接受写入。无变化同步仍需读取本地镜像，不等于本地存储层也只访问变化行。
+- 保护：镜像版本识别重复事件、保留删除身份、拒绝异常复活；dirty/syncing 本地内容与云端候选分别保留。云端删除有本地编辑/草稿时保留内容及历史、阻止自动上传；无变化保存不能清除这一保护。旧正文编辑时间冲突协议及不确定创建保护保留，未将客户端时间当作增量顺序。
+- 调度：列表、详情、个人页使用共用同步入口；登录、前台恢复、连接恢复及笔记/分类写入后触发，同账号并发请求合并，后台/退出/切账号取消并在事务提交前检查。观察现有 Axios 写入与本地上传回执全过程，写入交叉时停止投影并重试。分类删除仍按最新云端镜像删除分类内笔记后删除分类，未改变既有业务语义。
+- 错误：410 有限次重建基线并保留本地候选；401/400/503 等失败不当成空列表、不回退旧全量接口；结构化同步错误按文字显示。密钥留在服务器，App 不持有 SYNC_CURSOR_SECRET。
+- 验证：修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、Expo lint、theme:check、243 项测试，0 失败/0 跳过）。新增 19 项测试使用真实 Node SQLite、可控网络/会话替身和 Axios adapter，覆盖分页续传、事务回滚、快照/游标过期、账号切换、并发上传、删除草稿、旧结构保留、大整数序号等；不能替代生产 HTTP 或 Expo 真机验收。首次完整回归发现静态网络导入影响纯草稿测试，已改为分类删除按需加载，35 项旧草稿测试及最终全量检查均通过。
+- 收尾：git diff --check 通过，src 与新增测试未发现 Git 冲突标记。保留原有 package.json、package-lock.json、connection-events.ts 和日志改动；没有新增依赖、提交、推送、服务器迁移、部署、APK 构建/发布，也未停止已有开发服务。
+- 上线边界：真实后端需完成 006/007、固定 SYNC_CURSOR_SECRET 及全部实例切换；仍需真实账号、双设备离线/冲突/删除验收。本地状态按账号隔离，测试/生产使用同一 App 数据空间的整体环境隔离不在本轮范围。
+
+---
+
+## 2026-09-20 04:30:50 | 新增功能：App 笔记增量同步接入（实施中）
+
+- 已获用户明确确认。新增账号隔离的云端镜像、快照暂存及游标，分离下载进度与本地编辑。
+- 文件：src/core/database/migrations/0007-add-note-sync-state.ts、migrations/index.ts；src/features/notes/api/notes-sync.types.ts、notes-sync.api.ts；data/note-sync.repository.ts、note-local.repository.ts；services/note-sync.service.ts、note-sync-coordinator.ts、note-save.service.ts；notes.events.ts；screens/NotesScreen.tsx、NoteDetailScreen.tsx；src/features/profile/hooks/useProfileOverview.ts；src/core/notifications/notification-provider.tsx；src/features/sync/upload-task-adapters.ts；CHANGELOG.md。
+- 增量每页与游标同事务，完整快照先暂存，追上增量后投影；未上传内容与草稿保留，写入期间停止投影。列表、详情和个人页改用共用同步入口；分类删除保留现有删除分类内笔记的语义。
+- 修改前基线：a49c363，npm run typecheck 通过。当前实施与测试尚未完成；没有执行服务器迁移、部署或构建发布。保留原有 package.json、package-lock.json、connection-events.ts 与日志改动。
+
+---
+
+## 2026-09-20 04:01:36 | 新增功能：start:test 命令一键切换测试环境启动
+
+- 文件：package.json（新增 start:test 脚本、devDependencies 新增 cross-env）、.env.local（删除）、package-lock.json（cross-env 安装产物）、CHANGELOG.md。
+- 已获用户确认。目标：`npm start` 默认连接生产地址（代码默认值 https://tech-mou.top/api），`npm run start:test` 通过命令行注入 EXPO_PUBLIC_BASE_URL=http://test.tech-mou.top/api 连接测试服，实现一条命令切换。
+- 删除 .env.local 的原因：Expo CLI 启动时自动加载且优先级最高，其常驻的测试地址会覆盖生产默认值，导致"默认生产"不成立；其中 EXPO_PUBLIC_BASE_URL_LOCAL 无任何代码读取，一并清除。.env.release.local 为发布脚本专用，开发模式不加载，保持不动。
+- 使用 cross-env 保证 Windows 下 npm 脚本的变量注入跨平台生效。src/shared/http/client.ts 现有"环境变量优先 + 默认值兜底"逻辑零改动。
+- 验证：npm start 启动 Metro 正常（[API] 地址日志需客户端加载 bundle 后出现，未在本次验证）；npm run typecheck 通过，无新增类型错误。未执行构建、上传或发布。
+
+---
+
 ## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
 
 - 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
