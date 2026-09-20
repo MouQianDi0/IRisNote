@@ -1,3 +1,66 @@
+## 2026-09-20 05:24:33 | 修复问题：历史笔记空值兼容及正式接口真机验证通过
+
+- 用户已确认修复，并要求使用 npx expo start 局域网调试。文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 根因证据：设备连接 https://tech-mou.top/api；05:16:50、05:17:32 的真实 /api/notes/snapshot HTTP 200 响应校验失败，data[0].is_pinned 为 null。后端 NoteSyncDTO 明确允许 is_pinned/is_starred 为 boolean|null，原客户端校验不匹配。
+- 修复：CloudNote 和解析器仅对这两个字段接受合法 null，镜像保留原值，cloudNoteToLocal 映射为 false；true/false 原样保留。缺失、数字、字符串、对象仍拒绝，其他字段及分页校验不变。未修改线上笔记或数据库结构。
+- 自动验证：基于 88495fe 加前轮已授权未提交改动，修改前 typecheck 通过；最终 npm run check 通过（类型、lint、主题、251 项测试，0 失败/0 跳过）。同步测试 27 项通过，包括九种标星/置顶组合、非法类型、SQLite 原值镜像、增量转换、重复事件和编辑时间保持。
+- 真机结果：Xiaomi 23113RKC6C（ADB 77b6a943）05:22:15 日志确认正式 API；05:22:18 首次 sync_completed，count=11，elapsedMs=1263；05:23:46 手动刷新 sync_completed，count=11，elapsedMs=655。修复后这两次操作未出现响应校验失败或账号变化警告；未做线上新增/编辑/删除实验，不代表完整多端冲突验收。
+- 环境：停止本任务先前的 localhost 服务，执行 npx expo start，默认 LAN 地址 192.168.31.67:8081，按 s 切至 Expo Go；设备以 exp://192.168.31.67:8081 加载，移除本任务的 USB 8081 reverse。开发服务保持运行，加载入口 http://192.168.31.67:8081/_expo/loading。
+- 证据边界：同步完成来自实际设备日志；没有取得独立逐请求网络抓包，Inspector WebSocket 返回 401 后未继续。未提交、推送、打包、发布或更改服务端配置，保留此前修复。
+
+---
+
+## 2026-09-20 05:20:44 | 修复问题：历史笔记置顶与标星空值兼容（实施中）
+
+- 用户明确确认修复，并指定后续使用 npx expo start 局域网调试、连接正式后端。此前真机正式请求 /api/notes/snapshot 返回 HTTP 200，data[0].is_pinned 为 null；后端 NoteSyncDTO 继承 boolean|null，与客户端原 boolean 校验不一致。
+- 文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 修改：只允许 is_pinned / is_starred 的合法 null，镜像保留原值，转成本地领域对象时映射为 false；缺失字段、数字、字符串、对象、分页布尔值仍严格拒绝，不修改历史数据库。
+- 验证基线：88495fe 加此前未提交修复，修改前 npm run typecheck 通过。新增测试覆盖两个字段的 true/false/null 组合、错误类型拒绝、SQLite 镜像/增量转换和编辑时间不变；最终检查及局域网真机结果待完成。
+
+---
+
+## 2026-09-20 05:11:45 | 修复问题：热更新后笔记同步账号绑定恢复
+
+- 变更概述：用户确认后修复同步模块重新加载、Provider 保留同账号 ref 时直接返回而不恢复 currentOwner 的缺陷；不把本修复等同于原“同步响应无效”问题已解决。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 具体内容：同账号 layout effect 仍调用幂等 setNoteSyncOwner，不重置通知、不重复欢迎、不取消同账号请求；实际账号变化推进会话代际并 abort 旧请求，阻止 A→B→A 后旧任务继续提交。退出/重登仍使用现有连接会话重置。
+- 复现：新增测试执行真实 Provider 源码的 layout effect，模拟保留 refs 与重新加载同步模块；修复前同账号恢复与直接切换再切回两项失败、退出重登通过，修复后三项均通过。使用真实 Node SQLite 和显式网络/React hook 测试替身，不冒充设备运行结果。
+- 验证：基于 88495fe 工作区，修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、lint、theme:check、249 项测试，0 失败/0 跳过），同步测试 25 项通过。git diff --check 通过，修改文件未发现冲突标记。
+- 真机边界：ADB 设备 77b6a943 为 device 状态。读取日志仍仅有 05:05:52 的旧“笔记同步账号已变化”；本机未检测到 Expo 启动进程、8081/status 不可达，未重载设备现有应用或宣称真机修复通过。仍需开发服务提供新 bundle 后验证同步及原字段级错误。
+- 保留前轮已授权字段诊断改动；本轮未修改后端、数据库、密钥或启动/停止开发服务，未提交、推送、打包、部署。
+
+---
+
+## 2026-09-20 05:10:30 | 修复问题：笔记同步账号重绑定（实施中）
+
+- 用户已确认修复。基于 88495fe 工作区保留前轮字段级诊断改动，修改前 npm run typecheck 通过。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 同账号 Provider layout effect 重新执行时也绑定同步模块账号，以恢复 Fast Refresh 重建的模块状态，不重复清空通知或显示欢迎提示；setter 同账号幂等，实际账号变化推进会话代际并取消旧请求，阻止 A→B→A 恢复旧任务。
+- 修改前新增测试已复现同账号模块重载无法同步、直接切账号再切回未取消旧请求；退出/重新登录场景原先通过。修复后的全量检查与设备验收待完成。
+- 本轮不修改响应校验、后端、数据库、密钥或运行中的开发服务，不将账号状态问题视为原响应字段错误已解决。
+
+---
+
+## 2026-09-20 04:57:49 | 修复问题：笔记同步响应字段级诊断完成
+
+- 变更概述：用户确认后，为快照和增量响应校验增加可定位且不含原始数据的错误信息，解决所有不匹配均显示同一句提示、无法确定失败字段的问题；本轮没有修复尚未确认的实际响应差异。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 解析器：新增 NotesSyncResponseError，标明 data[i] / data[i].data / page / sync 等具体字段路径、预期类型或约束、实际类型；区分缺失、null、格式、账号、序号顺序等问题。所有原校验规则保留，不将非法响应转换成可用数据。
+- 请求：只在本地响应校验失败时附加固定接口路径和实际 HTTP 状态。response 仅包含 status，供现有日志显示；不保存响应对象、请求参数、正文、标题、用户 ID、Token、游标或原异常 cause。网络/HTTP 失败与其他异常原样传播。
+- 验证：基于提交 88495fe，修改前 npm run typecheck 通过；最终 npm run check 通过（类型、lint、主题、246 项测试，0 失败/0 跳过）。同步测试 22 项通过，新增 3 组覆盖具体字段、嵌套增量、分页结构、敏感值不泄漏、200 响应校验失败上下文，以及 503 错误不被替换；git diff --check 通过，无冲突标记。
+- 边界：测试使用显式构造响应和 Axios adapter，并非问题设备的实际响应。需在 App 重载本次代码并再次刷新后，根据新日志确认真正不匹配项。未修改数据库、密钥、后台服务、部署、打包、提交或推送。
+
+---
+
+## 2026-09-20 04:55:01 | 修复问题：笔记同步响应字段级诊断（实施中）
+
+- 用户已确认诊断改造。基线 88495fe，工作区干净，修改前 npm run typecheck 通过。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 保留现有拒绝规则，错误补充字段路径、预期类型/约束、实际类型以及快照/增量接口和 HTTP 状态。不保存原始响应、正文、标题、用户 ID、Token 或游标，不触及数据、密钥、后端部署。
+- 正在补充脱敏诊断与校验回归测试；本轮只增强诊断，原设备响应不匹配的具体原因尚待新日志定位。
+
+---
+
 ## 2026-09-20 04:42:02 | 新增功能：App 笔记快照与增量同步接入完成
 
 - 变更概述：用户已确认方案及实施范围。在 a49c363 工作区接入后端 notes/snapshot 与 notes/changes；首次快照后追赶增量，后续复用持久游标，业务读取入口不再调用旧 getNotes()。

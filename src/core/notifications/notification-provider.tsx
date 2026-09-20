@@ -35,7 +35,12 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     useLayoutEffect(() => {
         if (loading) return;
         const next = user?.id ?? null;
-        if (owner.current === next) return;
+        if (owner.current === next) {
+            // Fast Refresh can recreate the sync module while preserving this ref.
+            // Rebind without resetting banners or cancelling same-account requests.
+            setNoteSyncOwner(next);
+            return;
+        }
         banner.clearSession();
         resetConnectionSession();
         setNoteSyncOwner(next);

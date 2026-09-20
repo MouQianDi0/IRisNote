@@ -27,6 +27,10 @@ onConnectionReset(() => {
     controllers.forEach((controller) => controller.abort());
 });
 export function setNoteSyncOwner(owner: number | null) {
+    if (currentOwner === owner) return;
+    // Changing A -> B -> A must never revive a request issued in the first A session.
+    session++;
+    controllers.forEach((controller) => controller.abort());
     currentOwner = owner;
 }
 

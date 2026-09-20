@@ -2,6 +2,7 @@ import api from "@/shared/http/client";
 import { beginNoteCloudWrite } from "../notes.events";
 import {
     parseChanges,
+    withSyncResponseContext,
     parseSnapshot,
     type NotesSyncTransport,
 } from "./notes-sync.types";
@@ -39,13 +40,17 @@ export const notesSyncTransport: NotesSyncTransport = {
             params: query,
             signal,
         });
-        return parseSnapshot(response.data, owner);
+        return withSyncResponseContext("/api/notes/snapshot", response.status, () =>
+            parseSnapshot(response.data, owner),
+        );
     },
     async changes(owner, cursor, limit, signal) {
         const response = await api.get<unknown>("/notes/changes", {
             params: { cursor, limit },
             signal,
         });
-        return parseChanges(response.data, owner);
+        return withSyncResponseContext("/api/notes/changes", response.status, () =>
+            parseChanges(response.data, owner),
+        );
     },
 };
