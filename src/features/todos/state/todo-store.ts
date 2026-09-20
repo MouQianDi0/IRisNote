@@ -4,8 +4,10 @@ import { banner } from "@/core/notifications";
 import { TodoLocalRepository } from "../data/todo-local.repository";
 import { seedTodoPreview } from "../testing/todo-seeds";
 import type { TodoEntity } from "../todos.types";
+import { recordTodoChanges } from "../data/todo-sync.repository";
+import { notifyTodoSyncChanged } from "./todo-sync-events";
 
-export const todoRepository = new TodoLocalRepository();
+export const todoRepository = new TodoLocalRepository(null, recordTodoChanges);
 type TodoStore = {
   ready: boolean;
   ownerKey: string | null;
@@ -30,6 +32,7 @@ todoRepository.subscribe(() => {
     entities: ownerKey ? todoRepository.list(ownerKey) : [],
     ...(switched ? { selectedDateId: null } : {}),
   });
+  notifyTodoSyncChanged();
 });
 
 export function selectTodoDate(ownerKey: string, dateId: string) {

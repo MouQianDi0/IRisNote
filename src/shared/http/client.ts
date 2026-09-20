@@ -58,7 +58,7 @@ api.interceptors.request.use(async (config) => {
   connectionStamps.set(config, requestConnectionStamp());
   if (config.method === "get" && !config.timeout) config.timeout = 15000;
   const token = await AsyncStorage.getItem(storageKeys.authToken);
-  if (token) {
+  if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
