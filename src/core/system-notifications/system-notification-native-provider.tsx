@@ -9,6 +9,11 @@ import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
 import { router, useRootNavigationState } from "expo-router";
 import { useApplicationDatabase } from "@/core/database";
+import {
+  diagnosticErrorCategory,
+  opaqueDiagnosticId,
+  recordDiagnostic,
+} from "@/core/diagnostics";
 import { banner } from "@/core/notifications";
 import { useTodoScope } from "@/features/todos/hooks/useTodoScope";
 import {
@@ -22,14 +27,19 @@ import {
   resolveReminderTarget,
 } from "@/features/todos/services/todo-reminder.service";
 import type { TodoEntity } from "@/features/todos/todos.types";
+import { SystemPreferencesRepository } from "@/features/settings/data/system-preferences.repository";
 import {
   parseTodoNotificationData,
   type SystemNotificationPermission,
 } from "./system-notification.types";
 import { SystemNotificationContext } from "./system-notification-context";
 import {
+  applicationNotificationPermission,
+  ensureRuntimeNotification,
   initializeSystemNotifications,
   openSystemNotificationSettings,
+  removeRuntimeNotification,
+  requestApplicationNotificationPermission,
   requestSystemNotificationPermission,
   supportsSystemNotifications,
   systemNotifications,
@@ -48,11 +58,36 @@ function snapshot() {
 if (supportsSystemNotifications) {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
+      const kind = notification.request.content.data?.kind;
+      if (kind === "runtime-status") {
+        void recordDiagnostic("runtime_notification", "received_foreground");
+        return {
+          shouldShowBanner: false,
+          shouldShowList: true,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        };
+      }
+      if (kind === "diagnostic-test") {
+        void recordDiagnostic("diagnostic_notification", "received_foreground");
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+        };
+      }
       const data = parseTodoNotificationData(notification.request.content.data);
       const current = snapshot();
       const todo =
         data && resolveReminderTarget(data, current.ownerKey, current.entities);
       const show = !!todo && todo.reminderEnabled && !todo.isCompleted;
+      void recordDiagnostic("todo_reminder", "delivery_evaluated", {
+        notification: opaqueDiagnosticId(notification.request.identifier),
+        payloadValid: !!data,
+        targetFound: !!todo,
+        show,
+      });
       return {
         shouldShowBanner: show,
         shouldShowList: show,
@@ -68,10 +103,23 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
   const scope = useTodoScope();
   const navigation = useRootNavigationState();
   const [permission, setPermission] =
-    useState<SystemNotificationPermission | null>(supportsSystemNotifications ? null : { granted: false, canAskAgain: false });
+    useState<SystemNotificationPermission | null>(
+      supportsSystemNotifications
+        ? null
+        : { granted: false, canAskAgain: false },
+    );
+  const [runtimeNotificationEnabled, setRuntimeNotificationEnabledState] =
+    useState(false);
+  const [runtimeNotificationPending, setRuntimeNotificationPending] = useState(
+    supportsSystemNotifications,
+  );
   const [response, setResponse] =
     useState<Notifications.NotificationResponse | null>(null);
   const handled = useRef(new Set<string>());
+  const preferences = useMemo(
+    () => new SystemPreferencesRepository(database),
+    [database],
+  );
   const coordinator = useMemo(
     () =>
       new TodoReminderCoordinator(
@@ -99,13 +147,33 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         if (!active) return;
         setPermission(next);
         await coordinator.reconcile();
-      } catch {
+        const runtimeEnabled = await preferences.runtimeNotificationEnabled();
+        if (!active) return;
+        setRuntimeNotificationEnabledState(runtimeEnabled);
+        const applicationPermission = await applicationNotificationPermission();
+        if (runtimeEnabled && applicationPermission.granted)
+          await ensureRuntimeNotification();
+        void recordDiagnostic("runtime_notification", "state_reconciled", {
+          enabled: runtimeEnabled,
+          permissionGranted: applicationPermission.granted,
+        });
+      } catch (cause) {
+        void recordDiagnostic(
+          "notifications",
+          "provider_refresh_failed",
+          {
+            error: diagnosticErrorCategory(cause),
+          },
+          "error",
+        );
         if (active)
           banner.show({
             id: "todo-reminder-error",
             title: "系统提醒暂不可用",
             type: "important",
           });
+      } finally {
+        if (active) setRuntimeNotificationPending(false);
       }
     };
     void refresh();
@@ -113,8 +181,18 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
       void coordinator.reconcile();
     });
     const appState = AppState.addEventListener("change", (state) => {
+      void recordDiagnostic("application", "state_changed", { state });
       if (state === "active") void refresh();
     });
+    const receivedListener = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        const kind = notification.request.content.data?.kind;
+        void recordDiagnostic("notifications", "received", {
+          notification: opaqueDiagnosticId(notification.request.identifier),
+          kind: typeof kind === "string" ? kind : "unknown",
+        });
+      },
+    );
     const listener = Notifications.addNotificationResponseReceivedListener(
       (value) => {
         if (active) setResponse(value);
@@ -130,8 +208,9 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
       unsubscribe();
       appState.remove();
       listener.remove();
+      receivedListener.remove();
     };
-  }, [coordinator]);
+  }, [coordinator, preferences]);
 
   useEffect(() => {
     if (!response || !navigation?.key || !scope.ready) return;
@@ -141,7 +220,21 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
     const data = parseTodoNotificationData(
       response.notification.request.content.data,
     );
-    if (!data) return;
+    const kind = response.notification.request.content.data?.kind;
+    void recordDiagnostic("notifications", "response_received", {
+      notification: opaqueDiagnosticId(
+        response.notification.request.identifier,
+      ),
+      kind: typeof kind === "string" ? kind : "unknown",
+      action:
+        response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER
+          ? "default"
+          : "custom",
+    });
+    if (!data) {
+      void Notifications.clearLastNotificationResponseAsync().catch(() => {});
+      return;
+    }
     const current = snapshot();
     const target = resolveReminderTarget(
       data,
@@ -170,6 +263,56 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
       });
     });
   };
+
+  async function setRuntimeNotificationEnabled(enabled: boolean) {
+    setRuntimeNotificationPending(true);
+    void recordDiagnostic("runtime_notification", "toggle_requested", {
+      enabled,
+    });
+    try {
+      if (enabled) {
+        const nextPermission = await requestApplicationNotificationPermission();
+        if (!nextPermission.granted) {
+          setPermission(nextPermission);
+          banner.show({
+            title: "请先开启系统通知",
+            message: "开启后才能显示常驻通知",
+            type: "neutral",
+          });
+          return false;
+        }
+        await preferences.setRuntimeNotificationEnabled(true);
+        await ensureRuntimeNotification();
+        setRuntimeNotificationEnabledState(true);
+      } else {
+        await preferences.setRuntimeNotificationEnabled(false);
+        await removeRuntimeNotification();
+        setRuntimeNotificationEnabledState(false);
+      }
+      void recordDiagnostic("runtime_notification", "toggle_completed", {
+        enabled,
+      });
+      return true;
+    } catch (cause) {
+      void recordDiagnostic(
+        "runtime_notification",
+        "toggle_failed",
+        {
+          enabled,
+          error: diagnosticErrorCategory(cause),
+        },
+        "error",
+      );
+      banner.show({
+        title: enabled ? "常驻通知开启失败" : "常驻通知关闭失败",
+        message: "诊断日志已记录本次失败",
+        type: "important",
+      });
+      return false;
+    } finally {
+      setRuntimeNotificationPending(false);
+    }
+  }
 
   async function afterSave(todo: TodoEntity, reason: "confirm" | "dismiss") {
     const generation = todoRepository.generation;
@@ -213,7 +356,14 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
 
   return (
     <SystemNotificationContext.Provider
-      value={{ permission, afterSave, openSettings }}
+      value={{
+        permission,
+        runtimeNotificationEnabled,
+        runtimeNotificationPending,
+        setRuntimeNotificationEnabled,
+        afterSave,
+        openSettings,
+      }}
     >
       {children}
     </SystemNotificationContext.Provider>

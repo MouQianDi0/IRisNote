@@ -17,6 +17,9 @@ const NativeSystemNotificationProvider = lazy(() =>
 
 const pendingNotificationState: SystemNotificationContextValue = {
   permission: null,
+  runtimeNotificationEnabled: false,
+  runtimeNotificationPending: true,
+  setRuntimeNotificationEnabled: async () => false,
   afterSave: async () => {},
   openSettings: () => {},
 };
@@ -25,6 +28,16 @@ const expoGoNotificationState: SystemNotificationContextValue = {
   permission: {
     granted: false,
     canAskAgain: false,
+  },
+  runtimeNotificationEnabled: false,
+  runtimeNotificationPending: false,
+  setRuntimeNotificationEnabled: async () => {
+    banner.show({
+      title: "Expo Go 不支持常驻通知",
+      message: "请使用开发构建或正式安装包",
+      type: "neutral",
+    });
+    return false;
   },
   afterSave: async (todo: TodoEntity, _reason: "confirm" | "dismiss") => {
     if (!todo.reminderEnabled || todo.isCompleted || !todo.startTime) return;

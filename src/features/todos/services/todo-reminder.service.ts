@@ -3,6 +3,11 @@ import {
   type TodoNotificationData,
   type SystemNotificationPermission,
 } from "@/core/system-notifications/system-notification.types";
+import {
+  diagnosticErrorCategory,
+  opaqueDiagnosticId,
+  recordDiagnostic,
+} from "@/core/diagnostics";
 import type { TodoEntity, TodoFields } from "../todos.types";
 
 /** Local civil time, deliberately independent of the historical timeZone field. */
@@ -85,17 +90,61 @@ export async function afterSavedTodoReminder(
   port: SavedReminderPermissionPort,
   now = Date.now(),
 ) {
+  const diagnosticId = opaqueDiagnosticId(`${todo.ownerKey}:${todo.clientId}`);
+  void recordDiagnostic("todo_reminder", "after_save_started", {
+    todo: diagnosticId,
+    reason,
+    reminderEnabled: todo.reminderEnabled,
+    completed: todo.isCompleted,
+    hasStartTime: !!todo.startTime,
+  });
   try {
-    if (!port.isCurrent() || desiredTodoReminder(todo, now) === null) return;
+    if (!port.isCurrent()) {
+      void recordDiagnostic(
+        "todo_reminder",
+        "after_save_stale",
+        {
+          todo: diagnosticId,
+        },
+        "warning",
+      );
+      return;
+    }
+    if (desiredTodoReminder(todo, now) === null) {
+      void recordDiagnostic("todo_reminder", "after_save_ineligible", {
+        todo: diagnosticId,
+        reminderEnabled: todo.reminderEnabled,
+        completed: todo.isCompleted,
+        hasStartTime: !!todo.startTime,
+      });
+      return;
+    }
     let permission = await port.permission();
     if (!port.isCurrent()) return;
     if (reason === "confirm" && !permission.granted && permission.canAskAgain)
       permission = await port.request();
     if (!port.isCurrent()) return;
     port.publish(permission);
+    void recordDiagnostic("todo_reminder", "after_save_permission", {
+      todo: diagnosticId,
+      granted: permission.granted,
+      canAskAgain: permission.canAskAgain,
+    });
     if (!permission.granted) port.showDisabled();
     await port.reconcile();
-  } catch {
+    void recordDiagnostic("todo_reminder", "after_save_reconciled", {
+      todo: diagnosticId,
+    });
+  } catch (cause) {
+    void recordDiagnostic(
+      "todo_reminder",
+      "after_save_failed",
+      {
+        todo: diagnosticId,
+        error: diagnosticErrorCategory(cause),
+      },
+      "error",
+    );
     if (port.isCurrent()) port.showError();
   }
 }

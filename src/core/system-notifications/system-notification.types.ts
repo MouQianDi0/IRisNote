@@ -24,8 +24,12 @@ export interface SystemNotificationPort {
 
 export const TODO_NOTIFICATION_PREFIX = "irisnote.todo.";
 export const REMINDER_CHANNEL = "irisnote.reminders.v1";
+export const RUNTIME_CHANNEL = "irisnote.runtime.v1";
+export const DIAGNOSTIC_CHANNEL = "irisnote.diagnostics.v1";
+export const RUNTIME_NOTIFICATION_ID = "irisnote.runtime.status";
 // Reserved semantic only; no unused Android channel is created.
-export type SystemNotificationPurpose = "reminder" | "sync";
+export type SystemNotificationPurpose =
+  "reminder" | "runtime-status" | "diagnostic-test" | "sync";
 
 export function parseTodoNotificationData(
   data: Record<string, unknown> | undefined,
