@@ -1,3 +1,30 @@
+## 2026-09-21 20:33:24 | 优化代码：主页面横滑开始跟手门槛提高至 100dp
+
+- 变更概述：进一步降低主页面横滑误触；水平位移不足 100dp 时不再由页面切换控件接管。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① `react-native-tab-view@4.3.2` Pager 的 `DEAD_ZONE` 从 50dp 提高至 100dp；② 保留松手仅按 `layout.width / 1.75` 位移切页的规则，快速短甩仍不切页；③ 静态回归测试同步更新为 100dp。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为完整原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 20:12:26 | 修复问题：主页面横滑切换不再由甩动速度触发
+
+- 变更概述：移除主页面横滑松手后的速度捷径，避免短距离快速甩动直接切换页面。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 删除 `react-native-tab-view@4.3.2` Pager 的 `swipeVelocityThreshold`；② 松手切页仅在横向位移超过既有 `layout.width / 1.75` 阈值时触发；③ 保留 50dp 起滑门槛以及横纵向手势意图识别；④ 回归测试覆盖运行时速度阈值不存在且距离判定保留。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 19:24:30 | 优化代码：主页面横滑切换的最小位移提高至 50dp
+
+- 变更概述：降低主页面左右滑动切换 Tab 的误触概率；手势累计水平位移未达到 50dp 时，不再由页面切换控件接管。
+- 修改文件：package.json、package-lock.json、patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 使用 `patch-package` 固化 `react-native-tab-view@4.3.2` 运行时 Pager 的 `DEAD_ZONE`，由 12dp 调整为 50dp；② `postinstall` 自动重新应用补丁，避免重装依赖后阈值回退；③ 新增静态回归测试，校验补丁内容、安装脚本及运行时模块均为 50dp。原有页面切换方向判断、长距离阈值和释放速度阈值不变。
+- 验证：修改前后 `npm run typecheck` 通过；补丁还原后执行 `npx patch-package --error-on-fail` 成功重新应用；定向手势阈值测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
 ## 2026-09-21 18:47:04 | 新增功能：待办列表下拉云同步与实际变更统计
 
 - 变更概述：待办列表接入与笔记列表一致的顶部下拉云同步；同步完成准确展示本轮实际变更项数，全程复用现有 Todo 同步协议与后端接口。

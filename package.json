@@ -79,6 +79,7 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "expo-mcp": "~0.2.1",
+    "patch-package": "^8.0.1",
     "postcss": "^8.5.15",
     "tailwindcss": "^4.3.1",
     "typescript": "~6.0.3"
@@ -87,6 +88,7 @@
     "start": "expo start",
     "start:test": "cross-env EXPO_PUBLIC_BASE_URL=http://test.tech-mou.top/api expo start",
     "reset-project": "node ./scripts/reset-project.js",
+    "postinstall": "patch-package",
     "android": "node ./scripts/android/run.mjs expo",
     "ios": "expo run:ios",
     "web": "expo start --web",
