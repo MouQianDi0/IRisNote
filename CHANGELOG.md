@@ -1,3 +1,42 @@
+## 2026-09-21 12:30:07 | 优化代码：数据库事务回滚失败升级为可识别错误并增强账本校验诊断
+
+- 变更概述：修复审查发现的路径 3 隐患——迁移/事务失败后 ROLLBACK 自身失败时原先仅打日志并抛原始错误，可能留下账本与 user_version 分裂的不确定状态。现已升级为可识别的 `DatabaseTransactionRollbackError` 并导出供上层复用；同时账本不匹配错误的文案附带实际/期望账本详情，命中时无需拉库即可定位差异。已获用户确认执行。
+- 修改文件：src/core/database/transaction.ts、src/core/database/run-migrations.ts、src/core/database/index.ts、CHANGELOG.md。
+- 具体内容：① `transaction.ts` 新增导出 `DatabaseTransactionRollbackError`（携带 `originalError` 与 `rollbackError` 双层原因，消息明示数据库状态不确定、可能需重建），`runPlatformTransaction` 回滚失败分支由"仅 console.error 后抛原始错误"改为抛出该错误类型；② `run-migrations.ts` 的 `assertLedgerMatchesVersion` 抛错消息附上 `user_version`、`actual=[version:name,...]`、`expected=[...]`；③ `index.ts` 导出该错误类型，供后续版本升级/恢复流程按类型捕获并决策。
+- 验证：修改前 `npm run typecheck` 通过（基线 exit 0）；修改后 `npm run check`：typecheck、lint、theme:check 通过，测试 305/306，唯一失败 `tests/releases/workspace.test.cjs` 为 Node 测试运行器 IPC 反序列化偶发错误（与本次数据库修改无关），单独复跑 `node --test --test-concurrency=1 tests/releases/workspace.test.cjs` 9/9 全过。未做真机验证（属错误类型与诊断增强，不改变正常路径行为）。
+
+---
+
+
+
+## 2026-09-20 22:26:37 | 新增功能：dsh-webhook-remote 远程下发任务插件
+
+- 变更概述：新增 DSH Cordis 插件 `dsh-webhook-remote`，支持从脚本/手机快捷指令通过签名或静态令牌保护的 HTTP 接口远程下发任务，由 DSH webhook 运行时自动创建根会话并执行。已获用户确认按详细设计执行。
+- 修改文件：dsh-webhook-remote/{package.json,lib/index.js,README.zh.md}（新增）、scripts/Send-DshTask.ps1（新增）、C:\Users\31268\.dsh\profiles\web\cordis.patch.yml、C:\Users\31268\.dsh\.credentials.yaml、CHANGELOG.md。
+- 具体内容：插件在 DSH Web 服务器注册精确路由 `POST /webhook/remote`（body 上限 128KiB），鉴权双通道：`X-DSH-Signature: sha256=<HMAC-SHA256(body,secret)>` 计时安全比较，或 `X-DSH-Token` 静态令牌；payload `{"prompt":"…","title":"…"}`；dispatch 到 `@deepseek-ai/dsh-webhook` 运行时（该运行时经用户 patch 首次启用），规则 `remote-task` 将投递转为 `WebhookSessionRequest`（workspace=D:\IRisNote、agentPreset=standard、permissionPreset=workspace-write、标题前缀 `[Remote]`、60 字节截断）。另注册 `GET /webhook/remote/status`（令牌保护）暴露规则诊断。密钥 `DSH_REMOTE_WEBHOOK_SECRET`/`DSH_REMOTE_WEBHOOK_TOKEN` 已生成并写入 `.credentials.yaml` refs。插件经 `dsh plugin --profile web add D:\IRisNote\dsh-webhook-remote` 以 link 方式装入 profile，并在插件目录内建 junction（指向 npx 缓存 dsh 安装目录的 @deepseek-ai 各包）解决 link 直连导致的 peer 解析失败。
+- 验证：`node --check` 语法通过；profile 上下文 `import('dsh-webhook-remote')` 加载成功（exports/inject 正确）；`dsh --profile web --dump-config` 确认 webhook-runtime 与 webhook-remote 两行进入合并配置树；热加载后实测路由：无鉴权 401、错误令牌 401、GET 405、有效令牌 POST 202。⚠️ 遗留：202 后未观察到新会话目录，会话创建在 webhook 运行时内部失败且 warn 仅输出到宿主控制台不可读；已加 status 诊断路由但模块级代码热重载（HMR）无法在运行中生效，需重启 `dsh web` 后复测。
+
+---
+
+## 2026-09-20 21:58:21 | 新增功能：本地独立测试包 staging 构建类型
+
+- 变更概述：新增 Android `staging` 构建类型，产出免 Metro 开发服务器、免电脑、可分发的本地独立测试 APK：release 式打包（内嵌 JS bundle + Hermes 字节码 + 符号裁剪），使用 Debug 证书签名。已获用户确认按方案 B2 执行。
+- 修改文件：android/app/build.gradle、CHANGELOG.md。
+- 具体内容：`buildTypes` 内新增 `staging { initWith release; matchingFallbacks = ['release']; signingConfig signingConfigs.debug }`（含注释说明用途与边界）。staging 继承 release 的全部打包配置（本项目未启用 R8 压缩，无混淆差异），但显式改用 Debug 签名；库模块变体经 `matchingFallbacks` 匹配 release 产物。日常 Debug/Metro 开发流程与正式发布管控（assembleRelease 生产证书守卫）均不受影响——`assembleStaging` 不进入发布工具流程。
+- 构建方式：`npm run gradle -- assembleStaging --init-script <阿里云镜像>`；产物 `android/app/build/outputs/apk/staging/app-staging.apk`。如需瘦身可追加 `-PreactNativeArchitectures=arm64-v8a`。
+- 验证：`assembleStaging` BUILD SUCCESSFUL（19m14s，1061 任务）；APK 118.2MB，确认内嵌 `assets/index.android.bundle`（6.59MB Hermes 字节码）；apksigner 验签为 Debug 证书（SHA-256 fac61745…33b9c）；修改后 `npm run typecheck` 通过（本次未触及 TS 源码）。真机独立启动验证未执行（当时无 adb 设备连接），expo-dev-client 在非 debuggable 构建中的运行时行为待装机确认；staging 使用 main manifest，不含 Debug 变体的 cleartext 等配置，连接 http 明文地址不可用。
+
+---
+
+## 2026-09-20 21:54:14 | 修复问题：代码审查发现的同步契约与通知加载缺陷
+
+- 变更概述：按 5 个本地提交（e374f4b…123dd29）的代码审查结论修复 2 项严重缺陷与 3 项建议缺陷。
+- 修改文件：src/core/system-notifications/system-notification-provider.tsx、src/features/todos/api/todos.api.ts、src/features/todos/data/todo-sync.repository.ts、src/core/database/migrations/0009-create-todo-sync.ts、src/shared/http/client.ts。
+- 具体内容：① Suspense `fallback={children}` 改为 `fallback={null}`，避免原生通知模块加载期间整棵应用树卸载重挂导致屏幕 state 丢失与 effect 双跑；② 批量回执与错误回执中 `current_version` 校验改为仅在字段存在时校验相等，服务端错误路径缺失该字段不再误判 `INVALID_RESPONSE` 触发全量重建；③ `prepareOperations` 移除 completed_at 仅随 is_completed 成对变化才入 patch 的过滤器，完成时间差异始终交服务端裁决，消除对 repo 层校验的隐式依赖；④ 迁移 0009 的 `INSERT…SELECT *` 改为 16 列显式清单，消除两表列序一致的隐式依赖；⑤ HTTP 拦截器判断已有 Authorization 改用 AxiosHeaders 大小写不敏感读取（带普通对象降级），避免未来小写注入产生重复认证头。
+- 验证：修改前后 `npm run typecheck` 均通过；`node --test --test-concurrency=1 "tests/**/*.test.cjs"` 314/314 通过、0 失败。未进行设备验收。
+
+---
+
 ## 2026-09-20 21:19:42 | 修复问题：Expo Go 安全降级系统待办提醒
 
 - 变更概述：Android Expo Go 运行时不再加载 `expo-notifications` 原生模块，避免 SDK 57 通知包初始化触发远程推送限制并中断 Expo Router 路由加载；开发构建和正式包保留原有待办系统提醒。
