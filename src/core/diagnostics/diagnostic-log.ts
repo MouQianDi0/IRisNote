@@ -111,8 +111,9 @@ export async function createDiagnosticExport(metadata: DiagnosticDetails) {
   if (!isNativeRuntime) throw new Error("DiagnosticExportUnavailable");
   const { File, Paths } = await import("expo-file-system");
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const target = new File(Paths.cache, `irisnote-diagnostics-${stamp}.jsonl`);
+  const fileName = `irisnote-diagnostics-${stamp}.jsonl`;
+  const target = new File(Paths.cache, fileName);
   target.create({ overwrite: true, intermediates: true });
   target.write(`${header}\n${lines.join("\n")}${lines.length ? "\n" : ""}`);
-  return target.uri;
+  return { uri: target.uri, fileName };
 }

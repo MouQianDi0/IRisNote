@@ -24,12 +24,14 @@ import {
 import { useState } from "react";
 import {
     Linking,
+    PermissionsAndroid,
     Platform,
     Pressable,
     ScrollView,
     Text,
     View,
 } from "react-native";
+import NativeSystem from "@modules/irisnote-system";
 import { SettingsPageHeader } from "../components/SettingsPageHeader";
 import { SettingsRow } from "../components/SettingsRow";
 import { DISCORD_CHANNEL_URL, FEEDBACK_EMAIL } from "../data/support-links";
@@ -88,20 +90,75 @@ export default function HelpFeedbackScreen() {
         setExporting(true);
         void recordDiagnostic("diagnostics", "export_requested");
         try {
-            if (!(await Sharing.isAvailableAsync()))
-                throw new Error("SharingUnavailable");
-            const uri = await createDiagnosticExport({
+            const exported = await createDiagnosticExport({
                 appVersion: version,
                 buildCode,
                 platform: Platform.OS,
                 platformVersion: String(Platform.Version),
             });
-            await Sharing.shareAsync(uri, {
-                dialogTitle: "导出 IRisNote 诊断日志",
-                mimeType: "application/x-ndjson",
-                UTI: "public.json",
-            });
-            void recordDiagnostic("diagnostics", "export_shared");
+            let savedToDownloads = false;
+            if (Platform.OS === "android") {
+                try {
+                    if (!NativeSystem)
+                        throw new Error("NativeSystemUnavailable");
+                    const apiLevel = Number(Platform.Version);
+                    if (apiLevel <= 28) {
+                        const permission =
+                            PermissionsAndroid.PERMISSIONS
+                                .WRITE_EXTERNAL_STORAGE;
+                        const granted =
+                            (await PermissionsAndroid.check(permission)) ||
+                            (await PermissionsAndroid.request(permission)) ===
+                                PermissionsAndroid.RESULTS.GRANTED;
+                        if (!granted)
+                            throw new Error("LegacyStoragePermissionDenied");
+                    }
+                    const saved = await NativeSystem.saveDiagnosticLog(
+                        exported.uri,
+                        exported.fileName,
+                    );
+                    savedToDownloads = true;
+                    void recordDiagnostic("diagnostics", "export_saved", {
+                        folder: "Download/irisnoteLog",
+                    });
+                    banner.show({
+                        title: "诊断日志已保存",
+                        message: saved.displayPath,
+                        type: "success",
+                    });
+                } catch (cause) {
+                    void recordDiagnostic(
+                        "diagnostics",
+                        "export_save_failed",
+                        { error: diagnosticErrorCategory(cause) },
+                        "error",
+                    );
+                    banner.show({
+                        title: "日志未保存到下载目录",
+                        message: "仍将尝试打开系统分享面板",
+                        type: "important",
+                    });
+                }
+            }
+
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(exported.uri, {
+                    dialogTitle: "分享 IRisNote 诊断日志",
+                    mimeType: "application/x-ndjson",
+                    UTI: "public.json",
+                });
+                void recordDiagnostic("diagnostics", "export_shared", {
+                    savedToDownloads,
+                });
+            } else {
+                void recordDiagnostic(
+                    "diagnostics",
+                    "export_share_unavailable",
+                    { savedToDownloads },
+                    "warning",
+                );
+                if (!savedToDownloads) throw new Error("SharingUnavailable");
+            }
         } catch (cause) {
             void recordDiagnostic(
                 "diagnostics",
@@ -249,8 +306,8 @@ export default function HelpFeedbackScreen() {
                         <SettingsRow
                             icon={FileDown}
                             label="导出诊断日志"
-                            value={exporting ? "正在导出" : "立即导出"}
-                            description="含提醒排程、权限与渠道状态；不含待办正文"
+                            value={exporting ? "正在导出" : "保存并分享"}
+                            description="保存到 Download/irisnoteLog 并打开分享面板；不含待办正文"
                             disabled={exporting}
                             onPress={() => void exportDiagnostics()}
                         />
