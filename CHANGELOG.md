@@ -1,3 +1,30 @@
+## 2026-09-21 22:00:51 | 优化代码：权限项目统一直达系统设置
+
+- 变更概述：已获用户确认，权限设置页中的通知、相机、照片访问和更新安装项目统一改为点击后直接进入手机系统设置，不再优先触发应用内授权弹窗。
+- 修改文件：src/features/settings/screens/PermissionSettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：① 通知项目直接进入 IRisNote 系统通知设置；② 相机与照片访问直接进入 IRisNote 系统应用设置页，由系统提供权限开关；③ Android 更新安装继续进入“允许来自此来源的应用”专用设置；④ 保留只读权限状态和从系统设置返回后的自动刷新；⑤ 页面说明文字同步改为“直接打开系统设置”。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；git diff --check 与相关文件冲突标记扫描通过。未执行 Android/iOS 真机系统设置跳转与返回刷新验收。
+
+---
+
+## 2026-09-21 21:27:07 | 优化代码：移除设置首页重复的通知设置入口
+
+- 变更概述：已获用户确认，通知授权已统一并入“权限设置”，因此从设置首页“偏好设置”分组移除重复的“通知设置”栏。
+- 修改文件：src/features/settings/screens/SettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：删除“通知设置”设置行及其权限状态依赖；“编辑与阅读”调整为偏好设置卡片末行，避免保留多余分割线；顶部“通知 / 站内”概览和“数据与隐私 → 权限设置”入口保持不变。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；git diff --check 与相关文件冲突标记扫描通过。未执行真机页面目视验收。
+
+---
+
+## 2026-09-21 20:52:51 | 新增功能：设置页手机权限、版本记录与反馈入口
+
+- 变更概述：已获用户确认，完善设置页的手机权限管理、关于 IRisNote 版本时间线、帮助与反馈联系方式，并将 ICP 备案号作为设置首页独立可点击栏。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/about.tsx、src/app/pages/user/help-feedback.tsx、src/app/pages/user/permissions.tsx、src/features/settings/components/SettingsPageHeader.tsx、src/features/settings/data/release-history.ts、src/features/settings/data/support-links.ts、src/features/settings/screens/AboutScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：① 新增“权限设置”二级页，集中读取和管理通知、相机、照片访问及 Android 更新安装授权，返回应用时自动刷新状态，并区分 Expo Go、非移动平台和缺少原生更新模块等不可用状态；② 新增“关于 IRisNote”二级页，显示本机版本与构建号，按本机版本过滤更新历史，以左侧竖向时间线展示当前版本及旧版本，旧版本支持展开和收起；③ 新增“帮助与反馈”二级页，接入已核实的反馈邮箱、复制邮箱和预填版本信息的邮件入口，帮助内容保持“整理中”，未找到真实 Discord 地址时明确显示“待配置”且禁用；④ 设置首页接通三个二级页，并新增独立“ICP备案号”栏，点击“湘ICP备2026022882号-2A”跳转 https://beian.miit.gov.cn，失败时显示横幅；⑤ 抽取设置子页共用顶栏，三个新页面保持 16dp 页面边距、560dp 最大宽度、64dp 顶栏与可滚动窄屏布局。
+- 验证：修改前 npm run typecheck 通过；最终 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；Expo Web 静态导出成功并生成 /pages/user/settings、/pages/user/permissions、/pages/user/about、/pages/user/help-feedback 路由；git diff --check 与源码冲突标记扫描通过。未执行 Android/iOS 真机权限、系统设置返回、邮件应用、Discord 或工信部外部跳转验收。
+
+---
+
 ## 2026-09-21 18:21:30 | 修复问题：测试脚本固化串行参数规避 Windows 并行 IPC 错误
 
 - 变更概述：已获用户确认执行。0.3.0 发布构建两次在"完整代码检查"阶段因 Node 测试运行器并行 IPC 错误中断（tests/releases/workspace.test.cjs 报 Unable to deserialize cloned data，其余 343 项测试全部通过，该文件单独串行运行 9/9 通过），系 Node v24 Windows 并行子进程结果回传的管道字节流错位缺陷，非应用代码问题。按方案将 npm test 默认改为串行执行（--test-concurrency=1），该参数为项目多次使用的稳定回退方案，彻底消除此类偶发阻断。

@@ -1,8 +1,5 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import {
-    systemNotificationsAvailable,
-    useSystemNotifications,
-} from "@/core/system-notifications/system-notification-provider";
+import { banner } from "@/core/notifications";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
@@ -10,53 +7,38 @@ import * as Application from "expo-application";
 import { checkForUpdate } from "@/features/updates/update-store";
 import { router, type Href } from "expo-router";
 import {
-    ArrowLeft,
     Bell,
     BookOpenText,
     CircleHelp,
     Cloud,
     Database,
+    ExternalLink,
     Info,
     LogOut,
     Palette,
     ShieldCheck,
+    Smartphone,
     UserRound,
 } from "lucide-react-native";
 import { useState } from "react";
 import {
     ActivityIndicator,
+    Linking,
     Pressable,
     ScrollView,
     Text,
     View,
 } from "react-native";
 import { SettingsOverviewItem } from "../components/SettingsOverviewItem";
+import { SettingsPageHeader } from "../components/SettingsPageHeader";
 import { SettingsRow } from "../components/SettingsRow";
+import { ICP_FILING_NUMBER, ICP_QUERY_URL } from "../data/support-links";
 
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
-
-function SettingsHeader({ onBack }: { onBack: () => void }) {
-    return (
-        <View className="h-16 flex-row items-center justify-between">
-            <Pressable
-                accessibilityLabel="返回用户中心"
-                accessibilityRole="button"
-                className="h-11 w-11 items-center justify-center rounded-full active:bg-hyper-card active:opacity-[0.85]"
-                onPress={onBack}
-            >
-                <ArrowLeft size={24} color={colors.textPrimary} />
-            </Pressable>
-            <Text
-                accessibilityRole="header"
-                className="text-2xl text-text-primary"
-            >
-                设置
-            </Text>
-            <View className="h-11 w-11" />
-        </View>
-    );
-}
+const permissionsRoute = "/pages/user/permissions" as Href;
+const aboutRoute = "/pages/user/about" as Href;
+const helpFeedbackRoute = "/pages/user/help-feedback" as Href;
 
 function SettingsGroupTitle({ children }: { children: string }) {
     return (
@@ -67,7 +49,6 @@ function SettingsGroupTitle({ children }: { children: string }) {
 }
 
 export default function SettingsScreen() {
-    const { permission, openSettings } = useSystemNotifications();
     const { isLoggedIn, loading, logout, user } = useAuth();
     const [loggingOut, setLoggingOut] = useState(false);
     const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "—";
@@ -91,6 +72,18 @@ export default function SettingsScreen() {
         }
     };
 
+    const openFilingQuery = async () => {
+        try {
+            await Linking.openURL(ICP_QUERY_URL);
+        } catch {
+            banner.show({
+                title: "无法打开备案查询网站",
+                message: "请稍后重试",
+                type: "neutral",
+            });
+        }
+    };
+
     if (loading) {
         return (
             <Screen className="items-center justify-center bg-app-background">
@@ -106,7 +99,9 @@ export default function SettingsScreen() {
         return (
             <Screen className="bg-app-background">
                 <View className="w-full max-w-[560px] flex-1 self-center px-4">
-                    <SettingsHeader
+                    <SettingsPageHeader
+                        title="设置"
+                        backLabel="返回登录与注册"
                         onBack={() => router.replace(welcomeRoute)}
                     />
                     <View className="flex-1 justify-center pb-16">
@@ -149,7 +144,11 @@ export default function SettingsScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsHeader onBack={returnToUser} />
+                    <SettingsPageHeader
+                        title="设置"
+                        backLabel="返回用户中心"
+                        onBack={returnToUser}
+                    />
 
                     {/* <Card
                         className="flex-row items-center rounded-hyper-card p-4"
@@ -257,14 +256,6 @@ export default function SettingsScreen() {
                                 value="规划中"
                                 description="字号、行距与默认阅读体验将在后续开放"
                                 disabled
-                            />
-                            <SettingsRow
-                                icon={Bell}
-                                label="通知设置"
-                                value={!systemNotificationsAvailable ? "Expo Go 中不可用" : permission === null ? "读取中" : permission.granted ? "已开启" : "未开启"}
-                                description={!systemNotificationsAvailable ? "请使用开发构建启用系统待办提醒" : "管理系统待办提醒的权限、声音和展示方式"}
-                                disabled={!systemNotificationsAvailable}
-                                onPress={systemNotificationsAvailable ? openSettings : undefined}
                                 last
                             />
                         </Card>
@@ -276,6 +267,12 @@ export default function SettingsScreen() {
                             className="overflow-hidden rounded-hyper-card"
                             style={cardStyle}
                         >
+                            <SettingsRow
+                                icon={Smartphone}
+                                label="权限设置"
+                                description="管理通知、相机、照片与更新安装授权"
+                                onPress={() => router.push(permissionsRoute)}
+                            />
                             <SettingsRow
                                 icon={Cloud}
                                 label="同步与备份"
@@ -310,18 +307,26 @@ export default function SettingsScreen() {
                             <SettingsRow
                                 icon={CircleHelp}
                                 label="帮助与反馈"
-                                value="规划中"
-                                disabled
+                                description="反馈邮箱、Discord 频道与使用帮助"
+                                onPress={() => router.push(helpFeedbackRoute)}
                             />
                             <SettingsRow
                                 icon={Info}
                                 label="关于 IRisNote"
                                 value={`v${version}`}
+                                description="查看当前版本与历史更新记录"
+                                onPress={() => router.push(aboutRoute)}
                             />
                             <SettingsRow
                                 icon={Cloud}
                                 label="检查更新"
                                 onPress={() => void checkForUpdate(true)}
+                            />
+                            <SettingsRow
+                                icon={ExternalLink}
+                                label="ICP备案号"
+                                description={ICP_FILING_NUMBER}
+                                onPress={() => void openFilingQuery()}
                                 last
                             />
                         </Card>
