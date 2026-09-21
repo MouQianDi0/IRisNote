@@ -1,3 +1,30 @@
+## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
+
+- 变更概述：应用户"全修正"要求，落实代码审查报告的全部建议项（建议 1–4）与提示项（3/5）：app.json 恢复 HEAD 消除全文件格式重排 diff；`SCHEDULE_EXACT_ALARM` 权限收敛为模块 Manifest 单一来源；同名类型改名消歧；偏好写库增加值未变短路；统一模块导入别名；清理 Kotlin 文件名正则冗余字符。
+- 修改文件：app.json（git checkout 恢复）、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、tsconfig.json、tests/todos/system-notifications.test.cjs、CHANGELOG.md。
+- 具体内容：① app.json 整体恢复 HEAD（撤销缩进重排与 permissions 中的权限声明，diff 归零）；② 权限唯一来源改为 modules/irisnote-system 的 AndroidManifest（经 gradle manifest merger 合并进 APK），模块 AndroidManifest 保持不动；③ 模块侧 `ExactAlarmAccess` 改名 `NativeExactAlarmAccess`（3 值原生态），`system-notification.types.ts` 改为 `NativeExactAlarmAccess | "unavailable"` 组合表达继承关系（import type，无运行时导入）；④ Provider 中 `setExactAlarmAccess` 仅在值变化时写库（含 null→值的首次落盘），消除每次前台切换的冗余写入与 iOS 写 "not-required"；⑤ tsconfig paths 新增 `@modules/*`，service 与 HelpFeedbackScreen 的多级相对导入统一为 `@modules/irisnote-system`；⑥ Kotlin 文件名白名单正则 `[A-Za-z0-9T-]`→`[A-Za-z0-9-]`（T 冗余，行为不变）；⑦ 同步测试：introspect 断言反转为"app 原生配置不含 SCHEDULE_EXACT_ALARM"以锁定单一来源不回退，模块断言测试更名，测试 stub key 改为别名。
+- 验证：`npm run typecheck` 通过（0 错误，中途发现并修复改名遗漏的方法签名引用）；定向测试 30/30 通过；`npm run check` 全量通过（typecheck、lint、theme:check、354/354 测试）；`gradlew :app:processDebugMainManifest` BUILD SUCCESSFUL，合并后 Debug Manifest 含 `SCHEDULE_EXACT_ALARM` 且 app 源 manifest（prebuild 产物）不含——node_modules 全量搜索确认无第三方库声明该权限，合并来源 100% 为本模块。未做真机验收（Android 14+ REQUEST_SCHEDULE_EXACT_ALARM 弃用行为仍建议真机验证）。
+
+---
+
+## 2026-09-22 02:56:31 | 新增功能：系统通知模块负责说明文档
+
+- 变更概述：应代码审查与模块梳理需求，新增通知模块架构文档，覆盖文件职责、UI 到系统通知的全链路时序、通知分级、精确闹钟权限专节与五个端到端示范案例，供团队开发与排障参考。
+- 修改文件：docs/架构指南/系统通知模块负责说明.md（新增）、CHANGELOG.md。
+- 具体内容：① 模块总览分层图与逐文件职责清单（core/system-notifications 5 文件、modules/irisnote-system 本地模块含 Kotlin 行为契约、features 消费方、diagnostics 支撑）；② 待办提醒/常驻通知/测试通知 × Android 渠道对照表与 importance 档位语义；③ 四条全链路时序（待办保存→排程→到点→点击、常驻开关、测试通知、冷启动 refresh 对账）；④ 精确闹钟权限专节（SCHEDULE_EXACT_ALARM 背景、双处声明、四态语义、forceReschedule 强制重排机制、用户触点与平台差异）；⑤ 五个示范案例与边界降级矩阵（Expo Go/Web/iOS/权限拒绝/模块缺失）。文档基于当前工作区现状（含未提交的精确闹钟改动）并在文首标注。
+- 验证：纯文档新增，无代码改动；无需 typecheck/测试。
+
+---
+
+## 2026-09-22 02:48:43 | 修复问题：Android 待办精确提醒权限与诊断日志下载导出
+
+- 变更概述：已获用户确认，为 Android 待办提醒接入“闹钟和提醒”特殊权限与授权后的全量重排，避免 Expo 在无精确权限时使用的非精确闹钟被系统/OPlus 长时间调整；同时将诊断日志直接保存到公共 `Download/irisnoteLog` 后显示全局横幅并自动打开系统分享面板。
+- 修改文件：app.json、modules/irisnote-system/**（新增）、src/core/diagnostics/diagnostic-log.ts、src/core/system-notifications/{system-notification-native-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 声明 `SCHEDULE_EXACT_ALARM`，新增本地 Expo Android 模块读取 `AlarmManager.canScheduleExactAlarms()`，权限设置页新增“准时提醒”状态与系统设置入口；② 明确保存未来提醒且缺少权限时显示“去开启”横幅，授权返回后持久化状态并强制取消、重建已有未来提醒，使 Expo SDK 57 重新按精确闹钟调度；③ 日志导出改为返回缓存文件及文件名，Android 10+ 通过 `MediaStore.Downloads` 写入 `Download/irisnoteLog`，Android 9 及以下按需申请旧版存储权限，保存成功后显示实际路径并继续调用系统分享面板；④ 补充权限读取、设置跳转、重排、下载保存和分享结果的脱敏日志及回归测试。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；通知/提醒定向测试 30/30 通过；`npm run check` 的 typecheck、lint、theme:check 与 354/354 项测试全部通过；Expo 本地模块自动链接识别 `irisnote-system` 且无重复；`:irisnote-system:compileDebugKotlin` 与 `:app:processDebugMainManifest` 均 `BUILD SUCCESSFUL`，合并后的 Debug Manifest 含 `SCHEDULE_EXACT_ALARM`；未构建 APK、未安装或执行真机权限/到点通知/下载分享验收，安装包构建由用户完成。
+
+---
+
 ## 2026-09-22 01:53:02 | 新增功能：staging 测试包独立包名共存与构建指南文档
 
 - 变更概述：已获用户确认，为本地 staging 测试包启用独立包名 `com.mouqiandi.irisNote.staging`（applicationIdSuffix），实现与正式包双应用共存、数据隔离，桌面显示名改为"IRisNote 测试"以作区分；并新增测试包构建指南文档，固化阿里云镜像用法、命令与注意事项。
