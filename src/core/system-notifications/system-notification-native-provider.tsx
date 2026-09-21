@@ -35,9 +35,11 @@ import {
 import { SystemNotificationContext } from "./system-notification-context";
 import {
   applicationNotificationPermission,
+  exactAlarmAccess,
   ensureRuntimeNotification,
   initializeSystemNotifications,
   openSystemNotificationSettings,
+  openExactAlarmSettings,
   removeRuntimeNotification,
   requestApplicationNotificationPermission,
   requestSystemNotificationPermission,
@@ -146,7 +148,25 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         const next = await systemNotifications.permission();
         if (!active) return;
         setPermission(next);
-        await coordinator.reconcile();
+        const exactAccess = await exactAlarmAccess();
+        const previousExactAccess = await preferences.exactAlarmAccess();
+        const forceReschedule =
+          exactAccess === "granted" && previousExactAccess !== "granted";
+        await coordinator.reconcile({ forceReschedule });
+        if (exactAccess !== "unavailable" && exactAccess !== previousExactAccess)
+          await preferences.setExactAlarmAccess(exactAccess);
+        void recordDiagnostic("exact_alarm", "state_reconciled", {
+          status: exactAccess,
+          previousStatus: previousExactAccess ?? "unknown",
+          forceReschedule,
+        });
+        if (active && previousExactAccess === "denied" && forceReschedule)
+          banner.show({
+            id: "todo-reminder-exact-alarm-enabled",
+            title: "准时提醒权限已开启",
+            message: "已有未来提醒已重新安排",
+            type: "success",
+          });
         const runtimeEnabled = await preferences.runtimeNotificationEnabled();
         if (!active) return;
         setRuntimeNotificationEnabledState(runtimeEnabled);
@@ -326,6 +346,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
       request: requestSystemNotificationPermission,
       publish: setPermission,
       reconcile: () => coordinator.reconcile(),
+      exactAlarmAccess,
       showDisabled: () => {
         banner.show({
           id: "todo-reminder-permission",
@@ -340,6 +361,29 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
               setPermission(value);
               if (!value.granted) openSettings();
               await coordinator.reconcile();
+            },
+          },
+        });
+      },
+      showExactAlarmDisabled: () => {
+        banner.show({
+          id: "todo-reminder-exact-alarm",
+          title: "待办已保存，准时提醒权限尚未开启",
+          message: "系统可能延迟到点提醒",
+          type: "neutral",
+          action: {
+            label: "去开启",
+            onPress: async () => {
+              if (!current()) return;
+              try {
+                await openExactAlarmSettings();
+              } catch {
+                banner.show({
+                  title: "无法打开准时提醒设置",
+                  message: "请在系统设置中找到 IRisNote 的闹钟和提醒权限",
+                  type: "neutral",
+                });
+              }
             },
           },
         });

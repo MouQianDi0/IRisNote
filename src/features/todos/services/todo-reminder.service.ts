@@ -1,5 +1,6 @@
 import {
   TODO_NOTIFICATION_PREFIX,
+  type ExactAlarmAccess,
   type TodoNotificationData,
   type SystemNotificationPermission,
 } from "@/core/system-notifications/system-notification.types";
@@ -79,6 +80,8 @@ export type SavedReminderPermissionPort = {
   request: () => Promise<SystemNotificationPermission>;
   publish: (permission: SystemNotificationPermission) => void;
   showDisabled: () => void;
+  exactAlarmAccess: () => Promise<ExactAlarmAccess>;
+  showExactAlarmDisabled: () => void;
   showError: () => void;
   reconcile: () => Promise<void>;
 };
@@ -131,6 +134,15 @@ export async function afterSavedTodoReminder(
       canAskAgain: permission.canAskAgain,
     });
     if (!permission.granted) port.showDisabled();
+    if (reason === "confirm" && permission.granted) {
+      const exactAlarm = await port.exactAlarmAccess();
+      if (!port.isCurrent()) return;
+      void recordDiagnostic("todo_reminder", "after_save_exact_alarm", {
+        todo: diagnosticId,
+        status: exactAlarm,
+      });
+      if (exactAlarm === "denied") port.showExactAlarmDisabled();
+    }
     await port.reconcile();
     void recordDiagnostic("todo_reminder", "after_save_reconciled", {
       todo: diagnosticId,

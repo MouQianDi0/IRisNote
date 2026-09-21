@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import * as Application from "expo-application";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Linking, Platform } from "react-native";
+import NativeSystem from "@modules/irisnote-system";
 import {
   diagnosticErrorCategory,
   opaqueDiagnosticId,
@@ -12,6 +13,7 @@ import {
   REMINDER_CHANNEL,
   RUNTIME_CHANNEL,
   RUNTIME_NOTIFICATION_ID,
+  type ExactAlarmAccess,
   type SystemNotificationPermission,
   type SystemNotificationPort,
 } from "./system-notification.types";
@@ -227,6 +229,46 @@ export function requestApplicationNotificationPermission(): Promise<SystemNotifi
 export async function requestSystemNotificationPermission() {
   await requestApplicationNotificationPermission();
   return systemNotifications.permission();
+}
+
+export async function exactAlarmAccess(): Promise<ExactAlarmAccess> {
+  if (Platform.OS !== "android") return "not-required";
+  if (!NativeSystem) {
+    void recordDiagnostic(
+      "exact_alarm",
+      "access_unavailable",
+      undefined,
+      "warning",
+    );
+    return "unavailable";
+  }
+  try {
+    const status = await NativeSystem.getExactAlarmAccess();
+    void recordDiagnostic("exact_alarm", "access_read", { status });
+    return status;
+  } catch (cause) {
+    void recordDiagnostic(
+      "exact_alarm",
+      "access_read_failed",
+      { error: diagnosticErrorCategory(cause) },
+      "error",
+    );
+    return "unavailable";
+  }
+}
+
+export async function openExactAlarmSettings() {
+  if (Platform.OS !== "android")
+    throw new Error("当前平台不需要准时提醒特殊权限");
+  const status = await exactAlarmAccess();
+  if (status === "not-required") return;
+  if (status === "unavailable")
+    throw new Error("当前安装包不支持读取准时提醒权限");
+  void recordDiagnostic("exact_alarm", "settings_open_requested", { status });
+  await IntentLauncher.startActivityAsync(
+    IntentLauncher.ActivityAction.REQUEST_SCHEDULE_EXACT_ALARM,
+    { data: `package:${Application.applicationId}` },
+  );
 }
 
 export async function ensureRuntimeNotification() {

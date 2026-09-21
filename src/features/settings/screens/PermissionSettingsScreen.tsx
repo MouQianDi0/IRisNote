@@ -10,6 +10,7 @@ import * as IntentLauncher from "expo-intent-launcher";
 import { Host, Switch } from "@expo/ui";
 import { router, useFocusEffect } from "expo-router";
 import {
+    AlarmClock,
     Bell,
     Camera,
     Image as ImageIcon,
@@ -38,6 +39,7 @@ type PermissionItemState = {
 
 type PermissionSnapshot = {
     notifications: PermissionItemState;
+    exactAlarm: PermissionItemState;
     camera: PermissionItemState;
     photos: PermissionItemState;
     updates: PermissionItemState;
@@ -59,59 +61,91 @@ const unavailableState = (label: string): PermissionItemState => ({
 
 async function readPermissionSnapshot(): Promise<PermissionSnapshot> {
     const mobile = Platform.OS === "android" || Platform.OS === "ios";
-    const [notifications, camera, photos, updates] = await Promise.all([
-        systemNotificationsAvailable
-            ? import("@/core/system-notifications/system-notification.service")
-                  .then(({ systemNotifications }) =>
-                      systemNotifications.permission(),
-                  )
-                  .then((value) => ({
-                      label: value.granted ? "已开启" : "未开启",
-                      granted: value.granted,
-                      canAskAgain: value.canAskAgain,
-                      supported: true,
-                  }))
-                  .catch(() => ({ ...readingState, label: "暂时无法读取" }))
-            : Promise.resolve(unavailableState("Expo Go 中不可用")),
-        mobile
-            ? ImagePicker.getCameraPermissionsAsync()
-                  .then((value) => ({
-                      label: value.granted ? "已允许" : "未允许",
-                      granted: value.granted,
-                      canAskAgain: value.canAskAgain,
-                      supported: true,
-                  }))
-                  .catch(() => ({ ...readingState, label: "暂时无法读取" }))
-            : Promise.resolve(unavailableState("当前平台不可用")),
-        mobile
-            ? ImagePicker.getMediaLibraryPermissionsAsync()
-                  .then((value) => ({
-                      label:
-                          value.accessPrivileges === "limited"
-                              ? "部分允许"
-                              : value.granted
-                                ? "已允许"
-                                : "未允许",
-                      granted: value.granted,
-                      canAskAgain: value.canAskAgain,
-                      supported: true,
-                  }))
-                  .catch(() => ({ ...readingState, label: "暂时无法读取" }))
-            : Promise.resolve(unavailableState("当前平台不可用")),
-        Platform.OS === "android"
-            ? NativeUpdater
-                ? NativeUpdater.canInstallPackages()
-                      .then((granted) => ({
-                          label: granted ? "已允许" : "未允许",
-                          granted,
-                          canAskAgain: false,
+    const [notifications, exactAlarm, camera, photos, updates] =
+        await Promise.all([
+            systemNotificationsAvailable
+                ? import("@/core/system-notifications/system-notification.service")
+                      .then(({ systemNotifications }) =>
+                          systemNotifications.permission(),
+                      )
+                      .then((value) => ({
+                          label: value.granted ? "已开启" : "未开启",
+                          granted: value.granted,
+                          canAskAgain: value.canAskAgain,
                           supported: true,
                       }))
                       .catch(() => ({ ...readingState, label: "暂时无法读取" }))
-                : Promise.resolve(unavailableState("正式安装包中可用"))
-            : Promise.resolve(unavailableState("仅 Android 需要")),
-    ]);
-    return { notifications, camera, photos, updates };
+                : Promise.resolve(unavailableState("Expo Go 中不可用")),
+            Platform.OS === "android" && systemNotificationsAvailable
+                ? import("@/core/system-notifications/system-notification.service")
+                      .then(({ exactAlarmAccess }) => exactAlarmAccess())
+                      .then((status) => {
+                          if (status === "not-required")
+                              return {
+                                  label: "无需授权",
+                                  granted: true,
+                                  canAskAgain: false,
+                                  supported: false,
+                              };
+                          if (status === "unavailable")
+                              return unavailableState("正式安装包中可用");
+                          return {
+                              label: status === "granted" ? "已允许" : "未允许",
+                              granted: status === "granted",
+                              canAskAgain: status === "denied",
+                              supported: true,
+                          };
+                      })
+                      .catch(() => ({ ...readingState, label: "暂时无法读取" }))
+                : Promise.resolve(
+                      unavailableState(
+                          Platform.OS === "android"
+                              ? "Expo Go 中不可用"
+                              : "仅 Android 需要",
+                      ),
+                  ),
+            mobile
+                ? ImagePicker.getCameraPermissionsAsync()
+                      .then((value) => ({
+                          label: value.granted ? "已允许" : "未允许",
+                          granted: value.granted,
+                          canAskAgain: value.canAskAgain,
+                          supported: true,
+                      }))
+                      .catch(() => ({ ...readingState, label: "暂时无法读取" }))
+                : Promise.resolve(unavailableState("当前平台不可用")),
+            mobile
+                ? ImagePicker.getMediaLibraryPermissionsAsync()
+                      .then((value) => ({
+                          label:
+                              value.accessPrivileges === "limited"
+                                  ? "部分允许"
+                                  : value.granted
+                                    ? "已允许"
+                                    : "未允许",
+                          granted: value.granted,
+                          canAskAgain: value.canAskAgain,
+                          supported: true,
+                      }))
+                      .catch(() => ({ ...readingState, label: "暂时无法读取" }))
+                : Promise.resolve(unavailableState("当前平台不可用")),
+            Platform.OS === "android"
+                ? NativeUpdater
+                    ? NativeUpdater.canInstallPackages()
+                          .then((granted) => ({
+                              label: granted ? "已允许" : "未允许",
+                              granted,
+                              canAskAgain: false,
+                              supported: true,
+                          }))
+                          .catch(() => ({
+                              ...readingState,
+                              label: "暂时无法读取",
+                          }))
+                    : Promise.resolve(unavailableState("正式安装包中可用"))
+                : Promise.resolve(unavailableState("仅 Android 需要")),
+        ]);
+    return { notifications, exactAlarm, camera, photos, updates };
 }
 
 async function openApplicationSettings() {
@@ -128,6 +162,10 @@ export default function PermissionSettingsScreen() {
     } = useSystemNotifications();
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
+        exactAlarm:
+            Platform.OS === "android"
+                ? readingState
+                : unavailableState("仅 Android 需要"),
         camera: readingState,
         photos: readingState,
         updates:
@@ -174,6 +212,17 @@ export default function PermissionSettingsScreen() {
             await refresh();
         } catch {
             showOpenError("通知权限");
+        }
+    };
+
+    const handleExactAlarm = async () => {
+        try {
+            const { openExactAlarmSettings } =
+                await import("@/core/system-notifications/system-notification.service");
+            await openExactAlarmSettings();
+            await refresh();
+        } catch {
+            showOpenError("准时提醒权限");
         }
     };
 
@@ -226,6 +275,14 @@ export default function PermissionSettingsScreen() {
                             description="用于待办事项到时提醒"
                             disabled={!snapshot.notifications.supported}
                             onPress={handleNotifications}
+                        />
+                        <SettingsRow
+                            icon={AlarmClock}
+                            label="准时提醒"
+                            value={snapshot.exactAlarm.label}
+                            description="允许待办在设定时间尽量准时提醒"
+                            disabled={!snapshot.exactAlarm.supported}
+                            onPress={() => void handleExactAlarm()}
                         />
                         <SettingsRow
                             icon={RadioTower}

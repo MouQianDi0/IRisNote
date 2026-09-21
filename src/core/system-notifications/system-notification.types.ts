@@ -1,7 +1,10 @@
+import type { NativeExactAlarmAccess } from "@modules/irisnote-system";
+
 export type SystemNotificationPermission = {
   granted: boolean;
   canAskAgain: boolean;
 };
+export type ExactAlarmAccess = NativeExactAlarmAccess | "unavailable";
 export type TodoNotificationData = {
   kind: "todo-start";
   ownerKey: string;

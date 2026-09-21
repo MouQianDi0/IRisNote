@@ -29,6 +29,7 @@ export type ReminderSnapshot = {
 export class TodoReminderCoordinator {
   private pending: Promise<void> | null = null;
   private dirty = false;
+  private forceReschedule = false;
   constructor(
     private readonly bindings: Pick<
       TodoReminderRepository,
@@ -40,17 +41,21 @@ export class TodoReminderCoordinator {
     private readonly now = () => Date.now(),
   ) {}
 
-  reconcile(): Promise<void> {
+  reconcile(options?: { forceReschedule?: boolean }): Promise<void> {
     this.dirty = true;
+    this.forceReschedule ||= options?.forceReschedule === true;
     void recordDiagnostic("todo_reminder", "reconcile_requested", {
       alreadyRunning: !!this.pending,
+      forceReschedule: options?.forceReschedule === true,
     });
     if (this.pending) return this.pending;
     const pending = (async () => {
       while (this.dirty) {
         this.dirty = false;
+        const forceReschedule = this.forceReschedule;
+        this.forceReschedule = false;
         try {
-          await this.run();
+          await this.run(forceReschedule);
         } catch (cause) {
           void recordDiagnostic(
             "todo_reminder",
@@ -107,7 +112,7 @@ export class TodoReminderCoordinator {
     }
   }
 
-  private async run() {
+  private async run(forceReschedule: boolean) {
     const scheduled = new Set(
       (await this.notifications.scheduled()).map((item) => item.identifier),
     );
@@ -147,6 +152,7 @@ export class TodoReminderCoordinator {
         /* Recorded below. */
       }
       if (
+        !forceReschedule &&
         permission.granted &&
         todo &&
         at !== null &&
