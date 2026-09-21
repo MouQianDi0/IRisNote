@@ -7,7 +7,11 @@ const ts = require("typescript");
 const { PNG } = require("pngjs");
 const root = path.resolve(__dirname, "../..");
 
-function service(platform, initial = { granted: false, canAskAgain: true }) {
+function service(
+  platform,
+  initial = { granted: false, canAskAgain: true },
+  exactAlarm = "denied",
+) {
   let permissions = initial;
   const calls = [];
   const native = {
@@ -51,6 +55,10 @@ function service(platform, initial = { granted: false, canAskAgain: true }) {
     "expo-notifications": native,
     "expo-application": { applicationId: "com.mouqiandi.irisNote" },
     "expo-intent-launcher": {
+      ActivityAction: {
+        REQUEST_SCHEDULE_EXACT_ALARM:
+          "android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+      },
       async startActivityAsync(...args) {
         calls.push(["settings", ...args]);
       },
@@ -67,6 +75,11 @@ function service(platform, initial = { granted: false, canAskAgain: true }) {
       diagnosticErrorCategory: () => "Error",
       opaqueDiagnosticId: (value) => `opaque:${value}`,
       recordDiagnostic: async () => {},
+    },
+    "@modules/irisnote-system": {
+      async getExactAlarmAccess() {
+        return exactAlarm;
+      },
     },
   };
   const cache = new Map();
@@ -207,6 +220,19 @@ test("系统设置链接使用平台入口，Web 不调用通知原生 API", asy
   assert.deepEqual(web.calls, []);
 });
 
+test("Android 精确提醒读取特殊权限并打开闹钟和提醒设置", async () => {
+  const android = service("android", undefined, "denied");
+  assert.equal(await android.exactAlarmAccess(), "denied");
+  await android.openExactAlarmSettings();
+  assert.deepEqual(android.calls.at(-1), [
+    "settings",
+    "android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+    { data: "package:com.mouqiandi.irisNote" },
+  ]);
+  const ios = service("ios");
+  assert.equal(await ios.exactAlarmAccess(), "not-required");
+});
+
 test("常驻通知使用 LOW 独立渠道且不可侧滑，关闭时同时取消和移除", async () => {
   const s = service("android", { granted: true, canAskAgain: true });
   await s.ensureRuntimeNotification();
@@ -254,7 +280,7 @@ test("测试通知使用 DEFAULT 独立渠道并发送可自动关闭的普通�
   assert.deepEqual(request.trigger, { channelId: "irisnote.diagnostics.v1" });
 });
 
-test("最终 Expo 原生配置移除 APNs entitlement，且没有远程后台通知或精确闹钟声明", () => {
+test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {
   const config = JSON.parse(
     execFileSync(
       process.execPath,
@@ -275,10 +301,39 @@ test("最终 Expo 原生配置移除 APNs entitlement，且没有远程后台通
     ),
     false,
   );
+  // 单一来源约束：app.json 不重复声明，权限由模块 Manifest 经 gradle 合并。
   assert.equal(
     JSON.stringify(native.android.manifest).includes("SCHEDULE_EXACT_ALARM"),
     false,
   );
+});
+
+test("Android 系统模块声明精确闹钟权限并限制日志来源写入 Download/irisnoteLog", () => {
+  const kotlin = fs.readFileSync(
+    path.join(
+      root,
+      "modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt",
+    ),
+    "utf8",
+  );
+  assert.match(kotlin, /canScheduleExactAlarms\(\)/);
+  assert.match(kotlin, /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/);
+  assert.match(kotlin, /Environment\.DIRECTORY_DOWNLOADS}\/irisnoteLog/);
+  assert.match(kotlin, /cacheDir\.canonicalFile/);
+  const manifest = fs.readFileSync(
+    path.join(
+      root,
+      "modules/irisnote-system/android/src/main/AndroidManifest.xml",
+    ),
+    "utf8",
+  );
+  assert.match(manifest, /android\.permission\.SCHEDULE_EXACT_ALARM/);
+  const help = fs.readFileSync(
+    path.join(root, "src/features/settings/screens/HelpFeedbackScreen.tsx"),
+    "utf8",
+  );
+  assert.match(help, /保存并分享/);
+  assert.match(help, /Download\/irisnoteLog/);
 });
 
 test("Android 通知图标为 96px 白色透明 PNG，且有非空图形和透明背景", () => {
