@@ -94,7 +94,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"tests/**/*.test.cjs\"",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.cjs\"",
     "check": "npm run typecheck && npm run lint && npm run theme:check && npm test",
     "eas": "npx --yes eas-cli@24.4.0",
     "build": "node ./scripts/release/cli.mjs build",
