@@ -40,6 +40,9 @@ const {
 const {
   TodoReminderRepository,
 } = require("@/features/todos/data/todo-reminder.repository.ts");
+const {
+  SystemPreferencesRepository,
+} = require("@/features/settings/data/system-preferences.repository.ts");
 const { databaseMigrations } = require("@/core/database/migrations/index.ts");
 const {
   createTodoSync,
@@ -466,7 +469,7 @@ test("连续编辑期间只保留最新版本的开始时刻", async () => {
   );
 });
 
-test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级联丢失清理任务", async (t) => {
+test("迁移 1–11 后提醒绑定与系统偏好均可落盘重开", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iris-reminders-"));
   const filename = path.join(directory, "database.sqlite");
   let db = new DatabaseSync(filename);
@@ -491,8 +494,12 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
     async getAll(sql, params = []) {
       return db.prepare(sql).all(...params);
     },
+    async getFirst(sql, params = []) {
+      return db.prepare(sql).get(...params) ?? null;
+    },
   };
   const repository = new TodoReminderRepository(port);
+  const preferences = new SystemPreferencesRepository(port);
   const record = {
     owner_key: "user:one",
     todo_id: todo().clientId,
@@ -504,9 +511,11 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
     updated_at: new Date(now).toISOString(),
   };
   await repository.put(record);
+  await preferences.setRuntimeNotificationEnabled(true);
   db.close();
   db = new DatabaseSync(filename);
   assert.deepEqual({ ...(await repository.list())[0] }, record);
+  assert.equal(await preferences.runtimeNotificationEnabled(), true);
   await repository.put({ ...record, state: "scheduled", todo_version: 3 });
   assert.equal((await repository.list()).length, 1);
   await port.run("DELETE FROM local_todos");
@@ -514,4 +523,6 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
   await assert.rejects(repository.put({ ...record, state: "invalid" }));
   await repository.remove(record);
   assert.equal((await repository.list()).length, 0);
+  await preferences.setRuntimeNotificationEnabled(false);
+  assert.equal(await preferences.runtimeNotificationEnabled(), false);
 });

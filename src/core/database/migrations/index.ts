@@ -9,6 +9,7 @@ import { createLocalTodos } from "./0007-create-local-todos";
 import { createTodoReminderBindings } from "./0008-create-todo-reminder-bindings";
 import { createTodoSync } from "./0009-create-todo-sync";
 import { addNoteSyncState } from "./0010-add-note-sync-state";
+import { createSystemPreferences } from "./0011-create-system-preferences";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -21,6 +22,7 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     createTodoReminderBindings,
     createTodoSync,
     addNoteSyncState,
+    createSystemPreferences,
 ];
 
 export const CURRENT_DATABASE_VERSION = databaseMigrations.at(-1)?.version ?? 0;

@@ -145,8 +145,8 @@ test("迁移 1–6 升级到 7，保留既有表数据，迁移可重复且具�
   );
   await createLocalTodos.up(database);
   await createLocalTodos.up(database);
-  // 合并 PR #113 笔记同步迁移（0010）后终版号为 10。
-  assert.equal(CURRENT_DATABASE_VERSION, 10);
+  // 0011 增加系统偏好表，用于持久化常驻通知开关。
+  assert.equal(CURRENT_DATABASE_VERSION, 11);
   assert.equal(
     sqlite.prepare("SELECT title FROM local_notes").get().title,
     "保留笔记",
