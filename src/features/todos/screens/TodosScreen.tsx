@@ -343,150 +343,154 @@ function TodoList({
     <View className="mt-[15px] flex-1 bg-app-background">
       <View className="flex-1 flex-row">
         <View className="relative flex-1">
-          <View
-            className="mb-2 h-[100%] rounded-tr-content border-b border-r border-t border-note-page-border bg-white"
-            style={{ padding: 16, paddingBottom: 24 }}
-          >
-            {batch ? (
-              <TodoBatchToolbar
-                count={selected.length}
-                onClose={clearSelection}
-                onAll={() =>
-                  setSelectedIds(new Set(visible.map((todo) => todo.clientId)))
-                }
-                onStar={() => batchChange("isStarred")}
-                onPin={() => batchChange("isPinned")}
-                onDelete={() =>
-                  setDeleting(
-                    selected.map(({ clientId, localVersion }) => ({
-                      clientId,
-                      localVersion,
-                    })),
-                  )
-                }
-              />
-            ) : (
-              <TodoFilterBar
-                filter={filter}
-                sort={sort}
-                searchOpen={searchOpen}
-                onFilter={(value) => {
-                  setFilter(value);
-                  clearSelection();
-                }}
-                onSort={setSort}
-                onSearch={() => {
-                  setSearchOpen(!searchOpen);
-                  setKeyword("");
-                  clearSelection();
-                }}
-              />
-            )}
-            {searchOpen && (
-              <View style={{ marginTop: 12 }}>
-                <Input
-                  size="compact"
-                  placeholder="搜索待办"
-                  accessibilityLabel="搜索待办"
-                  value={keyword}
-                  onChangeText={(value) => {
-                    setKeyword(value);
-                    clearSelection();
-                  }}
-                  clearable
-                />
-              </View>
-            )}
-            <NotesSyncHeader
-              count={visible.length}
-              itemLabel="待办"
-              lastSyncTime={cloudSync.lastSyncTime}
-              enabled={cloudSync.enabled}
-              scrollOffset={scrollOffset}
-              onRefresh={cloudSync.refresh}
-              successMessage={({ changed }) =>
-                changed > 0 ? `同步${changed}项待办` : "暂无待办变更"
-              }
+          {/* Keep the white fill separate from the rounded border on Android. */}
+          <View className="relative flex-1 rounded-tr-content bg-white">
+            <View
+              className="flex-1 rounded-tr-content border-b border-r border-t border-note-page-border"
+              style={{ padding: 16, paddingBottom: 24 }}
             >
-              <AnimatedSectionList
-                ref={listRef}
-                style={{ marginTop: 12, flex: 1 }}
-                sections={sections}
-                keyExtractor={(todo) => todo.clientId}
-                keyboardShouldPersistTaps="handled"
-                stickySectionHeadersEnabled={false}
-                bounces={false}
-                overScrollMode="never"
-                onScroll={scrollHandler}
-                scrollEventThrottle={16}
-                contentContainerStyle={{ paddingBottom: 90, flexGrow: 1 }}
-                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-                renderSectionHeader={({ section }) => (
-                  <TodoDaySectionHeader section={section} todayId={today} />
-                )}
-                onScrollToIndexFailed={() => {
-                  const retry = scrollRetry.current;
-                  if (
-                    retry.timer ||
-                    Date.now() - retry.issuedAt > SCROLL_RETRY_WINDOW_MS ||
-                    retry.attempts >= SCROLL_RETRY_LIMIT
-                  )
-                    return;
-                  retry.attempts += 1;
-                  retry.timer = setTimeout(
-                    () => {
-                      retry.timer = null;
-                      issueScrollToDate(retry.dateId, true);
-                    },
-                    SCROLL_RETRY_DELAY_MS,
-                  );
-                }}
-                ListEmptyComponent={
-                <View
-                  style={{
-                    flex: 1,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: 32,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      color: semanticColors.textSecondary,
-                    }}
-                  >
-                    {keyword.trim() ? "无匹配待办" : "本周暂无待办"}
-                  </Text>
-                </View>
-                }
-                renderItem={({ item }) => (
-                <TodoCard
-                  todo={item}
-                  now={now}
-                  batch={batch}
-                  selected={selectedIds.has(item.clientId)}
-                  onPress={() =>
-                    batch ? toggleSelection(item.clientId) : setEditing(item)
+              {batch ? (
+                <TodoBatchToolbar
+                  count={selected.length}
+                  onClose={clearSelection}
+                  onAll={() =>
+                    setSelectedIds(
+                      new Set(visible.map((todo) => todo.clientId)),
+                    )
                   }
-                  onLongPress={() => {
-                    setBatch(true);
-                    setSelectedIds(new Set([item.clientId]));
-                  }}
-                  onComplete={() =>
-                    run(() =>
-                      todoRepository.complete(
-                        ownerKey,
-                        item,
-                        !item.isCompleted,
-                        new Date(),
-                      ),
+                  onStar={() => batchChange("isStarred")}
+                  onPin={() => batchChange("isPinned")}
+                  onDelete={() =>
+                    setDeleting(
+                      selected.map(({ clientId, localVersion }) => ({
+                        clientId,
+                        localVersion,
+                      })),
                     )
                   }
                 />
-                )}
-              />
-            </NotesSyncHeader>
+              ) : (
+                <TodoFilterBar
+                  filter={filter}
+                  sort={sort}
+                  searchOpen={searchOpen}
+                  onFilter={(value) => {
+                    setFilter(value);
+                    clearSelection();
+                  }}
+                  onSort={setSort}
+                  onSearch={() => {
+                    setSearchOpen(!searchOpen);
+                    setKeyword("");
+                    clearSelection();
+                  }}
+                />
+              )}
+              {searchOpen && (
+                <View style={{ marginTop: 12 }}>
+                  <Input
+                    size="compact"
+                    placeholder="搜索待办"
+                    accessibilityLabel="搜索待办"
+                    value={keyword}
+                    onChangeText={(value) => {
+                      setKeyword(value);
+                      clearSelection();
+                    }}
+                    clearable
+                  />
+                </View>
+              )}
+              <NotesSyncHeader
+                count={visible.length}
+                itemLabel="待办"
+                lastSyncTime={cloudSync.lastSyncTime}
+                enabled={cloudSync.enabled}
+                scrollOffset={scrollOffset}
+                onRefresh={cloudSync.refresh}
+                successMessage={({ changed }) =>
+                  changed > 0 ? `同步${changed}项待办` : "暂无待办变更"
+                }
+              >
+                <AnimatedSectionList
+                  ref={listRef}
+                  style={{ marginTop: 12, flex: 1 }}
+                  sections={sections}
+                  keyExtractor={(todo) => todo.clientId}
+                  keyboardShouldPersistTaps="handled"
+                  stickySectionHeadersEnabled={false}
+                  bounces={false}
+                  overScrollMode="never"
+                  onScroll={scrollHandler}
+                  scrollEventThrottle={16}
+                  contentContainerStyle={{ paddingBottom: 90, flexGrow: 1 }}
+                  ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+                  renderSectionHeader={({ section }) => (
+                    <TodoDaySectionHeader section={section} todayId={today} />
+                  )}
+                  onScrollToIndexFailed={() => {
+                    const retry = scrollRetry.current;
+                    if (
+                      retry.timer ||
+                      Date.now() - retry.issuedAt > SCROLL_RETRY_WINDOW_MS ||
+                      retry.attempts >= SCROLL_RETRY_LIMIT
+                    )
+                      return;
+                    retry.attempts += 1;
+                    retry.timer = setTimeout(() => {
+                      retry.timer = null;
+                      issueScrollToDate(retry.dateId, true);
+                    }, SCROLL_RETRY_DELAY_MS);
+                  }}
+                  ListEmptyComponent={
+                    <View
+                      style={{
+                        flex: 1,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        paddingVertical: 32,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 14,
+                          color: semanticColors.textSecondary,
+                        }}
+                      >
+                        {keyword.trim() ? "无匹配待办" : "本周暂无待办"}
+                      </Text>
+                    </View>
+                  }
+                  renderItem={({ item }) => (
+                    <TodoCard
+                      todo={item}
+                      now={now}
+                      batch={batch}
+                      selected={selectedIds.has(item.clientId)}
+                      onPress={() =>
+                        batch
+                          ? toggleSelection(item.clientId)
+                          : setEditing(item)
+                      }
+                      onLongPress={() => {
+                        setBatch(true);
+                        setSelectedIds(new Set([item.clientId]));
+                      }}
+                      onComplete={() =>
+                        run(() =>
+                          todoRepository.complete(
+                            ownerKey,
+                            item,
+                            !item.isCompleted,
+                            new Date(),
+                          ),
+                        )
+                      }
+                    />
+                  )}
+                />
+              </NotesSyncHeader>
+            </View>
           </View>
         </View>
         <View className="relative h-auto w-[75px] items-center rounded-floating bg-app-background">

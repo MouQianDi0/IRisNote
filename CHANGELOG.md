@@ -1,3 +1,12 @@
+## 2026-09-21 22:17:04 | 修复问题：待办分页横滑时的内容区细线
+
+- 变更概述：将待办页面的白色填充与圆角边框分层绘制，消除 Android 横滑分页过程中可能露出的灰色或黑色竖线。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、src/features/todos/screens/TodosScreen.tsx、tests/navigation/page-seam.test.cjs、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.13，明确分页表面、15dp 顶部留白、75dp 右侧栏、30dp 单侧圆角、1dp 边框及填充/边框层 0dp 间隙约束；② 待办页外层仅绘制白色填充和右上圆角，内层仅绘制上/右/下边框与内容内边距，移除 `height: 100%` 与底部 margin 留缝；③ 新增静态回归测试，锁定分页白色表面和待办页的分层结构。
+- 验证：修改前后 `npm run typecheck` 通过；定向 `node --test --test-concurrency=1 tests/navigation/page-seam.test.cjs` 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅复现既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 348/348 通过；`git diff --check` 通过。未连接 adb 设备，未做真机滑动显示验收。
+
+---
+
 ## 2026-09-21 20:33:24 | 优化代码：主页面横滑开始跟手门槛提高至 100dp
 
 - 变更概述：进一步降低主页面横滑误触；水平位移不足 100dp 时不再由页面切换控件接管。
