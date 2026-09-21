@@ -1,15 +1,20 @@
 import { banner } from "@/core/notifications";
-import { systemNotificationsAvailable } from "@/core/system-notifications/system-notification-provider";
+import {
+    systemNotificationsAvailable,
+    useSystemNotifications,
+} from "@/core/system-notifications/system-notification-provider";
 import { ANDROID_PACKAGE } from "@/features/updates/release";
 import { Card, Screen } from "@/shared/ui";
 import * as ImagePicker from "expo-image-picker";
 import * as IntentLauncher from "expo-intent-launcher";
+import { Host, Switch } from "@expo/ui";
 import { router, useFocusEffect } from "expo-router";
 import {
     Bell,
     Camera,
     Image as ImageIcon,
     PackageCheck,
+    RadioTower,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
@@ -116,6 +121,11 @@ async function openApplicationSettings() {
 }
 
 export default function PermissionSettingsScreen() {
+    const {
+        runtimeNotificationEnabled,
+        runtimeNotificationPending,
+        setRuntimeNotificationEnabled,
+    } = useSystemNotifications();
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
         camera: readingState,
@@ -216,6 +226,38 @@ export default function PermissionSettingsScreen() {
                             description="用于待办事项到时提醒"
                             disabled={!snapshot.notifications.supported}
                             onPress={handleNotifications}
+                        />
+                        <SettingsRow
+                            icon={RadioTower}
+                            label="常驻通知"
+                            value={
+                                runtimeNotificationEnabled ? "已开启" : "已关闭"
+                            }
+                            description="IRisNote正在运行；无声音、不可侧滑"
+                            disabled={
+                                Platform.OS !== "android" ||
+                                !systemNotificationsAvailable
+                            }
+                            trailing={
+                                <Host
+                                    matchContents
+                                    accessibilityLabel="常驻通知"
+                                >
+                                    <Switch
+                                        value={runtimeNotificationEnabled}
+                                        disabled={
+                                            runtimeNotificationPending ||
+                                            Platform.OS !== "android" ||
+                                            !systemNotificationsAvailable
+                                        }
+                                        onValueChange={(value) => {
+                                            void setRuntimeNotificationEnabled(
+                                                value,
+                                            );
+                                        }}
+                                    />
+                                </Host>
+                            }
                         />
                         <SettingsRow
                             icon={Camera}

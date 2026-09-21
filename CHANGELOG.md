@@ -1,3 +1,30 @@
+## 2026-09-22 01:53:02 | 新增功能：staging 测试包独立包名共存与构建指南文档
+
+- 变更概述：已获用户确认，为本地 staging 测试包启用独立包名 `com.mouqiandi.irisNote.staging`（applicationIdSuffix），实现与正式包双应用共存、数据隔离，桌面显示名改为"IRisNote 测试"以作区分；并新增测试包构建指南文档，固化阿里云镜像用法、命令与注意事项。
+- 修改文件：android/app/build.gradle（Git 忽略目录，仅本机生效）、docs/构建发布/本地测试包构建.md（新增）、CHANGELOG.md。
+- 具体内容：① staging 构建块新增 `applicationIdSuffix ".staging"` 与 `resValue "string", "app_name", "IRisNote 测试"`，包名独立后应用内更新器经 `updateSupported()`（校验 applicationId === com.mouqiandi.irisNote）自动禁用，测试包无更新误装风险；② 文档覆盖：staging 与正式包差异对照表、构建命令（含 arm64 瘦身参数与镜像绝对路径要求）、阿里云镜像脚本位置与原理（规避 dl.google.com TLS 握手中断）、.expo/ 与 android/ 的 Git 忽略说明、staging 块参考代码（供 prebuild 重新生成后找回）、限制与常见问题（http 明文不可用、Debug 签名、依赖下载失败排查、残留进程清理）。
+- 验证：`npm run gradle -- help --init-script D:\IRisNote\.expo\gradle-aliyun-init.gradle` 配置阶段通过（验证 Groovy 语法与 resValue 合并有效，结果见后续汇报）；未触及 TS 源码，typecheck/lint 不受影响；正式发布链路使用重新生成的 Android 工程，不含 staging 配置。APK 构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:49:00 | 新增功能：本地构建阿里云镜像脚本固定至 .expo
+
+- 变更概述：已获用户确认，将原先临时存放于系统 Temp 的 Gradle 阿里云镜像 init 脚本固定到项目 `.expo/`（整目录已被 Git 忽略），避免系统清理临时文件后脚本丢失。当日 staging 测试包构建曾因直连 dl.google.com 下载 androidx 依赖 TLS 握手中断而失败，需本脚本镜像兜底。
+- 修改文件：.expo/gradle-aliyun-init.gradle（新增，位于 Git 忽略目录，不入版本库）、CHANGELOG.md。
+- 具体内容：脚本内容沿用原 Temp 版本——在 google()/mavenCentral() 之前追加阿里云 google/public 镜像仓库（allprojects 的 buildscript 与项目仓库均追加）；头部注释由"仅为本次临时"改为固定用途说明，并补充用法示例（--init-script 需用绝对路径，npm run gradle 的工作目录在 android/ 下，相对路径不生效）。
+- 验证：文件已写入 `D:\IRisNote\.expo\gradle-aliyun-init.gradle`；`git check-ignore` 确认 .expo/ 整目录被忽略（.gitignore 第 8 行）；镜像仓库地址与原 Temp 脚本一致。本记录仅为构建辅助文件落位，不触及应用源码，未运行 typecheck/check（无代码变更），构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:23:32 | 新增功能：通知全链路诊断、常驻通知与测试通知
+
+- 变更概述：已获用户确认，为 Android 系统通知补齐应用内可导出的诊断链路，在权限设置中增加可持久化的常驻通知开关，并在帮助与反馈中增加诊断日志导出和普通测试通知入口。
+- 修改文件：src/core/diagnostics/{diagnostic-log,index}.ts、src/core/database/migrations/{0011-create-system-preferences,index}.ts、src/core/system-notifications/{system-notification-context,system-notification-native-provider,system-notification-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/components/SettingsRow.tsx、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-local,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 记录通知权限、渠道、待办保存与资格判断、对账、排程、取消、前后台切换、接收和点击等事件，日志仅保留计数、布尔值、时间与不可逆短标识，不记录待办正文、账号标识或令牌；② 诊断日志以最多 400 条 JSONL 持久化，并可从“帮助与反馈 → 诊断与排障”调起系统分享；③ 新增 `irisnote.runtime.v1` LOW 渠道和“IRisNote正在运行”不可侧滑通知，开关通过共享 SQLite 的 `system_preferences` 表持久化；④ 新增 `irisnote.diagnostics.v1` DEFAULT 渠道，点击“发送测试通知”会发送一条可关闭的普通通知并自动写入诊断日志；⑤ 前台通知处理器分别处理待办、常驻状态和测试通知，保持待办点击跳转与账号隔离逻辑。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；定向通知/提醒/迁移测试 39/39 通过；`npm run check` 的 typecheck、lint、theme:check 与 350/350 项测试全部通过；`git diff --check` 通过。按用户要求中止本地 Debug 构建，未生成、安装或真机验收新的安装包。
+
+---
+
 ## 2026-09-21 23:55:23 | 修复问题：合并 master 设置模块与测试串行化的两处冲突
 
 - 变更概述：已获用户确认，将 master（PR #115 设置模块、测试串行化等 8 个提交）合入 kroos_todo，解决 2 个文件的内容冲突，17 个文件（设置新页面、_layout、release.env.example 移根目录等）自动合并成功。
