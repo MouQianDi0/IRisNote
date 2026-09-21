@@ -9,6 +9,7 @@ import { useTodoScope } from "../hooks/useTodoScope";
 import { syncTodos } from "../services/todo-sync.service";
 import { todoRepository } from "./todo-store";
 import { startTodoSyncCoordinator } from "./todo-sync-coordinator";
+import { todoSyncBanner } from "./todo-sync-banner";
 import { onTodoSyncRetry } from "./todo-sync-runtime";
 
 export const TODO_CLOUD_SYNC_ENABLED =
@@ -56,6 +57,9 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
           title: "待办同步未完成",
           message: "本地内容已保留，可在同步队列查看和重试",
           type: "important" as const,
+          icon: "warning" as const,
+          priority: "high" as const,
+          lifetime: { mode: "persistent" as const },
           action: {
             label: "查看待办同步",
             onPress: () => {
@@ -65,25 +69,16 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
         };
         if (!banner.update(content.id, content)) banner.show(content);
       },
-      onSuccess: (pending) => {
+      onSuccess: ({ pending, uploaded }) => {
         if (!valid() || !session()) return;
-        if (!pending) {
+        const content = todoSyncBanner({ pending, uploaded }, () => {
+          if (valid()) router.push("/pages/user/sync-queue");
+        });
+        if (!content) {
           banner.dismiss("todo-cloud-sync");
           return;
         }
-        const content = {
-          id: "todo-cloud-sync",
-          title: "待办尚未全部同步",
-          message: `${pending} 项本地修改已保留，可在同步队列查看或处理冲突`,
-          type: "important" as const,
-          action: {
-            label: "查看待办同步",
-            onPress: () => {
-              if (valid()) router.push("/pages/user/sync-queue");
-            },
-          },
-        };
-        if (!banner.update(content.id, content)) banner.show(content);
+        if (!banner.update(content.id!, content)) banner.show(content);
       },
     });
     const applyNetwork = (state: Network.NetworkState) => {

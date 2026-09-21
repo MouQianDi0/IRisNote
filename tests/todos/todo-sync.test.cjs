@@ -42,6 +42,9 @@ const {
 const { syncTodos } = require("@/features/todos/services/todo-sync.service.ts");
 const { TodoApiError } = require("@/features/todos/sync.types.ts");
 const wire = require("@/features/todos/api/todo-wire.ts");
+const {
+  todoSyncBanner,
+} = require("@/features/todos/state/todo-sync-banner.ts");
 const owner = "user:7";
 const now = new Date("2026-09-20T01:00:00.000Z");
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -166,6 +169,20 @@ function run(ctx, remote, isCurrent = () => true) {
     isCurrent,
   });
 }
+
+test("待办同步汇总只在上传后显示成功横幅，待处理状态优先", () => {
+  const success = todoSyncBanner({ pending: 0, uploaded: 2 }, () => {});
+  assert.equal(success.title, "待办已同步");
+  assert.equal(success.message, "已将 2 项修改上传到云端");
+  assert.equal(success.type, "success");
+  assert.deepEqual(success.lifetime, { mode: "timed", durationMs: 4000 });
+  assert.equal(todoSyncBanner({ pending: 0, uploaded: 0 }, () => {}), null);
+  const pending = todoSyncBanner({ pending: 1, uploaded: 2 }, () => {});
+  assert.equal(pending.title, "待办尚未全部同步");
+  assert.equal(pending.type, "important");
+  assert.deepEqual(pending.lifetime, { mode: "persistent" });
+  assert.equal(pending.action.label, "查看待办同步");
+});
 
 test("本地事实与 outbox 意图原子提交，失败全部回滚，游客不入云端", async (t) => {
   const c = await setup(t);
@@ -437,7 +454,7 @@ test("批量部分成功独立确认，失败项目保留相同 operation_id，�
   const b = await synced(c, 2);
   await c.repo.batch(owner, c.repo.list(owner), { isStarred: true }, now);
   let sent;
-  await run(
+  const result = await run(
     c,
     transport({
       batch: async (ops) => {
@@ -461,6 +478,7 @@ test("批量部分成功独立确认，失败项目保留相同 operation_id，�
         snapshot([{ ...a, version: 2, is_starred: true }, b]),
     }),
   );
+  assert.deepEqual(result, { pending: 1, uploaded: 1 });
   assert.equal(sent.length, 2);
   assert.equal((await state(c, 1)).status, "synced");
   assert.equal((await state(c, 2)).dirty, true);

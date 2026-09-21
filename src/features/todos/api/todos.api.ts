@@ -34,6 +34,25 @@ const retryMilliseconds = (value: unknown) => {
     ? Math.max(0, seconds * 1000)
     : Math.max(0, Date.parse(String(value)) - Date.now()) || 0;
 };
+type TodoHttpResponse = { data: unknown; requestId: string | null };
+const responseRequestId = (headers: unknown): string | null => {
+  if (!headers || typeof headers !== "object") return null;
+  const source = headers as {
+    get?: (name: string) => unknown;
+    [key: string]: unknown;
+  };
+  const value =
+    typeof source.get === "function"
+      ? source.get("x-request-id")
+      : source["x-request-id"];
+  return typeof value === "string" && value.length > 0 && value.length <= 128
+    ? value
+    : null;
+};
+const requiredRequestId = (response: TodoHttpResponse) => {
+  if (!response.requestId) throw invalid();
+  return response.requestId;
+};
 
 /** Capture credentials once. An old owner's queued request never reads a new owner's token. */
 export function createTodoTransport(
@@ -47,24 +66,36 @@ export function createTodoTransport(
     headers: { Authorization: `Bearer ${token}` },
   };
   async function request(
-    task: () => Promise<{ data: unknown }>,
+    task: () => Promise<{ data: unknown; headers: unknown }>,
     clientId?: string,
     id?: number,
-  ): Promise<unknown> {
+  ): Promise<TodoHttpResponse> {
     try {
-      return (await task()).data;
+      const response = await task();
+      return {
+        data: response.data,
+        requestId: responseRequestId(response.headers),
+      };
     } catch (error) {
       if (signal.aborted) throw error;
       if (!isAxiosError(error)) throw error;
       const status = error.response?.status ?? 0;
       let code = status === 401 ? "UNAUTHENTICATED" : "TEMPORARILY_UNAVAILABLE";
       let current: TodoRemote | null = null;
+      let requestId = responseRequestId(error.response?.headers);
       const raw: unknown = error.response?.data;
       if (raw && typeof raw === "object" && !Array.isArray(raw)) {
         const body = object(raw);
         if (body.error && typeof body.error === "object") {
           const detail = object(body.error);
           if (typeof detail.code === "string") code = detail.code;
+          if (
+            !requestId &&
+            typeof detail.request_id === "string" &&
+            detail.request_id.length > 0 &&
+            detail.request_id.length <= 128
+          )
+            requestId = detail.request_id;
         }
         if (body.current !== undefined) {
           current = validateRemote(body.current, userId, clientId, id);
@@ -94,21 +125,23 @@ export function createTodoTransport(
                 : "待办同步未完成，本地内容已保留",
         retryMilliseconds(error.response?.headers["retry-after"]),
         current,
+        requestId,
       );
     }
   }
   return {
     async snapshot(cursor, snapshotToken) {
+      const response = await request(() =>
+        api.get("/todos", {
+          ...config,
+          params: {
+            limit: 100,
+            ...(cursor ? { cursor, snapshot_token: snapshotToken } : {}),
+          },
+        }),
+      );
       const root = object(
-        await request(() =>
-          api.get("/todos", {
-            ...config,
-            params: {
-              limit: 100,
-              ...(cursor ? { cursor, snapshot_token: snapshotToken } : {}),
-            },
-          }),
-        ),
+        response.data,
       );
       if (!Array.isArray(root.data)) throw invalid();
       const page = object(root.page);
@@ -127,13 +160,14 @@ export function createTodoTransport(
       };
     },
     async changes(cursor) {
+      const response = await request(() =>
+        api.get("/todos/changes", {
+          ...config,
+          params: { cursor, limit: 100 },
+        }),
+      );
       const root = object(
-        await request(() =>
-          api.get("/todos/changes", {
-            ...config,
-            params: { cursor, limit: 100 },
-          }),
-        ),
+        response.data,
       );
       if (!Array.isArray(root.data)) throw invalid();
       const page = object(root.page);
@@ -164,12 +198,13 @@ export function createTodoTransport(
       };
     },
     async byClientId(clientId) {
+      const response = await request(
+        () =>
+          api.get("/todos", { ...config, params: { client_id: clientId } }),
+        clientId,
+      );
       const root = object(
-        await request(
-          () =>
-            api.get("/todos", { ...config, params: { client_id: clientId } }),
-          clientId,
-        ),
+        response.data,
       );
       return validateRemote(root.data, userId, clientId);
     },
@@ -183,15 +218,16 @@ export function createTodoTransport(
           "Idempotency-Key": operation.operation_id,
         },
       };
+      const response = await request(
+        () =>
+          req.kind === "create"
+            ? api.post("/todos", req.body, options)
+            : api.patch(`/todos/${req.id}`, req.body, options),
+        operation.client_id,
+        req.kind === "patch" ? req.id : undefined,
+      );
       const root = object(
-        await request(
-          () =>
-            req.kind === "create"
-              ? api.post("/todos", req.body, options)
-              : api.patch(`/todos/${req.id}`, req.body, options),
-          operation.client_id,
-          req.kind === "patch" ? req.id : undefined,
-        ),
+        response.data,
       );
       const meta = object(root.meta);
       if (meta.operation_id !== operation.operation_id) throw invalid();
@@ -206,12 +242,24 @@ export function createTodoTransport(
         (req.kind === "patch" && remote.version < req.body.expected_version)
       )
         throw invalid();
+      const requestId = requiredRequestId(response);
+      const replayed = boolean(meta.replayed);
+      const changed = boolean(meta.changed);
+      if (__DEV__)
+        console.info("[TodoSync] server acknowledged write", {
+          request_id: requestId,
+          operation_id: operation.operation_id,
+          kind: req.kind,
+          replayed,
+          changed,
+        });
       return {
         data: remote,
         meta: {
+          request_id: requestId,
           operation_id: operation.operation_id,
-          replayed: boolean(meta.replayed),
-          changed: boolean(meta.changed),
+          replayed,
+          changed,
         },
       };
     },
@@ -243,21 +291,22 @@ export function createTodoTransport(
       });
       // Each retry uses a new envelope and the same immutable per-item operation identities.
       const key = newTodoId();
-      const root = object(
-        await request(() =>
-          api.post(
-            "/todos/batch",
-            {
-              action,
-              items,
-              ...(action === "delete" ? {} : { value: first.value }),
-            },
-            {
-              ...config,
-              headers: { ...config.headers, "Idempotency-Key": key },
-            },
-          ),
+      const response = await request(() =>
+        api.post(
+          "/todos/batch",
+          {
+            action,
+            items,
+            ...(action === "delete" ? {} : { value: first.value }),
+          },
+          {
+            ...config,
+            headers: { ...config.headers, "Idempotency-Key": key },
+          },
         ),
+      );
+      const root = object(
+        response.data,
       );
       if (
         !Array.isArray(root.results) ||
@@ -329,7 +378,25 @@ export function createTodoTransport(
           };
         },
       );
-      return { results };
+      const responseMeta = object(root.meta);
+      const requestId = requiredRequestId(response);
+      const replayed = boolean(responseMeta.replayed);
+      if (__DEV__)
+        console.info("[TodoSync] server acknowledged batch", {
+          request_id: requestId,
+          operation_id: key,
+          succeeded: results.filter((item) => item.status === "succeeded")
+            .length,
+          failed: results.filter((item) => item.status === "failed").length,
+        });
+      return {
+        meta: {
+          request_id: requestId,
+          operation_id: key,
+          replayed,
+        },
+        results,
+      };
     },
   };
 }

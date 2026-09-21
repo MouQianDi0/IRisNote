@@ -92,9 +92,19 @@ export type TodoChangesPage = {
 };
 export type TodoWriteResult = {
   data: TodoRemote;
-  meta: { operation_id: string; replayed: boolean; changed: boolean };
+  meta: {
+    request_id: string;
+    operation_id: string;
+    replayed: boolean;
+    changed: boolean;
+  };
 };
 export type TodoBatchResult = {
+  meta: {
+    request_id: string;
+    operation_id: string;
+    replayed: boolean;
+  };
   results: ({ operation_id: string; id: number; changed: boolean } & (
     | { status: "succeeded"; data: TodoRemote }
     | {
@@ -116,6 +126,7 @@ export class TodoApiError extends Error {
     message: string,
     public readonly retryAfter = 0,
     public readonly current: TodoRemote | null = null,
+    public readonly requestId: string | null = null,
   ) {
     super(message);
     this.name = "TodoApiError";

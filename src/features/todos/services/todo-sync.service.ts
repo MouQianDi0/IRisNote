@@ -28,8 +28,12 @@ export type TodoSyncSession = {
   transport: TodoTransport;
   isCurrent: () => boolean;
 };
-export async function syncTodos(session: TodoSyncSession) {
+export type TodoSyncResult = { pending: number; uploaded: number };
+export async function syncTodos(
+  session: TodoSyncSession,
+): Promise<TodoSyncResult> {
   const { repository, ownerKey, transport } = session;
+  let uploaded = 0;
   const check = () => {
     if (!session.isCurrent()) throw new Error("待办同步会话已结束");
   };
@@ -48,11 +52,11 @@ export async function syncTodos(session: TodoSyncSession) {
   const ops = await transaction(ownerKey, (tx) =>
     prepareOperations(tx, ownerKey, Date.now()),
   );
-  async function reportPending() {
+  async function reportResult(): Promise<TodoSyncResult> {
     const records = await transaction(ownerKey, (tx) =>
       listTodoSyncRecords(tx, ownerKey),
     );
-    return records.length;
+    return { pending: records.length, uploaded };
   }
   async function accepted(op: TodoOperation, remote: TodoRemote) {
     check();
@@ -173,6 +177,7 @@ export async function syncTodos(session: TodoSyncSession) {
         try {
           const reply = await transport.write(op);
           await accepted(op, reply.data);
+          uploaded++;
         } catch (error) {
           await failed(op, error);
         }
@@ -200,7 +205,10 @@ export async function syncTodos(session: TodoSyncSession) {
         }
         for (let i = 0; i < group.length; i++) {
           const item = result.results[i];
-          if (item.status === "succeeded") await accepted(group[i], item.data);
+          if (item.status === "succeeded") {
+            await accepted(group[i], item.data);
+            uploaded++;
+          }
           else
             await failed(
               group[i],
@@ -241,7 +249,7 @@ export async function syncTodos(session: TodoSyncSession) {
           cursor = page.page.next_cursor;
           if (!page.page.has_more) break;
         }
-        return await reportPending();
+        return await reportResult();
       } catch (error) {
         if (
           !(error instanceof TodoApiError) ||
@@ -280,7 +288,7 @@ export async function syncTodos(session: TodoSyncSession) {
       visited.add(value);
       next = value;
     }
-    return await reportPending();
+    return await reportResult();
   } finally {
     if (session.isCurrent()) notifyTodoSyncChanged();
   }

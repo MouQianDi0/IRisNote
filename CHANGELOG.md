@@ -1,3 +1,13 @@
+## 2026-09-21 14:55:42 | 新增功能：待办云同步回包追踪与全局成功横幅
+
+- 变更概述：已获用户确认，为登录账号启用本机待办云同步，补齐服务端请求 ID 回包关联、上传数量汇总和全局成功横幅；保留现有离线队列、冲突处理与失败横幅。
+- 修改文件：.env.local（忽略，不入 Git）、scripts/release/cli.mjs、src/features/todos/api/todos.api.ts、src/features/todos/services/todo-sync.service.ts、src/features/todos/state/todo-sync-banner.ts、src/features/todos/state/todo-sync-coordinator.ts、src/features/todos/state/todo-sync-provider.tsx、src/features/todos/sync.types.ts、tests/releases/release-env.test.cjs、tests/todos/todo-api.test.cjs、tests/todos/todo-sync.test.cjs、CHANGELOG.md；配套服务端修改位于 D:\irisapi-1。
+- 具体内容：① 本机 Expo 会话设置 EXPO_PUBLIC_TODO_CLOUD_SYNC=1，发布脚本把该显式开关传入 EAS preview/production 构建；② Todo HTTP 传输层读取并校验 X-Request-Id，成功写入与批量回包携带关联元数据，开发日志仅记录请求/操作标识和结果摘要；③ 同步服务汇总本轮服务端已接收的修改数，全部完成时显示 4 秒“待办已同步”成功横幅，无上传不打扰，仍有待处理项时继续显示可跳转同步队列的持久重要横幅；④ 错误继续保留本地事实与冻结操作，不记录正文、令牌或游标。
+- 验证：修改前后 npm run typecheck 均通过；待办 API/同步定向测试 32/32、发布环境测试 4/4、串行全量测试 343/343 通过；npm run check 的 typecheck、lint、theme:check 均通过，并行测试 336/337，唯一失败为 tests/releases/workspace.test.cjs 触发 Node 测试运行器 Unable to deserialize cloned data 的已知 IPC 偶发错误，随后使用项目稳定参数 --test-concurrency=1 全量复跑通过。客户端与服务端 git diff --check、冲突标记扫描均通过，服务端 npm run build 通过。
+- 验收边界：未部署或重启后端，未执行生产数据库迁移，未构建 APK，也未做真机网络、横幅显示或多设备同步验收；修改环境变量后需重启 Metro 才能进入新配置。
+
+---
+
 ## 2026-09-21 13:30:55 | 修复问题：合并 PR #113 笔记同步的迁移号冲突
 
 - 变更概述：将远端 561acc6（PR #113，Timmi 的笔记快照/增量同步）合入 kroos_todo，解决 2 个文件的合并冲突。核心冲突为双方同时占用数据库迁移号 7（本地 0007-0009 为 Todo 链，远端 0007 为笔记同步）；已获用户确认采用"远端让位重编号"方案。

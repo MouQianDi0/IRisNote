@@ -1,10 +1,11 @@
 import { TodoApiError } from "../sync.types";
+import type { TodoSyncResult } from "../services/todo-sync.service";
 
 /** Single drain, coalesced wakeups; no concurrent requests across network/foreground events. */
 export function startTodoSyncCoordinator(options: {
-  run: (signal: AbortSignal) => Promise<number>;
+  run: (signal: AbortSignal) => Promise<TodoSyncResult>;
   onError: (error: unknown) => void;
-  onSuccess: (pending: number) => void;
+  onSuccess: (result: TodoSyncResult) => void;
 }) {
   let stopped = false;
   let active = false;
@@ -31,8 +32,8 @@ export function startTodoSyncCoordinator(options: {
     controller = request;
     let failed = false;
     try {
-      const pending = await options.run(request.signal);
-      if (!stopped && !request.signal.aborted) options.onSuccess(pending);
+      const result = await options.run(request.signal);
+      if (!stopped && !request.signal.aborted) options.onSuccess(result);
     } catch (error) {
       failed = true;
       if (!stopped && !request.signal.aborted) {

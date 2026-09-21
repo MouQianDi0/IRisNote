@@ -8,6 +8,7 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 
 const loader = pathToFileURL(path.resolve(__dirname, '../../scripts/release/env.mjs')).href;
+const releaseCli = path.resolve(__dirname, '../../scripts/release/cli.mjs');
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'iris-release-env-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -56,4 +57,9 @@ test('unreadable release configuration stops instead of silently continuing', t 
   fs.mkdirSync(path.join(root, '.env.release.local'));
   const result = run(root, "assert.throws(() => loadReleaseEnv(root), /无法读取/);");
   assert.equal(result.status, 0, result.stderr);
+});
+
+test('EAS builds receive the explicit Todo cloud-sync feature flag', () => {
+  const source = fs.readFileSync(releaseCli, 'utf8');
+  assert.match(source, /"EXPO_PUBLIC_TODO_CLOUD_SYNC"/);
 });

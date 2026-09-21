@@ -88,6 +88,7 @@ async function fixture(t, handler) {
       const reply = await handler(request);
       res.writeHead(reply.status ?? 200, {
         "content-type": "application/json",
+        "x-request-id": "20000000-0000-4000-8000-000000000001",
         ...reply.headers,
       });
       res.end(JSON.stringify(reply.body));
@@ -136,6 +137,10 @@ test("本机 HTTP 使用冻结账号 token、固定幂等键、分钟字段，�
   assert.equal(req.method, "PATCH");
   assert.deepEqual(req.body, op.request.body);
   assert.equal(result.data.version, 2);
+  assert.equal(
+    result.meta.request_id,
+    "20000000-0000-4000-8000-000000000001",
+  );
 });
 test("快照后续页固定 limit、原 token 与 cursor，不添加日期过滤", async (t) => {
   const f = await fixture(t, () => ({
@@ -215,6 +220,7 @@ test("429、处理中以及网关错误保留 Retry-After；冲突校验 current
     (e) =>
       e.status === 429 &&
       e.retryAfter === 3000 &&
+      e.requestId === "20000000-0000-4000-8000-000000000001" &&
       !e.message.includes("raw details"),
   );
   reply = {
@@ -263,8 +269,12 @@ test("批量重试新外层键但固定项目指纹，逐项结果校验，delet
     ...op,
     request: { kind: "delete", id: 12, expected_version: 1 },
   };
+  const first = await f.api.batch([remove]);
   await f.api.batch([remove]);
-  await f.api.batch([remove]);
+  assert.equal(
+    first.meta.request_id,
+    "20000000-0000-4000-8000-000000000001",
+  );
   assert.notEqual(
     f.requests[0].headers["idempotency-key"],
     f.requests[1].headers["idempotency-key"],
