@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
 import { Undo2 } from "lucide-react-native";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 
-import { AnchoredPopover, AppCalendar } from "@/shared/ui";
 import { defaultThemePreset, radii, semanticColors } from "@/shared/theme";
+import { AnchoredPopover, AppCalendar } from "@/shared/ui";
 import {
   addDays,
   addWeeks,
@@ -15,7 +15,7 @@ import {
 } from "@/shared/utils/date-id";
 
 const DAY_WIDTH = 50;
-const DAY_HEIGHT = 60;
+const DAY_HEIGHT = 50;
 const DAY_GAP = 6;
 const DAYS_PER_WEEK = 7;
 const WEEK_SWIPE_DISTANCE = 24;
@@ -38,19 +38,39 @@ const CHINESE_MONTH_LABELS = [
 type TodoCalendarRailProps = {
   value: string | null;
   onChange: (dateId: string) => void;
+  todayId?: string;
+  /** 受控：当前可见周首日（周一）；不传时组件内部自持。 */
+  weekId?: string;
+  /** 受控：可见周变化（滑动换周或选中其他周的日期）时回调。 */
+  onWeekChange?: (weekId: string) => void;
 };
 
 /**
  * 待办页右侧日期轨道：固定展示周一至周日七项，上滑下一周、下滑上一周；
  * 月份标题跟随当前周内的选中日期；底部按钮返回今天所在周并选中今天。
+ * 可见周可由外部受控（weekId/onWeekChange），供列表跟随周视图展示。
  */
-export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
-  const todayId = todayDateId();
-  const [visibleWeekId, setVisibleWeekId] = useState(() =>
+export function TodoCalendarRail({
+  value,
+  onChange,
+  todayId = todayDateId(),
+  weekId,
+  onWeekChange,
+}: TodoCalendarRailProps) {
+  const [internalWeekId, setInternalWeekId] = useState(() =>
     startOfWeekId(value ?? todayId, "monday"),
   );
+  const visibleWeekId = weekId ?? internalWeekId;
   const [pickerVisible, setPickerVisible] = useState(false);
+  const previousToday = useRef(todayId);
   const monthAnchorRef = useRef<View>(null);
+
+  useLayoutEffect(() => {
+    if (weekId !== undefined) return;
+    if (previousToday.current !== todayId && value === null)
+      setInternalWeekId(startOfWeekId(todayId, "monday"));
+    previousToday.current = todayId;
+  }, [todayId, value, weekId]);
 
   const weekdays = useMemo(
     () => weekdayLabels("monday").map((label) => `周${label}`),
@@ -75,9 +95,16 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
     visibleWeekId === startOfWeekId(todayId, "monday") &&
     (value === null || value === todayId);
 
-  const shiftWeek = useCallback((weeks: number) => {
-    setVisibleWeekId((weekId) => addWeeks(weekId, weeks));
-  }, []);
+  const shiftWeek = useCallback(
+    (weeks: number) => {
+      if (weekId !== undefined) {
+        onWeekChange?.(addWeeks(weekId, weeks));
+        return;
+      }
+      setInternalWeekId((current) => addWeeks(current, weeks));
+    },
+    [weekId, onWeekChange],
+  );
 
   const weekSwipeGesture = useMemo(
     () =>
@@ -103,7 +130,10 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
   );
 
   const selectDate = (dateId: string) => {
-    setVisibleWeekId(startOfWeekId(dateId, "monday"));
+    const nextWeekId = startOfWeekId(dateId, "monday");
+    if (weekId !== undefined) {
+      if (nextWeekId !== weekId) onWeekChange?.(nextWeekId);
+    } else setInternalWeekId(nextWeekId);
     onChange(dateId);
   };
 
@@ -171,10 +201,14 @@ export function TodoCalendarRail({ value, onChange }: TodoCalendarRailProps) {
                   width: DAY_WIDTH,
                 })}
               >
-                <Text style={{ color: textColor, fontSize: 11, lineHeight: 14 }}>
+                <Text
+                  style={{ color: textColor, fontSize: 11, lineHeight: 14 }}
+                >
                   {weekday}
                 </Text>
-                <Text style={{ color: textColor, fontSize: 16, lineHeight: 20 }}>
+                <Text
+                  style={{ color: textColor, fontSize: 16, lineHeight: 20 }}
+                >
                   {dateId.slice(-2)}
                 </Text>
               </Pressable>

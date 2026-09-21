@@ -5,7 +5,10 @@ import { createNoteDrafts } from "./0003-create-note-drafts";
 import { createNoteRevisions } from "./0004-create-note-revisions";
 import { createUploadQueue } from "./0005-create-upload-queue";
 import { addServerUpdatedAt } from "./0006-add-server-updated-at";
-import { addNoteSyncState } from "./0007-add-note-sync-state";
+import { createLocalTodos } from "./0007-create-local-todos";
+import { createTodoReminderBindings } from "./0008-create-todo-reminder-bindings";
+import { createTodoSync } from "./0009-create-todo-sync";
+import { addNoteSyncState } from "./0010-add-note-sync-state";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -14,6 +17,9 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     createNoteRevisions,
     createUploadQueue,
     addServerUpdatedAt,
+    createLocalTodos,
+    createTodoReminderBindings,
+    createTodoSync,
     addNoteSyncState,
 ];
 

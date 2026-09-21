@@ -47,7 +47,7 @@ const {
 } = require("../../src/core/database/migrations/0006-add-server-updated-at.ts");
 const {
     addNoteSyncState,
-} = require("../../src/core/database/migrations/0007-add-note-sync-state.ts");
+} = require("../../src/core/database/migrations/0010-add-note-sync-state.ts");
 const repo = require("../../src/features/notes/data/note-sync.repository.ts");
 const {
     runNoteSync,

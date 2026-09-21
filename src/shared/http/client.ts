@@ -58,7 +58,12 @@ api.interceptors.request.use(async (config) => {
   connectionStamps.set(config, requestConnectionStamp());
   if (config.method === "get" && !config.timeout) config.timeout = 15000;
   const token = await AsyncStorage.getItem(storageKeys.authToken);
-  if (token) {
+  // AxiosHeaders.get is case-insensitive; fall back for plain object headers.
+  const existingAuthorization =
+    typeof config.headers.get === "function"
+      ? config.headers.get("Authorization")
+      : config.headers.Authorization;
+  if (token && !existingAuthorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 

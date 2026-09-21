@@ -1,7 +1,8 @@
 import type { DatabaseMigration } from "../database.types";
 
 export const addNoteSyncState: DatabaseMigration = {
-    version: 7,
+    // 原 PR #113 中为 0007；与本地 todo 迁移链（0007-0009）冲突，合并时重编号为 0010。
+    version: 10,
     name: "add_note_sync_state",
     async up(database) {
         await database.execAsync(`

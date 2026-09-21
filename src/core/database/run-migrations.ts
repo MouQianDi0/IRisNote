@@ -66,8 +66,14 @@ async function assertLedgerMatchesVersion(
                 row.name !== expectedRows[index]?.name,
         )
     ) {
+        // 附上实际/期望账本与版本号，命中时无需再拉库排查即可定位差异行。
+        const describeLedger = (entries: readonly MigrationLedgerRow[]) =>
+            entries.map((entry) => `${entry.version}:${entry.name}`).join(", ");
         throw new Error(
-            "[Database] Migration ledger does not match PRAGMA user_version.",
+            `[Database] Migration ledger does not match PRAGMA user_version. ` +
+                `user_version=${currentVersion}; ` +
+                `actual=[${describeLedger(rows)}]; ` +
+                `expected=[${describeLedger(expectedRows)}].`,
         );
     }
 }

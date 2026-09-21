@@ -24,6 +24,8 @@ export type InputProps = Omit<
     clearable?: boolean;
     readOnly?: boolean;
     disabled?: boolean;
+    /** Body fields share ordinary input state recipes without changing existing callers. */
+    size?: "standard" | "compact" | "body";
     inputClassName?: string;
     containerClassName?: string;
 };
@@ -47,6 +49,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
         readOnly = false,
         disabled = false,
         multiline = false,
+        size = "standard",
         inputClassName,
         containerClassName,
         onFocus,
@@ -97,7 +100,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                     alignItems: multiline ? "flex-start" : "center",
                     backgroundColor: recipe.background,
                     borderColor: recipe.border,
-                    minHeight: multiline ? 96 : 48,
+                    minHeight: size === "body" ? 144 : multiline ? 96 : size === "compact" ? 44 : 48,
+                    height: size === "body" ? 144 : undefined,
                 },
             ]}
         >
@@ -131,6 +135,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
                     {
                         color: recipe.content,
                         flex: 1,
+                        fontSize: size === "body" ? 17 : themeTypography.control.fontSize,
+                        height: size === "body" ? "100%" : undefined,
                         minWidth: 0,
                         paddingBottom: multiline ? 12 : 0,
                         paddingLeft: leading ? 0 : 16,

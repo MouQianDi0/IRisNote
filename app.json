@@ -9,6 +9,7 @@
         "scheme": "irisnote",
         "userInterfaceStyle": "automatic",
         "ios": {
+            "bundleIdentifier": "com.mouqiandi.irisNote",
             "icon": "./assets/images/IRisNote_black.png"
         },
         "android": {
@@ -28,6 +29,8 @@
             "favicon": "./assets/images/IRisNote_iris.png"
         },
         "plugins": [
+            "./plugins/with-local-notification-entitlements",
+            ["expo-notifications", { "icon": "./assets/images/notification-icon.png" }],
             [
                 "expo-router",
                 {

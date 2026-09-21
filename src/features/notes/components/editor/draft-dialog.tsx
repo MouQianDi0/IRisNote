@@ -1,72 +1,14 @@
-import { AppModal } from "@/shared/ui/Overlay/app-modal";
 import { Check } from "lucide-react-native";
-import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { colors } from "@/shared/theme";
 import type { DraftEntry } from "../../data/new-note-draft.repository";
 import {
-    dialogButtonLabelStyles,
-    dialogButtonStyles,
-    dialogCard,
-    dialogScrim,
-    dialogTitle,
     draftRowStyles,
     draftSummaryStyles,
     draftTitleStyles,
-    type DialogButtonVariant,
 } from "./draft-dialog.styles";
 
-export function DraftDialog({ visible, title, onClose, children, headerExtra, leading, closeOnScrimTap = true }: {
-    visible: boolean; title: string; onClose: () => void; children: ReactNode;
-    headerExtra?: ReactNode; leading?: ReactNode; closeOnScrimTap?: boolean;
-}) {
-    return <AppModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <View
-            className={dialogScrim}
-            onStartShouldSetResponder={closeOnScrimTap ? () => true : undefined}
-            onResponderRelease={closeOnScrimTap ? onClose : undefined}
-        >
-            <View accessibilityViewIsModal className={dialogCard} onStartShouldSetResponder={() => true}>
-                <View className="mb-3 flex-row items-center justify-between gap-3">
-                    {leading}
-                    <Text accessibilityRole="header" className={dialogTitle}>{title}</Text>
-                    {headerExtra}
-                </View>
-                {children}
-            </View>
-        </View>
-    </AppModal>;
-}
-
-/**
- * HyperOS 弹窗按钮。只接收 label 字符串，由内部渲染文字，
- * 避免原生按钮直接使用字符串 children 的渲染问题。
- * 交互态：按压整体 opacity 0.85；禁用为显式浅色 token 配色（规格 §6.1）。
- * leading：label 左侧的图标位（如删除倒计时的旋转圈），与文字间距 8dp。
- */
-export function DialogButton({ label, variant = "primary", disabled = false, onPress, className, leading }: {
-    label: string; variant?: DialogButtonVariant; disabled?: boolean; onPress: () => void; className?: string;
-    leading?: ReactNode;
-}) {
-    const [pressed, setPressed] = useState(false);
-    return <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPress={onPress}
-        onPressIn={() => setPressed(true)}
-        onPressOut={() => setPressed(false)}
-        // 显式 dp 高度：h-12 类经 rem 换算在真机上渲染约 42dp，与原生 48dp 按钮不等高。
-        style={{ height: variant === "text" ? 44 : 48 }}
-        className={dialogButtonStyles({ variant, disabled, pressed, class: className })}
-    >
-        <View className="flex-row items-center gap-2">
-            {leading}
-            <Text numberOfLines={1} className={dialogButtonLabelStyles({ variant, disabled })}>{label}</Text>
-        </View>
-    </Pressable>;
-}
+export { DraftDialog, DialogButton } from "@/shared/ui/Dialog/dialog";
 
 function draftSummary(entry: DraftEntry) {
     const title = entry.row.title.trim() || "未命名草稿";

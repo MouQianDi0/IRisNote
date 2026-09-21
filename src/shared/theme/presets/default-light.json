@@ -59,7 +59,17 @@
         "secondaryDisabled": "#F7F7F7",
         "labelDisabled": "#B2B2B2",
         "primaryFaded": "#80BFFF",
-        "scrim": "rgba(0, 0, 0, 0.3)"
+        "scrim": "rgba(0, 0, 0, 0.3)",
+        "todoLowSurface": "#C5DFFC",
+        "todoLowAccent": "#64A9F7",
+        "todoNormalSurface": "#FDEBC4",
+        "todoNormalAccent": "#F9C962",
+        "todoHighSurface": "#FCCADB",
+        "todoHighAccent": "#F76998",
+        "todoDoneSurface": "#CDF9DB",
+        "todoDoneAccent": "#71EF9B",
+        "todoEndedSurface": "#E6E8EA",
+        "todoEndedAccent": "#ACB2B9"
     },
     "semanticColorRefs": {
         "transparent": "transparent",
@@ -200,7 +210,17 @@
         "control-surface": "controlSurface",
         "selected-surface": "selectedSurface",
         "destructive": "destructive",
-        "on-destructive": "white"
+        "on-destructive": "white",
+        "todo-low-surface": "todoLowSurface",
+        "todo-low-accent": "todoLowAccent",
+        "todo-normal-surface": "todoNormalSurface",
+        "todo-normal-accent": "todoNormalAccent",
+        "todo-high-surface": "todoHighSurface",
+        "todo-high-accent": "todoHighAccent",
+        "todo-done-surface": "todoDoneSurface",
+        "todo-done-accent": "todoDoneAccent",
+        "todo-ended-surface": "todoEndedSurface",
+        "todo-ended-accent": "todoEndedAccent"
     },
     "radii": {
         "indicator": 6,

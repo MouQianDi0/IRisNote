@@ -213,6 +213,7 @@ async function build() {
             for (const key of [
                 "EXPO_PUBLIC_BASE_URL",
                 "EXPO_PUBLIC_RELEASE_API_URL",
+                "EXPO_PUBLIC_TODO_CLOUD_SYNC",
             ]) {
                 if (process.env[key])
                     eas.build[profile].env[key] = process.env[key];
