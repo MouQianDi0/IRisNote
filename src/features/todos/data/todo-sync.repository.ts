@@ -177,10 +177,15 @@ function conflict(
   s.status = "conflict";
   s.error = message;
 }
-export async function applyRemote(tx: Tx, owner: string, remote: TodoRemote) {
+/** Returns true only when the incoming record changes locally visible Todo data. */
+export async function applyRemote(
+  tx: Tx,
+  owner: string,
+  remote: TodoRemote,
+): Promise<boolean> {
   let s = await getSyncRecord(tx, owner, remote.client_id);
   if (!s) {
-    if (isDeleted(remote)) return;
+    if (isDeleted(remote)) return false;
     s = {
       ownerKey: owner,
       clientId: remote.client_id,
@@ -197,10 +202,11 @@ export async function applyRemote(tx: Tx, owner: string, remote: TodoRemote) {
   const previous = s.remote;
   s.remote = newest(s.remote, remote);
   if (s.base) s.remote = newest(s.base, s.remote);
-  if (previous && remote.version < previous.version) return;
+  if (previous && remote.version < previous.version) return false;
   if (!s.dirty && !(await getOperation(tx, owner, s.clientId))) {
-    if (s.base?.version === s.remote.version) return;
+    if (s.base?.version === s.remote.version) return false;
     await publish(tx, s, s.remote);
+    return true;
   } else {
     // An uncertain sent operation must recover its receipt before conflicts can be resolved.
     if (
@@ -210,6 +216,7 @@ export async function applyRemote(tx: Tx, owner: string, remote: TodoRemote) {
       conflict(s);
     await put(tx, s);
   }
+  return false;
 }
 export async function prepareOperations(
   tx: Tx,
@@ -406,7 +413,12 @@ export async function stageSnapshot(
       JSON.stringify(remote),
     ]);
 }
-export async function finishSnapshot(tx: Tx, owner: string, cursor: string) {
+export async function finishSnapshot(
+  tx: Tx,
+  owner: string,
+  cursor: string,
+): Promise<number> {
+  let changed = 0;
   const rows = await tx.getAll<{ payload_json: string }>(
     "SELECT payload_json FROM todo_snapshot_items WHERE owner_key=?",
     [owner],
@@ -415,7 +427,7 @@ export async function finishSnapshot(tx: Tx, owner: string, cursor: string) {
   for (const row of rows) {
     const remote = JSON.parse(row.payload_json) as TodoRemote;
     ids.add(remote.client_id);
-    await applyRemote(tx, owner, remote);
+    if (await applyRemote(tx, owner, remote)) changed++;
   }
   for (const s of await listTodoSyncRecords(tx, owner, false)) {
     if (!s.base || isDeleted(s.base) || ids.has(s.clientId)) continue;
@@ -435,10 +447,12 @@ export async function finishSnapshot(tx: Tx, owner: string, cursor: string) {
         "DELETE FROM todo_sync_state WHERE owner_key=? AND client_id=?",
         [owner, s.clientId],
       );
+      changed++;
     }
   }
   await saveCursor(tx, owner, cursor);
   await clearSnapshot(tx, owner);
+  return changed;
 }
 export async function resolveTodoConflict(
   tx: Tx,

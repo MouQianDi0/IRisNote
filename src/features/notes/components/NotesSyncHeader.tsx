@@ -34,24 +34,28 @@ const HEADER_HEIGHT = 88;
 const SPRING = { duration: 260, dampingRatio: 1 };
 type Phase = "pull" | "ready" | "syncing" | "success" | "error";
 
-type Props = {
+type Props<Result> = {
   children: ReactElement;
   count: number;
+  itemLabel: string;
   lastSyncTime: number | null;
   enabled: boolean;
   scrollOffset: SharedValue<number>;
-  onRefresh: () => Promise<{ addedCount: number } | undefined>;
+  onRefresh: () => Promise<Result | undefined>;
+  successMessage: (result: Result) => string;
 };
 
 /** The list stays virtualized; only a transform follows the finger on the UI thread. */
-export default function NotesSyncHeader({
+export default function NotesSyncHeader<Result>({
   children,
   count,
+  itemLabel,
   lastSyncTime,
   enabled,
   scrollOffset,
   onRefresh,
-}: Props) {
+  successMessage,
+}: Props<Result>) {
   const [phase, setPhase] = useState<Phase>("pull");
   const [resultText, setResultText] = useState("");
   const [reduceMotion, setReduceMotion] = useState(true);
@@ -116,7 +120,7 @@ export default function NotesSyncHeader({
     locked.set(true);
     distance.set(withSpring(HEADER_HEIGHT, SPRING));
     setPhase("syncing");
-    let result: { addedCount: number } | undefined;
+    let result: Result | undefined;
     try {
       result = await onRefresh();
     } catch {
@@ -124,13 +128,7 @@ export default function NotesSyncHeader({
     }
     if (currentGeneration !== generation.current) return;
     setPhase(result ? "success" : "error");
-    setResultText(
-      result
-        ? result.addedCount > 0
-          ? `同步${result.addedCount}条笔记`
-          : "暂无新笔记"
-        : "同步失败",
-    );
+    setResultText(result ? successMessage(result) : "同步失败");
     resultTimer.current = setTimeout(
       () => {
         distance.set(withSpring(0, SPRING));
@@ -140,7 +138,7 @@ export default function NotesSyncHeader({
       },
       result ? 1600 : 3000,
     );
-  }, [distance, enabled, locked, onRefresh]);
+  }, [distance, enabled, locked, onRefresh, successMessage]);
 
   const pan = Gesture.Pan()
     .enabled(enabled)
@@ -242,7 +240,7 @@ export default function NotesSyncHeader({
           pointerEvents="none"
           style={[styles.header, headerStyle]}
         >
-          <Text style={styles.count}> {count} 条笔记</Text>
+          <Text style={styles.count}> {count} 条{itemLabel}</Text>
           <View style={styles.details}>
             <View style={styles.status} accessibilityLiveRegion="polite">
               <Animated.View style={statusIconStyle}>

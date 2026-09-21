@@ -18,8 +18,10 @@ import { TodoCard } from "../components/TodoCard";
 import { TodoFilterBar } from "../components/TodoFilterBar";
 import { TodoBatchToolbar } from "../components/TodoBatchToolbar";
 import { TodoFormDialog } from "../components/TodoFormDialog";
+import NotesSyncHeader from "@/features/notes/components/NotesSyncHeader";
 import { useTodoScope } from "../hooks/useTodoScope";
 import { useTodoClock } from "../hooks/useTodoClock";
+import { useTodoCloudSync } from "../state/todo-sync-provider";
 import { queryTodosByWeek } from "../domain/todo-query";
 import { assertTodoSession } from "../services/todo-service";
 import { todoRepository, selectTodoDate } from "../state/todo-store";
@@ -29,6 +31,10 @@ import type {
   TodoSort,
   TodoVersionTarget,
 } from "../todos.types";
+import Animated, {
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from "react-native-reanimated";
 
 type TodoDaySection = {
   key: string;
@@ -45,6 +51,9 @@ const DAY_HEADER_TOP_MARGIN = 16;
 const SCROLL_RETRY_LIMIT = 3;
 const SCROLL_RETRY_DELAY_MS = 150;
 const SCROLL_RETRY_WINDOW_MS = 2000;
+const AnimatedSectionList = Animated.createAnimatedComponent(
+  SectionList<TodoEntity, TodoDaySection>,
+);
 
 /** 滚动定位的 viewOffset 补偿：把分组头留在可视区内。 */
 function dayHeaderViewOffset(isFirst: boolean): number {
@@ -126,6 +135,13 @@ function TodoList({
   selectedDateId: string | null;
   initialReminderDate: string | null;
 }) {
+  const cloudSync = useTodoCloudSync();
+  const scrollOffset = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollOffset.set(event.contentOffset.y);
+    },
+  });
   const now = useTodoClock(entities);
   const [filter, setFilter] = useState<TodoFilter>("all");
   const [sort, setSort] = useState<TodoSort>("timeAsc");
@@ -381,36 +397,51 @@ function TodoList({
                 />
               </View>
             )}
-            <SectionList
-              ref={listRef}
-              style={{ marginTop: 12, flex: 1 }}
-              sections={sections}
-              keyExtractor={(todo) => todo.clientId}
-              keyboardShouldPersistTaps="handled"
-              stickySectionHeadersEnabled={false}
-              contentContainerStyle={{ paddingBottom: 90, flexGrow: 1 }}
-              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-              renderSectionHeader={({ section }) => (
-                <TodoDaySectionHeader section={section} todayId={today} />
-              )}
-              onScrollToIndexFailed={() => {
-                const retry = scrollRetry.current;
-                if (
-                  retry.timer ||
-                  Date.now() - retry.issuedAt > SCROLL_RETRY_WINDOW_MS ||
-                  retry.attempts >= SCROLL_RETRY_LIMIT
-                )
-                  return;
-                retry.attempts += 1;
-                retry.timer = setTimeout(
-                  () => {
-                    retry.timer = null;
-                    issueScrollToDate(retry.dateId, true);
-                  },
-                  SCROLL_RETRY_DELAY_MS,
-                );
-              }}
-              ListEmptyComponent={
+            <NotesSyncHeader
+              count={visible.length}
+              itemLabel="待办"
+              lastSyncTime={cloudSync.lastSyncTime}
+              enabled={cloudSync.enabled}
+              scrollOffset={scrollOffset}
+              onRefresh={cloudSync.refresh}
+              successMessage={({ changed }) =>
+                changed > 0 ? `同步${changed}项待办` : "暂无待办变更"
+              }
+            >
+              <AnimatedSectionList
+                ref={listRef}
+                style={{ marginTop: 12, flex: 1 }}
+                sections={sections}
+                keyExtractor={(todo) => todo.clientId}
+                keyboardShouldPersistTaps="handled"
+                stickySectionHeadersEnabled={false}
+                bounces={false}
+                overScrollMode="never"
+                onScroll={scrollHandler}
+                scrollEventThrottle={16}
+                contentContainerStyle={{ paddingBottom: 90, flexGrow: 1 }}
+                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+                renderSectionHeader={({ section }) => (
+                  <TodoDaySectionHeader section={section} todayId={today} />
+                )}
+                onScrollToIndexFailed={() => {
+                  const retry = scrollRetry.current;
+                  if (
+                    retry.timer ||
+                    Date.now() - retry.issuedAt > SCROLL_RETRY_WINDOW_MS ||
+                    retry.attempts >= SCROLL_RETRY_LIMIT
+                  )
+                    return;
+                  retry.attempts += 1;
+                  retry.timer = setTimeout(
+                    () => {
+                      retry.timer = null;
+                      issueScrollToDate(retry.dateId, true);
+                    },
+                    SCROLL_RETRY_DELAY_MS,
+                  );
+                }}
+                ListEmptyComponent={
                 <View
                   style={{
                     flex: 1,
@@ -428,8 +459,8 @@ function TodoList({
                     {keyword.trim() ? "无匹配待办" : "本周暂无待办"}
                   </Text>
                 </View>
-              }
-              renderItem={({ item }) => (
+                }
+                renderItem={({ item }) => (
                 <TodoCard
                   todo={item}
                   now={now}
@@ -453,8 +484,9 @@ function TodoList({
                     )
                   }
                 />
-              )}
-            />
+                )}
+              />
+            </NotesSyncHeader>
           </View>
         </View>
         <View className="relative h-auto w-[75px] items-center rounded-floating bg-app-background">

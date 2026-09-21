@@ -478,13 +478,72 @@ test("批量部分成功独立确认，失败项目保留相同 operation_id，�
         snapshot([{ ...a, version: 2, is_starred: true }, b]),
     }),
   );
-  assert.deepEqual(result, { pending: 1, uploaded: 1 });
+  assert.deepEqual(result, {
+    pending: 1,
+    uploaded: 1,
+    downloaded: 0,
+    changed: 1,
+  });
   assert.equal(sent.length, 2);
   assert.equal((await state(c, 1)).status, "synced");
   assert.equal((await state(c, 2)).dirty, true);
   await c.port.run("UPDATE todo_outbox SET next_attempt_at=0");
   const [retry] = await operations(c);
   assert.equal(retry.operation_id, sent[1].operation_id);
+});
+test("同步统计仅计入成功上传和实际写入本地的云端变更", async (t) => {
+  const c = await setup(t);
+  const local = await c.create(1);
+  const remote = dto(local, 1);
+  const initial = await run(
+    c,
+    transport({
+      write: async () => ({ data: remote }),
+      snapshot: async () => snapshot([remote]),
+    }),
+  );
+  assert.deepEqual(initial, {
+    pending: 0,
+    uploaded: 1,
+    downloaded: 0,
+    changed: 1,
+  });
+
+  const updated = { ...remote, version: 2, body: "云端更新" };
+  const incremental = await run(
+    c,
+    transport({ changes: async () => changes([updated], "after-update") }),
+  );
+  assert.deepEqual(incremental, {
+    pending: 0,
+    uploaded: 0,
+    downloaded: 1,
+    changed: 1,
+  });
+  assert.equal(c.repo.get(owner, local.clientId).body, "云端更新");
+
+  const replay = await run(
+    c,
+    transport({ changes: async () => changes([updated], "after-replay") }),
+  );
+  assert.deepEqual(replay, {
+    pending: 0,
+    uploaded: 0,
+    downloaded: 0,
+    changed: 0,
+  });
+});
+test("完整快照缺失的已同步待办计入下载删除变更", async (t) => {
+  const c = await setup(t);
+  await synced(c);
+  const result = await run(c, transport({ snapshot: async () => snapshot([]) }));
+  assert.deepEqual(result, {
+    pending: 0,
+    uploaded: 0,
+    downloaded: 1,
+    changed: 1,
+  });
+  assert.equal(c.repo.list(owner).length, 0);
 });
 test("401 保留冻结操作并停止本轮拉取", async (t) => {
   const c = await setup(t);
@@ -674,6 +733,25 @@ test("前台协调器合并唤醒、不并发发送，停止取消在途请求",
   t.mock.timers.tick(1000);await Promise.resolve();assert.equal(calls,1);
   coordinator.wake();coordinator.wake();t.mock.timers.tick(60000);assert.equal(calls,1);
   coordinator.stop();assert.equal(signal.aborted,true);release();await new Promise(resolve=>setImmediate(resolve));assert.equal(success,0);
+});
+
+test("手动同步等待当前协调器结果，不额外启动并发或后继请求", async (t) => {
+  const {startTodoSyncCoordinator}=require("@/features/todos/state/todo-sync-coordinator.ts");
+  t.mock.timers.enable({apis:["setTimeout"]});
+  let release;let calls=0;
+  const result={pending:0,uploaded:0,downloaded:2,changed:2};
+  const coordinator=startTodoSyncCoordinator({
+    run:async()=>{calls++;await new Promise(resolve=>{release=resolve;});return result;},
+    onError:()=>{},onSuccess:()=>{},
+  });
+  t.after(()=>coordinator.stop());
+  coordinator.setActive(true);coordinator.setOnline(true);
+  const first=coordinator.refresh();t.mock.timers.tick(0);await Promise.resolve();
+  const second=coordinator.refresh();
+  assert.equal(calls,1);
+  release();
+  assert.deepEqual(await first,result);assert.deepEqual(await second,result);
+  t.mock.timers.tick(1000);assert.equal(calls,1);
 });
 
 test("401 后协调器暂停，网络重连及重试按钮不偷偷更换身份发送", async (t) => {

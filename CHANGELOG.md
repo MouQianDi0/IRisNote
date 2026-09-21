@@ -1,3 +1,21 @@
+## 2026-09-21 18:47:04 | 新增功能：待办列表下拉云同步与实际变更统计
+
+- 变更概述：待办列表接入与笔记列表一致的顶部下拉云同步；同步完成准确展示本轮实际变更项数，全程复用现有 Todo 同步协议与后端接口。
+- 修改文件：src/features/notes/components/NotesSyncHeader.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/{data/todo-sync-history.ts,data/todo-sync.repository.ts,services/todo-sync.service.ts,state/todo-sync-coordinator.ts,state/todo-sync-provider.tsx,screens/TodosScreen.tsx}、tests/todos/todo-sync.test.cjs、CHANGELOG.md。
+- 具体内容：① 笔记下拉同步头泛化为可传入实体名称和成功文案的复用组件，笔记文案保持不变；② 待办 `SectionList` 仅在滚动到顶部时可下拉，展示待办数量、同步状态、上次成功同步时间与“同步 N 项待办/暂无待办变更”；③ 同步服务统计成功上传与真正写入、更新或删除本地待办的远端变更，陈旧回包、同版本回显和未覆盖本地的冲突不重复计数；④ 手动同步加入既有单一协调器，等待当前轮结果且不另发并发或后继请求；⑤ 上次同步时间仅存为可失败的本地展示元数据，不影响同步事实。
+- 验证：修改前后 `npm run typecheck` 通过；`node --test --test-concurrency=1 "tests/todos/todo-sync.test.cjs"` 27/27、全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 346/346 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 克隆错误，随后串行验证通过；`git diff --check` 和源码/测试目录冲突标记扫描通过。
+
+---
+
+## 2026-09-21 18:22:57 | 优化代码：补充发布环境变量模板维护约定
+
+- 变更概述：明确发布相关环境变量的文档同步责任，避免发布脚本或构建配置变更后模板缺项或误放密钥。
+- 修改文件：docs/构建发布/android-releases.md、CHANGELOG.md。
+- 具体内容：在 `.env.release.local` 配置步骤中规定：新增、删除或调整发布构建/发布工具读取的环境变量时，必须同步更新 `docs/构建发布/release.env.example`；密钥示例仅保留空值和用途注释。
+- 验证：复核 Markdown 内容、模板现有变量和 Git 差异；纯文档改动，未运行类型检查、测试、构建或设备验收。
+
+---
+
 ## 2026-09-21 18:03:59 | 优化代码：release 环境变量模板补充待办云同步开关
 
 - 变更概述：已获用户确认，在发布环境变量模板中新增 EXPO_PUBLIC_TODO_CLOUD_SYNC=1 示例，与上一条待办云同步功能配套；同时修正 HPatchz 注释笔误（"路径s"→"路径"）。

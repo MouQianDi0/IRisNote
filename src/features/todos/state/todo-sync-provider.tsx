@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, type PropsWithChildren } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from "react";
 import { AppState } from "react-native";
 import * as Network from "expo-network";
 import { router } from "expo-router";
@@ -11,16 +19,52 @@ import { todoRepository } from "./todo-store";
 import { startTodoSyncCoordinator } from "./todo-sync-coordinator";
 import { todoSyncBanner } from "./todo-sync-banner";
 import { onTodoSyncRetry } from "./todo-sync-runtime";
+import type { TodoSyncResult } from "../services/todo-sync.service";
+import { readTodoSyncTime, saveTodoSyncTime } from "../data/todo-sync-history";
 
 export const TODO_CLOUD_SYNC_ENABLED =
   process.env.EXPO_PUBLIC_TODO_CLOUD_SYNC === "1";
+
+type TodoCloudSyncContextValue = {
+  enabled: boolean;
+  lastSyncTime: number | null;
+  refresh: () => Promise<TodoSyncResult>;
+};
+
+const unavailable = () =>
+  Promise.reject(new Error("待办云同步当前不可用"));
+const TodoCloudSyncContext = createContext<TodoCloudSyncContextValue>({
+  enabled: false,
+  lastSyncTime: null,
+  refresh: unavailable,
+});
+
+export function useTodoCloudSync() {
+  return useContext(TodoCloudSyncContext);
+}
+
 export function TodoSyncProvider({ children }: PropsWithChildren) {
   const scope = useTodoScope();
   const { user, token, loading } = useAuth();
   const current = useRef({ owner: scope.ownerKey, token, loading });
+  const refresh = useRef<() => Promise<TodoSyncResult>>(unavailable);
+  const [lastSyncHistory, setLastSyncHistory] = useState<{
+    userId: number;
+    timestamp: number | null;
+  } | null>(null);
   useLayoutEffect(() => {
     current.current = { owner: scope.ownerKey, token, loading };
   }, [scope.ownerKey, token, loading]);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    void readTodoSyncTime(user.id).then((timestamp) => {
+      if (active) setLastSyncHistory({ userId: user.id, timestamp });
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
   useEffect(() => {
     if (
       !TODO_CLOUD_SYNC_ENABLED ||
@@ -69,9 +113,12 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
         };
         if (!banner.update(content.id, content)) banner.show(content);
       },
-      onSuccess: ({ pending, uploaded }) => {
+      onSuccess: (result) => {
         if (!valid() || !session()) return;
-        const content = todoSyncBanner({ pending, uploaded }, () => {
+        const timestamp = Date.now();
+        setLastSyncHistory({ userId: user.id, timestamp });
+        void saveTodoSyncTime(user.id, timestamp);
+        const content = todoSyncBanner(result, () => {
           if (valid()) router.push("/pages/user/sync-queue");
         });
         if (!content) {
@@ -81,6 +128,7 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
         if (!banner.update(content.id!, content)) banner.show(content);
       },
     });
+    refresh.current = coordinator.refresh;
     const applyNetwork = (state: Network.NetworkState) => {
       if (valid())
         coordinator.setOnline(
@@ -99,6 +147,7 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
     const retry = onTodoSyncRetry(coordinator.wake);
     return () => {
       stopped = true;
+      if (refresh.current === coordinator.refresh) refresh.current = unavailable;
       coordinator.stop();
       network.remove();
       app.remove();
@@ -106,5 +155,25 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
       retry();
     };
   }, [scope.ready, scope.ownerKey, scope.generation, user, token, loading]);
-  return children;
+  const enabled =
+    TODO_CLOUD_SYNC_ENABLED &&
+    scope.ready &&
+    !loading &&
+    !!user &&
+    !!token &&
+    scope.ownerKey === `user:${user?.id}`;
+  return (
+    <TodoCloudSyncContext.Provider
+      value={{
+        enabled,
+        lastSyncTime:
+          user && lastSyncHistory?.userId === user.id
+            ? lastSyncHistory.timestamp
+            : null,
+        refresh: () => refresh.current(),
+      }}
+    >
+      {children}
+    </TodoCloudSyncContext.Provider>
+  );
 }
