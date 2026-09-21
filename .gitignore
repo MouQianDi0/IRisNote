@@ -71,3 +71,6 @@ modules/*/android/build/
 *.pid
 
 .codegraph/
+# DSH 运行时插件与远程任务脚本（本机工具，不入库）
+dsh-webhook-remote/
+scripts/Send-DshTask.ps1

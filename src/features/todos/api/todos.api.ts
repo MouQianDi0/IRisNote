@@ -68,7 +68,12 @@ export function createTodoTransport(
         }
         if (body.current !== undefined) {
           current = validateRemote(body.current, userId, clientId, id);
-          if (isDeleted(current) || body.current_version !== current.version)
+          // current_version may be absent on some server error paths; only validate when present.
+          if (
+            isDeleted(current) ||
+            (body.current_version !== undefined &&
+              body.current_version !== current.version)
+          )
             throw invalid();
         } else if (code === "TODO_DELETED" && body.data !== undefined) {
           current = validateRemote(body.data, userId, clientId, id);
@@ -303,7 +308,9 @@ export function createTodoTransport(
             current &&
             (current.id !== item.id ||
               current.client_id !== op.client_id ||
-              current.version !== result.current_version)
+              // current_version may be absent on some server error paths; only validate when present.
+              (result.current_version !== undefined &&
+                current.version !== result.current_version))
           )
             throw invalid();
           if (data && !isDeleted(data)) throw invalid();

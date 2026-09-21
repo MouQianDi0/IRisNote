@@ -29,7 +29,15 @@ export const createTodoSync: DatabaseMigration = {
         PRIMARY KEY(owner_key,client_id),
         CHECK((is_completed=0 AND completed_at IS NULL) OR (is_completed=1 AND completed_at IS NOT NULL))
       );
-      INSERT INTO local_todos_v9 SELECT * FROM local_todos;
+      INSERT INTO local_todos_v9 (
+        owner_key, client_id, body, priority, date_id, start_time, end_time,
+        is_starred, is_pinned, reminder_enabled, time_zone, is_completed,
+        completed_at, local_version, created_at, updated_at
+      ) SELECT
+        owner_key, client_id, body, priority, date_id, start_time, end_time,
+        is_starred, is_pinned, reminder_enabled, time_zone, is_completed,
+        completed_at, local_version, created_at, updated_at
+      FROM local_todos;
       DROP TABLE local_todos;
       ALTER TABLE local_todos_v9 RENAME TO local_todos;
       CREATE INDEX idx_local_todos_owner_date ON local_todos(owner_key,date_id);

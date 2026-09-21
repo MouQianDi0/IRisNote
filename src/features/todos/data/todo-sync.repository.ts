@@ -265,15 +265,9 @@ export async function prepareOperations(
             !isDeleted(s.base) &&
             s.base[key as keyof typeof next] !== value,
         );
-        // Completion timestamp changes only together with completion state.
-        const fields = Object.fromEntries(
-          changed.filter(
-            ([key]) =>
-              key !== "completed_at" ||
-              next.is_completed !==
-                (s.base && !isDeleted(s.base) && s.base.is_completed),
-          ),
-        );
+        // Completion timestamp always participates in the patch so the server
+        // arbitrates it, never silently dropped locally.
+        const fields = Object.fromEntries(changed);
         if (fields.is_completed === true)
           fields.completed_at = next.completed_at;
         if (!Object.keys(fields).length) {

@@ -51,7 +51,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
     );
   return (
     <SystemNotificationContext.Provider value={pendingNotificationState}>
-      <Suspense fallback={children}>
+      <Suspense fallback={null}>
         <NativeSystemNotificationProvider>
           {children}
         </NativeSystemNotificationProvider>
