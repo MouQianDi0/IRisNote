@@ -1,3 +1,12 @@
+## 2026-09-21 22:58:35 | 优化代码：顶部安全区背景色随页面动态切换
+
+- 变更概述：已获用户确认（方案 A：根布局路由映射）。根布局 SafeAreaView 原先固定使用灰色 appBackground 填充顶部安全区，导致白色页面（auth 登录/注册/欢迎、笔记新建/编辑/详情）顶部出现灰白分界。现改为按当前路由动态取色：命中 `/auth/`、`/pages/note/` 前缀时使用白色（colors.surface，即 #FFFFFF），其余页面维持灰色默认值。
+- 修改文件：src/app/_layout.tsx、CHANGELOG.md。
+- 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
+- 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
+
+---
+
 ## 2026-09-21 22:00:51 | 优化代码：权限项目统一直达系统设置
 
 - 变更概述：已获用户确认，权限设置页中的通知、相机、照片访问和更新安装项目统一改为点击后直接进入手机系统设置，不再优先触发应用内授权弹窗。
