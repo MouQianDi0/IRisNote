@@ -1,12 +1,11 @@
 import { useApplicationDatabase } from "@/core/database";
 import { getCategories } from "@/features/notes/categories/api/categories.api";
 import { getLocalNotes } from "@/features/notes/data/note-local.repository";
-import { getNotes } from "@/features/notes/api/notes.api";
 import { readingProgressStore } from "@/features/notes/data/note-reading-progress";
+import { syncNotes } from "@/features/notes/services/note-sync-coordinator";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-    mergeOverviewNotes,
     selectContinueReading,
     type ProfileOverview,
 } from "../profile-overview";
@@ -22,19 +21,22 @@ async function loadProfileOverview(
     database: ReturnType<typeof useApplicationDatabase>,
     ownerUserId: number,
 ): Promise<ProfileOverview> {
-    const [localResult, serverResult, categoriesResult] =
-        await Promise.allSettled([
-            getLocalNotes(database, ownerUserId),
-            getNotes(),
-            getCategories(),
-        ]);
-
+    const [syncResult, categoriesResult] = await Promise.allSettled([
+        syncNotes(database, ownerUserId),
+        getCategories(),
+    ]);
+    const localResult = await Promise.allSettled([
+        getLocalNotes(database, ownerUserId),
+    ]);
     const notesAvailable =
-        localResult.status === "fulfilled" || serverResult.status === "fulfilled";
-    const notes = mergeOverviewNotes(
-        localResult.status === "fulfilled" ? localResult.value : [],
-        serverResult.status === "fulfilled" ? serverResult.value : [],
-    );
+        localResult[0].status === "fulfilled" ||
+        syncResult.status === "fulfilled";
+    const notes =
+        localResult[0].status === "fulfilled"
+            ? localResult[0].value
+            : syncResult.status === "fulfilled"
+              ? syncResult.value.notes
+              : [];
     const records = notesAvailable
         ? await readingProgressStore.list(ownerUserId).catch(() => [])
         : [];

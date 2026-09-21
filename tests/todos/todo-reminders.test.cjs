@@ -42,6 +42,9 @@ const {
 } = require("@/features/todos/data/todo-reminder.repository.ts");
 const { databaseMigrations } = require("@/core/database/migrations/index.ts");
 const {
+  createTodoSync,
+} = require("@/core/database/migrations/0009-create-todo-sync.ts");
+const {
   parseTodoNotificationData,
 } = require("@/core/system-notifications/system-notification.types.ts");
 const todo = (patch = {}) => ({
@@ -478,9 +481,9 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
       params ? db.prepare(sql).run(params) : db.prepare(sql).run(),
   };
   for (const migration of databaseMigrations) await migration.up(migrationPort);
-  await databaseMigrations
-    .at(-1)
-    .up({ execAsync: async (sql) => db.exec(sql) });
+  // 合并 PR #113 后链尾是 0010 笔记迁移（非可重入设计）；
+  // 本测试原始意图是 todo 链末尾迁移可重入，显式重放 0009。
+  await createTodoSync.up({ execAsync: async (sql) => db.exec(sql) });
   const port = {
     async run(sql, params = []) {
       return db.prepare(sql).run(...params);

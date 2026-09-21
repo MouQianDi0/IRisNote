@@ -1,26 +1,33 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { deleteNoteDraft, type DraftCommit } from "../data/note-draft.repository";
+import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { isAxiosError, type AxiosProgressEvent } from "axios";
-import { createNote, updateNote, normalizeConflictNote } from "../api/notes.api";
+import {
+    createNote,
+    normalizeConflictNote,
+    updateNote,
+} from "../api/notes.api";
+import {
+    deleteNoteDraft,
+    type DraftCommit,
+} from "../data/note-draft.repository";
 import {
     acceptServerNote,
-    getLocalNoteByClientId,
     createPendingLocalNote,
+    getLocalNoteByClientId,
     markLocalNoteSynced,
     markLocalNoteSyncFailed,
     markLocalNoteSyncing,
-    updatePendingLocalNote,
     reconcileServerNotes,
+    updatePendingLocalNote,
 } from "../data/note-local.repository";
 import { setCachedNote } from "../notes.cache";
-import { notifyNotesChanged } from "../notes.events";
+import { beginNoteCloudWrite, notifyNotesChanged } from "../notes.events";
 import type {
     CreateNotePayload,
     Note,
     UpdateNotePayload,
 } from "../notes.types";
-import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 
 export type NoteCloudSaveState = "accepted" | "queued" | "rejected" | "unknown";
 
@@ -52,7 +59,11 @@ function publishNote(note: Note) {
 }
 
 function notifyLocalSaved(note: Note, callback?: (note: Note) => void) {
-    try { callback?.(note); } catch { console.warn("[Note save] 状态提示失败，本地保存与同步继续"); }
+    try {
+        callback?.(note);
+    } catch {
+        console.warn("[Note save] 状态提示失败，本地保存与同步继续");
+    }
 }
 
 function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
@@ -70,10 +81,9 @@ function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
     });
 }
 
-function classifyCloudFailure(error: unknown): Exclude<
-    NoteCloudSaveState,
-    "accepted" | "queued"
-> {
+function classifyCloudFailure(
+    error: unknown,
+): Exclude<NoteCloudSaveState, "accepted" | "queued"> {
     return isAxiosError(error) && error.response ? "rejected" : "unknown";
 }
 
@@ -83,6 +93,37 @@ async function syncPendingNote(
     note: Note,
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ): Promise<NoteSaveResult> {
+    const finish = beginNoteCloudWrite();
+    try {
+        return await syncPendingNoteWithReceipt(
+            database,
+            ownerUserId,
+            note,
+            onUploadProgress,
+        );
+    } finally {
+        finish();
+    }
+}
+
+async function syncPendingNoteWithReceipt(
+    database: ApplicationDatabase,
+    ownerUserId: number,
+    note: Note,
+    onUploadProgress?: (event: AxiosProgressEvent) => void,
+): Promise<NoteSaveResult> {
+    if (
+        note.server_id != null &&
+        note.last_sync_error?.startsWith("云端笔记已删除")
+    ) {
+        return {
+            note,
+            cloudState: "rejected",
+            message: note.last_sync_error,
+            httpStatus: 404,
+            retryable: false,
+        };
+    }
     const syncingNote = await markLocalNoteSyncing(
         database,
         ownerUserId,
@@ -99,11 +140,10 @@ async function syncPendingNote(
     try {
         let responseStatus: number | undefined;
         const uploadOptions = {
-            onUploadProgress: (event: AxiosProgressEvent) =>
-                {
-                    logUploadProgress(note.id, event);
-                    onUploadProgress?.(event);
-                },
+            onUploadProgress: (event: AxiosProgressEvent) => {
+                logUploadProgress(note.id, event);
+                onUploadProgress?.(event);
+            },
             onResponse: (status: number) => {
                 responseStatus = status;
                 console.log("[Note sync] 已收到云端响应", {
@@ -118,7 +158,9 @@ async function syncPendingNote(
                       {
                           title: note.title,
                           content: note.content ?? "",
-                          ...(note.updated_at ? { updated_at: note.updated_at } : {}),
+                          ...(note.updated_at
+                              ? { updated_at: note.updated_at }
+                              : {}),
                           ...(note.category_id == null
                               ? {}
                               : { category_id: note.category_id }),
@@ -155,34 +197,64 @@ async function syncPendingNote(
         });
         return {
             note: acceptedNote,
-            cloudState: acceptedNote.sync_status === "synced" ? "accepted" : "queued",
+            cloudState:
+                acceptedNote.sync_status === "synced" ? "accepted" : "queued",
             retryable: acceptedNote.sync_status !== "synced",
         };
     } catch (error: unknown) {
-        if (isAxiosError<{ code?: string; note?: unknown }>(error) &&
+        if (
+            isAxiosError<{ code?: string; note?: unknown }>(error) &&
             error.response?.status === 409 &&
-            error.response.data?.code === "NOTE_EDIT_CONFLICT" && note.server_id != null) {
+            error.response.data?.code === "NOTE_EDIT_CONFLICT" &&
+            note.server_id != null
+        ) {
             try {
-                const remote = normalizeConflictNote(error.response.data.note, note.server_id);
-                await reconcileServerNotes(database, ownerUserId, [remote], undefined, {
-                    clientId: note.id,
-                    revisionId: note.current_revision_id ?? null,
-                });
-                const current = await getLocalNoteByClientId(database, ownerUserId, note.id);
+                const remote = normalizeConflictNote(
+                    error.response.data.note,
+                    note.server_id,
+                );
+                await reconcileServerNotes(
+                    database,
+                    ownerUserId,
+                    [remote],
+                    undefined,
+                    {
+                        clientId: note.id,
+                        revisionId: note.current_revision_id ?? null,
+                    },
+                );
+                const current = await getLocalNoteByClientId(
+                    database,
+                    ownerUserId,
+                    note.id,
+                );
                 if (current?.sync_status === "synced") {
                     publishNote(current);
-                    return { note: current, cloudState: "accepted", message: "已同步云端较新的内容，本地历史版本已保留。" };
+                    return {
+                        note: current,
+                        cloudState: "accepted",
+                        message: "已同步云端较新的内容，本地历史版本已保留。",
+                    };
                 }
-                if (current && current.current_revision_id !== note.current_revision_id) {
+                if (
+                    current &&
+                    current.current_revision_id !== note.current_revision_id
+                ) {
                     publishNote(current);
-                    return { note: current, cloudState: "queued", retryable: true };
+                    return {
+                        note: current,
+                        cloudState: "queued",
+                        retryable: true,
+                    };
                 }
             } catch {
                 // 无效冲突快照/本地合并失败走普通失败处理，不能把未落库的内容标为成功。
             }
         }
         const cloudState = classifyCloudFailure(error);
-        const httpStatus = isAxiosError(error) ? error.response?.status : undefined;
+        const httpStatus = isAxiosError(error)
+            ? error.response?.status
+            : undefined;
         const retryable =
             httpStatus == null ||
             httpStatus === 408 ||
@@ -296,6 +368,29 @@ export async function stageEditedNoteForSync(
         revisionCreated,
     });
 
+    if (
+        localNote.server_id != null &&
+        localNote.last_sync_error?.startsWith("云端笔记已删除")
+    ) {
+        const retained = await markLocalNoteSyncFailed(
+            database,
+            ownerUserId,
+            localNote.id,
+            "rejected",
+            localNote.last_sync_error,
+        );
+        if (!retained) throw new Error("无法读取已保留的本地笔记");
+        publishNote(retained);
+        return {
+            note: retained,
+            shouldUpload: false,
+            cloudState: "rejected",
+            unchanged: !revisionCreated,
+            message: retained.last_sync_error ?? undefined,
+            httpStatus: 404,
+            retryable: false,
+        };
+    }
     if (note.server_id == null && note.sync_status === "unknown") {
         const message =
             "此前创建请求结果未知；为避免重复创建，本次仅保存本地改动。";
@@ -333,15 +428,20 @@ export async function stageEditedNoteForSync(
             localNote.id,
         );
         if (!syncedNote) {
-            throw new Error("[Note save] Unchanged note could not be reloaded.");
+            throw new Error(
+                "[Note save] Unchanged note could not be reloaded.",
+            );
         }
         publishNote(syncedNote);
         let draftCleanupPending = false;
         if (draft) {
-            try { await deleteNoteDraft(database, ownerUserId, draft); }
-            catch {
+            try {
+                await deleteNoteDraft(database, ownerUserId, draft);
+            } catch {
                 draftCleanupPending = true;
-                console.warn("[Note draft] 保存已完成，草稿清理未完成", { clientId: syncedNote.id });
+                console.warn("[Note draft] 保存已完成，草稿清理未完成", {
+                    clientId: syncedNote.id,
+                });
             }
         }
         console.info("[Note save] 内容未变化，未创建新版本", {
@@ -364,7 +464,10 @@ export async function stageEditedNoteForSync(
 }
 
 async function finishDraftSave(
-    database: ApplicationDatabase, owner: number, note: Note, draft?: DraftCommit,
+    database: ApplicationDatabase,
+    owner: number,
+    note: Note,
+    draft?: DraftCommit,
     unchanged = false,
 ): Promise<NoteSaveResult> {
     await enqueueNoteUpload(database, owner, note, draft);
@@ -385,7 +488,9 @@ export async function queueNoteUploadNow(
     const note = await getLocalNoteByClientId(database, owner, id);
     if (!note) throw new Error("笔记已不存在");
     if (note.server_id == null && note.sync_status === "unknown") {
-        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+        throw new Error(
+            "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
+        );
     }
     await enqueueNoteUpload(database, owner, note);
     return {
@@ -404,9 +509,12 @@ export async function uploadNoteNow(
 ) {
     const note = await getLocalNoteByClientId(database, owner, id);
     if (!note) throw new Error("笔记已不存在");
-    if (note.sync_status === "syncing") throw new Error("笔记正在同步，请稍后重试。");
+    if (note.sync_status === "syncing")
+        throw new Error("笔记正在同步，请稍后重试。");
     if (note.server_id == null && note.sync_status === "unknown") {
-        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+        throw new Error(
+            "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
+        );
     }
     return syncPendingNote(database, owner, note, onUploadProgress);
 }

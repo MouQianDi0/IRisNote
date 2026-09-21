@@ -8,6 +8,7 @@ import { addServerUpdatedAt } from "./0006-add-server-updated-at";
 import { createLocalTodos } from "./0007-create-local-todos";
 import { createTodoReminderBindings } from "./0008-create-todo-reminder-bindings";
 import { createTodoSync } from "./0009-create-todo-sync";
+import { addNoteSyncState } from "./0010-add-note-sync-state";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -19,6 +20,7 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     createLocalTodos,
     createTodoReminderBindings,
     createTodoSync,
+    addNoteSyncState,
 ];
 
 export const CURRENT_DATABASE_VERSION = databaseMigrations.at(-1)?.version ?? 0;

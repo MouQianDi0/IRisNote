@@ -75,6 +75,7 @@
     "@tailwindcss/postcss": "^4.3.1",
     "@types/react": "~19.2.2",
     "cos-nodejs-sdk-v5": "3.0.0",
+    "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "expo-mcp": "~0.2.1",
@@ -84,6 +85,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:test": "cross-env EXPO_PUBLIC_BASE_URL=http://test.tech-mou.top/api expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "node ./scripts/android/run.mjs expo",
     "ios": "expo run:ios",
