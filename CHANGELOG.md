@@ -1,3 +1,12 @@
+## 2026-09-22 22:17:17 | 优化代码：按项目现状重写测试包构建指南新电脑从零构建章节
+
+- 变更概述：已获用户确认（从系统环境变量之后写起，环境配置部分不展开；按项目改动后现状重新参考）。项目统一云存储改造（47bedd6）后旧开关 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已从代码移除，且此前写入文档的"新电脑从零搭建"章节已随 330780b 移除。本次按当前代码现状重写该章节：不含软件清单与环境变量小节（引言一句带过前提），从克隆代码到产出 APK 组织为步骤 1–7 流水线。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零构建」——步骤 1 克隆与 npm install（含 npmmirror、postinstall patch-package 横滑补丁说明）；步骤 2 `.env.local` 改为**可选**（按新代码事实：`EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 未配置/空/`1` 时云存储开放、API 默认 `https://tech-mou.top/api`，仅显式覆盖时才建文件，并注明旧 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已废弃）；步骤 3 `npx expo prebuild -p android --no-install`；步骤 4 就地给出完整 staging 构建块及漏加症状（`Task 'assembleStaging' not found`）；步骤 5 debug.keystore 公开证书说明与 keytool 指纹核对命令（SHA256 FA:C6:17:45:…:9C）；步骤 6 镜像脚本 PowerShell 重建命令（英文注释避免编码问题）；步骤 7 构建命令（`"$PWD\.expo\..."` 绝对路径展开、Gradle 9.3.1 发行版腾讯镜像、冷构建约 19 分钟、产物路径）+ 尾注"日常只重复步骤 7"；② 原二~六节顺延为三~七节，「构建命令」改为速查定位并保留既有 `EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 语义说明；③ Git 忽略表补 `.env*.local`、`*.keystore`/`*.jks`；④ 常见问题补 Gradle 发行版卡住、npm install 慢、跨机器签名一致性三条；⑤ 第一节"登录同一账号云端数据不隔离"的举例由"Todo 云同步"更新为"云存储同步"。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档事实按当前 HEAD（0f42f65）实测核实：staging 块仍在 android/app/build.gradle L125、Gradle 9.3.1、JDK 17/Node 24.18.0 环境变量不变、镜像脚本与 debug.keystore 在位、`parseCloudStorageEnabled` 默认开放语义、`DEFAULT_API_BASE_URL` 仍为 https://tech-mou.top/api、patches/react-native-tab-view+4.3.2.patch 在位。新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
+---
+
 ## 2026-09-22 22:10:55 | 修复问题：同步 master 固有的两处过期测试断言
 
 - 变更概述：已获用户确认（更新测试断言以匹配 master 新事实，不修改任何源码）。修复合并验证中暴露的 2 项 master 固有测试失败，使全量检查恢复全绿。
