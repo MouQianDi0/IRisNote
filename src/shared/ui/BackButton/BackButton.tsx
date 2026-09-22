@@ -1,8 +1,4 @@
-import {
-    componentRecipes,
-    defaultThemePreset,
-    radii,
-} from "@/shared/theme";
+import { componentRecipes, defaultThemePreset, radii } from "@/shared/theme";
 import { ArrowLeft } from "lucide-react-native";
 import {
     ActivityIndicator,
@@ -96,10 +92,7 @@ export function BackButton({
             ) : (
                 <ArrowLeft size={24} color={recipe.content} />
             )}
-            <AppText
-                variant="control"
-                tone={disabled ? "disabled" : "primary"}
-            >
+            <AppText variant="control" tone={disabled ? "disabled" : "primary"}>
                 {label}
             </AppText>
         </Pressable>

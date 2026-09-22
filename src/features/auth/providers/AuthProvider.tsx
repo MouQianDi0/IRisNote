@@ -13,13 +13,14 @@ import {
 import { AuthContext } from "../auth.context";
 import { banner } from "@/core/notifications";
 import { resetConnectionSession } from "@/shared/http/connection-events";
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 
 async function readStoredSession() {
     const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
     const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
     return {
         token: storedToken,
-        user: storedUser ? JSON.parse(storedUser) as User : null,
+        user: storedUser ? (JSON.parse(storedUser) as User) : null,
     };
 }
 
@@ -31,11 +32,14 @@ export function AuthProvider({
     const [loading, setLoading] = useState(true);
     const initialLoadDone = useRef(false);
 
-    const applySession = useCallback((session: Awaited<ReturnType<typeof readStoredSession>>) => {
-        setToken(session.token);
-        setUser(session.user);
-        setLoading(false);
-    }, []);
+    const applySession = useCallback(
+        (session: Awaited<ReturnType<typeof readStoredSession>>) => {
+            setToken(session.token);
+            setUser(session.user);
+            setLoading(false);
+        },
+        [],
+    );
 
     const load = useCallback(async () => {
         applySession(await readStoredSession());
@@ -66,7 +70,9 @@ export function AuthProvider({
                 syncProfile();
             }
         });
-        return () => { active = false; };
+        return () => {
+            active = false;
+        };
     }, [applySession, syncProfile]);
 
     useFocusEffect(
@@ -76,6 +82,7 @@ export function AuthProvider({
     );
 
     const logout = useCallback(async () => {
+        setCloudStorageSession(null, false, false);
         banner.clearSession();
         resetConnectionSession();
         await AsyncStorage.removeItem(storageKeys.authToken);

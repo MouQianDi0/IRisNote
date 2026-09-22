@@ -11,11 +11,15 @@ export default function AddCategoryButton({ onPress }: AddCategoryButtonProps) {
         <Pressable
             accessibilityRole="button"
             accessibilityLabel="新建分类"
-            className="w-[50px] h-[60px] mb-[6px] rounded-control justify-center items-center pl-[6px] pr-[4px] py-[4px]"
+            className="mb-[6px] h-[60px] w-[50px] items-center justify-center rounded-control py-[4px] pr-[4px] pl-[6px]"
             onPress={onPress}
         >
             <FolderPlus size={30} color={colors.primary} />
-            <Text numberOfLines={1} className="max-w-[44px] text-[10px]" style={{ color: colors.primary }}>
+            <Text
+                numberOfLines={1}
+                className="max-w-[44px] text-[10px]"
+                style={{ color: colors.primary }}
+            >
                 新建
             </Text>
         </Pressable>

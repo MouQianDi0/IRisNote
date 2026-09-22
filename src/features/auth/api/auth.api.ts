@@ -44,7 +44,9 @@ export async function checkVerificationCode(
     return data;
 }
 
-export async function register(payload: RegisterPayload): Promise<AuthResponse> {
+export async function register(
+    payload: RegisterPayload,
+): Promise<AuthResponse> {
     const { data } = await api.post<AuthResponse>("/auth/register", payload);
     return data;
 }

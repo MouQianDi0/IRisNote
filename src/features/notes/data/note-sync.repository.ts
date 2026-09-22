@@ -10,6 +10,12 @@ import {
 } from "../api/notes-sync.types";
 import { reconcileNotesInTransaction } from "./note-local.repository";
 import { deleteNoteRevisions } from "./note-revision.repository";
+import {
+    archiveLocalNote,
+    recordRemoteDeletion,
+    restoreFromRemote,
+} from "./note-trash.repository";
+import { NOTE_TRASH_MS } from "../api/notes-trash.types";
 
 export type SyncState = {
     changes_cursor: string | null;
@@ -157,8 +163,15 @@ export async function applyChanges(
                     throw new Error("同版本笔记内容不一致");
                 continue;
             }
-            if (old?.payload === null && payload !== null)
-                throw new Error("已删除的笔记不能复活");
+            // Restores are server-authorized newer versions. Older/equal events were rejected above.
+            if (event.operation === "delete") {
+                await recordRemoteDeletion(tx, owner, {
+                    ...event,
+                    expires_at: new Date(
+                        Date.parse(event.deleted_at) + NOTE_TRASH_MS,
+                    ).toISOString(),
+                });
+            }
             await tx.run(
                 `INSERT INTO note_sync_mirror(owner_user_id,server_id,cloud_id,version,payload) VALUES(?,?,?,?,?)
                 ON CONFLICT(owner_user_id,server_id) DO UPDATE SET version=excluded.version,payload=excluded.payload`,
@@ -189,6 +202,7 @@ export async function projectMirror(
     return db.transaction(async (tx) => {
         check();
         const rows = await readCloudMirror(tx, owner);
+        for (const row of rows) await restoreFromRemote(tx, owner, row);
         const addedCount = await reconcileNotesInTransaction(
             tx,
             owner,
@@ -207,6 +221,7 @@ export async function projectMirror(
             [owner],
         );
         for (const row of missing) {
+            if (await archiveLocalNote(tx, owner, row.client_id)) continue;
             const draft = await tx.getFirst<{ present: number }>(
                 "SELECT 1 AS present FROM note_drafts WHERE owner_user_id=? AND note_id=? LIMIT 1",
                 [owner, row.client_id],

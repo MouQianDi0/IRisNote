@@ -6,7 +6,9 @@ import type {
 import { SerialDatabaseQueue } from "./serial-database-queue";
 import { runPlatformTransaction } from "./transaction";
 
-function createTransactionPort(database: SQLiteDatabase): ApplicationDatabaseTransaction {
+function createTransactionPort(
+    database: SQLiteDatabase,
+): ApplicationDatabaseTransaction {
     return {
         run: (source, params = []) => database.runAsync(source, params),
         getFirst: <T>(source: string, params: SQLiteBindParams = []) =>
@@ -26,12 +28,17 @@ export function createManagedDatabasePort(database: SQLiteDatabase) {
             queue.run(() => database.getFirstAsync<T>(source, params)),
         getAll: <T>(source: string, params: SQLiteBindParams = []) =>
             queue.run(() => database.getAllAsync<T>(source, params)),
-        transaction: <T>(task: (transaction: ApplicationDatabaseTransaction) => Promise<T>) =>
+        transaction: <T>(
+            task: (transaction: ApplicationDatabaseTransaction) => Promise<T>,
+        ) =>
             queue.run(() =>
                 runPlatformTransaction(database, (transaction) =>
                     task(createTransactionPort(transaction)),
                 ),
             ),
     };
-    return { database: port, close: () => queue.close(() => database.closeAsync()) };
+    return {
+        database: port,
+        close: () => queue.close(() => database.closeAsync()),
+    };
 }

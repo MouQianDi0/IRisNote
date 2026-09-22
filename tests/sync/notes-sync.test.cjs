@@ -29,6 +29,11 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const notes = require("../../src/features/notes/data/note-local.repository.ts");
+const cloudPolicy = require("../../src/core/cloud-storage/cloud-storage-policy.ts");
+function authorizeCloud(t, owner = 1) {
+    cloudPolicy.setCloudStorageSession(owner, true, true);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+}
 const drafts = require("../../src/features/notes/data/note-draft.repository.ts");
 const {
     createLocalNotes,
@@ -53,6 +58,8 @@ const {
     runNoteSync,
 } = require("../../src/features/notes/services/note-sync.service.ts");
 const protocol = require("../../src/features/notes/api/notes-sync.types.ts");
+const cacheRepo = require("../../src/features/notes/data/note-cache.repository.ts");
+const { createSystemPreferences } = require("../../src/core/database/migrations/0011-create-system-preferences.ts");
 const signal = () => new AbortController().signal;
 const cloud = (id, version = 1, body = "body", owner = 1) => ({
     id,
@@ -334,7 +341,7 @@ test("resuming a historical watermark catches a fresh round before projecting re
     assert.equal(result.notes[0].content, "latest receipt");
 });
 
-test("duplicate events are harmless and tombstones cannot be resurrected", async (t) => {
+test("duplicate and stale events are harmless; a newer server restore can follow a tombstone", async (t) => {
     const { port } = await database(t);
     await seed(port, [cloud(1)]);
     await repo.applyChanges(
@@ -345,16 +352,16 @@ test("duplicate events are harmless and tombstones cannot be resurrected", async
         noOp,
     );
     await repo.applyChanges(port, 1, "end", changePage([deletion(1)]), noOp);
-    await assert.rejects(
-        repo.applyChanges(
+    await repo.applyChanges(port, 1, "end", changePage([upsert(cloud(1, 1))]), noOp);
+    assert.equal((await repo.readCloudMirror(port, 1)).length, 0);
+    await repo.applyChanges(
             port,
             1,
             "end",
             changePage([upsert(cloud(1, 3))]),
             noOp,
-        ),
-        /不能复活/,
     );
+    assert.equal((await repo.readCloudMirror(port, 1))[0].version, 3);
 });
 
 test("protocol validates account ownership, decimal bigint ordering, and cursor shape", () => {
@@ -490,6 +497,9 @@ require.cache[transportPath] = {
     loaded: true,
     exports: { notesSyncTransport: fakeTransport },
 };
+const trashApiPath = require.resolve("../../src/features/notes/api/notes-trash.api.ts");
+require.cache[trashApiPath] = { id: trashApiPath, filename: trashApiPath, loaded: true,
+    exports: { notesTrashApi: { list: async () => { throw Error("trash endpoint unavailable in legacy fixture"); } } } };
 const coordinator = require("../../src/features/notes/services/note-sync-coordinator.ts");
 const connections = require("../../src/shared/http/connection-events.ts");
 const events = require("../../src/features/notes/notes.events.ts");
@@ -502,6 +512,7 @@ const deferred = () => {
 };
 
 test("concurrent consumers share one download; changed accounts reject even empty old responses", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     connections.resetConnectionSession();
     coordinator.setNoteSyncOwner(1);
@@ -526,6 +537,7 @@ test("concurrent consumers share one download; changed accounts reject even empt
 });
 
 test("write beginning while a page is in flight cannot project stale data; subsequent sync succeeds", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     await seed(port, [cloud(1)]);
     connections.resetConnectionSession();
@@ -684,6 +696,7 @@ test("sync API uses the existing authenticated client and tracks full mutation l
 });
 
 test("unchanged save of a server-deleted note preserves its draft and refuses upload", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const {
         notes: [original],
@@ -998,6 +1011,7 @@ function providerHarness(port) {
         'react-native': {},
         'expo-router': {},
         '@/core/database': { useApplicationDatabase: () => port },
+        '@/core/cloud-storage/cloud-storage-provider': { useCloudStorage: () => cloudPolicy.getCloudStorageSnapshot() },
         '@/core/sync': {},
         '@/features/auth/hooks/useAuth': { useAuth: () => profile },
         '@/features/sync': {},
@@ -1030,6 +1044,7 @@ function providerHarness(port) {
 }
 
 test('same-account Provider rebinds a reloaded coordinator without resetting banners or active requests', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     fakeTransport.snapshot = async () => snapshot([]);
@@ -1053,6 +1068,7 @@ test('same-account Provider rebinds a reloaded coordinator without resetting ban
 });
 
 test('direct owner switch and switch-back cancel old requests before any cursor is committed', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();
@@ -1072,6 +1088,7 @@ test('direct owner switch and switch-back cancel old requests before any cursor 
 });
 
 test('logout rejects late results and a same-account login can establish a fresh baseline', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();
@@ -1138,4 +1155,159 @@ test('real SQLite sync retains NULL flags in the mirror and applies false/true t
     await repo.projectMirror(port, 1, noOp);
     assert.equal((await notes.getLocalNotes(port, 1))[0].is_pinned, false);
     assert.equal((await notes.getLocalNotes(port, 1))[0].is_starred, false);
+});
+
+test('cache eviction retains history, stable negative identity and order through a full re-download', async t => {
+    const { port, sql, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    const original = cloud(1);
+    await seed(port, [original]);
+    sql.exec("UPDATE local_notes SET client_id=-55, local_order=19, pinned_order=3 WHERE server_id=1; UPDATE note_revisions SET client_id=-55 WHERE client_id=1");
+    const before = (await notes.getLocalNotes(port, 1))[0];
+    const history = sql.prepare('SELECT * FROM note_revisions').all();
+    const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
+    assert.equal(candidates.length, 1);
+    assert.ok(candidates[0].bytes > 0);
+    const cleared = await cacheRepo.evictNoteCache(port, 1, candidates, noOp);
+    assert.deepEqual(cleared.ids, [-55]);
+    assert.equal((await notes.getLocalNotes(port, 1)).length, 0);
+    assert.deepEqual(sql.prepare('SELECT * FROM note_revisions').all(), history);
+    assert.equal((await repo.readSyncState(port, 1)).changes_cursor, null);
+    const again = await seed(port, [original]);
+    assert.equal(again.notes[0].id, -55);
+    assert.equal(again.notes[0].local_order, 19);
+    assert.equal(again.notes[0].pinned_order, 3);
+    assert.equal(again.notes[0].current_revision_id, before.current_revision_id);
+    assert.deepEqual(sql.prepare('SELECT * FROM note_revisions').all(), history);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM system_preferences').get().n, 0);
+});
+
+test('cache eligibility excludes dirty notes, drafts, queues, missing or mismatched cloud copies and other owners', async t => {
+    const { port, sql, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [1,2,3,4,5,6,7].map(id => cloud(id)));
+    sql.exec("UPDATE local_notes SET sync_status='pending' WHERE client_id=2");
+    await drafts.openNoteDraft(port, 1, 'note:3', 'editing', 3, { title: 'draft', content: 'unsaved', categoryId: null }, null);
+    await port.run(`INSERT INTO upload_queue_tasks(task_id,owner_user_id,task_kind,dedupe_key,title,operation_label,payload_json,status,created_at,updated_at)
+        VALUES('queued',1,'note','note:4','note','upload','{}','queued','now','now')`);
+    sql.exec("UPDATE note_sync_mirror SET payload=NULL WHERE server_id=5; UPDATE local_notes SET content='different' WHERE client_id=6; UPDATE local_notes SET owner_user_id=2 WHERE client_id=7");
+    const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
+    assert.deepEqual(candidates.map(row => row.client_id), [1]);
+    const revisions = sql.prepare('SELECT count(*) AS n FROM note_revisions').get().n;
+    await cacheRepo.evictNoteCache(port, 1, candidates, noOp);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM note_revisions').get().n, revisions);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM local_notes').get().n, 6);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM note_drafts').get().n, 1);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM upload_queue_tasks').get().n, 1);
+});
+
+test('cache deletion rechecks state and rolls back all deletions if the session guard fails', async t => {
+    const { port, sql, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [cloud(1), cloud(2)]);
+    const before = await cacheRepo.readNoteCacheCandidates(port, 1);
+    sql.exec("UPDATE local_notes SET sync_status='pending' WHERE client_id=1");
+    const skipped = await cacheRepo.evictNoteCache(port, 1, before, noOp);
+    assert.deepEqual(skipped.ids, [2]);
+    assert.equal(skipped.skipped, 1);
+    assert.equal((await notes.getLocalNotes(port, 1))[0].id, 1);
+    await seed(port, [cloud(1), cloud(2)]);
+    sql.exec("UPDATE local_notes SET sync_status='synced',sync_operation=NULL WHERE client_id=1");
+    const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
+    let calls = 0;
+    await assert.rejects(cacheRepo.evictNoteCache(port, 1, candidates, () => { if (++calls === 3) throw Error('session changed'); }), /session changed/);
+    assert.equal((await notes.getLocalNotes(port, 1)).length, 2);
+    assert.equal((await repo.readCloudMirror(port, 1)).length, 2);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM system_preferences').get().n, 0);
+});
+
+test('cache maintenance aborts an existing download and prevents concurrent synchronization', async t => {
+    authorizeCloud(t);
+    const { port } = await database(t);
+    const local = isolatedCoordinator();
+    local.setNoteSyncOwner(1);
+    const started = deferred(), reply = deferred(), held = deferred(), entered = deferred();
+    let requestSignal;
+    fakeTransport.snapshot = async (_owner, _query, signal) => { requestSignal = signal; started.resolve(); return reply.promise; };
+    const sync = local.syncNotes(port, 1);
+    const rejected = assert.rejects(sync, /取消|账号/);
+    await started.promise;
+    const clean = local.withNoteCacheMaintenance(port, 1, async () => { entered.resolve(); await held.promise; });
+    assert.equal(requestSignal.aborted, true);
+    await assert.rejects(local.syncNotes(port, 1), /缓存正在清理/);
+    reply.resolve(snapshot([]));
+    await rejected;
+    await entered.promise;
+    await assert.rejects(local.withNoteCacheMaintenance(port, 1, noOp), /缓存正在清理/);
+    held.resolve(); await clean;
+    fakeTransport.snapshot = async () => snapshot([cloud(1)]);
+    fakeTransport.changes = async () => changePage();
+    assert.equal((await local.syncNotes(port, 1)).notes.length, 1);
+});
+
+const savedFilesPath = require.resolve('../../src/features/notes/data/saved-draft-files.ts');
+const savedCacheDrafts = new Map();
+require.cache[savedFilesPath] = { id: savedFilesPath, filename: savedFilesPath, loaded: true,
+    exports: { savedDraftFiles: { keys: async () => [...savedCacheDrafts.keys()], read: async (_owner, key) => savedCacheDrafts.get(key) ?? null } } };
+const { clearNoteCache } = require('../../src/features/notes/services/note-cache.service.ts');
+
+test('cache service fails closed offline and performs no database or cloud deletion', async t => {
+    authorizeCloud(t);
+    const { port, sql, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [cloud(1)]);
+    const before = sql.prepare('SELECT * FROM local_notes').all();
+    fakeTransport.snapshot = async () => { throw Error('offline'); };
+    await assert.rejects(clearNoteCache(port, 1, noOp), /offline/);
+    assert.deepEqual(sql.prepare('SELECT * FROM local_notes').all(), before);
+    assert.equal((await repo.readCloudMirror(port, 1)).length, 1);
+});
+
+test('cache service verifies complete cloud snapshot, preserving saved drafts and changed cloud versions', async t => {
+    authorizeCloud(t);
+    const { port, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [cloud(1), cloud(2), cloud(3)]);
+    savedCacheDrafts.set('new:a', JSON.stringify({ note_id: 2 }));
+    t.after(() => savedCacheDrafts.clear());
+    const calls = [];
+    fakeTransport.snapshot = async (_owner, query) => {
+        calls.push(query);
+        return query.cursor ? snapshot([cloud(2), cloud(3, 2, 'changed')]) : snapshot([cloud(1)], 'next');
+    };
+    const result = await clearNoteCache(port, 1, noOp);
+    assert.deepEqual(result.ids, [1]); assert.equal(result.skipped, 2);
+    assert.equal(calls.length, 2); assert.equal(calls[1].snapshot_token, 'snapshot');
+    assert.deepEqual((await notes.getLocalNotes(port, 1)).map(n => n.id).sort(), [2,3]);
+});
+
+test('new draft created while cloud verification is in flight is rechecked before cache eviction', async t => {
+    authorizeCloud(t);
+    const { port, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [cloud(1)]);
+    fakeTransport.snapshot = async () => {
+        await drafts.openNoteDraft(port, 1, 'note:1', 'session', 1, { title:'unsaved', content:'keep', categoryId:null }, null);
+        return snapshot([cloud(1)]);
+    };
+    const result = await clearNoteCache(port, 1, noOp);
+    assert.equal(result.ids.length, 0); assert.equal(result.skipped, 1);
+    assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
+});
+
+test('cache service rejects changed account permission and non-progressing snapshot pagination', async t => {
+    authorizeCloud(t);
+    const { port, migrationPort } = await database(t);
+    await createSystemPreferences.up(migrationPort);
+    await seed(port, [cloud(1)]);
+    fakeTransport.snapshot = async () => {
+        cloudPolicy.setCloudStorageSession(2, true, true);
+        return snapshot([cloud(1)]);
+    };
+    await assert.rejects(clearNoteCache(port, 1, noOp));
+    assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
+    cloudPolicy.setCloudStorageSession(1, true, true);
+    fakeTransport.snapshot = async () => snapshot([cloud(1)], 'same');
+    await assert.rejects(clearNoteCache(port, 1, noOp), /重复|分页/);
+    assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
 });

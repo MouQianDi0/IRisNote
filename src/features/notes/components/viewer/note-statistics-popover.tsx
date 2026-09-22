@@ -6,12 +6,7 @@ import {
 } from "../../hooks/noteTextLength";
 import { colors } from "@/shared/theme";
 import { AnchoredPopover } from "@/shared/ui";
-import {
-    ChevronLeft,
-    ChevronRight,
-    Settings2,
-    X,
-} from "lucide-react-native";
+import { ChevronLeft, ChevronRight, Settings2, X } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
     Pressable,
@@ -187,8 +182,7 @@ export default function NoteStatisticsPopover({
     const openLockedRef = useRef(false);
     const closeStartedRef = useRef(false);
     const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [menuLevel, setMenuLevel] =
-        useState<StatisticsMenuLevel>("summary");
+    const [menuLevel, setMenuLevel] = useState<StatisticsMenuLevel>("summary");
     const [options, setOptions] = useState<NoteStatisticsOptions>(() => ({
         ...DEFAULT_NOTE_STATISTICS_OPTIONS,
     }));
@@ -258,13 +252,20 @@ export default function NoteStatisticsPopover({
                 accessibilityState={{ disabled: openLocked, expanded: visible }}
                 disabled={openLocked}
                 onPress={handleOpen}
-                className={trigger ? undefined : "rounded-full bg-blue-50 px-3 py-1"}
+                className={
+                    trigger ? undefined : "rounded-full bg-blue-50 px-3 py-1"
+                }
                 hitSlop={trigger ? { top: 12, bottom: 12 } : undefined}
                 style={({ pressed }) => ({ opacity: pressed ? 0.65 : 1 })}
             >
-                {trigger ?? <Text style={tabularNumberStyle} className="text-xs text-blue-500">
-                    {formatNumber(statistics.totalCharacters)}字
-                </Text>}
+                {trigger ?? (
+                    <Text
+                        style={tabularNumberStyle}
+                        className="text-xs text-blue-500"
+                    >
+                        {formatNumber(statistics.totalCharacters)}字
+                    </Text>
+                )}
             </Pressable>
 
             <AnchoredPopover
@@ -310,7 +311,9 @@ export default function NoteStatisticsPopover({
                             <View className="gap-3 px-1 py-1">
                                 <StatisticsRow
                                     label={chineseMetricLabel}
-                                    value={formatNumber(statistics.chineseWords)}
+                                    value={formatNumber(
+                                        statistics.chineseWords,
+                                    )}
                                 />
                                 <StatisticsRow
                                     label="中文字符数"
@@ -320,7 +323,9 @@ export default function NoteStatisticsPopover({
                                 />
                                 <StatisticsRow
                                     label="英文单词数"
-                                    value={formatNumber(statistics.englishWords)}
+                                    value={formatNumber(
+                                        statistics.englishWords,
+                                    )}
                                 />
                                 <StatisticsRow
                                     label="阅读时间"
@@ -375,7 +380,8 @@ export default function NoteStatisticsPopover({
                                 value={`最多 ${formatNumber(statistics.tables.maxColumns)} 列 · ${formatNumber(statistics.tables.characters)} 字符`}
                             />
                             <Text className="rounded-control bg-surface-muted px-3 py-3 text-[11px] leading-4 text-gray-400">
-                                图片仅识别 Markdown 图片语法；当前笔记数据模型没有独立附件字段。
+                                图片仅识别 Markdown
+                                图片语法；当前笔记数据模型没有独立附件字段。
                             </Text>
                         </View>
                     )}

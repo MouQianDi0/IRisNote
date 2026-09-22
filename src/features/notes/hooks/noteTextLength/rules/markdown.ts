@@ -1,9 +1,4 @@
-import type {
-    CodeRange,
-    LinkRange,
-    TableRange,
-    TextRange,
-} from "../types";
+import type { CodeRange, LinkRange, TableRange, TextRange } from "../types";
 import { overlapsAnyRange } from "./ranges";
 
 const TRAILING_URL_PUNCTUATION_PATTERN = /[.,!?;:，。！？；：)\]}]+$/u;
@@ -141,8 +136,7 @@ export const detectImageRanges = (
     excludedRanges: TextRange[],
 ) => {
     const ranges: TextRange[] = [];
-    const imagePattern =
-        /!\[[^\]]*\]\([^)\s]+(?:\s+["'][^"']*["'])?\)/gu;
+    const imagePattern = /!\[[^\]]*\]\([^)\s]+(?:\s+["'][^"']*["'])?\)/gu;
 
     for (const match of content.matchAll(imagePattern)) {
         const start = match.index;

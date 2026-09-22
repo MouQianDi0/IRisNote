@@ -1,28 +1,28 @@
 import type { NativeExactAlarmAccess } from "@modules/irisnote-system";
 
 export type SystemNotificationPermission = {
-  granted: boolean;
-  canAskAgain: boolean;
+    granted: boolean;
+    canAskAgain: boolean;
 };
 export type ExactAlarmAccess = NativeExactAlarmAccess | "unavailable";
 export type TodoNotificationData = {
-  kind: "todo-start";
-  ownerKey: string;
-  todoId: string;
+    kind: "todo-start";
+    ownerKey: string;
+    todoId: string;
 };
 export type ScheduledSystemNotification = {
-  identifier: string;
+    identifier: string;
 };
 export interface SystemNotificationPort {
-  permission(): Promise<SystemNotificationPermission>;
-  scheduled(): Promise<readonly ScheduledSystemNotification[]>;
-  schedule(
-    identifier: string,
-    at: number,
-    body: string,
-    data: TodoNotificationData,
-  ): Promise<string>;
-  cancel(identifier: string): Promise<void>;
+    permission(): Promise<SystemNotificationPermission>;
+    scheduled(): Promise<readonly ScheduledSystemNotification[]>;
+    schedule(
+        identifier: string,
+        at: number,
+        body: string,
+        data: TodoNotificationData,
+    ): Promise<string>;
+    cancel(identifier: string): Promise<void>;
 }
 
 export const TODO_NOTIFICATION_PREFIX = "irisnote.todo.";
@@ -32,16 +32,16 @@ export const DIAGNOSTIC_CHANNEL = "irisnote.diagnostics.v1";
 export const RUNTIME_NOTIFICATION_ID = "irisnote.runtime.status";
 // Reserved semantic only; no unused Android channel is created.
 export type SystemNotificationPurpose =
-  "reminder" | "runtime-status" | "diagnostic-test" | "sync";
+    "reminder" | "runtime-status" | "diagnostic-test" | "sync";
 
 export function parseTodoNotificationData(
-  data: Record<string, unknown> | undefined,
+    data: Record<string, unknown> | undefined,
 ): TodoNotificationData | null {
-  return data?.kind === "todo-start" &&
-    typeof data.ownerKey === "string" &&
-    typeof data.todoId === "string" &&
-    data.ownerKey.length > 0 &&
-    data.todoId.length > 0
-    ? { kind: "todo-start", ownerKey: data.ownerKey, todoId: data.todoId }
-    : null;
+    return data?.kind === "todo-start" &&
+        typeof data.ownerKey === "string" &&
+        typeof data.todoId === "string" &&
+        data.ownerKey.length > 0 &&
+        data.todoId.length > 0
+        ? { kind: "todo-start", ownerKey: data.ownerKey, todoId: data.todoId }
+        : null;
 }

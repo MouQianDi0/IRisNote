@@ -82,7 +82,7 @@ test('Windows batch lookup preserves npm installation directory', { skip: proces
 });
 
 async function sandbox(options = {}) {
-  const files = new Map(), calls = [], scans = [], order = [];
+  const files = options.files ?? new Map(), calls = [], scans = [], order = [], warnings = [], cacheOrder = [];
   const progressListeners = new Set(), appListeners = new Set();
   let allowed = options.permission !== false;
   const appState = { currentState: options.background ? 'background' : 'active', addEventListener(_event, listener) { appListeners.add(listener); return { remove: () => appListeners.delete(listener) }; } };
@@ -109,7 +109,7 @@ async function sandbox(options = {}) {
       setItem: async (key, value) => { storage.set(key, value); },
       removeItem: async key => { storage.delete(key); },
     },
-    'expo-application': { applicationId: release.packageName, nativeBuildVersion: '27', nativeApplicationVersion: options.delta ? '1.0.0' : '0.9.0' },
+    'expo-application': { applicationId: release.packageName, nativeBuildVersion: options.buildVersion ?? '27', nativeApplicationVersion: options.delta ? '1.0.0' : '0.9.0' },
     '../../../modules/irisnote-updater': options.missingNative ? null : {
       getInstalledApk: async () => ({ ...installed, version: options.delta ? '1.0.0' : '0.9.0' }),
       applyPatch: async (args) => {
@@ -126,7 +126,21 @@ async function sandbox(options = {}) {
       addListener(_event, listener) { progressListeners.add(listener); return { remove: () => progressListeners.delete(listener) }; },
     },
     'expo-file-system/legacy': {
-      cacheDirectory: 'file:///cache/', deleteAsync: async (uri) => { files.delete(uri); }, getContentUriAsync: async (uri) => 'content://' + uri,
+      cacheDirectory: 'file:///cache/',
+      readDirectoryAsync: async () => {
+        cacheOrder.push('list-cache');
+        await options.onReadCache?.();
+        if (options.listFailure) throw Error('list failed');
+        return [...files.keys()].map(uri => uri.replace('file:///cache/', ''));
+      },
+      getInfoAsync: async (uri) => {
+        if (uri === options.infoFailure) throw Error('stat failed');
+        return { exists: files.has(uri), isDirectory: options.directories?.has(uri) ?? false };
+      },
+      deleteAsync: async (uri) => {
+        if (uri === options.deleteFailure) throw Error('delete failed');
+        files.delete(uri);
+      }, getContentUriAsync: async (uri) => 'content://' + uri,
       createDownloadResumable(_url, uri, _options, progress) { return {
         async downloadAsync() {
           if (options.wait) return new Promise((resolve) => { finish = resolve; });
@@ -148,14 +162,66 @@ async function sandbox(options = {}) {
     zustand: { create(init) { let state = init(); return { getState: () => state, setState: (patch) => { state = { ...state, ...patch }; } }; } },
     '@/shared/http/client': { API_BASE_URL: 'https://example.com/api' },
     './release': policy,
+    '@/core/storage/storage-policy': load('src/core/storage/storage-policy.ts'),
   };
-  const store = load('src/features/updates/update-store.ts', dependencies, { fetch: async url => {
+  const store = load('src/features/updates/update-store.ts', dependencies, { console: { ...console, warn: (...args) => warnings.push(args) }, fetch: async url => {
+    cacheOrder.push('fetch');
     queries.push(url);
     if (options.offline) throw Error('offline');
     return { ok: true, json: async () => ({ release: servedRelease }) };
   } });
-  return { store, calls, files, scans, order, storage, queries, servedRelease, setPermission, setAppState, emit, progressListeners, appListeners };
+  return { store, calls, files, scans, order, storage, queries, warnings, cacheOrder, servedRelease, setPermission, setAppState, emit, progressListeners, appListeners };
 }
+
+test('offline startup removes installed and older update files, preserving newer files and unrelated data', async () => {
+  const removable = ['irisnote-release-1.apk', 'irisnote-release-26.hdiff', 'irisnote-release-27.apk', 'irisnote-release-27.hdiff'];
+  const retained = ['irisnote-release-28.apk', 'irisnote-release-28.hdiff', 'notes.db', 'share.txt', 'irisnote-release-026.apk', 'irisnote-release-0.apk', 'irisnote-release-2.apk.bak', 'irisnote-release-9007199254740993.apk', '../irisnote-release-1.apk', 'nested/irisnote-release-1.apk', 'irisnote-release-2.apk'];
+  retained.push('irisnote-release-3.apk\n');
+  const files = new Map([...removable, ...retained].map(name => [`file:///cache/${name}`, payload]));
+  const s = await sandbox({ files, offline: true, directories: new Set(['file:///cache/irisnote-release-2.apk']) });
+  await s.store.checkForUpdate();
+  assert.deepEqual([...files.keys()].sort(), retained.map(name => `file:///cache/${name}`).sort());
+  assert.ok(s.cacheOrder.indexOf('list-cache') < s.cacheOrder.indexOf('fetch'));
+});
+
+test('invalid installed build numbers never authorize cache deletion', async () => {
+  for (const buildVersion of ['0', '-1', '27.5', '27x', ' 27', '27\n', '9007199254740993']) {
+    const s = await sandbox({ buildVersion });
+    s.files.set('file:///cache/irisnote-release-1.apk', payload);
+    await s.store.checkForUpdate();
+    assert.equal(s.files.size, 1);
+    assert.equal(s.cacheOrder.includes('list-cache'), false);
+  }
+});
+
+test('concurrent and later update checks clean only once per process', async () => {
+  let releaseRead;
+  const wait = new Promise(resolve => { releaseRead = resolve; });
+  const s = await sandbox({ onReadCache: () => wait });
+  const first = s.store.checkForUpdate();
+  await s.store.checkForUpdate(true);
+  releaseRead();
+  await first;
+  await s.store.checkForUpdate(true);
+  assert.equal(s.cacheOrder.filter(item => item === 'list-cache').length, 1);
+});
+
+test('cleanup failures preserve startup, continue other files and retry after restart', async () => {
+  for (const failure of ['deleteFailure', 'infoFailure', 'listFailure']) {
+    const firstUri = 'file:///cache/irisnote-release-1.apk';
+    const secondUri = 'file:///cache/irisnote-release-2.apk';
+    const files = new Map([[firstUri, payload], [secondUri, payload]]);
+    const s = await sandbox({ files, [failure]: failure === 'listFailure' ? true : firstUri });
+    await s.store.checkForUpdate();
+    assert.equal(s.store.useUpdateStore.getState().phase, 'available');
+    assert.equal(s.warnings.length, 1);
+    assert.equal(files.has(firstUri), true);
+    assert.equal(files.has(secondUri), failure === 'listFailure');
+    const restarted = await sandbox({ files });
+    await restarted.store.checkForUpdate();
+    assert.equal(files.size, 0);
+  }
+});
 
 test('startup queries policy v2 despite a recent check in an earlier session', async () => {
   const storage = new Map([['irisnote.release.last-check', String(Date.now())]]);

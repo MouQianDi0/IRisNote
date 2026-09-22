@@ -1,3 +1,12 @@
+## 2026-09-22 21:54:23 | 优化代码：合并 master 主分支并解决冲突
+
+- 变更概述：已获用户确认（先提交暂存改动→合并→检查通过即推送）。将 origin/master 领先的 9 个提交（15 天笔记垃圾桶、数据存储页面、云存储授权统一、全项目代码风格统一、PR #117 等）合入 kroos_todo，解决 CHANGELOG.md 冲突。合并前先将暂存区未提交改动（删除「新电脑从零搭建」章节）提交为独立提交 330780b。
+- 修改文件：CHANGELOG.md、global.css、docs/构建发布/本地测试包构建.md（master 侧自动合并）。
+- 具体内容：① 提交 330780b：移除本地测试包构建指南中「新电脑从零搭建」整章（-208 行）并保留表格对齐格式化；② git merge origin/master，唯一冲突 CHANGELOG.md 按"双侧条目全保留、时间倒序"解决；③ npm run theme:sync 刷新 global.css 主题块（50 行，仅 hex 颜色小写→大写规范化，修复 master 固有的 json/css 不同步）；④ 重新生成 .expo/types/router.d.ts（本地生成产物过期，不含 master 新增的 trash/cloud-storage/data-storage 路由导致 TS2345，短暂启动 expo start 触发类型生成）。
+- 验证：npm run typecheck 通过（路由类型再生成为 0 错误）；npm run lint 通过；npm run theme:check 通过。npm test 438 项中 436 通过、2 项失败——失败为 master 固有（src/ 与 tests/ 相对 origin/master 零差异）：① tests 断言 TodosScreen.tsx 旧 JSX 结构（master 重构后已不存在）；② tests/todos/todo-local.test.cjs 断言迁移数 11（master 新增 0012 后实际 12）。git status 无未解决冲突；全仓冲突标记仅命中 GitHub 教程既有演示内容与二进制字体误报。未做真机验收。
+
+---
+
 ## 2026-09-22 21:05:24 | 优化代码：本地测试包构建指南补全新电脑从零搭建章节
 
 - 变更概述：已获用户确认。`docs/构建发布/本地测试包构建.md` 原先只覆盖"本机已有环境"的构建命令，缺少在另一台电脑从零构建所需的前置信息。新增完整「新电脑从零搭建」章节，把环境变量、软件版本、脚本内容、Git 忽略文件重建步骤全部写清，使任何新 Windows 电脑可仅凭该文档从零打出 staging 测试包。
@@ -6,6 +15,58 @@
 - 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档中全部事实（环境变量值、工具版本、SDK 版本 36/24、Gradle 9.3.1、debug.keystore SHA256 指纹、.env.local 内容、镜像脚本内容、仓库地址）均在本机实测核实；新电脑全流程未实测，文档已附指纹核对等自助验证命令。
 
 ---
+
+## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
+
+- 用户已确认方案和界面预览，新增本地垃圾桶迁移、严格响应校验、删除/恢复/清理服务。
+- 文件：src/core/database/migrations/0012-create-note-trash.ts、src/core/database/migrations/index.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 删除时在本地事务中归档笔记/草稿、保留历史并撤销未运行上传任务；同步处理合法的更高版本恢复，到期清理依赖服务器确认；仍在上传或结果未知的新笔记拒绝删除。
+- 尚待界面接入、回归检查和最终记录；未执行线上迁移、部署或真实数据清理。
+
+---
+
+## 2026-09-22 17:03:13 | 修复问题：存储统计兼容 SQLite 原生目录路径
+
+- 变更概述：修复已确认的数据与存储功能在 Android 扫描 SQLite 目录时出现 Exception in HostFunction / URI is not absolute 的问题。
+- 修改文件：src/core/storage/storage-files.ts、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 问题根因：项目已安装的 expo-sqlite Android/iOS 实现返回不带协议的绝对本地路径；原实现直接交给 Expo FileSystem Directory，并在 try/catch 之外访问原生 uri getter。原测试替身自动为所有路径补 file:///，掩盖了真实模块边界。
+- 具体内容：① 仅在文件系统统计入口把 SQLite 绝对本地路径转换为 file URI，按路径段编码中文、空格、百分号、#、? 等字符，保留已有 file:/// URI，不改变 SQLite 打开数据库时的路径；② 目录初始化及遍历时的 uri getter 均纳入异常处理，单个目录失败计入部分统计并继续其他目录；③ 缓存规范化后的 SQLite 与草稿目录用于分类和去重；④ 测试替身不再凭空补协议，模拟裸路径 uri getter 抛错；增加裸路径、已有 URI、特殊字符、无效路径及目录 getter 异常回归。清理白名单、数据库数据、界面布局与默认选择保持原方案。
+- 验证：对应基于 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；node --test tests/storage/storage.test.cjs 为 13/13 通过。npm run check 的 typecheck、lint、theme:check 通过，428 项测试中 427 通过、1 失败，唯一失败仍为既有横滑依赖补丁未生效（运行依赖 DEAD_ZONE=12、原测试要求100），与本次路径修复无关。git diff --check 与本次文件冲突标记检查通过。完整日志位于系统临时目录 irisnote-storage-uri-check.log。ADB 未列出设备；原生根因已核对已安装 Kotlin/Swift 源码，但修复尚未通过真机复验，未构建、安装或发布。
+
+---
+
+## 2026-09-22 16:50:39 | 新增功能：数据与存储及可选缓存清理
+
+- 修改文件：src/app/_layout.tsx、src/features/notes/components/NoteShare/NoteShareManager.tsx、src/features/notes/components/NoteShare/NoteShareToImage.tsx、src/features/notes/components/NoteShare/NoteShareToMarkdown.tsx、src/features/notes/components/NoteShare/NoteShareToPdf.tsx、src/features/notes/components/NoteShare/NoteShareToTxt.tsx、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/settings/screens/SettingsScreen.tsx、src/features/updates/update-store.ts、tests/releases/releases.test.cjs、tests/sync/notes-sync.test.cjs、src/app/pages/user/data-storage.tsx、src/core/storage/share-cache.ts、src/core/storage/storage-files.ts、src/core/storage/storage-policy.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-cache.service.ts、src/features/settings/screens/DataStorageSettingsScreen.tsx、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 变更概述：已获用户确认页面文字预览与清理边界，接通设置中的“数据与存储”。用户可以勾选更新缓存、分享临时文件与笔记缓存；笔记缓存默认不勾选，每次重新进入页面恢复默认选择。
+- 具体内容：① 读取应用文档、缓存与 SQLite 实际目录，重叠路径去重，展示已统计占用、分类明细、可清理文件容量；读取失败明确标为部分统计，不包含应用安装体积，不把 SQL 内容字节数当成系统已释放空间；② 更新文件复用已安装构建号白名单，保留较新安装包及使用中的文件，清理前复核大小、修改时间与更新状态；③ 分享文件归入专用目录，TXT/Markdown 保留笔记标题文件名；记录正在使用及结束时间，保护并发分享和跨进程中断标记，仅清理超过 24 小时的已结束文件，保留未能确认来源的历史文件；④ 笔记缓存清理仅处理当前账号，要求已有云存储授权并联网读取完整快照验证身份、版本与正文，在事务内再次核实同步状态、草稿和上传队列；保留仅本机、未同步、恢复副本、历史版本及其他账号内容，不发送云端删除请求；⑤ 暂停并等待现有笔记同步，清理本地副本与对应镜像，重置下载游标；使用现有 system_preferences 保留稳定客户端 ID、排序和历史指针，完整同步重新下载时恢复，数据库空间留供复用，不执行 VACUUM 或删除数据库；⑥ 页面提供加载、禁用、确认、清理结果、跳过与部分失败反馈，支持重新统计，账号/授权/页面变化中止后续清理；⑦ 补充 18 项默认选择、文件白名单、使用中保护、并发分享、SQL 回滚、草稿队列保护、离线失败、账号切换及身份恢复测试。无依赖、数据库结构、后端或发布配置变更。
+- 验证：基于提交 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；最终 npm run check 的 typecheck、lint、theme:check 通过，425 项测试中 424 通过、1 失败，新增 18 项全部通过。唯一失败为既有 tests/navigation/swipe-tabs.test.cjs：本机 node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 仍为 DEAD_ZONE=12，仓库原有补丁与测试要求100；本次未修改相关依赖、补丁和测试。git diff --check 通过，本次变更文件无 Git 冲突标记。完整检查日志：系统临时目录 irisnote-storage-final-check.log。ADB 未列出已连接设备；尚未进行真机容量/视觉/离线重新下载验收，未构建、安装、部署或发布。
+
+---
+
+## 2026-09-22 15:58:51 | 新增功能：统一云存储授权与构建环境开关
+
+- 修改文件：docs/待办/Todo前后端交接与验收.md、docs/待办/待办后端API预留契约.md、docs/待办/待办逻辑层设计.md、docs/构建发布/本地测试包构建.md、release.env.example、scripts/release/cli.mjs、src/app/_layout.tsx、src/core/notifications/notification-provider.tsx、src/core/providers/AppProviders.tsx、src/core/sync/upload-queue-coordinator.ts、src/features/auth/providers/AuthProvider.tsx、src/features/auth/screens/LoginScreen.tsx、src/features/auth/screens/RegisterScreen.tsx、src/features/notes/categories/components/CategoryBar.tsx、src/features/notes/components/editor/new-note-editor.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、src/features/notes/components/viewer/NoteViewerMeta.tsx、src/features/notes/components/viewer/note-operation-info.tsx、src/features/notes/hooks/useNotePin.ts、src/features/notes/hooks/useNoteStar.ts、src/features/notes/screens/NoteDetailScreen.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/profile/hooks/useAvatar.ts、src/features/profile/hooks/useProfileOverview.ts、src/features/profile/services/avatar-picker.service.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/sync/category-upload-queue.ts、src/features/sync/screens/SyncQueueScreen.tsx、src/features/sync/upload-task-adapters.ts、src/features/todos/components/TodoSyncQueueRow.tsx、src/features/todos/state/todo-sync-provider.tsx、src/shared/http/client.ts、src/shared/http/errors.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/releases/release-env.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-api.test.cjs、src/app/pages/user/cloud-storage.tsx、src/core/cloud-storage/cloud-storage-consent-controller.ts、src/core/cloud-storage/cloud-storage-policy.ts、src/core/cloud-storage/cloud-storage-provider.tsx、src/features/settings/screens/CloudStorageSettingsScreen.tsx、tests/sync/cloud-storage.test.cjs、tests/sync/upload-consent.test.cjs、.env.release.local（仅云存储变量，Git忽略）、CHANGELOG.md。
+- 变更概述：已获用户确认，笔记、待办、分类、头像及后续业务云存储共用当前账号在本机的主动授权；构建变量只开放功能，不代表用户同意。未授权仍可保存本地笔记/待办，保留待同步任务。
+- 具体内容：① 统一变量 EXPO_PUBLIC_CLOUD_STORAGE_ENABLED，未配置/空值/1 开放功能，0及非法值关闭，移除原待办独立开关及其EAS透传，迁移样例和本机发布变量；② 复用 system_preferences 按账号持久化授权，首次/旧用户升级无授权记录时关闭，读取失败关闭，启用须先持久化，撤销立即生效并串行保存最后一次选择；③ 公共HTTP调用时同步捕获账号与授权代际，实际发送前复核，默认保护未来API，基础认证端点例外；中止在途传输、阻止迟到响应和跨账号发包，区分发送前拒绝与发送后未知回执；④ 笔记/待办/上传协调器、手动同步、重试及分类任务统一门控，同账号重新授权等待旧执行确认结束，保留未知创建保护，避免重复创建；⑤ 新增同步与备份页面，权限设置及首页概览使用同一状态，关闭时队列仍可见、按钮准确禁用，本地状态及云依赖功能提示与实际能力一致，远程头像读取和上传也受控；⑥ 登录/注册替换Token前和退出登录前立即撤销旧会话，快速关闭再开启按授权代际重建读取；⑦ 保留当前本地能力，未新增完整离线分类/元数据/删除体系或独立历史备份，未更改依赖版本、数据库结构或后端。
+- 验证：修改前 e4929d8 的 npm run typecheck 通过；实现中修复授权保存/读取/退出、同tick账号切换和队列重启竞态。最终 npm run check 的 typecheck、lint、theme:check 通过；407 项测试中 406 通过、1 项失败，授权/HTTP/Provider 专项 39/39、队列专项 5/5 均通过。git diff --check 通过，本次修改文件无冲突标记；全仓扫描仅命中既有 GitHub 教程中的冲突演示代码。验收对应基于 e4929d8 的未提交工作区；检查日志在系统临时目录 irisnote-cloud-final-check.log。唯一失败是本机既有横滑测试：node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 为 DEAD_ZONE=12，而仓库已有补丁与测试要求100；该测试、补丁及依赖清单本次均未改动。未启动或重启开发服务器，未构建APK、安装、发布或进行真机验收。
+
+---
+## 2026-09-22 01:01:08 | 修复问题：启动时清理已安装及更旧的更新包
+
+- 变更概述：已获用户确认。修复成功更新后完整 APK 长期留在缓存目录、跨版本累积的问题；每次进程首次检查更新时，在联网之前尝试清理一次，离线启动同样生效。
+- 修改文件：src/features/updates/update-store.ts、tests/releases/releases.test.cjs、CHANGELOG.md。
+- 具体内容：① 从当前运行的原生安装包读取并严格校验构建号；② 只处理缓存根目录中严格匹配 irisnote-release-正整数.apk / .hdiff 且构建号不高于当前安装版本的文件，跳过目录、异常名称与其他数据；③ 保留更高版本的待安装文件，不在启动系统安装器后立即删除；④ 单文件或目录读取失败记录警告，不阻断更新检查，下次进程启动重试；⑤ 增加离线清理、删除边界、无效构建号、并发和重复调用、错误隔离及重启重试测试。
+- 验证：修改前 npm run typecheck 通过；最终代码 npm run check 的 typecheck、lint、theme:check 与 347/347 项测试全部通过，git diff --check 与冲突标记检查通过。首轮定向测试的事件记录混入原有退出顺序断言，已拆分测试记录并通过回归。验收对应基于 7956b5f 的未提交工作区改动；尚未构建、安装或执行真机缓存回收验收。
+
+---
+
+## 2026-09-21 22:58:35 | 优化代码：顶部安全区背景色随页面动态切换
+
+- 变更概述：已获用户确认（方案 A：根布局路由映射）。根布局 SafeAreaView 原先固定使用灰色 appBackground 填充顶部安全区，导致白色页面（auth 登录/注册/欢迎、笔记新建/编辑/详情）顶部出现灰白分界。现改为按当前路由动态取色：命中 `/auth/`、`/pages/note/` 前缀时使用白色（colors.surface，即 #FFFFFF），其余页面维持灰色默认值。
+- 修改文件：src/app/_layout.tsx、CHANGELOG.md。
+- 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
+- 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
 
 ## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
 
@@ -150,6 +211,7 @@
 - 验证：复核 Markdown 内容、模板现有变量和 Git 差异；纯文档改动，未运行类型检查、测试、构建或设备验收。
 
 ---
+
 ## 2026-09-21 18:21:30 | 修复问题：测试脚本固化串行参数规避 Windows 并行 IPC 错误
 
 - 变更概述：已获用户确认执行。0.3.0 发布构建两次在"完整代码检查"阶段因 Node 测试运行器并行 IPC 错误中断（tests/releases/workspace.test.cjs 报 Unable to deserialize cloned data，其余 343 项测试全部通过，该文件单独串行运行 9/9 通过），系 Node v24 Windows 并行子进程结果回传的管道字节流错位缺陷，非应用代码问题。按方案将 npm test 默认改为串行执行（--test-concurrency=1），该参数为项目多次使用的稳定回退方案，彻底消除此类偶发阻断。

@@ -190,8 +190,14 @@ export function parseCloudNote(
                 : time(row.sync_updated_at, at("sync_updated_at")),
         deleted_at: null,
         // Legacy server records may retain NULL; missing or non-boolean values still fail.
-        is_pinned: row.is_pinned === null ? null : boolean(row.is_pinned, at("is_pinned")),
-        is_starred: row.is_starred === null ? null : boolean(row.is_starred, at("is_starred")),
+        is_pinned:
+            row.is_pinned === null
+                ? null
+                : boolean(row.is_pinned, at("is_pinned")),
+        is_starred:
+            row.is_starred === null
+                ? null
+                : boolean(row.is_starred, at("is_starred")),
     };
 }
 export function parseSnapshot(value: unknown, owner: number): SnapshotPage {

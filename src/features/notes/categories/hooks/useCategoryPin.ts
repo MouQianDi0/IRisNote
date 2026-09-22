@@ -14,15 +14,33 @@ export function useCategoryPin(
         (category: Category) => {
             const newPinned = !category.is_pinned;
             if (ownerUserId == null) return;
-            setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, is_pinned: newPinned } : c));
-            setLongPressVisible((prev) => prev ? { ...prev, is_pinned: newPinned } : null);
-            void enqueueCategoryUpdate(database, ownerUserId, category, { is_pinned: newPinned })
+            setCategories((prev) =>
+                prev.map((c) =>
+                    c.id === category.id ? { ...c, is_pinned: newPinned } : c,
+                ),
+            );
+            setLongPressVisible((prev) =>
+                prev ? { ...prev, is_pinned: newPinned } : null,
+            );
+            void enqueueCategoryUpdate(database, ownerUserId, category, {
+                is_pinned: newPinned,
+            })
                 .then(() => {
                     notifyCategoriesChanged();
                 })
                 .catch((err) => {
-                    setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, is_pinned: category.is_pinned } : c));
-                    setLongPressVisible((prev) => prev ? { ...prev, is_pinned: category.is_pinned } : null);
+                    setCategories((prev) =>
+                        prev.map((c) =>
+                            c.id === category.id
+                                ? { ...c, is_pinned: category.is_pinned }
+                                : c,
+                        ),
+                    );
+                    setLongPressVisible((prev) =>
+                        prev
+                            ? { ...prev, is_pinned: category.is_pinned }
+                            : null,
+                    );
                     console.error("切换置顶失败:", err.message);
                 });
         },

@@ -2,7 +2,9 @@ import { SharedDatabaseResource } from "../shared-database-resource";
 
 function deferred() {
     let resolve!: () => void;
-    const promise = new Promise<void>((complete) => { resolve = complete; });
+    const promise = new Promise<void>((complete) => {
+        resolve = complete;
+    });
     return { promise, resolve };
 }
 
@@ -59,23 +61,40 @@ export async function runLifecycleDiagnostics(
     const retry = retryable.acquire();
     await retry.ready;
     await retry.release();
-    check("initialization-failure-release-and-retry", received === failure && attempts === 2);
+    check(
+        "initialization-failure-release-and-retry",
+        received === failure && attempts === 2,
+    );
 
     const closeFailure = new Error("DIAGNOSTIC_CLOSE_FAILURE");
     let unsafeOpens = 0;
     const unsafe = new SharedDatabaseResource(async () => {
         unsafeOpens += 1;
-        return { close: async () => { throw closeFailure; } };
+        return {
+            close: async () => {
+                throw closeFailure;
+            },
+        };
     });
     const unsafeLease = unsafe.acquire();
     await unsafeLease.ready;
-    const failedClose = await unsafeLease.release().catch((error: unknown) => error);
+    const failedClose = await unsafeLease
+        .release()
+        .catch((error: unknown) => error);
     check("close-failure-propagated", failedClose === closeFailure);
     for (let attempt = 0; attempt < 2; attempt += 1) {
         const blocked = unsafe.acquire();
-        const blockedOpen = await blocked.ready.catch((error: unknown) => error);
-        const blockedRelease = await blocked.release().catch((error: unknown) => error);
-        check(`close-failure-blocks-reopen-${attempt + 1}`,
-            blockedOpen === closeFailure && blockedRelease === closeFailure && unsafeOpens === 1);
+        const blockedOpen = await blocked.ready.catch(
+            (error: unknown) => error,
+        );
+        const blockedRelease = await blocked
+            .release()
+            .catch((error: unknown) => error);
+        check(
+            `close-failure-blocks-reopen-${attempt + 1}`,
+            blockedOpen === closeFailure &&
+                blockedRelease === closeFailure &&
+                unsafeOpens === 1,
+        );
     }
 }

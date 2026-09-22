@@ -1,9 +1,4 @@
-import {
-    AppText,
-    IconButton,
-    Input,
-    type InputProps,
-} from "@/shared/ui";
+import { AppText, IconButton, Input, type InputProps } from "@/shared/ui";
 import { Eye, EyeOff } from "lucide-react-native";
 import { useState, type ReactNode } from "react";
 import { View } from "react-native";
@@ -55,9 +50,7 @@ export function AuthField({
                                 iconSize={20}
                                 accessibilityLabel={`${revealed ? "隐藏" : "显示"}${label}`}
                                 disabled={!editable}
-                                onPress={() =>
-                                    setRevealed((value) => !value)
-                                }
+                                onPress={() => setRevealed((value) => !value)}
                             />
                         ) : undefined
                     }

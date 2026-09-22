@@ -12,8 +12,14 @@ export function registerActiveDraftFlush(flush: DraftFlush): () => void {
         const pending = Promise.resolve().then(flush);
         retiring.add(pending);
         void pending.then(
-            () => { retiring.delete(pending); failed.delete(flush); },
-            () => { retiring.delete(pending); failed.add(flush); },
+            () => {
+                retiring.delete(pending);
+                failed.delete(flush);
+            },
+            () => {
+                retiring.delete(pending);
+                failed.add(flush);
+            },
         );
     };
 }
@@ -21,8 +27,17 @@ export function registerActiveDraftFlush(flush: DraftFlush): () => void {
 export async function flushActiveDrafts(): Promise<void> {
     // Retain failed unmount flushes so retry must actually save, not just dismiss an error.
     const callbacks = new Set([...active, ...failed]);
-    await Promise.all([...callbacks].map(async (flush) => {
-        try { await flush(); failed.delete(flush); }
-        catch (error) { failed.add(flush); throw error; }
-    }).concat([...retiring]));
+    await Promise.all(
+        [...callbacks]
+            .map(async (flush) => {
+                try {
+                    await flush();
+                    failed.delete(flush);
+                } catch (error) {
+                    failed.add(flush);
+                    throw error;
+                }
+            })
+            .concat([...retiring]),
+    );
 }

@@ -1,4 +1,10 @@
 import type { ApplicationDatabase } from "@/core/database";
+import {
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+    isCloudStorageRequestDispatched,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { isAxiosError, type AxiosProgressEvent } from "axios";
@@ -32,6 +38,8 @@ import type {
 export type NoteCloudSaveState = "accepted" | "queued" | "rejected" | "unknown";
 
 export type NoteSaveResult = {
+    /** 本地保存有效；云存储尚未授权或当前会话不可用。 */
+    localOnly?: boolean;
     draftCleanupPending?: boolean;
     note: Note;
     cloudState: NoteCloudSaveState;
@@ -64,6 +72,11 @@ function notifyLocalSaved(note: Note, callback?: (note: Note) => void) {
     } catch {
         console.warn("[Note save] 状态提示失败，本地保存与同步继续");
     }
+}
+
+function isLocalOnly(owner: number) {
+    const cloud = getCloudStorageSnapshot();
+    return !cloud.enabled || cloud.ownerUserId !== owner;
 }
 
 function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
@@ -112,6 +125,7 @@ async function syncPendingNoteWithReceipt(
     note: Note,
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ): Promise<NoteSaveResult> {
+    const checkAccess = captureCloudStorageAccess(ownerUserId);
     if (
         note.server_id != null &&
         note.last_sync_error?.startsWith("云端笔记已删除")
@@ -129,7 +143,9 @@ async function syncPendingNoteWithReceipt(
         ownerUserId,
         note.id,
     );
+    if (!syncingNote) throw new Error("笔记已移入垃圾桶或不存在，已停止上传");
     if (syncingNote) publishNote(syncingNote);
+    let receivedResponse = false;
 
     console.log("[Note sync] 开始上传云端", {
         clientId: note.id,
@@ -138,6 +154,7 @@ async function syncPendingNoteWithReceipt(
     });
 
     try {
+        checkAccess();
         let responseStatus: number | undefined;
         const uploadOptions = {
             onUploadProgress: (event: AxiosProgressEvent) => {
@@ -177,6 +194,8 @@ async function syncPendingNoteWithReceipt(
                       },
                       uploadOptions,
                   );
+        receivedResponse = true;
+        checkAccess();
         const acceptedNote = await acceptServerNote(
             database,
             ownerUserId,
@@ -203,12 +222,44 @@ async function syncPendingNoteWithReceipt(
         };
     } catch (error: unknown) {
         if (
+            isCloudStoragePermissionError(error) &&
+            !isCloudStorageRequestDispatched(error) &&
+            !receivedResponse
+        ) {
+            // A request rejected before dispatch has no uncertain server receipt.
+            await database.run(
+                `UPDATE local_notes SET sync_status = 'pending', last_sync_error = NULL
+                 WHERE owner_user_id = $owner AND client_id = $clientId
+                   AND sync_status = 'syncing' AND current_revision_id IS $revisionId`,
+                {
+                    $owner: ownerUserId,
+                    $clientId: note.id,
+                    $revisionId: note.current_revision_id ?? null,
+                },
+            );
+            const pendingNote = await getLocalNoteByClientId(
+                database,
+                ownerUserId,
+                note.id,
+            );
+            if (!pendingNote) throw error;
+            publishNote(pendingNote);
+            return {
+                note: pendingNote,
+                cloudState: "queued",
+                localOnly: true,
+                retryable: true,
+                message: "已保存在本机，开启云存储后可同步",
+            };
+        }
+        if (
             isAxiosError<{ code?: string; note?: unknown }>(error) &&
             error.response?.status === 409 &&
             error.response.data?.code === "NOTE_EDIT_CONFLICT" &&
             note.server_id != null
         ) {
             try {
+                checkAccess();
                 const remote = normalizeConflictNote(
                     error.response.data.note,
                     note.server_id,
@@ -223,6 +274,7 @@ async function syncPendingNoteWithReceipt(
                         revisionId: note.current_revision_id ?? null,
                     },
                 );
+                checkAccess();
                 const current = await getLocalNoteByClientId(
                     database,
                     ownerUserId,
@@ -260,7 +312,9 @@ async function syncPendingNoteWithReceipt(
             httpStatus === 408 ||
             httpStatus === 429 ||
             httpStatus >= 500;
-        const message = getApiErrorMessage(error, "云端同步失败");
+        const message = isCloudStoragePermissionError(error)
+            ? "云存储权限已关闭，已发出的请求结果尚未确认，保留本机内容"
+            : getApiErrorMessage(error, "云端同步失败");
         const failedNote = await markLocalNoteSyncFailed(
             database,
             ownerUserId,
@@ -327,6 +381,7 @@ export async function saveEditedNoteLocalFirst(
     if (!staged.shouldUpload) {
         return {
             note: staged.note,
+            localOnly: isLocalOnly(ownerUserId),
             cloudState: staged.cloudState ?? "accepted",
             unchanged: staged.unchanged,
             draftCleanupPending: staged.draftCleanupPending,
@@ -471,11 +526,15 @@ async function finishDraftSave(
     unchanged = false,
 ): Promise<NoteSaveResult> {
     await enqueueNoteUpload(database, owner, note, draft);
+    const localOnly = isLocalOnly(owner);
     return {
         note,
+        localOnly,
         cloudState: "queued",
         unchanged,
-        message: "已加入本地暂存队列，服务器可用时将自动同步",
+        message: localOnly
+            ? "已保存在本机，开启云存储后可同步"
+            : "已加入本地暂存队列，服务器可用时将自动同步",
     } satisfies NoteSaveResult;
 }
 
@@ -484,8 +543,10 @@ export async function queueNoteUploadNow(
     database: ApplicationDatabase,
     owner: number,
     id: number,
-) {
+): Promise<NoteSaveResult> {
+    const checkAccess = captureCloudStorageAccess(owner);
     const note = await getLocalNoteByClientId(database, owner, id);
+    checkAccess();
     if (!note) throw new Error("笔记已不存在");
     if (note.server_id == null && note.sync_status === "unknown") {
         throw new Error(
@@ -493,6 +554,7 @@ export async function queueNoteUploadNow(
         );
     }
     await enqueueNoteUpload(database, owner, note);
+    checkAccess();
     return {
         note,
         cloudState: "queued",
@@ -507,7 +569,9 @@ export async function uploadNoteNow(
     id: number,
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ) {
+    const checkAccess = captureCloudStorageAccess(owner);
     const note = await getLocalNoteByClientId(database, owner, id);
+    checkAccess();
     if (!note) throw new Error("笔记已不存在");
     if (note.sync_status === "syncing")
         throw new Error("笔记正在同步，请稍后重试。");

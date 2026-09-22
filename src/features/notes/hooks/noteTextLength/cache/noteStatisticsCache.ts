@@ -28,10 +28,7 @@ const touchCacheEntry = (
 };
 
 const evictLeastRecentlyUsedEntries = () => {
-    while (
-        noteStatisticsCache.size >
-        NOTE_STATISTICS_CACHE_MAX_ENTRIES
-    ) {
+    while (noteStatisticsCache.size > NOTE_STATISTICS_CACHE_MAX_ENTRIES) {
         const oldestNoteId = noteStatisticsCache.keys().next().value;
         if (oldestNoteId === undefined) return;
         noteStatisticsCache.delete(oldestNoteId);

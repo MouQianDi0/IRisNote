@@ -1,5 +1,10 @@
 import { banner, captureNotificationSession } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import {
     collectAndUploadAvatarFromCamera,
     collectAndUploadAvatarFromLibrary,
@@ -10,10 +15,17 @@ import type { ImageSourcePropType } from "react-native";
 
 export function useAvatar() {
     const { user, syncProfile } = useAuth();
+    const { enabled: cloudEnabled, ownerUserId } = useCloudStorage();
     const [avatarUploading, setAvatarUploading] = useState(false);
     const [avatarKey, setAvatarKey] = useState(0);
 
-    const avatarUri = normalizeAvatarUrl(user?.avatar);
+    const normalizedAvatarUri = normalizeAvatarUrl(user?.avatar);
+    const avatarUri =
+        normalizedAvatarUri &&
+        /^https?:\/\//i.test(normalizedAvatarUri) &&
+        (!cloudEnabled || ownerUserId !== user?.id)
+            ? undefined
+            : normalizedAvatarUri;
 
     const avatarSource: ImageSourcePropType | undefined = avatarUri
         ? {
@@ -29,6 +41,7 @@ export function useAvatar() {
         const isCurrentSession = captureNotificationSession();
         setAvatarUploading(true);
         try {
+            const checkAccess = captureCloudStorageAccess(user.id);
             const result =
                 source === "library"
                     ? await collectAndUploadAvatarFromLibrary()
@@ -36,8 +49,10 @@ export function useAvatar() {
 
             if (!result) return;
 
-            setAvatarKey((k) => k + 1);
+            checkAccess();
             await syncProfile();
+            checkAccess();
+            setAvatarKey((k) => k + 1);
             if (isCurrentSession()) {
                 banner.show({
                     id: "avatar-update",
@@ -57,7 +72,9 @@ export function useAvatar() {
                 banner.show({
                     id: "avatar-update",
                     type: "important",
-                    title: "头像更新失败",
+                    title: isCloudStoragePermissionError(err)
+                        ? "需要开启云存储"
+                        : "头像更新失败",
                     message,
                 });
             }

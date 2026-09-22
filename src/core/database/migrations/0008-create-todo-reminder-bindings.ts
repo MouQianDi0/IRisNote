@@ -1,11 +1,11 @@
 import type { DatabaseMigration } from "../database.types";
 
 export const createTodoReminderBindings: DatabaseMigration = {
-  version: 8,
-  name: "create_todo_reminder_bindings",
-  async up(database) {
-    // No FK cascade: deleted todos must leave cancellation work durable.
-    await database.execAsync(`
+    version: 8,
+    name: "create_todo_reminder_bindings",
+    async up(database) {
+        // No FK cascade: deleted todos must leave cancellation work durable.
+        await database.execAsync(`
       CREATE TABLE IF NOT EXISTS todo_reminder_bindings (
         owner_key TEXT NOT NULL,
         todo_id TEXT NOT NULL,
@@ -18,5 +18,5 @@ export const createTodoReminderBindings: DatabaseMigration = {
         PRIMARY KEY(owner_key, todo_id)
       );
     `);
-  },
+    },
 };

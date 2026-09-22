@@ -1,4 +1,6 @@
 import { banner } from "@/core/notifications";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import {
     systemNotificationsAvailable,
     useSystemNotifications,
@@ -8,11 +10,12 @@ import { Card, Screen } from "@/shared/ui";
 import * as ImagePicker from "expo-image-picker";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Host, Switch } from "@expo/ui";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, type Href } from "expo-router";
 import {
     AlarmClock,
     Bell,
     Camera,
+    Cloud,
     Image as ImageIcon,
     PackageCheck,
     RadioTower,
@@ -155,6 +158,8 @@ async function openApplicationSettings() {
 }
 
 export default function PermissionSettingsScreen() {
+    const cloudStorage = useCloudStorage();
+    const cloudStatus = cloudStorageStatusLabel(cloudStorage);
     const {
         runtimeNotificationEnabled,
         runtimeNotificationPending,
@@ -261,8 +266,7 @@ export default function PermissionSettingsScreen() {
                         onBack={() => router.back()}
                     />
                     <Text className="mb-3 ml-1 text-sm leading-5 text-hyper-text-secondary">
-                        管理 IRisNote
-                        使用的手机权限。进入页面只读取状态，点击对应项目可直接打开系统设置。
+                        管理云存储授权与手机权限。云存储由应用内设置管理，手机权限可进入系统设置调整。
                     </Text>
                     <Card
                         className="overflow-hidden rounded-hyper-card"
@@ -342,9 +346,24 @@ export default function PermissionSettingsScreen() {
                             last
                         />
                     </Card>
+                    <Card
+                        className="mt-5 overflow-hidden rounded-hyper-card"
+                        style={{ borderCurve: "continuous" }}
+                    >
+                        <SettingsRow
+                            icon={Cloud}
+                            label="云存储权限"
+                            value={cloudStatus}
+                            description="统一管理笔记、待办等内容的云端同步"
+                            onPress={() =>
+                                router.push("/pages/user/cloud-storage" as Href)
+                            }
+                            last
+                        />
+                    </Card>
                     <View className="mt-4 rounded-hyper-control bg-hyper-card-selected p-4">
                         <Text className="text-sm leading-5 text-text-secondary">
-                            权限由手机系统管理。关闭权限不会删除已有数据，但对应功能可能暂时不可用。
+                            关闭云存储授权会暂停本设备的云端传输，保留本机和已有云端数据。其他权限由手机系统管理。
                         </Text>
                     </View>
                 </View>

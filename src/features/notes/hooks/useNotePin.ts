@@ -1,4 +1,9 @@
 import { getApiErrorMessage } from "@/shared/http/errors";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
+import { captureNotificationSession } from "@/core/notifications";
 import { updateNote } from "../api/notes.api";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
@@ -25,8 +30,20 @@ export function useNotePin(
 ) {
     const togglePin = useCallback(
         async (item: Note) => {
-            const serverId =
-                item.server_id ?? (item.id > 0 ? item.id : null);
+            let checkAccess: () => void;
+            try {
+                checkAccess = captureCloudStorageAccess(item.user_id);
+            } catch (error) {
+                Alert.alert(
+                    "需要开启云存储",
+                    error instanceof Error
+                        ? error.message
+                        : "请在设置中开启云存储后再操作",
+                );
+                return;
+            }
+            const isCurrentSession = captureNotificationSession();
+            const serverId = item.server_id ?? (item.id > 0 ? item.id : null);
             if (serverId == null) {
                 setOpenedNoteId(null);
                 Alert.alert(
@@ -66,12 +83,14 @@ export function useNotePin(
 
             try {
                 const data = await updateNote(serverId, payload);
+                checkAccess();
                 console.log("笔记置顶后端同步成功:", {
                     id: item.id,
                     is_pinned: nextPinned,
                     response: data,
                 });
             } catch (err: any) {
+                if (!isCurrentSession()) return;
                 console.error("笔记置顶后端同步失败:", {
                     id: item.id,
                     status: err.response?.status,
@@ -83,8 +102,15 @@ export function useNotePin(
                 );
                 updateNotesLocally(() => previousNotes, true);
                 Alert.alert(
-                    "提示",
-                    getApiErrorMessage(err, "同步置顶状态失败，已恢复原状态"),
+                    isCloudStoragePermissionError(err)
+                        ? "需要开启云存储"
+                        : "提示",
+                    isCloudStoragePermissionError(err)
+                        ? err.message
+                        : getApiErrorMessage(
+                              err,
+                              "同步置顶状态失败，已恢复原状态",
+                          ),
                 );
             }
         },

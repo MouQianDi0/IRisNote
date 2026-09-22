@@ -21,17 +21,12 @@ const cardStyles = tv({
 /** VariantProps 使 Card 的公开变体类型始终与上方配方保持一致。 */
 type CardProps = PropsWithChildren<
     ViewProps &
-    VariantProps<typeof cardStyles> & {
-        className?: string;
-    }
+        VariantProps<typeof cardStyles> & {
+            className?: string;
+        }
 >;
 
-export function Card({
-    children,
-    className,
-    variant,
-    ...props
-}: CardProps) {
+export function Card({ children, className, variant, ...props }: CardProps) {
     return (
         <View
             {...props}

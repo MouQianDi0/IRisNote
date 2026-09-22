@@ -19,19 +19,11 @@ export default function FloatingBarCategoryButton({
     onPress,
     onLongPress,
 }: FloatingBarCategoryButtonProps) {
-
     return (
         <Pressable
             onLongPress={onLongPress}
             delayLongPress={400}
-            className={`
-                relative
-                w-[50px] h-[60px] mb-[6px]
-                rounded-control
-                justify-center
-                items-center
-                pl-[6px] pr-[4px] py-[4px]
-            `}
+            className={`relative mb-[6px] h-[60px] w-[50px] items-center justify-center rounded-control py-[4px] pr-[4px] pl-[6px]`}
             onPress={onPress}
         >
             {category.is_starred && (
@@ -61,14 +53,18 @@ export default function FloatingBarCategoryButton({
                     />
                 </Animated.View>
             ) : (
-                <CategoryIcon name={category.icon} size={30} color={colors.textSecondary} />
+                <CategoryIcon
+                    name={category.icon}
+                    size={30}
+                    color={colors.textSecondary}
+                />
             )}
 
             <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
                 className={`max-w-[44px] text-[10px] ${
-                    isActive ? "text-blue-500 font-semibold" : "text-gray-400"
+                    isActive ? "font-semibold text-blue-500" : "text-gray-400"
                 }`}
             >
                 {category.name}

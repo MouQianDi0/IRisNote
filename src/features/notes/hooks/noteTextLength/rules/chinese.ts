@@ -42,10 +42,7 @@ export const countChineseWords = (
     let count = 0;
 
     for (const result of segmenter.segment(content)) {
-        if (
-            result.isWordLike &&
-            HAN_CHARACTER_PATTERN.test(result.segment)
-        ) {
+        if (result.isWordLike && HAN_CHARACTER_PATTERN.test(result.segment)) {
             count += 1;
         }
     }

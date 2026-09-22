@@ -76,10 +76,10 @@ export function formatMonthTitle(monthId: string): string {
 }
 
 /** 按周起点排列的星期列表头文案。 */
-export function weekdayLabels(
-    firstDayOfWeek: "monday" | "sunday",
-): string[] {
+export function weekdayLabels(firstDayOfWeek: "monday" | "sunday"): string[] {
     const order =
-        firstDayOfWeek === "monday" ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+        firstDayOfWeek === "monday"
+            ? [1, 2, 3, 4, 5, 6, 0]
+            : [0, 1, 2, 3, 4, 5, 6];
     return order.map((day) => WEEKDAY_LABELS[day]);
 }

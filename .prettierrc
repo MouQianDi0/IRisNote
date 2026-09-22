@@ -1,0 +1,6 @@
+{
+    "tabWidth": 4,
+    "endOfLine": "auto",
+    "plugins": ["prettier-plugin-tailwindcss"],
+    "tailwindStylesheet": "./global.css"
+}

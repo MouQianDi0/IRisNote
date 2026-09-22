@@ -1,4 +1,9 @@
 import type { ApplicationDatabase } from "@/core/database";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+    isCloudStorageRequestDispatched,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import type { UploadQueueTask } from "@/core/sync";
 import { deleteNote } from "@/features/notes/api/notes.api";
 import {
@@ -21,7 +26,7 @@ import {
 import { isAxiosError } from "axios";
 
 export type UploadTaskExecution = {
-    state: "accepted" | "retry" | "blocked";
+    state: "accepted" | "retry" | "blocked" | "suspended";
     message?: string;
     transferredBytes: number;
 };
@@ -67,6 +72,19 @@ const classifyFailure = (
     estimatedBytes: number,
     unsafeCreate = false,
 ): UploadTaskExecution => {
+    if (isCloudStoragePermissionError(error)) {
+        return {
+            state:
+                unsafeCreate && isCloudStorageRequestDispatched(error)
+                    ? "blocked"
+                    : "suspended",
+            message:
+                unsafeCreate && isCloudStorageRequestDispatched(error)
+                    ? "分类创建结果未知，任务已保留，请开启云存储后先检查云端分类，避免重复创建"
+                    : "云存储授权已关闭，任务已保留在本机",
+            transferredBytes: 0,
+        };
+    }
     const status = isAxiosError(error) ? error.response?.status : undefined;
     const message = error instanceof Error ? error.message : "上传失败";
     const retryable =
@@ -87,6 +105,7 @@ async function executeNoteTask(
     database: ApplicationDatabase,
     task: UploadQueueTask,
 ): Promise<UploadTaskExecution> {
+    const checkPermission = captureCloudStorageAccess(task.ownerUserId);
     const clientId = numberValue(task.payload.clientId, "clientId");
     const localNote = await getLocalNoteByClientId(
         database,
@@ -129,6 +148,7 @@ async function executeNoteTask(
     }
 
     const draftValue = task.payload.draft;
+    checkPermission();
     if (draftValue && typeof draftValue === "object") {
         const draft = draftValue as Partial<DraftCommit>;
         if (
@@ -170,6 +190,8 @@ async function executeCategoryTask(
     database: ApplicationDatabase,
     task: UploadQueueTask,
 ): Promise<UploadTaskExecution> {
+    const checkPermission = captureCloudStorageAccess(task.ownerUserId);
+    let created = false;
     try {
         if (task.kind === "category-create") {
             await createCategory({
@@ -178,6 +200,7 @@ async function executeCategoryTask(
                     ? { icon: task.payload.icon }
                     : {}),
             });
+            created = true;
         } else if (task.kind === "category-update") {
             const categoryId = numberValue(
                 task.payload.categoryId,
@@ -196,18 +219,24 @@ async function executeCategoryTask(
             const { syncNotes } =
                 await import("@/features/notes/services/note-sync-coordinator");
             await syncNotes(database, task.ownerUserId);
+            checkPermission();
             const notes = (
                 await readCloudMirror(database, task.ownerUserId)
             ).filter((note) => note.category_id === categoryId);
             for (let index = 0; index < notes.length; index += 3) {
+                checkPermission();
                 await Promise.all(
                     notes
                         .slice(index, index + 3)
                         .map((note) => deleteNote(note.id)),
                 );
             }
+            checkPermission();
             await deleteCategory(categoryId);
         }
+        // A successful create must be acknowledged even if consent changes immediately
+        // afterwards; replaying a non-idempotent create would duplicate the category.
+        if (!created) checkPermission();
         notifyCategoriesChanged();
         return { state: "accepted", transferredBytes: task.estimatedBytes };
     } catch (error) {
@@ -223,6 +252,7 @@ export async function executeUploadTask(
     database: ApplicationDatabase,
     task: UploadQueueTask,
 ) {
+    captureCloudStorageAccess(task.ownerUserId)();
     const registered = registeredAdapters.get(task.kind);
     if (registered) return registered(database, task);
     if (task.kind === "note-sync") return executeNoteTask(database, task);

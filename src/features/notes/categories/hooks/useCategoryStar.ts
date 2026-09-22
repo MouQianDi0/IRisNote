@@ -14,15 +14,33 @@ export function useCategoryStar(
         (category: Category) => {
             const newStarred = !category.is_starred;
             if (ownerUserId == null) return;
-            setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, is_starred: newStarred } : c));
-            setLongPressVisible((prev) => prev ? { ...prev, is_starred: newStarred } : null);
-            void enqueueCategoryUpdate(database, ownerUserId, category, { is_starred: newStarred })
+            setCategories((prev) =>
+                prev.map((c) =>
+                    c.id === category.id ? { ...c, is_starred: newStarred } : c,
+                ),
+            );
+            setLongPressVisible((prev) =>
+                prev ? { ...prev, is_starred: newStarred } : null,
+            );
+            void enqueueCategoryUpdate(database, ownerUserId, category, {
+                is_starred: newStarred,
+            })
                 .then(() => {
                     notifyCategoriesChanged();
                 })
                 .catch((err) => {
-                    setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, is_starred: category.is_starred } : c));
-                    setLongPressVisible((prev) => prev ? { ...prev, is_starred: category.is_starred } : null);
+                    setCategories((prev) =>
+                        prev.map((c) =>
+                            c.id === category.id
+                                ? { ...c, is_starred: category.is_starred }
+                                : c,
+                        ),
+                    );
+                    setLongPressVisible((prev) =>
+                        prev
+                            ? { ...prev, is_starred: category.is_starred }
+                            : null,
+                    );
                     console.error("切换标星失败:", err.message);
                 });
         },

@@ -40,8 +40,10 @@ export const notesSyncTransport: NotesSyncTransport = {
             params: query,
             signal,
         });
-        return withSyncResponseContext("/api/notes/snapshot", response.status, () =>
-            parseSnapshot(response.data, owner),
+        return withSyncResponseContext(
+            "/api/notes/snapshot",
+            response.status,
+            () => parseSnapshot(response.data, owner),
         );
     },
     async changes(owner, cursor, limit, signal) {
@@ -49,8 +51,10 @@ export const notesSyncTransport: NotesSyncTransport = {
             params: { cursor, limit },
             signal,
         });
-        return withSyncResponseContext("/api/notes/changes", response.status, () =>
-            parseChanges(response.data, owner),
+        return withSyncResponseContext(
+            "/api/notes/changes",
+            response.status,
+            () => parseChanges(response.data, owner),
         );
     },
 };

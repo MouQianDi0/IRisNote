@@ -26,6 +26,8 @@ require.extensions[".ts"] = (module, filename) =>
     filename,
   );
 global.__DEV__ = false;
+// Protocol fixtures expose capability, then explicitly grant only their test owner.
+process.env.EXPO_PUBLIC_CLOUD_STORAGE_ENABLED = "1";
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
   if (name === "@react-native-async-storage/async-storage")
@@ -37,6 +39,10 @@ Module._load = function (name, ...args) {
 };
 const { createTodoTransport } = require("@/features/todos/api/todos.api.ts");
 const client = require("@/shared/http/client.ts").default;
+const {
+  setCloudStorageSession,
+  isCloudStoragePermissionError,
+} = require("@/core/cloud-storage/cloud-storage-policy.ts");
 Module._load = originalLoad;
 const id = "00000000-0000-4000-8000-000000000001";
 const entity = {
@@ -72,7 +78,9 @@ const op = {
     body: { expected_version: 1, body: "更新正文" },
   },
 };
-async function fixture(t, handler) {
+async function fixture(t, handler, { consented = true } = {}) {
+  setCloudStorageSession(7, true, consented);
+  t.after(() => setCloudStorageSession(null, false, false));
   const requests = [];
   const server = http.createServer(async (req, res) => {
     let raw = "";
@@ -317,5 +325,18 @@ test("请求取消后不再发出 HTTP 请求", async (t) => {
   const f = await fixture(t, () => ({ body: {} }));
   f.controller.abort();
   await assert.rejects(f.api.changes("cursor"));
+  assert.equal(f.requests.length, 0);
+});
+test("未授权时待办读取、写入和批量操作均不发出 HTTP 请求", async (t) => {
+  const f = await fixture(t, () => ({ body: {} }), { consented: false });
+  for (const request of [
+    () => f.api.snapshot(),
+    () => f.api.changes("cursor"),
+    () => f.api.byClientId(id),
+    () => f.api.write(op),
+    () => f.api.batch([{ ...op, request: { kind: "delete", id: 12, expected_version: 1 } }]),
+  ]) {
+    await assert.rejects(request(), isCloudStoragePermissionError);
+  }
   assert.equal(f.requests.length, 0);
 });
