@@ -6,13 +6,19 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    Text,
+    View,
+} from "react-native";
 import { SettingsPageHeader } from "../components/SettingsPageHeader";
 import {
     compareVersions,
-    RELEASE_HISTORY,
     type ReleaseHistoryItem,
 } from "../data/release-history";
+import { useReleaseHistory } from "../hooks/use-release-history";
 
 function ReleaseContent({
     release,
@@ -29,11 +35,6 @@ function ReleaseContent({
         : release.sections;
     return (
         <View className="mt-3">
-            {release.intro ? (
-                <Text className="mb-3 text-sm leading-6 text-text-secondary">
-                    {release.intro}
-                </Text>
-            ) : null}
             {sections.map((section) => (
                 <View className="mb-3" key={section.title}>
                     <Text className="text-text-primary mb-1 text-[15px]">
@@ -51,11 +52,6 @@ function ReleaseContent({
                     ))}
                 </View>
             ))}
-            {!compact && release.footer ? (
-                <Text className="text-sm leading-6 text-text-secondary">
-                    {release.footer}
-                </Text>
-            ) : null}
         </View>
     );
 }
@@ -66,13 +62,16 @@ export default function AboutScreen() {
         Constants.expoConfig?.version ??
         "—";
     const buildCode = Application.nativeBuildVersion;
+    const { state: historyState, retry: retryHistory } = useReleaseHistory();
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     const releases = useMemo(() => {
-        const eligible = RELEASE_HISTORY.filter(
+        if (historyState.kind !== "ready") return [];
+        const eligible = historyState.releases.filter(
             (release) => compareVersions(release.version, version) <= 0,
         );
         if (eligible.some((release) => release.version === version))
             return eligible;
+        // 本机版本尚未出现在服务端历史中（如刚发布的新版本），仍为其保留一个条目。
         return [
             {
                 version,
@@ -82,7 +81,7 @@ export default function AboutScreen() {
             },
             ...eligible,
         ];
-    }, [buildCode, version]);
+    }, [buildCode, historyState, version]);
 
     const toggle = (target: string) => {
         setExpanded((current) => {
@@ -130,106 +129,146 @@ export default function AboutScreen() {
                     <Text className="mb-3 ml-1 text-[13px] text-hyper-text-secondary">
                         版本记录
                     </Text>
-                    {releases.map((release, index) => {
-                        const current = release.version === version;
-                        const isExpanded =
-                            current || expanded.has(release.version);
-                        const hasNotes = release.sections.length > 0;
-                        return (
-                            <View
-                                className="flex-row"
-                                key={`${release.version}-${release.buildCode}`}
+                    {historyState.kind === "loading" ? (
+                        <View className="items-center pt-6 pb-10">
+                            <ActivityIndicator color={colors.primary} />
+                            <Text className="mt-3 text-sm text-text-secondary">
+                                正在加载版本记录…
+                            </Text>
+                        </View>
+                    ) : historyState.kind === "error" ? (
+                        <View className="items-center pt-6 pb-10">
+                            <Text className="text-center text-sm leading-6 text-text-secondary">
+                                {historyState.message}
+                            </Text>
+                            <Pressable
+                                accessibilityLabel="重试加载版本记录"
+                                accessibilityRole="button"
+                                className="mt-4 min-h-12 items-center justify-center rounded-hyper-control bg-primary px-6 active:opacity-[0.85]"
+                                onPress={retryHistory}
                             >
-                                <View className="w-7 items-center">
-                                    {index < releases.length - 1 ? (
-                                        <View
-                                            className="absolute top-3 bottom-0 w-0.5 bg-hyper-divider"
-                                            accessibilityElementsHidden
-                                        />
-                                    ) : null}
+                                <Text className="text-base text-white">
+                                    重试
+                                </Text>
+                            </Pressable>
+                        </View>
+                    ) : (
+                        <>
+                            {historyState.stale ? (
+                                <Text className="mb-2 ml-1 text-[13px] text-hyper-text-secondary">
+                                    未能刷新，显示上次内容
+                                </Text>
+                            ) : null}
+                            {releases.map((release, index) => {
+                                const current = release.version === version;
+                                const isExpanded =
+                                    current || expanded.has(release.version);
+                                const hasNotes = release.sections.length > 0;
+                                return (
                                     <View
-                                        className={
-                                            current
-                                                ? "mt-2 h-3 w-3 rounded-full bg-primary"
-                                                : "mt-2 h-3 w-3 rounded-full border-2 border-hyper-text-secondary bg-app-background"
-                                        }
-                                    />
-                                </View>
-                                <View className="min-w-0 flex-1 pb-6 pl-3">
-                                    <View className="mb-2 flex-row flex-wrap items-center gap-2">
-                                        <Text className="text-text-primary text-[17px]">
-                                            v{release.version}
-                                        </Text>
-                                        {current ? (
-                                            <View className="rounded-full bg-hyper-card-selected px-2 py-1">
-                                                <Text className="text-xs text-primary">
-                                                    当前版本
-                                                </Text>
-                                            </View>
-                                        ) : null}
-                                    </View>
-                                    {release.publishedOn ? (
-                                        <Text className="mb-3 text-[13px] text-hyper-text-secondary">
-                                            {release.publishedOn}
-                                        </Text>
-                                    ) : null}
-                                    <Card
-                                        className="rounded-hyper-card p-4"
-                                        style={{ borderCurve: "continuous" }}
+                                        className="flex-row"
+                                        key={`${release.version}-${release.buildCode}`}
                                     >
-                                        {hasNotes ? (
-                                            <>
-                                                <ReleaseContent
-                                                    release={release}
-                                                    compact={!isExpanded}
+                                        <View className="w-7 items-center">
+                                            {index < releases.length - 1 ? (
+                                                <View
+                                                    className="absolute top-3 bottom-0 w-0.5 bg-hyper-divider"
+                                                    accessibilityElementsHidden
                                                 />
-                                                {!current ? (
-                                                    <Pressable
-                                                        accessibilityLabel={`${isExpanded ? "收起" : "展开"} v${release.version} 更新内容`}
-                                                        accessibilityRole="button"
-                                                        className="mt-1 min-h-11 flex-row items-center justify-center rounded-hyper-control active:bg-surface-muted active:opacity-[0.85]"
-                                                        onPress={() =>
-                                                            toggle(
-                                                                release.version,
-                                                            )
-                                                        }
-                                                    >
-                                                        <Text className="mr-1 text-sm text-primary">
-                                                            {isExpanded
-                                                                ? "收起"
-                                                                : "展开全部"}
+                                            ) : null}
+                                            <View
+                                                className={
+                                                    current
+                                                        ? "mt-2 h-3 w-3 rounded-full bg-primary"
+                                                        : "mt-2 h-3 w-3 rounded-full border-2 border-hyper-text-secondary bg-app-background"
+                                                }
+                                            />
+                                        </View>
+                                        <View className="min-w-0 flex-1 pb-6 pl-3">
+                                            <View className="mb-2 flex-row flex-wrap items-center gap-2">
+                                                <Text className="text-text-primary text-[17px]">
+                                                    v{release.version}
+                                                </Text>
+                                                {current ? (
+                                                    <View className="rounded-full bg-hyper-card-selected px-2 py-1">
+                                                        <Text className="text-xs text-primary">
+                                                            当前版本
                                                         </Text>
-                                                        {isExpanded ? (
-                                                            <ChevronUp
-                                                                size={16}
-                                                                color={
-                                                                    colors.primary
-                                                                }
-                                                            />
-                                                        ) : (
-                                                            <ChevronDown
-                                                                size={16}
-                                                                color={
-                                                                    colors.primary
-                                                                }
-                                                            />
-                                                        )}
-                                                    </Pressable>
+                                                    </View>
                                                 ) : null}
-                                            </>
-                                        ) : (
-                                            <Text className="text-sm leading-6 text-text-secondary">
-                                                该版本暂无更新说明。
-                                            </Text>
-                                        )}
-                                    </Card>
-                                </View>
-                            </View>
-                        );
-                    })}
-                    <Text className="pb-2 text-center text-[13px] text-hyper-text-secondary">
-                        已显示当前版本及全部历史记录
-                    </Text>
+                                            </View>
+                                            {release.publishedOn ? (
+                                                <Text className="mb-3 text-[13px] text-hyper-text-secondary">
+                                                    {release.publishedOn}
+                                                </Text>
+                                            ) : null}
+                                            <Card
+                                                className="rounded-hyper-card p-4"
+                                                style={{
+                                                    borderCurve: "continuous",
+                                                }}
+                                            >
+                                                {hasNotes ? (
+                                                    <>
+                                                        <ReleaseContent
+                                                            release={release}
+                                                            compact={
+                                                                !isExpanded
+                                                            }
+                                                        />
+                                                        {!current ? (
+                                                            <Pressable
+                                                                accessibilityLabel={`${isExpanded ? "收起" : "展开"} v${release.version} 更新内容`}
+                                                                accessibilityRole="button"
+                                                                className="mt-1 min-h-11 flex-row items-center justify-center rounded-hyper-control active:bg-surface-muted active:opacity-[0.85]"
+                                                                onPress={() =>
+                                                                    toggle(
+                                                                        release.version,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Text className="mr-1 text-sm text-primary">
+                                                                    {isExpanded
+                                                                        ? "收起"
+                                                                        : "展开全部"}
+                                                                </Text>
+                                                                {isExpanded ? (
+                                                                    <ChevronUp
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                        color={
+                                                                            colors.primary
+                                                                        }
+                                                                    />
+                                                                ) : (
+                                                                    <ChevronDown
+                                                                        size={
+                                                                            16
+                                                                        }
+                                                                        color={
+                                                                            colors.primary
+                                                                        }
+                                                                    />
+                                                                )}
+                                                            </Pressable>
+                                                        ) : null}
+                                                    </>
+                                                ) : (
+                                                    <Text className="text-sm leading-6 text-text-secondary">
+                                                        该版本暂无更新说明。
+                                                    </Text>
+                                                )}
+                                            </Card>
+                                        </View>
+                                    </View>
+                                );
+                            })}
+                            <Text className="pb-2 text-center text-[13px] text-hyper-text-secondary">
+                                已显示当前版本及全部历史记录
+                            </Text>
+                        </>
+                    )}
                 </View>
             </ScrollView>
         </Screen>

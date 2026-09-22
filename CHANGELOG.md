@@ -1,3 +1,23 @@
+## 2026-09-23 04:09:23 | 修复问题：关于页版本记录改为服务端数据源，根治硬编码
+
+- 变更概述：已获用户确认（方案 C）。0.4.0 发布后发现"关于"页版本记录仍读取硬编码数组，本机新版本不在其中时显示"该版本暂无更新说明"。现将版本记录改为从服务端拉取已发布历史，发布流程不再需要同步维护前端硬编码。
+- 修改文件：src/features/settings/data/release-history.ts、src/features/settings/screens/AboutScreen.tsx、src/features/settings/hooks/use-release-history.ts（新增）、tests/settings/release-history.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 删除 RELEASE_HISTORY 硬编码数组及 intro/footer 专属渲染；② release-history.ts 保留类型与 compareVersions，新增 parseReleaseNotes（纯文本说明按标题行 + “- ”列表项解析为分组结构，跳过“IRisNote x.y.z 更新说明”占位标题，散落条目归入“更新内容”）和 parseReleaseHistory（校验服务端列表：条数 1～100、版本号格式、构建号范围、notes 长度 ≤12000、版本去重，提取发布日期；任何非法字段返回 null 走降级）；③ 新增 use-release-history hook：进入页面时拉取 GET /api/releases/history（地址复用 EXPO_PUBLIC_RELEASE_API_URL，去掉尾部 /latest 后拼 /history，未配置时回落 API_BASE_URL），12 秒超时；成功后写入 AsyncStorage 缓存（仅成功数据入库）；失败回退缓存并标记"未能刷新，显示上次内容"；无缓存进入错误态显示重试按钮；使用 useFocusEffect 触发，每次进入页面刷新；④ 本机版本尚未出现在服务端历史时（刚发布的新版本）保留占位条目，行为与旧版一致。
+- 验证：npm run typecheck 通过；npm run check 全量通过——typecheck、lint、theme:check 与 448/448 测试（新增 4 项：解析分组/占位标题跳过/散落条目归组、字段校验与去重/日期提取/条数上限、版本比较、断言不再引用 RELEASE_HISTORY）。后端 irisapi 同步新增 /history 接口与测试（见 irisapi 仓库变更）。
+- 部署依赖：前端此改动需后端先部署 /api/releases/history 才能正常拉取，否则进入错误态（可重试、有缓存时降级显示）；随下个版本发布生效。未执行构建、发布或推送。
+
+---
+
+## 2026-09-23 03:47:01 | 新增功能：IRisNote 0.4.0 正式发布
+
+- 变更概述：已获用户确认（含 publish 授权）。完成 0.4.0 版本全流程发布：预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。
+- 发布信息：构建号 16，绑定提交 cda98eb（含构建阻断修复）；APK SHA-256 cbd9472605a53aa4fa8fbd8a7a4cdb69e581969638d6e13773f6cc0c8a430b12，大小 126913174 字节，签名证书与 0.3.0 相同（7319b25...）；CDN 地址 https://download.tech-mou.top/IRisNote-0.4.0-16.apk。
+- 修改文件：CHANGELOG.md（本记录）。本次发布无新的源码修改，发布内容为 0.4.0 说明所列功能（垃圾桶、我的页面内容管理、数据与存储、同步与备份、权限设置等）。
+- 具体内容：① doctor 环境检查通过；② 本机 npm run check 全量通过（444/444）后提交修复 0c68247、cda98eb；③ reserve 分配构建 16 并保存更新说明；④ build 构建成功（Gradle 16m47s），构建环境内检查再次通过、patch-package 自动应用；⑤ 服务器与 COS 上传并通过 SHA-256 双端校验；⑥ 为基础版本 15/13/12 生成并上传差量包（15→16 为 5.3%，13→16 为 18.5%，12→16 为 18.7%），本机实际合并还原校验全部通过；⑦ inspect/status 核对包名、版本、签名、摘要一致；⑧ publish 发布成功，服务端状态 published。
+- 验证边界：构建环境类型检查、lint、主题检查与单元测试全部通过；真机安装验收仍未执行（发布期间无连接设备），建议更新推送后在真机核对差量升级与垃圾桶等功能；未推送 Git 远程。
+
+---
+
 ## 2026-09-23 03:03:46 | 修复问题：0.4.0 发布前构建阻断项修复
 
 - 变更概述：已获用户确认（含 publish 授权）。发布前 `npm run check` 失败的三个阻断项全部修复，全量检查恢复通过，为 0.4.0 发布扫清构建阻断。
