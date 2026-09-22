@@ -1,3 +1,12 @@
+## 2026-09-22 22:10:55 | 修复问题：同步 master 固有的两处过期测试断言
+
+- 变更概述：已获用户确认（更新测试断言以匹配 master 新事实，不修改任何源码）。修复合并验证中暴露的 2 项 master 固有测试失败，使全量检查恢复全绿。
+- 修改文件：tests/navigation/page-seam.test.cjs、tests/todos/todo-local.test.cjs、CHANGELOG.md。
+- 具体内容：① page-seam 测试对 TodosScreen.tsx 的正则断言中 border 类顺序由 `border-b border-r border-t` 更新为 `border-t border-r border-b`——master 提交 282122d 统一代码风格时 prettier 重排了 tailwind 类顺序，类集合与"填充层/圆角边框层分离"结构意图均未变；② todo-local 测试 `CURRENT_DATABASE_VERSION` 断言由 11 更新为 12——master 新增迁移 0012-create-note-trash 后版本常量由迁移数组末项自动推导为 12，注释同步补充 0012 说明。
+- 验证：定向 node --test 两文件 14/14 通过；全量 npm run check 通过（typecheck、lint、theme:check、438/438 测试，exit code 0）。未修改任何 src/ 源码，无需真机验收。
+
+---
+
 ## 2026-09-22 21:54:23 | 优化代码：合并 master 主分支并解决冲突
 
 - 变更概述：已获用户确认（先提交暂存改动→合并→检查通过即推送）。将 origin/master 领先的 9 个提交（15 天笔记垃圾桶、数据存储页面、云存储授权统一、全项目代码风格统一、PR #117 等）合入 kroos_todo，解决 CHANGELOG.md 冲突。合并前先将暂存区未提交改动（删除「新电脑从零搭建」章节）提交为独立提交 330780b。
