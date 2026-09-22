@@ -1,3 +1,12 @@
+## 2026-09-22 21:05:24 | 优化代码：本地测试包构建指南补全新电脑从零搭建章节
+
+- 变更概述：已获用户确认。`docs/构建发布/本地测试包构建.md` 原先只覆盖"本机已有环境"的构建命令，缺少在另一台电脑从零构建所需的前置信息。新增完整「新电脑从零搭建」章节，把环境变量、软件版本、脚本内容、Git 忽略文件重建步骤全部写清，使任何新 Windows 电脑可仅凭该文档从零打出 staging 测试包。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零搭建」8 个子节——软件清单（Expo SDK 57 要求 Node ≥22.13.x，本机实测 24.18.0；新电脑建议 JDK 17，本机 JDK 21 已通过编译；Android SDK Platform 36 + Build-Tools 36.0.0 + Platform-Tools、Gradle 9.3.1 wrapper 自动下载）、必设系统环境变量（JAVA_HOME/ANDROID_HOME 含 setx 与验证命令）及项目自动注入变量说明（JAVA_TOOL_OPTIONS 回环修复、IRIS_GRADLE_SOCKET_DIR）、克隆与 npm ci（npmmirror 切换、postinstall patch-package）、创建 .env.local（完整内容与 EXPO_PUBLIC_TODO_CLOUD_SYNC / BASE_URL / RELEASE_API_URL 变量作用表）、`npx expo prebuild -p android --no-install` 生成工程并指引加回 staging 块、debug.keystore 公开调试证书说明（SHA256 指纹与 keytool 核对命令）、.expo/gradle-aliyun-init.gradle 的 PowerShell 重建命令（英文注释避免跨机器编码问题）、Gradle 发行版腾讯镜像替换方案；② 原二~六节顺延为三~七节，交叉引用同步更新；③ 构建命令节去掉 D:\IRisNote 硬编码，--init-script 改用 PowerShell "$PWD\.expo\..." 自动展开写法；④ Git 忽略说明表补 .env*.local 与 *.keystore/*.jks 两行；⑤ 常见问题补 Gradle 发行版下载卡住、npm install 慢两条排查项，签名注意补跨机器证书一致性指引。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档中全部事实（环境变量值、工具版本、SDK 版本 36/24、Gradle 9.3.1、debug.keystore SHA256 指纹、.env.local 内容、镜像脚本内容、仓库地址）均在本机实测核实；新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
+---
+
 ## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
 
 - 变更概述：应用户"全修正"要求，落实代码审查报告的全部建议项（建议 1–4）与提示项（3/5）：app.json 恢复 HEAD 消除全文件格式重排 diff；`SCHEDULE_EXACT_ALARM` 权限收敛为模块 Manifest 单一来源；同名类型改名消歧；偏好写库增加值未变短路；统一模块导入别名；清理 Kotlin 文件名正则冗余字符。
