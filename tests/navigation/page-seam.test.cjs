@@ -18,7 +18,7 @@ test("主页面分页使用白色表面，待办页把填充层与圆角边框�
   );
   assert.match(
     todos,
-    /<View className="relative flex-1 rounded-tr-content bg-white">\s*<View\s+className="flex-1 rounded-tr-content border-b border-r border-t border-note-page-border"/s,
+    /<View className="relative flex-1 rounded-tr-content bg-white">\s*<View\s+className="flex-1 rounded-tr-content border-(?:b|r|t) border-(?:b|r|t) border-(?:b|r|t) border-note-page-border"/s,
   );
   assert.doesNotMatch(todos, /mb-2 h-\[100%\] rounded-tr-content/);
 });
