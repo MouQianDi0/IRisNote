@@ -13,6 +13,7 @@ import {
 import { AuthContext } from "../auth.context";
 import { banner } from "@/core/notifications";
 import { resetConnectionSession } from "@/shared/http/connection-events";
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 
 async function readStoredSession() {
     const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
@@ -76,6 +77,7 @@ export function AuthProvider({
     );
 
     const logout = useCallback(async () => {
+        setCloudStorageSession(null, false, false);
         banner.clearSession();
         resetConnectionSession();
         await AsyncStorage.removeItem(storageKeys.authToken);

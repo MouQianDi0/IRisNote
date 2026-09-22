@@ -6,10 +6,12 @@ export function TodoSyncQueueRow({
   record,
   onConflict,
   onRetry,
+  disabled = false,
 }: {
   record: TodoSyncRecord;
   onConflict: () => void;
   onRetry: () => void;
+  disabled?: boolean;
 }) {
   const conflict = record.status === "conflict";
   return (
@@ -35,7 +37,9 @@ export function TodoSyncQueueRow({
         </Text>
         <Text style={{ fontSize: 13, color: semanticColors.textSecondary }}>
           {record.deleted ? "删除待办" : "同步待办"} ·{" "}
-          {conflict
+          {disabled
+            ? "云存储已暂停，本机内容已保留"
+            : conflict
             ? "需要处理"
             : record.status === "blocked"
               ? "需要检查内容"
@@ -53,6 +57,8 @@ export function TodoSyncQueueRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={conflict ? "处理待办冲突" : "重试待办同步"}
+        accessibilityState={{ disabled }}
+        disabled={disabled}
         onPress={conflict ? onConflict : onRetry}
         style={{
           minHeight: 48,
@@ -60,7 +66,7 @@ export function TodoSyncQueueRow({
           paddingHorizontal: 8,
         }}
       >
-        <Text style={{ color: semanticColors.brandPrimary, fontSize: 14 }}>
+        <Text style={{ color: disabled ? semanticColors.textSecondary : semanticColors.brandPrimary, fontSize: 14 }}>
           {conflict ? "处理冲突" : "重试"}
         </Text>
       </Pressable>

@@ -1,4 +1,5 @@
 import { isAxiosError } from "axios";
+import { isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
 
 /** Shared HTTP error normalization helpers. */
 
@@ -16,6 +17,7 @@ export function getApiErrorData(error: unknown): ApiErrorData | undefined {
 }
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
+    if (isCloudStoragePermissionError(error)) return error.message;
     const data = getApiErrorData(error);
     const message = data?.error || data?.message;
     if (!message) return fallback;

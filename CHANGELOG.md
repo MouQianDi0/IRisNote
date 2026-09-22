@@ -1,3 +1,27 @@
+## 2026-09-22 15:58:51 | 新增功能：统一云存储授权与构建环境开关
+
+- 修改文件：docs/待办/Todo前后端交接与验收.md、docs/待办/待办后端API预留契约.md、docs/待办/待办逻辑层设计.md、docs/构建发布/本地测试包构建.md、release.env.example、scripts/release/cli.mjs、src/app/_layout.tsx、src/core/notifications/notification-provider.tsx、src/core/providers/AppProviders.tsx、src/core/sync/upload-queue-coordinator.ts、src/features/auth/providers/AuthProvider.tsx、src/features/auth/screens/LoginScreen.tsx、src/features/auth/screens/RegisterScreen.tsx、src/features/notes/categories/components/CategoryBar.tsx、src/features/notes/components/editor/new-note-editor.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、src/features/notes/components/viewer/NoteViewerMeta.tsx、src/features/notes/components/viewer/note-operation-info.tsx、src/features/notes/hooks/useNotePin.ts、src/features/notes/hooks/useNoteStar.ts、src/features/notes/screens/NoteDetailScreen.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/profile/hooks/useAvatar.ts、src/features/profile/hooks/useProfileOverview.ts、src/features/profile/services/avatar-picker.service.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/sync/category-upload-queue.ts、src/features/sync/screens/SyncQueueScreen.tsx、src/features/sync/upload-task-adapters.ts、src/features/todos/components/TodoSyncQueueRow.tsx、src/features/todos/state/todo-sync-provider.tsx、src/shared/http/client.ts、src/shared/http/errors.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/releases/release-env.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-api.test.cjs、src/app/pages/user/cloud-storage.tsx、src/core/cloud-storage/cloud-storage-consent-controller.ts、src/core/cloud-storage/cloud-storage-policy.ts、src/core/cloud-storage/cloud-storage-provider.tsx、src/features/settings/screens/CloudStorageSettingsScreen.tsx、tests/sync/cloud-storage.test.cjs、tests/sync/upload-consent.test.cjs、.env.release.local（仅云存储变量，Git忽略）、CHANGELOG.md。
+- 变更概述：已获用户确认，笔记、待办、分类、头像及后续业务云存储共用当前账号在本机的主动授权；构建变量只开放功能，不代表用户同意。未授权仍可保存本地笔记/待办，保留待同步任务。
+- 具体内容：① 统一变量 EXPO_PUBLIC_CLOUD_STORAGE_ENABLED，未配置/空值/1 开放功能，0及非法值关闭，移除原待办独立开关及其EAS透传，迁移样例和本机发布变量；② 复用 system_preferences 按账号持久化授权，首次/旧用户升级无授权记录时关闭，读取失败关闭，启用须先持久化，撤销立即生效并串行保存最后一次选择；③ 公共HTTP调用时同步捕获账号与授权代际，实际发送前复核，默认保护未来API，基础认证端点例外；中止在途传输、阻止迟到响应和跨账号发包，区分发送前拒绝与发送后未知回执；④ 笔记/待办/上传协调器、手动同步、重试及分类任务统一门控，同账号重新授权等待旧执行确认结束，保留未知创建保护，避免重复创建；⑤ 新增同步与备份页面，权限设置及首页概览使用同一状态，关闭时队列仍可见、按钮准确禁用，本地状态及云依赖功能提示与实际能力一致，远程头像读取和上传也受控；⑥ 登录/注册替换Token前和退出登录前立即撤销旧会话，快速关闭再开启按授权代际重建读取；⑦ 保留当前本地能力，未新增完整离线分类/元数据/删除体系或独立历史备份，未更改依赖版本、数据库结构或后端。
+- 验证：修改前 e4929d8 的 npm run typecheck 通过；实现中修复授权保存/读取/退出、同tick账号切换和队列重启竞态。最终 npm run check 的 typecheck、lint、theme:check 通过；407 项测试中 406 通过、1 项失败，授权/HTTP/Provider 专项 39/39、队列专项 5/5 均通过。git diff --check 通过，本次修改文件无冲突标记；全仓扫描仅命中既有 GitHub 教程中的冲突演示代码。验收对应基于 e4929d8 的未提交工作区；检查日志在系统临时目录 irisnote-cloud-final-check.log。唯一失败是本机既有横滑测试：node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 为 DEAD_ZONE=12，而仓库已有补丁与测试要求100；该测试、补丁及依赖清单本次均未改动。未启动或重启开发服务器，未构建APK、安装、发布或进行真机验收。
+
+---
+## 2026-09-22 01:01:08 | 修复问题：启动时清理已安装及更旧的更新包
+
+- 变更概述：已获用户确认。修复成功更新后完整 APK 长期留在缓存目录、跨版本累积的问题；每次进程首次检查更新时，在联网之前尝试清理一次，离线启动同样生效。
+- 修改文件：src/features/updates/update-store.ts、tests/releases/releases.test.cjs、CHANGELOG.md。
+- 具体内容：① 从当前运行的原生安装包读取并严格校验构建号；② 只处理缓存根目录中严格匹配 irisnote-release-正整数.apk / .hdiff 且构建号不高于当前安装版本的文件，跳过目录、异常名称与其他数据；③ 保留更高版本的待安装文件，不在启动系统安装器后立即删除；④ 单文件或目录读取失败记录警告，不阻断更新检查，下次进程启动重试；⑤ 增加离线清理、删除边界、无效构建号、并发和重复调用、错误隔离及重启重试测试。
+- 验证：修改前 npm run typecheck 通过；最终代码 npm run check 的 typecheck、lint、theme:check 与 347/347 项测试全部通过，git diff --check 与冲突标记检查通过。首轮定向测试的事件记录混入原有退出顺序断言，已拆分测试记录并通过回归。验收对应基于 7956b5f 的未提交工作区改动；尚未构建、安装或执行真机缓存回收验收。
+
+---
+
+## 2026-09-21 22:58:35 | 优化代码：顶部安全区背景色随页面动态切换
+
+- 变更概述：已获用户确认（方案 A：根布局路由映射）。根布局 SafeAreaView 原先固定使用灰色 appBackground 填充顶部安全区，导致白色页面（auth 登录/注册/欢迎、笔记新建/编辑/详情）顶部出现灰白分界。现改为按当前路由动态取色：命中 `/auth/`、`/pages/note/` 前缀时使用白色（colors.surface，即 #FFFFFF），其余页面维持灰色默认值。
+- 修改文件：src/app/_layout.tsx、CHANGELOG.md。
+- 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
+- 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
+
 ## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
 
 - 变更概述：应用户"全修正"要求，落实代码审查报告的全部建议项（建议 1–4）与提示项（3/5）：app.json 恢复 HEAD 消除全文件格式重排 diff；`SCHEDULE_EXACT_ALARM` 权限收敛为模块 Manifest 单一来源；同名类型改名消歧；偏好写库增加值未变短路；统一模块导入别名；清理 Kotlin 文件名正则冗余字符。
@@ -141,6 +165,7 @@
 - 验证：复核 Markdown 内容、模板现有变量和 Git 差异；纯文档改动，未运行类型检查、测试、构建或设备验收。
 
 ---
+
 ## 2026-09-21 18:21:30 | 修复问题：测试脚本固化串行参数规避 Windows 并行 IPC 错误
 
 - 变更概述：已获用户确认执行。0.3.0 发布构建两次在"完整代码检查"阶段因 Node 测试运行器并行 IPC 错误中断（tests/releases/workspace.test.cjs 报 Unable to deserialize cloned data，其余 343 项测试全部通过，该文件单独串行运行 9/9 通过），系 Node v24 Windows 并行子进程结果回传的管道字节流错位缺陷，非应用代码问题。按方案将 npm test 默认改为串行执行（--test-concurrency=1），该参数为项目多次使用的稳定回退方案，彻底消除此类偶发阻断。

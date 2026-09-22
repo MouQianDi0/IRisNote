@@ -1,4 +1,6 @@
 import { getCategories } from "../api/categories.api";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { assertCloudStorageAllowed, captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
 import { useApplicationDatabase } from "@/core/database";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { applyQueuedCategoryChanges } from "@/features/sync";
@@ -7,7 +9,7 @@ import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavi
 import { colors, radius } from "@/shared/theme";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { Alert, Image, Pressable, ScrollView, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { ALL_CATEGORY } from "../categories.constants";
@@ -34,8 +36,19 @@ type FloatingBarProps = {
 export default function FloatingBar({ onCategoryPress, onAddCategory }: FloatingBarProps) {
     const database = useApplicationDatabase();
     const { user } = useAuth();
+    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const allowCloudAction = () => {
+        try {
+            assertCloudStorageAllowed(user?.id);
+            return true;
+        } catch (error) {
+            Alert.alert("需要开启云存储", error instanceof Error ? error.message : "请在设置中开启云存储后再操作");
+            return false;
+        }
+    };
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
+    const categoriesRequestGenerationRef = useRef<number | null>(null);
     const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
@@ -50,16 +63,28 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
     const onNavigate = useDebouncedNavigation();
     const [categories, setCategories] = useState<Category[]>([]);
 
-    const fetchCategories = useCallback(function fetchCategoriesRequest() {
-        if (categoriesRequestRef.current) return categoriesRequestRef.current;
+    useEffect(() => {
+        void Promise.resolve().then(() => {
+            setCategories([]);
+            setSelectedId(ALL_CATEGORY.id);
+            setCurrentCategory(ALL_CATEGORY.id, ALL_CATEGORY.name);
+        });
+    }, [user?.id]);
 
-        const request = getCategories()
-            .then(async (data) => {
-                setCategories(user
-                    ? await applyQueuedCategoryChanges(database, user.id, data)
-                    : data);
-            })
+    const fetchCategories = useCallback(function fetchCategoriesRequest() {
+        if (!user || !cloudEnabled || getCloudStorageSnapshot().generation !== cloudGeneration) return Promise.resolve();
+        if (categoriesRequestRef.current && categoriesRequestGenerationRef.current === cloudGeneration) return categoriesRequestRef.current;
+
+        const request = (async () => {
+            const checkAccess = captureCloudStorageAccess(user.id);
+            const data = await getCategories();
+            checkAccess();
+            const nextCategories = await applyQueuedCategoryChanges(database, user.id, data);
+            checkAccess();
+            setCategories(nextCategories);
+        })()
             .catch((err: any) => {
+                if (isCloudStoragePermissionError(err)) return;
                 console.error(
                     "获取分类列表失败:",
                     err.response?.status,
@@ -67,12 +92,16 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                 );
             })
             .finally(() => {
-                categoriesRequestRef.current = null;
+                if (categoriesRequestRef.current === request) {
+                    categoriesRequestRef.current = null;
+                    categoriesRequestGenerationRef.current = null;
+                }
             });
 
         categoriesRequestRef.current = request;
+        categoriesRequestGenerationRef.current = cloudGeneration;
         return request;
-    }, [database, user]);
+    }, [cloudEnabled, cloudGeneration, database, user]);
 
     useEffect(() => {
         fetchCategories();
@@ -184,6 +213,7 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                                     isActive={selectedId === category.id}
                                     onPress={() => handlePress(category.id)}
                                     onLongPress={() => {
+                                        if (!allowCloudAction()) return;
                                         setLongPressVisible(category);
                                         setCategoryModelVisible(true);
                                     }}
@@ -198,18 +228,19 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                             isActive={selectedId === category.id}
                             onPress={() => handlePress(category.id)}
                             onLongPress={() => {
+                                if (!allowCloudAction()) return;
                                 setLongPressVisible(category);
                                 setCategoryModelVisible(true);
                             }}
                         />
                     ))}
-                    <AddCategoryButton onPress={onAddCategory} />
+                    <AddCategoryButton onPress={() => { if (allowCloudAction()) onAddCategory(); }} />
                 </ScrollView>
                 <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
 
                 {longPressVisible && (
                     <CategoryActionModal
-                        visible={categoryModelVisible}
+                        visible={categoryModelVisible && cloudEnabled}
                         onClose={() => {
                             setCategoryModelVisible(false);
                             setLongPressVisible(null);

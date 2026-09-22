@@ -42,6 +42,11 @@ const api = {
 };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
+const cloudPolicy = require('../../src/core/cloud-storage/cloud-storage-policy.ts');
+function authorizeCloud(t, owner = 1) {
+    cloudPolicy.setCloudStorageSession(owner, true, true);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+}
 const { listUploadTasks } = require('../../src/core/sync/upload-queue.repository.ts');
 
 test('reconcile reports actual inserted notes even when deletion keeps total unchanged', async t => {
@@ -94,6 +99,7 @@ test('edit time increases despite clock rollback; unchanged save and flags prese
 });
 
 test('newer local edit survives old server data and upload retry uses the original edit time', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(102, 'V1', time1)]);
     const { note: edited } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
@@ -155,6 +161,7 @@ test('legacy synced NULL time is unknown and first server timestamp establishes 
 });
 
 test('old success response preserves newer local edit timestamp and requests another upload', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(106, 'V1', time1)]);
     const { note: uploading } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
@@ -172,6 +179,7 @@ test('old success response preserves newer local edit timestamp and requests ano
 });
 
 test('409 newer snapshot reconciles only its note, preserving unrelated notes', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [original] = await notes.reconcileServerNotes(port, 1, [
         timedServerNote(107, 'V1', time1), timedServerNote(108, 'other', time1),
@@ -190,6 +198,7 @@ test('409 newer snapshot reconciles only its note, preserving unrelated notes', 
 });
 
 test('409 response cannot overwrite an edit committed while the request was in flight', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [original] = await notes.reconcileServerNotes(port, 1, [timedServerNote(109, 'V1', time1)]);
     const { note: uploading } = await notes.updatePendingLocalNote(port, 1, original, payload('V2'));
@@ -216,6 +225,7 @@ test('timestamp-only and flag-only remote updates do not create content revision
 });
 
 test('new upload carries the saved creation time and legacy manual upload explicitly sends unknown time', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const { note: created } = await notes.createPendingLocalNote(port, 1, payload('created'));
     t.mock.method(api, 'createNote', async body => {
@@ -377,6 +387,7 @@ test('exit staging commits the draft locally without starting cloud upload', asy
 });
 
 test('exit upload deletes only the staged draft after cloud acceptance', async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(24, '稳定正文')]);
     const key = `note:${note.id}`;
@@ -624,6 +635,7 @@ test('revisions are isolated per account', async (t) => {
 
 
 test('manual upload blocks uncertain creates and in-flight notes', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const result = await saves.saveNewNoteLocalFirst(port, 1, payload('keep'));
     assert.equal(result.cloudState, 'queued');
@@ -634,11 +646,14 @@ test('manual upload blocks uncertain creates and in-flight notes', async t => {
     assert.equal(createCalls, before);
     await notes.markLocalNoteSyncing(port, 1, result.note.id);
     await assert.rejects(saves.uploadNoteNow(port, 1, result.note.id), /正在同步/);
+    await assert.rejects(saves.uploadNoteNow(port, 2, result.note.id), /需要开启云存储/);
+    cloudPolicy.setCloudStorageSession(2, true, true);
     await assert.rejects(saves.uploadNoteNow(port, 2, result.note.id), /不存在/);
     assert.equal(createCalls, before);
 });
 
 test('manual upload sends synced notes without creating a revision', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const [note] = await notes.reconcileServerNotes(port, 1, [serverNote(91, 'latest')]);
     const before = updateCalls;
@@ -647,4 +662,79 @@ test('manual upload sends synced notes without creating a revision', async t => 
     assert.equal(result.note.current_revision_id, note.current_revision_id);
     assert.equal(result.cloudState, 'unknown');
     assert.equal(result.note.content, 'latest');
+});
+
+test('consent is not required to retain a local save and its queue, but manual upload is denied', async t => {
+    cloudPolicy.setCloudStorageSession(1, true, false);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+    const { port } = await database(t);
+    let requests = 0;
+    t.mock.method(api, 'createNote', async () => { requests++; throw new Error('must not send'); });
+    const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('local without consent'));
+    assert.equal(saved.localOnly, true);
+    assert.equal(saved.cloudState, 'queued');
+    assert.equal(saved.note.sync_status, 'pending');
+    assert.equal((await listUploadTasks(port, 1)).length, 1);
+    const edited = await saves.saveEditedNoteLocalFirst(port, 1, saved.note, { title: 'renamed locally' });
+    assert.equal(edited.localOnly, true);
+    assert.equal(edited.note.title, 'renamed locally');
+    await assert.rejects(saves.queueNoteUploadNow(port, 1, saved.note.id), cloudPolicy.isCloudStoragePermissionError);
+    await assert.rejects(saves.uploadNoteNow(port, 1, saved.note.id), cloudPolicy.isCloudStoragePermissionError);
+    assert.equal(requests, 0);
+    assert.equal((await notes.getLocalNoteByClientId(port, 1, saved.note.id)).sync_status, 'pending');
+});
+
+test('permission rejected before dispatch leaves a pending create that can be uploaded after consent', async t => {
+    authorizeCloud(t);
+    const { port } = await database(t);
+    const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('not dispatched'));
+    let sent = 0;
+    t.mock.method(api, 'createNote', async () => {
+        cloudPolicy.setCloudStorageSession(1, true, false);
+        throw new cloudPolicy.CloudStoragePermissionError('permission closed', false);
+    });
+    const paused = await saves.uploadNoteNow(port, 1, saved.note.id);
+    assert.equal(paused.cloudState, 'queued');
+    assert.equal(paused.localOnly, true);
+    assert.equal(paused.note.sync_status, 'pending');
+    assert.equal(paused.note.last_sync_error, null);
+    cloudPolicy.setCloudStorageSession(1, true, true);
+    t.mock.method(api, 'createNote', async body => { sent++; return serverNote(901, body.content); });
+    const accepted = await saves.uploadNoteNow(port, 1, saved.note.id);
+    assert.equal(accepted.cloudState, 'accepted');
+    assert.equal(sent, 1);
+});
+
+test('consent revoked after request dispatch preserves uncertain create protection', async t => {
+    authorizeCloud(t);
+    const { port } = await database(t);
+    const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('sent before revoke'));
+    let requests = 0;
+    t.mock.method(api, 'createNote', async () => {
+        requests++;
+        cloudPolicy.setCloudStorageSession(1, true, false);
+        throw new cloudPolicy.CloudStoragePermissionError('permission closed after dispatch', true);
+    });
+    const uncertain = await saves.uploadNoteNow(port, 1, saved.note.id);
+    assert.equal(uncertain.cloudState, 'unknown');
+    assert.equal(uncertain.note.content, 'sent before revoke');
+    assert.equal(uncertain.note.sync_status, 'unknown');
+    cloudPolicy.setCloudStorageSession(1, true, true);
+    await assert.rejects(saves.uploadNoteNow(port, 1, saved.note.id), /结果未知/);
+    assert.equal(requests, 1);
+});
+
+test('a successful response from a revoked session cannot mark a create synced', async t => {
+    authorizeCloud(t);
+    const { port } = await database(t);
+    const saved = await saves.saveNewNoteLocalFirst(port, 1, payload('late response'));
+    t.mock.method(api, 'createNote', async body => {
+        cloudPolicy.setCloudStorageSession(1, true, false);
+        return serverNote(902, body.content);
+    });
+    const result = await saves.uploadNoteNow(port, 1, saved.note.id);
+    assert.equal(result.cloudState, 'unknown');
+    assert.equal(result.note.server_id, null);
+    assert.equal(result.note.content, 'late response');
+    assert.equal((await listUploadTasks(port, 1)).length, 1);
 });

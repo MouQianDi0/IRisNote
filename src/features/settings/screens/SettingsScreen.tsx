@@ -1,4 +1,6 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
@@ -37,6 +39,7 @@ import { ICP_FILING_NUMBER, ICP_QUERY_URL } from "../data/support-links";
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
 const permissionsRoute = "/pages/user/permissions" as Href;
+const cloudStorageRoute = "/pages/user/cloud-storage" as Href;
 const aboutRoute = "/pages/user/about" as Href;
 const helpFeedbackRoute = "/pages/user/help-feedback" as Href;
 
@@ -50,6 +53,9 @@ function SettingsGroupTitle({ children }: { children: string }) {
 
 export default function SettingsScreen() {
     const { isLoggedIn, loading, logout, user } = useAuth();
+    const cloudStorage = useCloudStorage();
+    const cloudStatus = cloudStorageStatusLabel(cloudStorage);
+    const cloudOverview = !cloudStorage.available ? "未开放" : !cloudStorage.ready ? "读取中" : cloudStorage.enabled ? "已开启" : "仅本机";
     const [loggingOut, setLoggingOut] = useState(false);
     const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "—";
 
@@ -233,7 +239,7 @@ export default function SettingsScreen() {
                         <SettingsOverviewItem
                             icon={Cloud}
                             label="同步"
-                            value="按需"
+                            value={cloudOverview}
                         />
                     </Card>
 
@@ -270,15 +276,15 @@ export default function SettingsScreen() {
                             <SettingsRow
                                 icon={Smartphone}
                                 label="权限设置"
-                                description="管理通知、相机、照片与更新安装授权"
+                                description="管理云存储、通知、相机与更新安装授权"
                                 onPress={() => router.push(permissionsRoute)}
                             />
                             <SettingsRow
                                 icon={Cloud}
                                 label="同步与备份"
-                                value="规划中"
-                                description="当前仅提供笔记级同步，暂无全局策略"
-                                disabled
+                                value={cloudStatus}
+                                description="统一管理笔记、待办等内容的云存储授权"
+                                onPress={() => router.push(cloudStorageRoute)}
                             />
                             <SettingsRow
                                 icon={Database}

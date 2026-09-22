@@ -1,8 +1,10 @@
 import { useApplicationDatabase } from "@/core/database";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import type { Note } from "@/features/notes/notes.types";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { noteSyncErrorMessage } from "../api/notes-sync.types";
 import NoteDetailStateView, {
     type NoteDetailState,
@@ -12,11 +14,13 @@ import { getLocalNoteByClientId } from "../data/note-local.repository";
 import { getCachedNoteById, setCachedNotes } from "../notes.cache";
 import { syncNotes } from "../services/note-sync-coordinator";
 
-type LoadState = "loading" | "ready" | "error" | "not-found";
+type LoadState = "loading" | "ready" | "error" | "not-found" | "local-only";
 
 export default function NoteDetailScreen() {
     const database = useApplicationDatabase();
     const { user } = useAuth();
+    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const requestGeneration = useRef(0);
     const params = useLocalSearchParams<{
         id?: string | string[];
         edit?: string | string[];
@@ -39,6 +43,8 @@ export default function NoteDetailScreen() {
     }, [params.id]);
 
     const fetchNote = useCallback(async () => {
+        const generation = ++requestGeneration.current;
+        const isCurrent = () => requestGeneration.current === generation && getCloudStorageSnapshot().generation === cloudGeneration;
         if (numericNoteId == null || !user) {
             setNote(null);
             setLoadState("not-found");
@@ -61,13 +67,22 @@ export default function NoteDetailScreen() {
                 user.id,
                 numericNoteId,
             );
+            if (!isCurrent()) return;
             if (localNote) {
                 setNote(localNote);
                 setLoadState("ready");
                 return;
             }
 
+            if (!cloudEnabled) {
+                setNote(null);
+                setLoadState("local-only");
+                return;
+            }
+            const checkAccess = captureCloudStorageAccess(user.id);
             const { notes: nextNotes } = await syncNotes(database, user.id);
+            checkAccess();
+            if (!isCurrent()) return;
             setCachedNotes(nextNotes);
 
             const nextNote = nextNotes.find(
@@ -83,15 +98,21 @@ export default function NoteDetailScreen() {
             setNote(nextNote);
             setLoadState("ready");
         } catch (err: unknown) {
+            if (!isCurrent()) return;
             setNote(null);
+            if (isCloudStoragePermissionError(err)) {
+                setLoadState("local-only");
+                return;
+            }
             setErrorMessage(noteSyncErrorMessage(err));
             setLoadState("error");
         }
-    }, [database, numericNoteId, user]);
+    }, [cloudEnabled, cloudGeneration, database, numericNoteId, user]);
 
     useEffect(() => {
         // 微任务中加载，避免 effect 体内同步 setState 触发级联渲染。
         void Promise.resolve().then(fetchNote);
+        return () => { requestGeneration.current += 1; };
     }, [fetchNote]);
 
     useFocusEffect(

@@ -1,4 +1,6 @@
 import { useApplicationDatabase } from "@/core/database";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { captureCloudStorageAccess, cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { suppressServerConnectionBanner } from "@/core/notifications";
 import {
     formatUploadBytes,
@@ -15,7 +17,7 @@ import {
 } from "@/features/sync/upload-task-cancellation";
 import { colors } from "@/shared/theme";
 import { IconButton } from "@/shared/ui";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, type Href } from "expo-router";
 import {
     ArrowLeft,
     Cloud,
@@ -30,7 +32,6 @@ import { SyncTaskDeleteDialog } from "../components/sync-task-delete-dialog";
 import { listTodoSyncRecords } from "@/features/todos/data/todo-sync.repository";
 import { onTodoSyncChanged, notifyTodoSyncChanged } from "@/features/todos/state/todo-sync-events";
 import { requestTodoSync } from "@/features/todos/state/todo-sync-runtime";
-import { TODO_CLOUD_SYNC_ENABLED } from "@/features/todos/state/todo-sync-provider";
 import { TodoConflictDialog } from "@/features/todos/components/TodoConflictDialog";
 import { TodoSyncQueueRow } from "@/features/todos/components/TodoSyncQueueRow";
 import type { TodoSyncRecord } from "@/features/todos/sync.types";
@@ -53,6 +54,7 @@ const networkLabel = (type: string, connected: boolean) => {
 export default function SyncQueueScreen() {
     const database = useApplicationDatabase();
     const { user } = useAuth();
+    const cloudStorage = useCloudStorage();
     const runtime = useUploadQueueRuntime();
     const [tasks, setTasks] = useState<UploadQueueTask[]>([]);
     const [todoTasks, setTodoTasks] = useState<TodoSyncRecord[]>([]);
@@ -84,7 +86,7 @@ export default function SyncQueueScreen() {
         }
         try {
             const nextTasks = await listUploadTasks(database, user.id);
-            const nextTodos = TODO_CLOUD_SYNC_ENABLED ? await listTodoSyncRecords(database, `user:${user.id}`) : [];
+            const nextTodos = await listTodoSyncRecords(database, `user:${user.id}`);
             const availabilityEntries = await Promise.all(
                 nextTasks.map(async (task) => [
                     task.taskId,
@@ -112,13 +114,18 @@ export default function SyncQueueScreen() {
 
     const retryTodo = useCallback(async (record: TodoSyncRecord) => {
         try {
+            if (!user || record.ownerKey !== `user:${user.id}`) throw new Error("当前账号已变化，请重新读取同步队列");
+            const checkAccess = captureCloudStorageAccess(user.id);
             await todoRepository.syncTransaction(record.ownerKey, async tx => {
+                checkAccess();
                 await tx.run("UPDATE todo_outbox SET next_attempt_at=0 WHERE owner_key=? AND client_id=?", [record.ownerKey, record.clientId]);
                 await tx.run("UPDATE todo_sync_state SET status='pending',error=NULL WHERE owner_key=? AND client_id=? AND status='blocked'", [record.ownerKey, record.clientId]);
             });
-            notifyTodoSyncChanged(); requestTodoSync();
+            notifyTodoSyncChanged();
+            checkAccess();
+            requestTodoSync();
         } catch (cause) { setError(cause instanceof Error ? cause.message : "重试失败"); }
-    }, []);
+    }, [user]);
 
     const estimatedBytes = useMemo(
         () => tasks.reduce((total, task) => total + task.estimatedBytes, 0),
@@ -210,6 +217,18 @@ export default function SyncQueueScreen() {
                     <NetworkIcon size={20} color={runtime.connected ? colors.primary : colors.danger} />
                     <Text style={{ color: colors.textSecondary, fontSize: 14 }}>{networkLabel(runtime.networkType, runtime.connected)}</Text>
                 </View>
+                {!cloudStorage.enabled && (
+                    <View style={{ gap: 4 }}>
+                        <Text selectable style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 20 }}>
+                            {cloudStorageStatusLabel(cloudStorage)}，云端传输已暂停。本机任务已保留，开启授权后继续同步。
+                        </Text>
+                        <Pressable accessibilityRole="button" accessibilityLabel="管理云存储授权"
+                            onPress={() => router.push("/pages/user/cloud-storage" as Href)}
+                            style={{ minHeight: 44, justifyContent: "center" }}>
+                            <Text style={{ color: colors.primary, fontSize: 14 }}>管理云存储授权</Text>
+                        </Pressable>
+                    </View>
+                )}
             </View>
             {loading ? (
                 <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator /></View>
@@ -238,7 +257,7 @@ export default function SyncQueueScreen() {
                         ]}
                         keyExtractor={item => item.type === "todo" ? `todo:${item.record.clientId}` : item.task.taskId}
                         renderItem={info => info.item.type === "todo"
-                            ? <TodoSyncQueueRow record={info.item.record} onConflict={() => setTodoConflict(info.item.type === "todo" ? info.item.record : null)} onRetry={() => { if (info.item.type === "todo") void retryTodo(info.item.record); }} />
+                            ? <TodoSyncQueueRow disabled={!cloudStorage.enabled} record={info.item.record} onConflict={() => setTodoConflict(info.item.type === "todo" ? info.item.record : null)} onRetry={() => { if (info.item.type === "todo") void retryTodo(info.item.record); }} />
                             : renderItem({ item: info.item.task })}
                         contentInsetAdjustmentBehavior="automatic"
                         ItemSeparatorComponent={() => <View style={{ height: 1, marginHorizontal: 16, backgroundColor: colors.divider }} />}
@@ -254,7 +273,7 @@ export default function SyncQueueScreen() {
                     onConfirm={confirmDelete}
                 />
             )}
-            {todoConflict?.ownerKey === `user:${user?.id}` && (
+            {cloudStorage.enabled && todoConflict?.ownerKey === `user:${user?.id}` && (
                 <TodoConflictDialog record={todoConflict} onClose={() => setTodoConflict(null)} />
             )}
         </View>

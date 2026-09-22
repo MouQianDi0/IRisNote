@@ -29,6 +29,11 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const notes = require("../../src/features/notes/data/note-local.repository.ts");
+const cloudPolicy = require("../../src/core/cloud-storage/cloud-storage-policy.ts");
+function authorizeCloud(t, owner = 1) {
+    cloudPolicy.setCloudStorageSession(owner, true, true);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+}
 const drafts = require("../../src/features/notes/data/note-draft.repository.ts");
 const {
     createLocalNotes,
@@ -502,6 +507,7 @@ const deferred = () => {
 };
 
 test("concurrent consumers share one download; changed accounts reject even empty old responses", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     connections.resetConnectionSession();
     coordinator.setNoteSyncOwner(1);
@@ -526,6 +532,7 @@ test("concurrent consumers share one download; changed accounts reject even empt
 });
 
 test("write beginning while a page is in flight cannot project stale data; subsequent sync succeeds", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     await seed(port, [cloud(1)]);
     connections.resetConnectionSession();
@@ -684,6 +691,7 @@ test("sync API uses the existing authenticated client and tracks full mutation l
 });
 
 test("unchanged save of a server-deleted note preserves its draft and refuses upload", async (t) => {
+    authorizeCloud(t);
     const { port } = await database(t);
     const {
         notes: [original],
@@ -998,6 +1006,7 @@ function providerHarness(port) {
         'react-native': {},
         'expo-router': {},
         '@/core/database': { useApplicationDatabase: () => port },
+        '@/core/cloud-storage/cloud-storage-provider': { useCloudStorage: () => cloudPolicy.getCloudStorageSnapshot() },
         '@/core/sync': {},
         '@/features/auth/hooks/useAuth': { useAuth: () => profile },
         '@/features/sync': {},
@@ -1030,6 +1039,7 @@ function providerHarness(port) {
 }
 
 test('same-account Provider rebinds a reloaded coordinator without resetting banners or active requests', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     fakeTransport.snapshot = async () => snapshot([]);
@@ -1053,6 +1063,7 @@ test('same-account Provider rebinds a reloaded coordinator without resetting ban
 });
 
 test('direct owner switch and switch-back cancel old requests before any cursor is committed', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();
@@ -1072,6 +1083,7 @@ test('direct owner switch and switch-back cancel old requests before any cursor 
 });
 
 test('logout rejects late results and a same-account login can establish a fresh baseline', async t => {
+    authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();

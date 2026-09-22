@@ -62,6 +62,7 @@ const set = useUpdateStore.setState;
 const lastCheckKey = "irisnote.release.last-check";
 const requiredUpdateKey = "irisnote.release.required-update";
 let checkedThisSession = false;
+let cleanupAttemptedThisSession = false;
 let pendingExit = false;
 let exiting = false;
 let busy = false;
@@ -78,6 +79,46 @@ export function updateSupported() {
         Application.applicationId === ANDROID_PACKAGE &&
         !!Application.nativeBuildVersion
     );
+}
+
+async function cleanupInstalledUpdateFiles() {
+    if (cleanupAttemptedThisSession) return;
+    cleanupAttemptedThisSession = true;
+    const cacheDirectory = FS.cacheDirectory;
+    const buildVersion = Application.nativeBuildVersion;
+    if (!cacheDirectory || !buildVersion || !/^[1-9]\d*$/.test(buildVersion))
+        return;
+    const installedBuildCode = Number(buildVersion);
+    if (
+        !Number.isSafeInteger(installedBuildCode) ||
+        String(installedBuildCode) !== buildVersion
+    )
+        return;
+    try {
+        const names = await FS.readDirectoryAsync(cacheDirectory);
+        for (const name of names) {
+            const match = /^irisnote-release-([1-9]\d*)\.(apk|hdiff)$/.exec(
+                name,
+            );
+            if (!match || match[0] !== name) continue;
+            const buildCode = Number(match[1]);
+            if (
+                !Number.isSafeInteger(buildCode) ||
+                buildCode > installedBuildCode
+            )
+                continue;
+            const uri = `${cacheDirectory}${name}`;
+            try {
+                const info = await FS.getInfoAsync(uri);
+                if (info.exists && !info.isDirectory)
+                    await FS.deleteAsync(uri, { idempotent: true });
+            } catch (error) {
+                console.warn("清理已安装更新文件失败", name, message(error));
+            }
+        }
+    } catch (error) {
+        console.warn("读取更新缓存目录失败", message(error));
+    }
 }
 
 export async function checkForUpdate(manual = false) {
@@ -103,6 +144,9 @@ export async function checkForUpdate(manual = false) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
+        // The running binary's build number is available offline. Keep newer
+        // packages for the installer; never clean immediately after launching it.
+        await cleanupInstalledUpdateFiles();
         if (!manual && checkedThisSession) {
             const last = Number(await AsyncStorage.getItem(lastCheckKey));
             if (last && Date.now() - last < 6 * 60 * 60 * 1000) return;

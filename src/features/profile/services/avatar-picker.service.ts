@@ -1,4 +1,5 @@
 import type * as ImagePicker from "expo-image-picker";
+import { captureCloudStorageAccess } from "@/core/cloud-storage/cloud-storage-policy";
 import * as ImagePickerModule from "expo-image-picker";
 import type { CollectedAvatar, UploadAvatarResponse } from "../profile.types";
 import { uploadUserAvatar } from "../api/profile.api";
@@ -48,17 +49,25 @@ export async function collectAvatarFromCamera(
 export async function collectAndUploadAvatarFromLibrary(
     options?: ImagePicker.ImagePickerOptions,
 ): Promise<UploadAvatarResponse | null> {
+    const checkAccess = captureCloudStorageAccess();
     const collectedAvatar = await collectAvatarFromLibrary(options);
     if (!collectedAvatar) return null;
-    return uploadUserAvatar(collectedAvatar.avatar);
+    checkAccess();
+    const result = await uploadUserAvatar(collectedAvatar.avatar);
+    checkAccess();
+    return result;
 }
 
 export async function collectAndUploadAvatarFromCamera(
     options?: ImagePicker.ImagePickerOptions,
 ): Promise<UploadAvatarResponse | null> {
+    const checkAccess = captureCloudStorageAccess();
     const collectedAvatar = await collectAvatarFromCamera(options);
     if (!collectedAvatar) return null;
-    return uploadUserAvatar(collectedAvatar.avatar);
+    checkAccess();
+    const result = await uploadUserAvatar(collectedAvatar.avatar);
+    checkAccess();
+    return result;
 }
 
 function collectAvatarFromResult(

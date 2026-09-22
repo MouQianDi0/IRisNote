@@ -1,4 +1,5 @@
 import { useApplicationDatabase } from "@/core/database";
+import { getCloudStorageSnapshot } from "@/core/cloud-storage/cloud-storage-policy";
 import { PlainTextEditor } from "@/core/editor";
 import { banner, captureNotificationSession } from "@/core/notifications";
 import { colors } from "@/shared/theme";
@@ -297,12 +298,15 @@ export default function NewNoteEditor({
       };
       const onLocal = () => {
         committed = true;
+        const cloud = getCloudStorageSnapshot();
         if (sessionCurrent())
           banner.show({
             id,
             type: "success",
             title: "笔记已保存",
-            message: "仅本机保存，正在尝试同步到云端。",
+            message: cloud.enabled && cloud.ownerUserId === owner
+              ? "已保存在本机，等待同步到云端。"
+              : "已保存在本机，开启云存储后可同步。",
           });
       };
       const result = snapshot.target
@@ -323,7 +327,11 @@ export default function NewNoteEditor({
           );
       current.finish();
       completed.current = true;
-      const localNotice = result.draftCleanupPending
+      const cloud = getCloudStorageSnapshot();
+      const localOnly = result.localOnly || !cloud.enabled || cloud.ownerUserId !== owner;
+      const localNotice = localOnly
+        ? "笔记已保存在本机，开启云存储后可同步。"
+        : result.draftCleanupPending
         ? "笔记已同步到云端。仅本机草稿清理未完成，内容仍保留，可从草稿入口再次打开并保存以重试清理。"
         : result.cloudState === "queued"
           ? "笔记已保存到本机并加入暂存队列，服务器可用时将自动同步。"
@@ -332,7 +340,13 @@ export default function NewNoteEditor({
           : "笔记已保存，仅本机保存成功，云端同步未完成。草稿和恢复副本已保留。";
       if (sessionCurrent()) {
         const content =
-          result.cloudState === "accepted" && !result.draftCleanupPending
+          localOnly
+            ? {
+                type: "success" as const,
+                title: "笔记已保存在本机",
+                message: "开启云存储后可同步。",
+              }
+            : result.cloudState === "accepted" && !result.draftCleanupPending
             ? {
                 type: "success" as const,
                 title: "笔记已同步到云端",
@@ -364,7 +378,7 @@ export default function NewNoteEditor({
       }
       if (!mounted.current) return;
       if (
-        (result.cloudState === "accepted" || result.cloudState === "queued") &&
+        (localOnly || result.cloudState === "accepted" || result.cloudState === "queued") &&
         !result.draftCleanupPending
       ) {
         onSaved(result.note);
