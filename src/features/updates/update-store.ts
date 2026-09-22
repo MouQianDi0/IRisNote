@@ -1,4 +1,5 @@
 import { flushActiveDrafts } from "@/features/notes/services/active-draft-flush";
+import { installedUpdateFile } from "@/core/storage/storage-policy";
 import { API_BASE_URL } from "@/shared/http/client";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
@@ -97,16 +98,7 @@ async function cleanupInstalledUpdateFiles() {
     try {
         const names = await FS.readDirectoryAsync(cacheDirectory);
         for (const name of names) {
-            const match = /^irisnote-release-([1-9]\d*)\.(apk|hdiff)$/.exec(
-                name,
-            );
-            if (!match || match[0] !== name) continue;
-            const buildCode = Number(match[1]);
-            if (
-                !Number.isSafeInteger(buildCode) ||
-                buildCode > installedBuildCode
-            )
-                continue;
+            if (!installedUpdateFile(name, buildVersion)) continue;
             const uri = `${cacheDirectory}${name}`;
             try {
                 const info = await FS.getInfoAsync(uri);

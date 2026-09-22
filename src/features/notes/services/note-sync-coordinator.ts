@@ -20,6 +20,20 @@ const jobs = new WeakMap<
     Map<number, { controller: AbortController; promise: Promise<Result> }>
 >();
 const controllers = new Set<AbortController>();
+const cacheMaintenance = new WeakMap<ApplicationDatabase, Set<number>>();
+
+export async function withNoteCacheMaintenance<T>(db: ApplicationDatabase, owner: number, task: () => Promise<T>) {
+    let owners = cacheMaintenance.get(db);
+    if (!owners) { owners = new Set(); cacheMaintenance.set(db, owners); }
+    if (owners.has(owner)) throw new Error("笔记缓存正在清理，请稍后重试");
+    owners.add(owner);
+    try {
+        const running = jobs.get(db)?.get(owner);
+        running?.controller.abort();
+        if (running) await running.promise.catch(() => {});
+        return await task();
+    } finally { owners.delete(owner); }
+}
 subscribeCloudStorage(() => controllers.forEach((controller) => controller.abort()));
 let session = 0;
 let currentOwner: number | null = null;
@@ -40,6 +54,7 @@ export function syncNotes(
     db: ApplicationDatabase,
     owner: number,
 ): Promise<Result> {
+    if (cacheMaintenance.get(db)?.has(owner)) return Promise.reject(new Error("笔记缓存正在清理，请稍后同步"));
     // Return a rejected Promise (rather than throwing before callers attach .catch).
     let checkPermission: () => void;
     try { checkPermission = captureCloudStorageAccess(owner); }

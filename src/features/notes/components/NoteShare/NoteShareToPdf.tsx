@@ -1,3 +1,5 @@
+import { createShareCacheFile } from "@/core/storage/share-cache";
+import { File } from "expo-file-system";
 import * as Print from "expo-print";
 import { type ShareableNote } from "./CopyNoteToClipboard";
 
@@ -82,5 +84,7 @@ export const createNotePdfFile = async (note: ShareableNote) => {
     html: formatNoteAsPdfHtml(note),
   });
 
-  return uri;
+  const file = new File(uri);
+  file.move(createShareCacheFile("pdf"));
+  return file.uri;
 };

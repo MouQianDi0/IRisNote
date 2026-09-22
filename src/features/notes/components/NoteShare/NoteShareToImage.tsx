@@ -1,6 +1,8 @@
 import { forwardRef } from "react";
 import { PixelRatio, StyleSheet, Text, View } from "react-native";
 import { captureRef } from "react-native-view-shot";
+import { File } from "expo-file-system";
+import { createShareCacheFile } from "@/core/storage/share-cache";
 import { type ShareableNote } from "./CopyNoteToClipboard";
 
 const TARGET_IMAGE_WIDTH = 1080;
@@ -49,8 +51,12 @@ export const NoteShareImageCard = forwardRef<View, NoteShareImageCardProps>(
   },
 );
 
-export const captureNoteShareImage = async (view: View) =>
-  captureRef(view, { format: "png", quality: 1, result: "tmpfile" });
+export const captureNoteShareImage = async (view: View) => {
+  const uri = await captureRef(view, { format: "png", quality: 1, result: "tmpfile" });
+  const file = new File(uri);
+  file.move(createShareCacheFile("png"));
+  return file.uri;
+};
 
 const styles = StyleSheet.create({
   captureHost: { position: "absolute", left: -10000, top: 0 },

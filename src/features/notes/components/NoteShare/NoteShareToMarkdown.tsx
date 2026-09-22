@@ -1,6 +1,6 @@
 import { type ShareableNote } from "./CopyNoteToClipboard";
+import { createShareCacheFile } from "@/core/storage/share-cache";
 import { createSafeFileName } from "./NoteShareToTxt";
-import { File, Paths } from "expo-file-system";
 
 const DEFAULT_MARKDOWN_TITLE = "未命名笔记";
 
@@ -12,7 +12,7 @@ export const formatNoteAsMarkdown = (note: ShareableNote) => {
 };
 
 export const createMarkdownNoteFile = (note: ShareableNote) => {
-  const file = new File(Paths.cache, createSafeFileName(note.title, "md"));
+  const file = createShareCacheFile("md", createSafeFileName(note.title, "md"));
   file.create({ overwrite: true });
   file.write(formatNoteAsMarkdown(note));
 

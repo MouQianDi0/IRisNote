@@ -22,6 +22,7 @@ import {
     insertNoteRevision,
     revisionContentEquals,
 } from "./note-revision.repository";
+import { readEvictedNoteIdentity, removeEvictedNoteIdentity } from "./note-cache.repository";
 
 type LocalNoteRow = {
     local_id: number;
@@ -696,12 +697,22 @@ export async function reconcileNotesInTransaction(
             continue;
         }
 
-        const insertedRevisionId = await insertNoteRevision(
+        const identity = await readEvictedNoteIdentity(transaction, ownerUserId, serverId);
+        const restoredClientId = identity?.client_id ?? serverId;
+        const previousRevision = identity?.current_revision_id
+            ? await getNoteRevisionById(transaction, ownerUserId, identity.current_revision_id)
+            : null;
+        if (identity?.current_revision_id && (!previousRevision || previousRevision.client_id !== restoredClientId)) {
+            throw new Error("笔记缓存历史身份无法核实，已保留恢复记录");
+        }
+        const insertedRevisionId = previousRevision && revisionContentEquals({
+            title: note.title, content: note.content, categoryId: note.category_id ?? null,
+        }, previousRevision) ? previousRevision.revision_id : await insertNoteRevision(
             transaction,
             ownerUserId,
-            serverId,
+            restoredClientId,
             {
-                parentId: null,
+                parentId: previousRevision?.revision_id ?? null,
                 title: note.title,
                 content: note.content,
                 categoryId: note.category_id ?? null,
@@ -746,7 +757,7 @@ export async function reconcileNotesInTransaction(
                  )`,
             {
                 $ownerUserId: ownerUserId,
-                $clientId: serverId,
+                $clientId: restoredClientId,
                 $serverId: serverId,
                 $title: note.title,
                 $content: note.content,
@@ -754,13 +765,14 @@ export async function reconcileNotesInTransaction(
                 $createdAt: note.created_at,
                 $isPinned: note.is_pinned ? 1 : 0,
                 $isStarred: note.is_starred ? 1 : 0,
-                $localOrder: note.local_order ?? index,
-                $pinnedOrder: note.pinned_order ?? null,
+                $localOrder: note.local_order ?? identity?.local_order ?? index,
+                $pinnedOrder: note.pinned_order ?? identity?.pinned_order ?? null,
                 $localUpdatedAt: note.updated_at ?? note.created_at,
                 $serverUpdatedAt: note.updated_at ?? null,
                 $revisionId: insertedRevisionId,
             },
         );
+        if (identity) await removeEvictedNoteIdentity(transaction, ownerUserId, serverId);
         added++;
     }
 

@@ -289,9 +289,8 @@ export default function SettingsScreen() {
                             <SettingsRow
                                 icon={Database}
                                 label="数据与存储"
-                                value="规划中"
-                                description="本地占用、缓存与批量导入导出尚未接入"
-                                disabled
+                                description="查看本地占用，选择清理缓存与临时文件"
+                                onPress={() => router.push("/pages/user/data-storage" as Href)}
                             />
                             <SettingsRow
                                 icon={ShieldCheck}

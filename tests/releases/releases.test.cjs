@@ -162,6 +162,7 @@ async function sandbox(options = {}) {
     zustand: { create(init) { let state = init(); return { getState: () => state, setState: (patch) => { state = { ...state, ...patch }; } }; } },
     '@/shared/http/client': { API_BASE_URL: 'https://example.com/api' },
     './release': policy,
+    '@/core/storage/storage-policy': load('src/core/storage/storage-policy.ts'),
   };
   const store = load('src/features/updates/update-store.ts', dependencies, { console: { ...console, warn: (...args) => warnings.push(args) }, fetch: async url => {
     cacheOrder.push('fetch');

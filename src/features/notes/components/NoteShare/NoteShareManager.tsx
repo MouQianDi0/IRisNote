@@ -3,6 +3,7 @@ import { createMarkdownNoteFile } from "./NoteShareToMarkdown";
 import { createNotePdfFile } from "./NoteShareToPdf";
 import { createTxtNoteFile } from "./NoteShareToTxt";
 import * as Sharing from "expo-sharing";
+import { withSharedFile } from "@/core/storage/share-cache";
 
 export type NoteShareFormat = "txt" | "markdown" | "pdf";
 
@@ -88,11 +89,11 @@ export const shareNote = async (
   }
 
   try {
-    await Sharing.shareAsync(fileUri, {
+    await withSharedFile(fileUri, () => Sharing.shareAsync(fileUri, {
       dialogTitle: config.dialogTitle,
       mimeType: config.mimeType,
       UTI: config.UTI,
-    });
+    }));
   } catch (error) {
     throw new NoteSharePresentationError(error);
   }
@@ -104,11 +105,11 @@ export const shareNoteImage = async (fileUri: string) => {
   await ensureSharingAvailable();
 
   try {
-    await Sharing.shareAsync(fileUri, {
+    await withSharedFile(fileUri, () => Sharing.shareAsync(fileUri, {
       dialogTitle: "分享图片笔记",
       mimeType: "image/png",
       UTI: "public.png",
-    });
+    }));
   } catch (error) {
     throw new NoteSharePresentationError(error);
   }
