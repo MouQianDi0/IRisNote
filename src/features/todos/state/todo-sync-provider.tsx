@@ -21,9 +21,11 @@ import { todoSyncBanner } from "./todo-sync-banner";
 import { onTodoSyncRetry } from "./todo-sync-runtime";
 import type { TodoSyncResult } from "../services/todo-sync.service";
 import { readTodoSyncTime, saveTodoSyncTime } from "../data/todo-sync-history";
-
-export const TODO_CLOUD_SYNC_ENABLED =
-  process.env.EXPO_PUBLIC_TODO_CLOUD_SYNC === "1";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import {
+  assertCloudStorageAllowed,
+  captureCloudStorageAccess,
+} from "@/core/cloud-storage/cloud-storage-policy";
 
 type TodoCloudSyncContextValue = {
   enabled: boolean;
@@ -46,15 +48,18 @@ export function useTodoCloudSync() {
 export function TodoSyncProvider({ children }: PropsWithChildren) {
   const scope = useTodoScope();
   const { user, token, loading } = useAuth();
-  const current = useRef({ owner: scope.ownerKey, token, loading });
+  const cloudStorage = useCloudStorage();
+  const cloudEnabled = cloudStorage.enabled;
+  const cloudGeneration = cloudStorage.generation;
+  const current = useRef({ owner: scope.ownerKey, token, loading, cloudEnabled });
   const refresh = useRef<() => Promise<TodoSyncResult>>(unavailable);
   const [lastSyncHistory, setLastSyncHistory] = useState<{
     userId: number;
     timestamp: number | null;
   } | null>(null);
   useLayoutEffect(() => {
-    current.current = { owner: scope.ownerKey, token, loading };
-  }, [scope.ownerKey, token, loading]);
+    current.current = { owner: scope.ownerKey, token, loading, cloudEnabled };
+  }, [scope.ownerKey, token, loading, cloudEnabled]);
   useEffect(() => {
     if (!user) return;
     let active = true;
@@ -67,7 +72,7 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
   }, [user]);
   useEffect(() => {
     if (
-      !TODO_CLOUD_SYNC_ENABLED ||
+      !cloudEnabled ||
       !scope.ready ||
       loading ||
       !user ||
@@ -79,13 +84,28 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
     const generation = todoRepository.generation;
     let stopped = false;
     const session = captureNotificationSession();
-    const valid = () =>
-      !stopped &&
-      !current.current.loading &&
-      current.current.owner === owner &&
-      current.current.token === token &&
-      todoRepository.ownerKey === owner &&
-      todoRepository.generation === generation;
+    let checkAccess: () => void;
+    try {
+      checkAccess = captureCloudStorageAccess(user.id);
+    } catch {
+      return;
+    }
+    const valid = () => {
+      try {
+        checkAccess();
+        return (
+          !stopped &&
+          current.current.cloudEnabled &&
+          !current.current.loading &&
+          current.current.owner === owner &&
+          current.current.token === token &&
+          todoRepository.ownerKey === owner &&
+          todoRepository.generation === generation
+        );
+      } catch {
+        return false;
+      }
+    };
     const coordinator = startTodoSyncCoordinator({
       run: (signal) =>
         syncTodos({
@@ -153,10 +173,11 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
       app.remove();
       unsubscribe();
       retry();
+      banner.dismiss("todo-cloud-sync");
     };
-  }, [scope.ready, scope.ownerKey, scope.generation, user, token, loading]);
+  }, [cloudEnabled, cloudGeneration, scope.ready, scope.ownerKey, scope.generation, user, token, loading]);
   const enabled =
-    TODO_CLOUD_SYNC_ENABLED &&
+    cloudEnabled &&
     scope.ready &&
     !loading &&
     !!user &&
@@ -170,7 +191,15 @@ export function TodoSyncProvider({ children }: PropsWithChildren) {
           user && lastSyncHistory?.userId === user.id
             ? lastSyncHistory.timestamp
             : null,
-        refresh: () => refresh.current(),
+        refresh: () => {
+          if (!enabled || !user) return unavailable();
+          try {
+            assertCloudStorageAllowed(user.id);
+            return refresh.current();
+          } catch (error) {
+            return Promise.reject(error);
+          }
+        },
       }}
     >
       {children}

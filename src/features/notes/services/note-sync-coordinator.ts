@@ -1,4 +1,5 @@
 import type { ApplicationDatabase } from "@/core/database";
+import { captureCloudStorageAccess, getCloudStorageSnapshot, subscribeCloudStorage } from "@/core/cloud-storage/cloud-storage-policy";
 import {
     onConnectionEvent,
     onConnectionReset,
@@ -19,6 +20,7 @@ const jobs = new WeakMap<
     Map<number, { controller: AbortController; promise: Promise<Result> }>
 >();
 const controllers = new Set<AbortController>();
+subscribeCloudStorage(() => controllers.forEach((controller) => controller.abort()));
 let session = 0;
 let currentOwner: number | null = null;
 onConnectionReset(() => {
@@ -38,6 +40,10 @@ export function syncNotes(
     db: ApplicationDatabase,
     owner: number,
 ): Promise<Result> {
+    // Return a rejected Promise (rather than throwing before callers attach .catch).
+    let checkPermission: () => void;
+    try { checkPermission = captureCloudStorageAccess(owner); }
+    catch (error) { return Promise.reject(error); }
     let owners = jobs.get(db);
     if (!owners) {
         owners = new Map();
@@ -50,6 +56,7 @@ export function syncNotes(
     const controller = new AbortController();
     const stamp = noteCloudWriteStamp();
     const check = () => {
+        checkPermission();
         if (
             generation !== session ||
             currentOwner !== owner ||
@@ -108,10 +115,10 @@ export function startNoteSyncCoordinator(
         stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const request = () => {
-        if (!active || stopped || timer) return;
+        if (!active || stopped || timer || !getCloudStorageSnapshot().enabled) return;
         timer = setTimeout(() => {
             timer = undefined;
-            if (!active || stopped) return;
+            if (!active || stopped || !getCloudStorageSnapshot().enabled) return;
             const stamp = noteCloudWriteStamp();
             const wasRunning = jobs.get(db)?.has(owner);
             void syncNotes(db, owner).catch(() => {

@@ -1,4 +1,6 @@
 import { getApiErrorMessage } from "@/shared/http/errors";
+import { captureCloudStorageAccess, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import { captureNotificationSession } from "@/core/notifications";
 import { updateNote } from "../api/notes.api";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
@@ -20,6 +22,14 @@ export function useNoteStar(
 ) {
     const toggleStar = useCallback(
         async (item: Note) => {
+            let checkAccess: () => void;
+            try {
+                checkAccess = captureCloudStorageAccess(item.user_id);
+            } catch (error) {
+                Alert.alert("需要开启云存储", error instanceof Error ? error.message : "请在设置中开启云存储后再操作");
+                return;
+            }
+            const isCurrentSession = captureNotificationSession();
             const serverId =
                 item.server_id ?? (item.id > 0 ? item.id : null);
             if (serverId == null) {
@@ -48,12 +58,14 @@ export function useNoteStar(
 
             try {
                 const data = await updateNote(serverId, payload);
+                checkAccess();
                 console.log("笔记标星后端同步成功:", {
                     id: item.id,
                     is_starred: nextStarred,
                     response: data,
                 });
             } catch (err: any) {
+                if (!isCurrentSession()) return;
                 console.error("笔记标星后端同步失败:", {
                     id: item.id,
                     status: err.response?.status,
@@ -61,8 +73,8 @@ export function useNoteStar(
                 });
                 updateNotesLocally(() => previousNotes);
                 Alert.alert(
-                    "提示",
-                    getApiErrorMessage(err, "同步标星状态失败，已恢复原状态"),
+                    isCloudStoragePermissionError(err) ? "需要开启云存储" : "提示",
+                    isCloudStoragePermissionError(err) ? err.message : getApiErrorMessage(err, "同步标星状态失败，已恢复原状态"),
                 );
             }
         },

@@ -1,4 +1,5 @@
 import { ApplicationDatabaseProvider } from "@/core/database";
+import { CloudStorageProvider } from "@/core/cloud-storage/cloud-storage-provider";
 import { NotificationProvider } from "@/core/notifications/notification-provider";
 import { SystemNotificationProvider } from "@/core/system-notifications/system-notification-provider";
 import { TodoSyncProvider } from "@/features/todos/state/todo-sync-provider";
@@ -11,9 +12,11 @@ export function AppProviders({ children }: PropsWithChildren) {
     return (
         <ApplicationDatabaseProvider>
             <AuthProvider>
+                <CloudStorageProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <NotificationProvider><SystemNotificationProvider><TodoSyncProvider>{children}<UpdateDialog /></TodoSyncProvider></SystemNotificationProvider></NotificationProvider>
                 </GestureHandlerRootView>
+                </CloudStorageProvider>
             </AuthProvider>
         </ApplicationDatabaseProvider>
     );

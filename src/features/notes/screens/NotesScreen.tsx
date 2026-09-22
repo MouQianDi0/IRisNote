@@ -1,4 +1,11 @@
 import { useApplicationDatabase } from "@/core/database";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import {
+    assertCloudStorageAllowed,
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { setFloatingMenuHidden } from "@/core/navigation/floating-menu-visibility";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { captureNotificationSession } from "@/core/notifications";
@@ -15,6 +22,7 @@ import { router, useLocalSearchParams, type Href } from "expo-router";
 import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+    Alert,
     FlatList,
     Pressable,
     Text,
@@ -80,6 +88,7 @@ export default function NotesScreen() {
     const isDraftListVisible = draftListVisible || draftIntent === "1";
     const database = useApplicationDatabase();
     const { user } = useAuth();
+    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
     const onNavigate = useDebouncedNavigation();
     const [notes, setNotes] = useState<Note[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -113,8 +122,10 @@ export default function NotesScreen() {
         { addedCount: number } | undefined
     > | null>(null);
     const notesRequestOwnerIdRef = useRef<number | null>(null);
+    const notesRequestGenerationRef = useRef<number | null>(null);
     const recoveredSyncUserIdRef = useRef<number | null>(null);
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
+    const categoriesRequestGenerationRef = useRef<number | null>(null);
     const showScrollTopRef = useRef(false);
     const pinnedOrderRef = useRef(0);
     const floatingMenuRestoreTimerRef = useRef<ReturnType<
@@ -179,12 +190,14 @@ export default function NotesScreen() {
         if (!user) return Promise.resolve();
         if (
             notesRequestRef.current &&
-            notesRequestOwnerIdRef.current === user.id
+            notesRequestOwnerIdRef.current === user.id &&
+            notesRequestGenerationRef.current === cloudGeneration
         ) {
             return notesRequestRef.current;
         }
 
         const ownerUserId = user.id;
+        const isCurrentSession = captureNotificationSession();
         const startedAt = Date.now();
         const trace = (stage: string, count?: number) => {
             const timestamp = Date.now();
@@ -210,6 +223,7 @@ export default function NotesScreen() {
                 const localNotes = withLocalOrder(
                     await getLocalNotes(database, ownerUserId),
                 );
+                if (!isCurrentSession() || notesRequestGenerationRef.current !== cloudGeneration) return;
                 trace("local_load_completed", localNotes.length);
                 if (notesRequestOwnerIdRef.current !== ownerUserId) {
                     trace("local_apply_skipped_owner_changed");
@@ -228,8 +242,11 @@ export default function NotesScreen() {
             }
 
             try {
+                if (!cloudEnabled || getCloudStorageSnapshot().generation !== cloudGeneration) return;
+                const checkAccess = captureCloudStorageAccess(ownerUserId);
                 trace("cloud_fetch_started");
                 const result = await syncNotes(database, ownerUserId);
+                checkAccess();
                 const addedCount = result.addedCount;
                 const reconciledNotes = withLocalOrder(result.notes);
                 if (notesRequestOwnerIdRef.current !== ownerUserId) {
@@ -244,54 +261,71 @@ export default function NotesScreen() {
                 trace("sync_completed", reconciledNotes.length);
                 return { addedCount };
             } catch (err: any) {
+                if (isCloudStoragePermissionError(err)) return;
                 trace("cloud_sync_failed");
                 console.warn(
                     "云端笔记同步失败，继续使用本地数据:",
                     err.response?.status,
                     err.response?.data || err.message,
                 );
+            }
+        })().finally(() => {
+            if (notesRequestRef.current === request) {
+                notesRequestRef.current = null;
+                notesRequestOwnerIdRef.current = null;
+                notesRequestGenerationRef.current = null;
+            }
+        });
+
+        notesRequestRef.current = request;
+        notesRequestOwnerIdRef.current = ownerUserId;
+        notesRequestGenerationRef.current = cloudGeneration;
+        return request;
+    }, [applyNotes, cloudEnabled, cloudGeneration, database, user]);
+
+    const fetchCategories = useCallback(() => {
+        if (!user || !cloudEnabled || getCloudStorageSnapshot().generation !== cloudGeneration) return Promise.resolve();
+        if (categoriesRequestRef.current && categoriesRequestGenerationRef.current === cloudGeneration) return categoriesRequestRef.current;
+
+        let request: Promise<void> | undefined;
+        request = (async () => {
+            try {
+                const checkAccess = captureCloudStorageAccess(user.id);
+                const remoteCategories = await getCategories();
+                checkAccess();
+                const nextCategories = await applyQueuedCategoryChanges(
+                    database,
+                    user.id,
+                    remoteCategories,
+                );
+                checkAccess();
+                setCategories(nextCategories);
+            } catch (err: any) {
+                if (isCloudStoragePermissionError(err)) return;
+                console.error("获取分类失败:", err.message);
             } finally {
-                if (notesRequestRef.current === request) {
-                    notesRequestRef.current = null;
-                    notesRequestOwnerIdRef.current = null;
+                if (categoriesRequestRef.current === request) {
+                    categoriesRequestRef.current = null;
+                    categoriesRequestGenerationRef.current = null;
                 }
             }
         })();
 
-        notesRequestRef.current = request;
-        notesRequestOwnerIdRef.current = ownerUserId;
-        return request;
-    }, [applyNotes, database, user]);
-
-    const fetchCategories = useCallback(() => {
-        if (categoriesRequestRef.current) return categoriesRequestRef.current;
-
-        const request = (async () => {
-            try {
-                const remoteCategories = await getCategories();
-                setCategories(
-                    user
-                        ? await applyQueuedCategoryChanges(
-                              database,
-                              user.id,
-                              remoteCategories,
-                          )
-                        : remoteCategories,
-                );
-            } catch (err: any) {
-                console.error("获取分类失败:", err.message);
-            } finally {
-                categoriesRequestRef.current = null;
-            }
-        })();
-
         categoriesRequestRef.current = request;
+        categoriesRequestGenerationRef.current = cloudGeneration;
         return request;
-    }, [database, user]);
+    }, [cloudEnabled, cloudGeneration, database, user]);
 
     useEffect(() => {
         notesRef.current = notes;
     }, [notes]);
+
+    useEffect(() => {
+        void Promise.resolve().then(() => {
+            setCategories([]);
+            setCurrentCategory(String(ALL_CATEGORY.id));
+        });
+    }, [user?.id]);
 
     useEffect(() => {
         if (user) return;
@@ -303,9 +337,11 @@ export default function NotesScreen() {
     }, [user]);
 
     useEffect(() => {
-        Promise.all([fetchNotes(), fetchCategories()]).finally(() =>
-            setLoading(false),
-        );
+        let active = true;
+        Promise.all([fetchNotes(), fetchCategories()]).finally(() => {
+            if (active) setLoading(false);
+        });
+        return () => { active = false; };
     }, [fetchNotes, fetchCategories]);
 
     // 订阅分类变更通知（FloatingBar 修改分类后自动刷新标签）
@@ -367,11 +403,12 @@ export default function NotesScreen() {
     }, []);
 
     const handleRefresh = useCallback(async () => {
+        assertCloudStorageAllowed(user?.id);
         const current = captureNotificationSession();
         const result = await fetchNotes();
         if (!current()) return;
         return result || undefined;
-    }, [fetchNotes]);
+    }, [fetchNotes, user?.id]);
 
     const updateNotesLocally = useCallback(
         (updater: (prev: Note[]) => Note[], shouldSort = false) => {
@@ -401,15 +438,22 @@ export default function NotesScreen() {
         if (!user) {
             throw new Error("当前登录信息不可用，请重新登录后再操作");
         }
+        const isCurrentSession = captureNotificationSession();
         try {
             const serverId = item.server_id ?? (item.id > 0 ? item.id : null);
-            if (serverId != null) await deleteNote(serverId);
+            if (serverId != null) {
+                const checkAccess = captureCloudStorageAccess(user.id);
+                await deleteNote(serverId);
+                checkAccess();
+            }
             await removeLocalNote(database, user.id, item.id);
+            if (!isCurrentSession()) return;
             removeCachedNoteById(item.id, user.id);
             updateNotesLocally((prev) => prev.filter((n) => n.id !== item.id));
             setOpenedNoteId(null);
             console.log("笔记删除成功:", { id: item.id });
         } catch (err) {
+            if (isCloudStoragePermissionError(err)) throw err;
             throw new Error(getApiErrorMessage(err, "删除失败"));
         }
     }, [database, deleteTarget, updateNotesLocally, user]);
@@ -462,7 +506,9 @@ export default function NotesScreen() {
                           activeContextNote,
                           { title },
                       );
-            return result.cloudState === "accepted"
+            return result.localOnly
+                ? "标题已保存在本机，开启云存储后可同步"
+                : result.cloudState === "accepted"
                 ? title === undefined
                     ? "已同步"
                     : "标题已保存并同步"
@@ -494,10 +540,16 @@ export default function NotesScreen() {
         async (name: string, icon: string) => {
             if (!user) return;
             try {
+                const checkAccess = captureCloudStorageAccess(user.id);
                 await enqueueCategoryCreate(database, user.id, { name, icon });
+                checkAccess();
                 notifyCategoriesChanged();
                 setNoteClassMenu(false);
             } catch (err: any) {
+                if (isCloudStoragePermissionError(err)) {
+                    Alert.alert("需要开启云存储", err.message);
+                    return;
+                }
                 console.error("创建分类失败:", err.message);
             }
         },
@@ -752,7 +804,7 @@ export default function NotesScreen() {
                 <View className="relative flex-1 bg-white rounded-tl-content">
                     <View className="flex-1 rounded-tl-content p-4 pb-6 border-b border-l border-t border-note-page-border">
                         <NotesSyncHeader
-                            key={user?.id ?? "signed-out"}
+                            key={`${user?.id ?? "signed-out"}:${cloudGeneration}`}
                             count={filteredNotes.length}
                             itemLabel="笔记"
                             lastSyncTime={
@@ -760,7 +812,7 @@ export default function NotesScreen() {
                                     ? (syncHistory?.timestamp ?? null)
                                     : null
                             }
-                            enabled={!!user && !loading}
+                            enabled={!!user && cloudEnabled && !loading}
                             scrollOffset={scrollOffset}
                             onRefresh={handleRefresh}
                             successMessage={({ addedCount }) =>

@@ -1,4 +1,5 @@
 import type { ApplicationDatabase } from "@/core/database";
+import { captureCloudStorageAccess, isCloudStoragePermissionError, subscribeCloudStorage } from "@/core/cloud-storage/cloud-storage-policy";
 import {
     banner,
     captureNotificationSession,
@@ -22,7 +23,7 @@ import type { UploadQueueTask } from "./upload-queue.types";
 import { formatUploadBytes } from "./upload-queue.utils";
 
 type Execution = {
-    state: "accepted" | "retry" | "blocked";
+    state: "accepted" | "retry" | "blocked" | "suspended";
     message?: string;
     transferredBytes: number;
 };
@@ -37,7 +38,14 @@ type Options = {
 };
 
 const MAX_ATTEMPTS = 10;
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+    const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+    if (signal.aborted) done();
+});
+// A newly authorized session waits for the previous session's receipts/bookkeeping.
+const flushes = new WeakMap<ApplicationDatabase, Map<number, Promise<void>>>();
 const usable = (state: Network.NetworkState) =>
     state.isConnected === true && state.isInternetReachable !== false;
 
@@ -49,6 +57,13 @@ const showOrUpdateBanner = (
 };
 
 export function startUploadQueueCoordinator(options: Options) {
+    const checkPermission = captureCloudStorageAccess(options.ownerUserId);
+    const allowed = () => { try { checkPermission(); return true; } catch { return false; } };
+    const lifetime = new AbortController();
+    const permissionSubscription = subscribeCloudStorage(() => {
+        if (!allowed()) lifetime.abort();
+    });
+    let initialized = false;
     let active = true;
     let stopped = false;
     let processing = false;
@@ -59,9 +74,11 @@ export function startUploadQueueCoordinator(options: Options) {
     };
     let sawOffline = false;
     let probeController: AbortController | null = null;
+    lifetime.signal.addEventListener("abort", () => probeController?.abort());
 
     const showPaused = async (message: string) => {
         const summary = await readUploadQueueSummary(options.database, options.ownerUserId);
+        if (stopped || !allowed()) return;
         showOrUpdateBanner("upload-queue-paused", {
             id: "upload-queue-paused",
             type: "important",
@@ -80,6 +97,7 @@ export function startUploadQueueCoordinator(options: Options) {
 
     const showBlocked = async (message: string) => {
         const summary = await readUploadQueueSummary(options.database, options.ownerUserId);
+        if (stopped || !allowed()) return;
         showOrUpdateBanner("upload-queue-blocked", {
             id: "upload-queue-blocked",
             type: "important",
@@ -97,6 +115,7 @@ export function startUploadQueueCoordinator(options: Options) {
         if (
             !summary.count ||
             stopped ||
+            !allowed() ||
             usable(networkState) ||
             isServerConnectionBannerSuppressed()
         ) return;
@@ -113,7 +132,13 @@ export function startUploadQueueCoordinator(options: Options) {
     };
 
     const flush = async () => {
-        if (stopped || !active || processing || !usable(networkState)) return;
+        if (!initialized || stopped || !allowed() || !active || processing || !usable(networkState)) return;
+        let owners = flushes.get(options.database);
+        if (!owners) { owners = new Map(); flushes.set(options.database, owners); }
+        if (owners.has(options.ownerUserId)) return;
+        let release = () => {};
+        const pending = new Promise<void>((resolve) => { release = resolve; });
+        owners.set(options.ownerUserId, pending);
         processing = true;
         updateUploadQueueRuntime({ running: true, server: "checking" });
         const sessionCurrent = captureNotificationSession();
@@ -122,7 +147,7 @@ export function startUploadQueueCoordinator(options: Options) {
         probeController = controller;
         try {
             await options.probe(controller.signal);
-            if (stopped || !active || !sessionCurrent()) return;
+            if (stopped || !allowed() || !active || !sessionCurrent()) return;
             updateUploadQueueRuntime({ server: "available" });
             banner.resolve("server-connection", {
                 type: "success",
@@ -134,10 +159,10 @@ export function startUploadQueueCoordinator(options: Options) {
             let completedCount = 0;
             let completedBytes = 0;
 
-            while (!stopped && active && usable(networkState)) {
+            while (!stopped && allowed() && active && usable(networkState)) {
                 const task = (await listUploadTasks(options.database, options.ownerUserId))
                     .find((item) => item.status === "queued");
-                if (!task) break;
+                if (!task || !allowed() || stopped) break;
                 let finished = false;
                 if (task.attemptCount >= MAX_ATTEMPTS) {
                     await pauseUploadTask(
@@ -150,7 +175,7 @@ export function startUploadQueueCoordinator(options: Options) {
                     continue;
                 }
                 for (let attempt = task.attemptCount + 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-                    if (stopped || !active || !usable(networkState)) break;
+                    if (stopped || !allowed() || !active || !usable(networkState)) break;
                     const claimed = await markUploadTaskRunning(
                         options.database,
                         task.taskId,
@@ -172,11 +197,12 @@ export function startUploadQueueCoordinator(options: Options) {
                     });
                     let result: Execution;
                     try {
+                        checkPermission();
                         result = await options.execute(task);
                     } catch (error) {
                         const message = error instanceof Error ? error.message : "上传任务执行失败";
                         result = {
-                            state: message.startsWith("[Upload queue]") ? "blocked" : "retry",
+                            state: isCloudStoragePermissionError(error) ? "suspended" : message.startsWith("[Upload queue]") ? "blocked" : "retry",
                             message,
                             transferredBytes: task.estimatedBytes,
                         };
@@ -196,6 +222,16 @@ export function startUploadQueueCoordinator(options: Options) {
                             result.message ?? "云端明确拒绝或创建结果未知",
                         );
                         await showBlocked(result.message ?? "任务需要检查后才能继续");
+                        finished = true;
+                        break;
+                    }
+                    if (stopped || !allowed()) {
+                        await markUploadTaskRetry(options.database, task.taskId, 0, "云存储已暂停，任务保留在本机");
+                        finished = true;
+                        break;
+                    }
+                    if (result.state === "suspended" || !allowed() || stopped) {
+                        await markUploadTaskRetry(options.database, task.taskId, 0, "云存储已暂停，任务保留在本机");
                         finished = true;
                         break;
                     }
@@ -223,12 +259,12 @@ export function startUploadQueueCoordinator(options: Options) {
                         message: `${task.operationLabel} · 第 ${attempt}/${MAX_ATTEMPTS} 次失败`,
                         lifetime: { mode: "persistent" },
                     });
-                    await wait(Math.min(30000, 1000 * 2 ** Math.min(attempt - 1, 5)));
+                    await wait(Math.min(30000, 1000 * 2 ** Math.min(attempt - 1, 5)), lifetime.signal);
                 }
                 if (!finished) break;
             }
 
-            if (completedCount > 0 && sessionCurrent()) {
+            if (completedCount > 0 && allowed() && !stopped && sessionCurrent()) {
                 banner.resolve("upload-queue-sync", {
                     type: "success",
                     icon: "check",
@@ -238,15 +274,18 @@ export function startUploadQueueCoordinator(options: Options) {
                 });
             }
         } catch {
-            updateUploadQueueRuntime({ server: "unavailable" });
+            if (allowed() && !stopped) updateUploadQueueRuntime({ server: "unavailable" });
         } finally {
             if (probeController === controller) probeController = null;
             processing = false;
             updateUploadQueueRuntime({ running: false });
+            if (owners.get(options.ownerUserId) === pending) owners.delete(options.ownerUserId);
+            release();
         }
     };
 
     const handleNetwork = (state: Network.NetworkState) => {
+        if (stopped || !allowed()) return;
         const wasUsable = usable(networkState);
         networkState = state;
         const isUsable = usable(state);
@@ -264,6 +303,7 @@ export function startUploadQueueCoordinator(options: Options) {
         if (sawOffline && !wasUsable) {
             sawOffline = false;
             void resumePausedUploadTasks(options.database, options.ownerUserId).then(() => {
+                if (stopped || !allowed()) return;
                 banner.resolve("upload-queue-paused", {
                     type: "special",
                     title: "网络已恢复，准备重试暂存任务",
@@ -276,10 +316,16 @@ export function startUploadQueueCoordinator(options: Options) {
         void flush();
     };
 
-    void recoverInterruptedUploadTasks(options.database, options.ownerUserId)
-        .then(() => Network.getNetworkStateAsync())
-        .then(handleNetwork)
-        .catch((error) => console.warn("[Upload queue] 初始化失败", error));
+    void (async () => {
+        await flushes.get(options.database)?.get(options.ownerUserId);
+        if (stopped || !allowed()) return;
+        await recoverInterruptedUploadTasks(options.database, options.ownerUserId);
+        if (stopped || !allowed()) return;
+        initialized = true;
+        handleNetwork(await Network.getNetworkStateAsync());
+    })().catch((error) => {
+        if (allowed() && !stopped) console.warn("[Upload queue] 初始化失败", error);
+    });
     const networkSubscription = Network.addNetworkStateListener(handleNetwork);
     const queueSubscription = onUploadQueueChanged(() => {
         if (usable(networkState)) void flush();
@@ -298,6 +344,8 @@ export function startUploadQueueCoordinator(options: Options) {
         },
         stop() {
             stopped = true;
+            lifetime.abort();
+            permissionSubscription();
             probeController?.abort();
             networkSubscription.remove();
             queueSubscription();

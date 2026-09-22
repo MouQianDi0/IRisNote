@@ -1,4 +1,6 @@
 import { colors } from "@/shared/theme";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
 import { ChevronDown } from "lucide-react-native";
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
@@ -44,19 +46,23 @@ export default function NoteViewerMeta({
   chevronAnimatedStyle,
   onToggleTitleExpanded,
 }: NoteViewerMetaProps) {
+  const { enabled: cloudEnabled, ownerUserId, generation: cloudGeneration } = useCloudStorage();
   const [categoryNameById, setCategoryNameById] = useState<{
     id: number;
     name: string;
   } | null>(null);
 
   useEffect(() => {
-    if (categoryId == null || categoryId === ALL_CATEGORY.id) return;
+    if (categoryId == null || categoryId === ALL_CATEGORY.id || !cloudEnabled || ownerUserId == null) return;
 
     let cancelled = false;
 
     const loadCategoryName = async () => {
       try {
+        if (getCloudStorageSnapshot().generation !== cloudGeneration) return;
+        const checkAccess = captureCloudStorageAccess(ownerUserId);
         const categories = await getCategories();
+        checkAccess();
         const category = categories.find((item) => item.id === categoryId);
         if (!cancelled) {
           setCategoryNameById({
@@ -65,6 +71,7 @@ export default function NoteViewerMeta({
           });
         }
       } catch (err) {
+        if (isCloudStoragePermissionError(err)) return;
         console.error("获取笔记分类名称失败:", err);
         if (!cancelled) {
           setCategoryNameById({
@@ -80,12 +87,12 @@ export default function NoteViewerMeta({
     return () => {
       cancelled = true;
     };
-  }, [categoryId]);
+  }, [categoryId, cloudEnabled, cloudGeneration, ownerUserId]);
 
   const categoryName =
     categoryId != null && categoryNameById?.id === categoryId
       ? categoryNameById.name
-      : "加载中";
+      : cloudEnabled ? "加载中" : "需开启云存储查看";
 
   return (
     <View className="mt-3 flex-row items-center gap-2">

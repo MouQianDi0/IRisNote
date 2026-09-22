@@ -1,4 +1,6 @@
 import { useApplicationDatabase } from "@/core/database";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
 import { getCategories } from "@/features/notes/categories/api/categories.api";
 import { getLocalNotes } from "@/features/notes/data/note-local.repository";
 import { readingProgressStore } from "@/features/notes/data/note-reading-progress";
@@ -20,33 +22,43 @@ const emptyOverview: ProfileOverview = {
 async function loadProfileOverview(
     database: ReturnType<typeof useApplicationDatabase>,
     ownerUserId: number,
+    cloudEnabled: boolean,
+    cloudGeneration: number,
 ): Promise<ProfileOverview> {
-    const [syncResult, categoriesResult] = await Promise.allSettled([
-        syncNotes(database, ownerUserId),
-        getCategories(),
-    ]);
     const localResult = await Promise.allSettled([
         getLocalNotes(database, ownerUserId),
     ]);
-    const notesAvailable =
-        localResult[0].status === "fulfilled" ||
-        syncResult.status === "fulfilled";
-    const notes =
+    let notesAvailable = localResult[0].status === "fulfilled";
+    let notes =
         localResult[0].status === "fulfilled"
             ? localResult[0].value
-            : syncResult.status === "fulfilled"
-              ? syncResult.value.notes
-              : [];
+            : [];
+    let categoryCount: number | null = null;
+    const cloud = getCloudStorageSnapshot();
+    if (cloudEnabled && cloud.enabled && cloud.ownerUserId === ownerUserId && cloud.generation === cloudGeneration) {
+        try {
+            const checkAccess = captureCloudStorageAccess(ownerUserId);
+            const [syncResult, categoriesResult] = await Promise.allSettled([
+                syncNotes(database, ownerUserId),
+                getCategories(),
+            ]);
+            checkAccess();
+            if (syncResult.status === "fulfilled") {
+                notes = syncResult.value.notes;
+                notesAvailable = true;
+            }
+            if (categoriesResult.status === "fulfilled") categoryCount = categoriesResult.value.length;
+        } catch (error) {
+            if (!isCloudStoragePermissionError(error)) throw error;
+        }
+    }
     const records = notesAvailable
         ? await readingProgressStore.list(ownerUserId).catch(() => [])
         : [];
 
     return {
         noteCount: notesAvailable ? notes.length : null,
-        categoryCount:
-            categoriesResult.status === "fulfilled"
-                ? categoriesResult.value.length
-                : null,
+        categoryCount,
         starredCount: notesAvailable
             ? notes.filter((note) => note.is_starred).length
             : null,
@@ -56,6 +68,7 @@ async function loadProfileOverview(
 
 export function useProfileOverview(ownerUserId?: number) {
     const database = useApplicationDatabase();
+    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
     const [overview, setOverview] = useState<ProfileOverview>(emptyOverview);
     const [loading, setLoading] = useState(ownerUserId != null);
 
@@ -72,18 +85,18 @@ export function useProfileOverview(ownerUserId?: number) {
             }
 
             setLoading(true);
-            void loadProfileOverview(database, ownerUserId)
+            void loadProfileOverview(database, ownerUserId, cloudEnabled, cloudGeneration)
                 .then((nextOverview) => {
-                    if (active) setOverview(nextOverview);
+                    if (active && getCloudStorageSnapshot().generation === cloudGeneration) setOverview(nextOverview);
                 })
                 .finally(() => {
-                    if (active) setLoading(false);
+                    if (active && getCloudStorageSnapshot().generation === cloudGeneration) setLoading(false);
                 });
 
             return () => {
                 active = false;
             };
-        }, [database, ownerUserId]),
+        }, [cloudEnabled, cloudGeneration, database, ownerUserId]),
     );
 
     return { overview, loading };

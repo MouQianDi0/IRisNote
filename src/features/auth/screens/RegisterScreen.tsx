@@ -5,6 +5,7 @@ import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
@@ -114,6 +115,7 @@ export default function RegisterScreen() {
             });
 
             // 保存 token 和用户信息
+            setCloudStorageSession(null, false, false);
             await AsyncStorage.setItem(storageKeys.authToken, data.token);
             await AsyncStorage.setItem(
                 storageKeys.authUser,

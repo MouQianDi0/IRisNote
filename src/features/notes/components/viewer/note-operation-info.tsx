@@ -1,4 +1,6 @@
 import { colors } from "@/shared/theme";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { assertCloudStorageAllowed, cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { InlineHint, InputSave } from "@/shared/ui";
 import {
   CircleAlert,
@@ -152,6 +154,7 @@ export function NoteOperationInfo({
   busy: boolean;
   onSync: () => Promise<string>;
 }) {
+  const cloud = useCloudStorage();
   const [progress, setProgress] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -184,13 +187,13 @@ export function NoteOperationInfo({
         ? "<0.01MB"
         : `${mb.toFixed(2)}MB`;
   }, [note.title, note.content]);
-  const closed = note.user_id == null;
+  const closed = !cloud.enabled || note.user_id == null || cloud.ownerUserId !== note.user_id;
   const syncing = uploading || note.sync_status === "syncing";
-  const failed = message !== "";
+  const failed = !closed && message !== "";
   const label = failed
     ? message
     : closed
-      ? "云同步已关闭"
+      ? cloudStorageStatusLabel(cloud)
       : syncing
         ? "同步中…"
         : note.sync_status === "synced"
@@ -212,6 +215,7 @@ export function NoteOperationInfo({
     setUploading(true);
     setMessage("");
     try {
+      assertCloudStorageAllowed(note.user_id);
       await onSync();
       setMessage("");
     } catch (error) {

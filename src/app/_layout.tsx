@@ -61,6 +61,10 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/cloud-storage"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/about"
                         options={{ headerShown: false }}
                     />
