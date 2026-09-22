@@ -1,7 +1,10 @@
 import { banner, captureNotificationSession } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
-import { captureCloudStorageAccess, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import {
     collectAndUploadAvatarFromCamera,
     collectAndUploadAvatarFromLibrary,
@@ -17,10 +20,12 @@ export function useAvatar() {
     const [avatarKey, setAvatarKey] = useState(0);
 
     const normalizedAvatarUri = normalizeAvatarUrl(user?.avatar);
-    const avatarUri = normalizedAvatarUri && /^https?:\/\//i.test(normalizedAvatarUri)
-        && (!cloudEnabled || ownerUserId !== user?.id)
-        ? undefined
-        : normalizedAvatarUri;
+    const avatarUri =
+        normalizedAvatarUri &&
+        /^https?:\/\//i.test(normalizedAvatarUri) &&
+        (!cloudEnabled || ownerUserId !== user?.id)
+            ? undefined
+            : normalizedAvatarUri;
 
     const avatarSource: ImageSourcePropType | undefined = avatarUri
         ? {
@@ -67,7 +72,9 @@ export function useAvatar() {
                 banner.show({
                     id: "avatar-update",
                     type: "important",
-                    title: isCloudStoragePermissionError(err) ? "需要开启云存储" : "头像更新失败",
+                    title: isCloudStoragePermissionError(err)
+                        ? "需要开启云存储"
+                        : "头像更新失败",
                     message,
                 });
             }

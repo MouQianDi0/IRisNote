@@ -144,22 +144,38 @@ function SwipeTabsNavigator({
 
     useEffect(() => {
         const mountedAt = Date.now();
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "tabs", stage: "mounted", timestamp: mountedAt,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "tabs",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
         return () => {
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "tabs", stage: "unmounted", timestamp: Date.now(),
-                elapsedMs: Date.now() - mountedAt,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "tabs",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
         };
     }, []);
 
     useEffect(() => {
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "tabs", stage: "active_tab_committed", timestamp: Date.now(),
-            tab: activeTab, index: state.index,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "tabs",
+                stage: "active_tab_committed",
+                timestamp: Date.now(),
+                tab: activeTab,
+                index: state.index,
+            }),
+        );
     }, [activeTab, state.index]);
 
     return (
@@ -182,30 +198,41 @@ function SwipeTabsNavigator({
                         lazyPreloadDistance={focusedOptions.lazyPreloadDistance}
                         navigationState={state}
                         onIndexChange={(index) => {
-                            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                                scope: "tabs", stage: "index_change_requested", timestamp: Date.now(),
-                                tab: state.routes[index].name, index,
-                            }));
+                            console.info(
+                                "[IRisNoteCrashTrace]",
+                                JSON.stringify({
+                                    scope: "tabs",
+                                    stage: "index_change_requested",
+                                    timestamp: Date.now(),
+                                    tab: state.routes[index].name,
+                                    index,
+                                }),
+                            );
                             navigation.dispatch({
                                 ...CommonActions.navigate(state.routes[index]),
                                 target: state.key,
                             });
                         }}
                         onSwipeEnd={() => navigation.emit({ type: "swipeEnd" })}
-                        onSwipeStart={() => navigation.emit({ type: "swipeStart" })}
+                        onSwipeStart={() =>
+                            navigation.emit({ type: "swipeStart" })
+                        }
                         options={Object.fromEntries(
                             state.routes.map((route) => [
                                 route.key,
                                 {
                                     sceneStyle: [
                                         styles.pageSurface,
-                                        descriptors[route.key].options.sceneStyle,
+                                        descriptors[route.key].options
+                                            .sceneStyle,
                                     ],
                                 },
                             ]),
                         )}
                         overScrollMode={overScrollMode}
-                        renderScene={({ route }) => descriptors[route.key].render()}
+                        renderScene={({ route }) =>
+                            descriptors[route.key].render()
+                        }
                         renderTabBar={() => null}
                         swipeEnabled={focusedOptions.swipeEnabled}
                         tabBarPosition={tabBarPosition}

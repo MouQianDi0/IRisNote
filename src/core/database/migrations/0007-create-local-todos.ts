@@ -1,10 +1,10 @@
 import type { DatabaseMigration } from "../database.types";
 
 export const createLocalTodos: DatabaseMigration = {
-  version: 7,
-  name: "create_local_todos",
-  async up(database) {
-    await database.execAsync(`
+    version: 7,
+    name: "create_local_todos",
+    async up(database) {
+        await database.execAsync(`
       CREATE TABLE IF NOT EXISTS local_todos (
         owner_key TEXT NOT NULL CHECK(length(owner_key) > 0),
         client_id TEXT NOT NULL CHECK(length(client_id) = 36
@@ -45,5 +45,5 @@ export const createLocalTodos: DatabaseMigration = {
       );
       CREATE INDEX IF NOT EXISTS idx_local_todos_owner_date ON local_todos(owner_key, date_id);
     `);
-  },
+    },
 };

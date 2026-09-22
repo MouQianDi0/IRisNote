@@ -1,6 +1,11 @@
 import { getCategories } from "../api/categories.api";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
-import { assertCloudStorageAllowed, captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    assertCloudStorageAllowed,
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { useApplicationDatabase } from "@/core/database";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { applyQueuedCategoryChanges } from "@/features/sync";
@@ -33,23 +38,33 @@ type FloatingBarProps = {
     onCategoryPress: (category: string) => void;
     onAddCategory: () => void;
 };
-export default function FloatingBar({ onCategoryPress, onAddCategory }: FloatingBarProps) {
+export default function FloatingBar({
+    onCategoryPress,
+    onAddCategory,
+}: FloatingBarProps) {
     const database = useApplicationDatabase();
     const { user } = useAuth();
-    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const { enabled: cloudEnabled, generation: cloudGeneration } =
+        useCloudStorage();
     const allowCloudAction = () => {
         try {
             assertCloudStorageAllowed(user?.id);
             return true;
         } catch (error) {
-            Alert.alert("需要开启云存储", error instanceof Error ? error.message : "请在设置中开启云存储后再操作");
+            Alert.alert(
+                "需要开启云存储",
+                error instanceof Error
+                    ? error.message
+                    : "请在设置中开启云存储后再操作",
+            );
             return false;
         }
     };
     const [selectedId, setSelectedId] = useState(getCurrentCategoryId());
     const categoriesRequestRef = useRef<Promise<void> | null>(null);
     const categoriesRequestGenerationRef = useRef<number | null>(null);
-    const { gesture: longPress, animatedStyle } = useLongPressNavigation("/user");
+    const { gesture: longPress, animatedStyle } =
+        useLongPressNavigation("/user");
     const handlePress = (id: number) => {
         if (id === selectedId) return;
         setSelectedId(id);
@@ -71,37 +86,53 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
         });
     }, [user?.id]);
 
-    const fetchCategories = useCallback(function fetchCategoriesRequest() {
-        if (!user || !cloudEnabled || getCloudStorageSnapshot().generation !== cloudGeneration) return Promise.resolve();
-        if (categoriesRequestRef.current && categoriesRequestGenerationRef.current === cloudGeneration) return categoriesRequestRef.current;
+    const fetchCategories = useCallback(
+        function fetchCategoriesRequest() {
+            if (
+                !user ||
+                !cloudEnabled ||
+                getCloudStorageSnapshot().generation !== cloudGeneration
+            )
+                return Promise.resolve();
+            if (
+                categoriesRequestRef.current &&
+                categoriesRequestGenerationRef.current === cloudGeneration
+            )
+                return categoriesRequestRef.current;
 
-        const request = (async () => {
-            const checkAccess = captureCloudStorageAccess(user.id);
-            const data = await getCategories();
-            checkAccess();
-            const nextCategories = await applyQueuedCategoryChanges(database, user.id, data);
-            checkAccess();
-            setCategories(nextCategories);
-        })()
-            .catch((err: any) => {
-                if (isCloudStoragePermissionError(err)) return;
-                console.error(
-                    "获取分类列表失败:",
-                    err.response?.status,
-                    err.response?.data || err.message,
+            const request = (async () => {
+                const checkAccess = captureCloudStorageAccess(user.id);
+                const data = await getCategories();
+                checkAccess();
+                const nextCategories = await applyQueuedCategoryChanges(
+                    database,
+                    user.id,
+                    data,
                 );
-            })
-            .finally(() => {
-                if (categoriesRequestRef.current === request) {
-                    categoriesRequestRef.current = null;
-                    categoriesRequestGenerationRef.current = null;
-                }
-            });
+                checkAccess();
+                setCategories(nextCategories);
+            })()
+                .catch((err: any) => {
+                    if (isCloudStoragePermissionError(err)) return;
+                    console.error(
+                        "获取分类列表失败:",
+                        err.response?.status,
+                        err.response?.data || err.message,
+                    );
+                })
+                .finally(() => {
+                    if (categoriesRequestRef.current === request) {
+                        categoriesRequestRef.current = null;
+                        categoriesRequestGenerationRef.current = null;
+                    }
+                });
 
-        categoriesRequestRef.current = request;
-        categoriesRequestGenerationRef.current = cloudGeneration;
-        return request;
-    }, [cloudEnabled, cloudGeneration, database, user]);
+            categoriesRequestRef.current = request;
+            categoriesRequestGenerationRef.current = cloudGeneration;
+            return request;
+        },
+        [cloudEnabled, cloudGeneration, database, user],
+    );
 
     useEffect(() => {
         fetchCategories();
@@ -136,8 +167,18 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
         setCategoryModelVisible,
         handleCategoryDeleted,
     );
-    const { togglePin } = useCategoryPin(database, user?.id ?? null, setCategories, setLongPressVisible);
-    const { toggleStar } = useCategoryStar(database, user?.id ?? null, setCategories, setLongPressVisible);
+    const { togglePin } = useCategoryPin(
+        database,
+        user?.id ?? null,
+        setCategories,
+        setLongPressVisible,
+    );
+    const { toggleStar } = useCategoryStar(
+        database,
+        user?.id ?? null,
+        setCategories,
+        setLongPressVisible,
+    );
     const { renameCategory } = useCategoryRename(
         database,
         user?.id ?? null,
@@ -156,12 +197,12 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
     const { avatarSource, avatarKey } = useAvatar();
 
     return (
-        <View className="flex-col justify-center items-center">
+        <View className="flex-col items-center justify-center">
             <View className="w-[50px]">
                 <Animated.View style={animatedStyle}>
                     <GestureDetector gesture={longPress}>
                         <Pressable
-                            className="w-[50px] h-[50px] mb-[10px]"
+                            className="mb-[10px] h-[50px] w-[50px]"
                             onPress={() => onNavigate("/user")}
                         >
                             {avatarSource ? (
@@ -182,7 +223,7 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                                         height: "100%",
                                         borderRadius: radius.control,
                                     }}
-                                    className="border-[2px] border-floating-accent flex justify-center items-center"
+                                    className="flex items-center justify-center border-[2px] border-floating-accent"
                                 >
                                     <UserIcon
                                         size={36}
@@ -193,7 +234,7 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                         </Pressable>
                     </GestureDetector>
                 </Animated.View>
-                <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
+                <View className="mx-auto my-[8px] h-[2px] w-[28px] rounded-full bg-divider opacity-80" />
                 <ScrollView
                     style={{ maxHeight: 560 }}
                     showsVerticalScrollIndicator={false}
@@ -234,9 +275,13 @@ export default function FloatingBar({ onCategoryPress, onAddCategory }: Floating
                             }}
                         />
                     ))}
-                    <AddCategoryButton onPress={() => { if (allowCloudAction()) onAddCategory(); }} />
+                    <AddCategoryButton
+                        onPress={() => {
+                            if (allowCloudAction()) onAddCategory();
+                        }}
+                    />
                 </ScrollView>
-                <View className="h-[2px] w-[28px] my-[8px] mx-auto rounded-full bg-divider opacity-80" />
+                <View className="mx-auto my-[8px] h-[2px] w-[28px] rounded-full bg-divider opacity-80" />
 
                 {longPressVisible && (
                     <CategoryActionModal

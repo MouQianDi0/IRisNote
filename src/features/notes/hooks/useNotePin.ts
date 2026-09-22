@@ -1,5 +1,8 @@
 import { getApiErrorMessage } from "@/shared/http/errors";
-import { captureCloudStorageAccess, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { captureNotificationSession } from "@/core/notifications";
 import { updateNote } from "../api/notes.api";
 import type { Note } from "@/features/notes/notes.types";
@@ -31,12 +34,16 @@ export function useNotePin(
             try {
                 checkAccess = captureCloudStorageAccess(item.user_id);
             } catch (error) {
-                Alert.alert("需要开启云存储", error instanceof Error ? error.message : "请在设置中开启云存储后再操作");
+                Alert.alert(
+                    "需要开启云存储",
+                    error instanceof Error
+                        ? error.message
+                        : "请在设置中开启云存储后再操作",
+                );
                 return;
             }
             const isCurrentSession = captureNotificationSession();
-            const serverId =
-                item.server_id ?? (item.id > 0 ? item.id : null);
+            const serverId = item.server_id ?? (item.id > 0 ? item.id : null);
             if (serverId == null) {
                 setOpenedNoteId(null);
                 Alert.alert(
@@ -95,8 +102,15 @@ export function useNotePin(
                 );
                 updateNotesLocally(() => previousNotes, true);
                 Alert.alert(
-                    isCloudStoragePermissionError(err) ? "需要开启云存储" : "提示",
-                    isCloudStoragePermissionError(err) ? err.message : getApiErrorMessage(err, "同步置顶状态失败，已恢复原状态"),
+                    isCloudStoragePermissionError(err)
+                        ? "需要开启云存储"
+                        : "提示",
+                    isCloudStoragePermissionError(err)
+                        ? err.message
+                        : getApiErrorMessage(
+                              err,
+                              "同步置顶状态失败，已恢复原状态",
+                          ),
                 );
             }
         },

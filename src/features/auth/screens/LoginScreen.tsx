@@ -1,3 +1,4 @@
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
 import {
     loginWithPassword,
@@ -7,13 +8,12 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { AppButton } from "@/shared/ui";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { AuthButton } from "../components/AuthButton";
-import { AppButton } from "@/shared/ui";
 import { AuthField } from "../components/AuthField";
 import { AuthScreenLayout } from "../components/AuthScreenLayout";
 
@@ -35,15 +35,25 @@ export default function LoginScreen() {
     // 倒计时清理
     useEffect(() => {
         const mountedAt = Date.now();
-        console.info("[IRisNoteCrashTrace]", JSON.stringify({
-            scope: "login", stage: "mounted", timestamp: mountedAt,
-        }));
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "login",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
         mountedRef.current = true;
         return () => {
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "login", stage: "unmounted", timestamp: Date.now(),
-                elapsedMs: Date.now() - mountedAt,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "login",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
             mountedRef.current = false;
             if (countdownRef.current) clearInterval(countdownRef.current);
         };
@@ -108,9 +118,15 @@ export default function LoginScreen() {
         const trace = (nextStage: string) => {
             stage = nextStage;
             const timestamp = Date.now();
-            console.info("[IRisNoteCrashTrace]", JSON.stringify({
-                scope: "login", stage, timestamp, elapsedMs: timestamp - startedAt,
-            }));
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "login",
+                    stage,
+                    timestamp,
+                    elapsedMs: timestamp - startedAt,
+                }),
+            );
         };
         trace("request_started");
         try {

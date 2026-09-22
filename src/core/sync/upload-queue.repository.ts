@@ -54,7 +54,7 @@ const fromRow = (row: UploadTaskRow): UploadQueueTask => ({
 });
 
 export async function enqueueUploadTask(
-    database: ApplicationDatabase,
+    database: ApplicationDatabaseTransaction,
     input: EnqueueUploadTask,
 ) {
     const now = new Date().toISOString();
@@ -204,7 +204,12 @@ export async function markUploadTaskRetry(
         `UPDATE upload_queue_tasks
          SET status = 'queued', transferred_bytes = transferred_bytes + ?,
              last_error = ?, updated_at = ? WHERE task_id = ?`,
-        [Math.max(0, Math.round(transferredBytes)), message, new Date().toISOString(), taskId],
+        [
+            Math.max(0, Math.round(transferredBytes)),
+            message,
+            new Date().toISOString(),
+            taskId,
+        ],
     );
     notifyUploadQueueChanged();
 }
@@ -240,7 +245,9 @@ export async function completeUploadTask(
     database: ApplicationDatabase,
     taskId: string,
 ) {
-    await database.run("DELETE FROM upload_queue_tasks WHERE task_id = ?", [taskId]);
+    await database.run("DELETE FROM upload_queue_tasks WHERE task_id = ?", [
+        taskId,
+    ]);
     notifyUploadQueueChanged();
 }
 

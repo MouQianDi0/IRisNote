@@ -13,9 +13,16 @@ export function AppProviders({ children }: PropsWithChildren) {
         <ApplicationDatabaseProvider>
             <AuthProvider>
                 <CloudStorageProvider>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                    <NotificationProvider><SystemNotificationProvider><TodoSyncProvider>{children}<UpdateDialog /></TodoSyncProvider></SystemNotificationProvider></NotificationProvider>
-                </GestureHandlerRootView>
+                    <GestureHandlerRootView style={{ flex: 1 }}>
+                        <NotificationProvider>
+                            <SystemNotificationProvider>
+                                <TodoSyncProvider>
+                                    {children}
+                                    <UpdateDialog />
+                                </TodoSyncProvider>
+                            </SystemNotificationProvider>
+                        </NotificationProvider>
+                    </GestureHandlerRootView>
                 </CloudStorageProvider>
             </AuthProvider>
         </ApplicationDatabaseProvider>

@@ -143,6 +143,7 @@ async function syncPendingNoteWithReceipt(
         ownerUserId,
         note.id,
     );
+    if (!syncingNote) throw new Error("笔记已移入垃圾桶或不存在，已停止上传");
     if (syncingNote) publishNote(syncingNote);
     let receivedResponse = false;
 
@@ -230,9 +231,17 @@ async function syncPendingNoteWithReceipt(
                 `UPDATE local_notes SET sync_status = 'pending', last_sync_error = NULL
                  WHERE owner_user_id = $owner AND client_id = $clientId
                    AND sync_status = 'syncing' AND current_revision_id IS $revisionId`,
-                { $owner: ownerUserId, $clientId: note.id, $revisionId: note.current_revision_id ?? null },
+                {
+                    $owner: ownerUserId,
+                    $clientId: note.id,
+                    $revisionId: note.current_revision_id ?? null,
+                },
             );
-            const pendingNote = await getLocalNoteByClientId(database, ownerUserId, note.id);
+            const pendingNote = await getLocalNoteByClientId(
+                database,
+                ownerUserId,
+                note.id,
+            );
             if (!pendingNote) throw error;
             publishNote(pendingNote);
             return {

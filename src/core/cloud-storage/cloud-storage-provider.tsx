@@ -1,8 +1,20 @@
 import { useApplicationDatabase } from "@/core/database";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { SystemPreferencesRepository } from "@/features/settings/data/system-preferences.repository";
-import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useSyncExternalStore, type PropsWithChildren } from "react";
-import { getCloudStorageSnapshot, subscribeCloudStorage, type CloudStorageSnapshot } from "./cloud-storage-policy";
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useLayoutEffect,
+    useMemo,
+    useSyncExternalStore,
+    type PropsWithChildren,
+} from "react";
+import {
+    getCloudStorageSnapshot,
+    subscribeCloudStorage,
+    type CloudStorageSnapshot,
+} from "./cloud-storage-policy";
 import { createCloudStorageConsentController } from "./cloud-storage-consent-controller";
 
 type CloudStorageContextValue = CloudStorageSnapshot & {
@@ -10,7 +22,9 @@ type CloudStorageContextValue = CloudStorageSnapshot & {
     error: string | null;
     setConsent: (enabled: boolean) => Promise<void>;
 };
-const CloudStorageContext = createContext<CloudStorageContextValue | null>(null);
+const CloudStorageContext = createContext<CloudStorageContextValue | null>(
+    null,
+);
 
 export function useCloudStorage() {
     const value = useContext(CloudStorageContext);
@@ -21,22 +35,40 @@ export function useCloudStorage() {
 export function CloudStorageProvider({ children }: PropsWithChildren) {
     const database = useApplicationDatabase();
     const { user, token, loading } = useAuth();
-    const owner = loading || !token ? null : user?.id ?? null;
-    const repository = useMemo(() => new SystemPreferencesRepository(database), [database]);
-    const state = useSyncExternalStore(subscribeCloudStorage, getCloudStorageSnapshot, getCloudStorageSnapshot);
-    const controller = useMemo(() => createCloudStorageConsentController({
-        readConsent: (userId) => repository.cloudStorageConsent(userId),
-        writeConsent: (userId, enabled) => repository.setCloudStorageConsent(userId, enabled),
-    }), [repository]);
-    const operation = useSyncExternalStore(controller.subscribe, controller.getState, controller.getState);
+    const owner = loading || !token ? null : (user?.id ?? null);
+    const repository = useMemo(
+        () => new SystemPreferencesRepository(database),
+        [database],
+    );
+    const state = useSyncExternalStore(
+        subscribeCloudStorage,
+        getCloudStorageSnapshot,
+        getCloudStorageSnapshot,
+    );
+    const controller = useMemo(
+        () =>
+            createCloudStorageConsentController({
+                readConsent: (userId) => repository.cloudStorageConsent(userId),
+                writeConsent: (userId, enabled) =>
+                    repository.setCloudStorageConsent(userId, enabled),
+            }),
+        [repository],
+    );
+    const operation = useSyncExternalStore(
+        controller.subscribe,
+        controller.getState,
+        controller.getState,
+    );
 
     useLayoutEffect(() => {
         controller.activate(owner, loading);
         return controller.deactivate;
     }, [owner, token, loading, controller]);
 
-    const setConsent = useCallback((enabled: boolean) =>
-        controller.setConsent(owner, enabled), [controller, owner]);
+    const setConsent = useCallback(
+        (enabled: boolean) => controller.setConsent(owner, enabled),
+        [controller, owner],
+    );
 
     const value: CloudStorageContextValue = {
         ...state,
@@ -49,5 +81,9 @@ export function CloudStorageProvider({ children }: PropsWithChildren) {
         error: state.ownerUserId === owner ? operation.error : null,
         setConsent,
     };
-    return <CloudStorageContext.Provider value={value}>{children}</CloudStorageContext.Provider>;
+    return (
+        <CloudStorageContext.Provider value={value}>
+            {children}
+        </CloudStorageContext.Provider>
+    );
 }

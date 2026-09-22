@@ -55,9 +55,18 @@ export default function SettingsScreen() {
     const { isLoggedIn, loading, logout, user } = useAuth();
     const cloudStorage = useCloudStorage();
     const cloudStatus = cloudStorageStatusLabel(cloudStorage);
-    const cloudOverview = !cloudStorage.available ? "未开放" : !cloudStorage.ready ? "读取中" : cloudStorage.enabled ? "已开启" : "仅本机";
+    const cloudOverview = !cloudStorage.available
+        ? "未开放"
+        : !cloudStorage.ready
+          ? "读取中"
+          : cloudStorage.enabled
+            ? "已开启"
+            : "仅本机";
     const [loggingOut, setLoggingOut] = useState(false);
-    const version = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "—";
+    const version =
+        Application.nativeApplicationVersion ??
+        Constants.expoConfig?.version ??
+        "—";
 
     const returnToUser = () => {
         if (router.canGoBack()) {
@@ -116,7 +125,7 @@ export default function SettingsScreen() {
                             style={cardStyle}
                         >
                             <UserRound size={32} color={colors.primary} />
-                            <Text className="mt-4 text-[17px] text-text-primary">
+                            <Text className="text-text-primary mt-4 text-[17px]">
                                 尚未登录
                             </Text>
                             <Text className="mt-2 text-center text-sm leading-5 text-hyper-text-secondary">
@@ -290,7 +299,11 @@ export default function SettingsScreen() {
                                 icon={Database}
                                 label="数据与存储"
                                 description="查看本地占用，选择清理缓存与临时文件"
-                                onPress={() => router.push("/pages/user/data-storage" as Href)}
+                                onPress={() =>
+                                    router.push(
+                                        "/pages/user/data-storage" as Href,
+                                    )
+                                }
                             />
                             <SettingsRow
                                 icon={ShieldCheck}

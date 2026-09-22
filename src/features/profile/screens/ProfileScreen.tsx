@@ -13,6 +13,7 @@ import {
     Folder,
     Image as ImageIcon,
     Star,
+    Trash2,
     User as UserIcon,
     type LucideIcon,
 } from "lucide-react-native";
@@ -61,7 +62,7 @@ function AvatarOptionRow({
                 onPress={onPress}
             >
                 <Icon size={22} color={colors.primary} />
-                <Text className="min-w-0 flex-1 text-[17px] text-text-primary">
+                <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
                     {label}
                 </Text>
             </Pressable>
@@ -100,7 +101,7 @@ function OverviewMetric({
                 {loading ? (
                     <ActivityIndicator color={colors.primary} size="small" />
                 ) : (
-                    <Text className="text-[17px] text-text-primary">
+                    <Text className="text-text-primary text-[17px]">
                         {value ?? "—"}
                     </Text>
                 )}
@@ -134,7 +135,7 @@ function ContentRow({
                 onPress={onPress}
             >
                 <Icon size={22} color={colors.primary} />
-                <Text className="min-w-0 flex-1 text-[17px] text-text-primary">
+                <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
                     {label}
                 </Text>
                 {value ? (
@@ -242,7 +243,7 @@ export default function ProfileScreen() {
                         style={cardStyle}
                     >
                         <UserIcon size={32} color={colors.primary} />
-                        <Text className="mt-4 text-[17px] text-text-primary">
+                        <Text className="text-text-primary mt-4 text-[17px]">
                             尚未登录
                         </Text>
                         <Text className="mt-2 text-center text-sm leading-5 text-hyper-text-secondary">
@@ -358,7 +359,7 @@ export default function ProfileScreen() {
                             </AnchoredPopover>
                             <View className="ml-[14px] min-w-0 flex-1">
                                 <Text
-                                    className="text-xl text-text-primary"
+                                    className="text-text-primary text-xl"
                                     numberOfLines={1}
                                 >
                                     {displayName}
@@ -433,7 +434,7 @@ export default function ProfileScreen() {
                                         color={colors.primary}
                                     />
                                     <Text
-                                        className="ml-3 min-w-0 flex-1 text-[17px] text-text-primary"
+                                        className="text-text-primary ml-3 min-w-0 flex-1 text-[17px]"
                                         numberOfLines={1}
                                     >
                                         {overview.continueReading.title}
@@ -474,7 +475,7 @@ export default function ProfileScreen() {
                                         color={colors.hyperTextSecondary}
                                     />
                                 )}
-                                <Text className="mt-3 text-sm text-text-primary">
+                                <Text className="text-text-primary mt-3 text-sm">
                                     {overviewLoading
                                         ? "正在读取阅读记录…"
                                         : "还没有可继续的阅读记录"}
@@ -517,8 +518,13 @@ export default function ProfileScreen() {
                             <ContentRow
                                 icon={Archive}
                                 label="草稿箱"
-                                last
                                 onPress={() => openNotes(undefined, true)}
+                            />
+                            <ContentRow
+                                icon={Trash2}
+                                label="垃圾桶"
+                                last
+                                onPress={() => router.push("/pages/user/trash")}
                             />
                         </Card>
                     </View>

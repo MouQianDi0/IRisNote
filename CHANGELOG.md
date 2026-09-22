@@ -1,3 +1,12 @@
+## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
+
+- 用户已确认方案和界面预览，新增本地垃圾桶迁移、严格响应校验、删除/恢复/清理服务。
+- 文件：src/core/database/migrations/0012-create-note-trash.ts、src/core/database/migrations/index.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 删除时在本地事务中归档笔记/草稿、保留历史并撤销未运行上传任务；同步处理合法的更高版本恢复，到期清理依赖服务器确认；仍在上传或结果未知的新笔记拒绝删除。
+- 尚待界面接入、回归检查和最终记录；未执行线上迁移、部署或真实数据清理。
+
+---
+
 ## 2026-09-22 17:03:13 | 修复问题：存储统计兼容 SQLite 原生目录路径
 
 - 变更概述：修复已确认的数据与存储功能在 Android 扫描 SQLite 目录时出现 Exception in HostFunction / URI is not absolute 的问题。

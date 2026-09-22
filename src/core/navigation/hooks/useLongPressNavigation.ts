@@ -25,23 +25,25 @@ export function useLongPressNavigation(actionRoute: Href) {
             "worklet";
             didStart.set(true);
             didNavigate.set(false);
-            scale.set(withTiming(
-                0.85,
-                {
-                    duration: 300,
-                    easing: buttonEasing,
-                },
-                (finished) => {
-                    if (
-                        finished &&
-                        !didNavigate.get() &&
-                        actionRoute !== pathname
-                    ) {
-                        didNavigate.set(true);
-                        runOnJS(router.push)(actionRoute);
-                    }
-                },
-            ));
+            scale.set(
+                withTiming(
+                    0.85,
+                    {
+                        duration: 300,
+                        easing: buttonEasing,
+                    },
+                    (finished) => {
+                        if (
+                            finished &&
+                            !didNavigate.get() &&
+                            actionRoute !== pathname
+                        ) {
+                            didNavigate.set(true);
+                            runOnJS(router.push)(actionRoute);
+                        }
+                    },
+                ),
+            );
         })
         .onFinalize(() => {
             "worklet";
@@ -54,10 +56,12 @@ export function useLongPressNavigation(actionRoute: Href) {
                 runOnJS(router.push)(actionRoute);
             }
 
-            scale.set(withTiming(1, {
-                duration: 400,
-                easing: buttonEasing,
-            }));
+            scale.set(
+                withTiming(1, {
+                    duration: 400,
+                    easing: buttonEasing,
+                }),
+            );
         });
 
     return { gesture, animatedStyle };

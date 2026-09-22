@@ -18,29 +18,69 @@ export default function CategoryIconPicker({
     const hyper = variant === "hyper";
     if (hyper) {
         return (
-            <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ gap: 12 }}>
+            <ScrollView
+                style={{ maxHeight: 240 }}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ gap: 12 }}
+            >
                 {categoryIconGroups.map((group) => (
                     <View key={group.label}>
-                        {showLabels && <Text style={{ fontSize: 13, color: colors.hyperTextSecondary, marginBottom: 8 }}>
-                            {group.label}
-                        </Text>}
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {showLabels && (
+                            <Text
+                                style={{
+                                    fontSize: 13,
+                                    color: colors.hyperTextSecondary,
+                                    marginBottom: 8,
+                                }}
+                            >
+                                {group.label}
+                            </Text>
+                        )}
+                        <View
+                            style={{
+                                flexDirection: "row",
+                                flexWrap: "wrap",
+                                gap: 8,
+                            }}
+                        >
                             {group.icons.map((iconName) => {
                                 const Icon = getCategoryIcon(iconName);
                                 const selected = iconName === selectedIcon;
-                                return <Pressable key={iconName} accessibilityRole="button" accessibilityLabel={iconName}
-                                    accessibilityState={{ selected }} onPress={() => onChange(iconName)}
-                                    style={({ pressed }) => ({
-                                        width: 48, height: 48, flexShrink: 0,
-                                        alignItems: "center", justifyContent: "center",
-                                        borderRadius: radii.iconCell, borderWidth: 1,
-                                        borderColor: selected ? colors.primary : colors.transparent,
-                                        backgroundColor: selected ? colors.hyperCardSelected : colors.hyperCard,
-                                        opacity: pressed ? 0.85 : 1,
-                                    })}>
-                                    <Icon size={24} color={selected ? colors.primary : colors.textSecondary} />
-                                </Pressable>;
+                                return (
+                                    <Pressable
+                                        key={iconName}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={iconName}
+                                        accessibilityState={{ selected }}
+                                        onPress={() => onChange(iconName)}
+                                        style={({ pressed }) => ({
+                                            width: 48,
+                                            height: 48,
+                                            flexShrink: 0,
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            borderRadius: radii.iconCell,
+                                            borderWidth: 1,
+                                            borderColor: selected
+                                                ? colors.primary
+                                                : colors.transparent,
+                                            backgroundColor: selected
+                                                ? colors.hyperCardSelected
+                                                : colors.hyperCard,
+                                            opacity: pressed ? 0.85 : 1,
+                                        })}
+                                    >
+                                        <Icon
+                                            size={24}
+                                            color={
+                                                selected
+                                                    ? colors.primary
+                                                    : colors.textSecondary
+                                            }
+                                        />
+                                    </Pressable>
+                                );
                             })}
                         </View>
                     </View>
@@ -53,7 +93,7 @@ export default function CategoryIconPicker({
             {categoryIconGroups.map((group) => (
                 <View key={group.label} className="mb-1">
                     {showLabels && (
-                        <Text className="text-[12px] text-gray-400 mb-1">
+                        <Text className="mb-1 text-[12px] text-gray-400">
                             {group.label}
                         </Text>
                     )}
@@ -61,7 +101,11 @@ export default function CategoryIconPicker({
                         horizontal
                         showsHorizontalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
-                        contentContainerStyle={{ gap: 8, paddingHorizontal: 4, paddingVertical: 8 }}
+                        contentContainerStyle={{
+                            gap: 8,
+                            paddingHorizontal: 4,
+                            paddingVertical: 8,
+                        }}
                         style={{ maxWidth: 300 }}
                     >
                         {group.icons.map((iconName) => {
@@ -74,9 +118,16 @@ export default function CategoryIconPicker({
                                     accessibilityLabel={iconName}
                                     accessibilityState={{ selected }}
                                     onPress={() => onChange(iconName)}
-                                    className={`w-[48px] h-[48px] items-center justify-center rounded-icon-cell ${selected ? "bg-primary" : "bg-surface-muted"}`}
+                                    className={`h-[48px] w-[48px] items-center justify-center rounded-icon-cell ${selected ? "bg-primary" : "bg-surface-muted"}`}
                                 >
-                                    <Icon size={24} color={selected ? colors.surface : colors.textSecondary} />
+                                    <Icon
+                                        size={24}
+                                        color={
+                                            selected
+                                                ? colors.surface
+                                                : colors.textSecondary
+                                        }
+                                    />
                                 </Pressable>
                             );
                         })}

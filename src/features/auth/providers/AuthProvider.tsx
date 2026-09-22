@@ -20,7 +20,7 @@ async function readStoredSession() {
     const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
     return {
         token: storedToken,
-        user: storedUser ? JSON.parse(storedUser) as User : null,
+        user: storedUser ? (JSON.parse(storedUser) as User) : null,
     };
 }
 
@@ -32,11 +32,14 @@ export function AuthProvider({
     const [loading, setLoading] = useState(true);
     const initialLoadDone = useRef(false);
 
-    const applySession = useCallback((session: Awaited<ReturnType<typeof readStoredSession>>) => {
-        setToken(session.token);
-        setUser(session.user);
-        setLoading(false);
-    }, []);
+    const applySession = useCallback(
+        (session: Awaited<ReturnType<typeof readStoredSession>>) => {
+            setToken(session.token);
+            setUser(session.user);
+            setLoading(false);
+        },
+        [],
+    );
 
     const load = useCallback(async () => {
         applySession(await readStoredSession());
@@ -67,7 +70,9 @@ export function AuthProvider({
                 syncProfile();
             }
         });
-        return () => { active = false; };
+        return () => {
+            active = false;
+        };
     }, [applySession, syncProfile]);
 
     useFocusEffect(

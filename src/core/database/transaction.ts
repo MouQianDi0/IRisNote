@@ -42,7 +42,9 @@ export async function runPlatformTransaction<T>(
     if (ownsConnection) {
         const separator = database.databasePath.lastIndexOf("/");
         if (separator < 0) {
-            throw new Error("[Database] Cannot resolve transaction database path.");
+            throw new Error(
+                "[Database] Cannot resolve transaction database path.",
+            );
         }
         transaction = await openDatabaseAsync(
             database.databasePath.slice(separator + 1),
@@ -69,7 +71,10 @@ export async function runPlatformTransaction<T>(
             } catch (rollbackError) {
                 // 回滚失败时数据库状态不确定：抛出可识别错误并保留两层原因，
                 // 供上层按 DatabaseTransactionRollbackError 决定恢复策略。
-                throw new DatabaseTransactionRollbackError(error, rollbackError);
+                throw new DatabaseTransactionRollbackError(
+                    error,
+                    rollbackError,
+                );
             }
         }
         throw error;
@@ -79,7 +84,9 @@ export async function runPlatformTransaction<T>(
                 await transaction.closeAsync();
             } catch (error) {
                 if (!failed) throw error;
-                console.error("[Database] Transaction connection close failed.");
+                console.error(
+                    "[Database] Transaction connection close failed.",
+                );
             }
         }
     }

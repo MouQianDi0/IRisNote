@@ -10,7 +10,9 @@ export class SerialDatabaseQueue {
 
     run<T>(task: () => Promise<T>): Promise<T> {
         if (this.closing) {
-            return Promise.reject(new Error("[Database] Connection is closing or closed."));
+            return Promise.reject(
+                new Error("[Database] Connection is closing or closed."),
+            );
         }
         const result = this.tail.then(task, task);
         this.tail = result.then(

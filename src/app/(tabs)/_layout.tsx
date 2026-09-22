@@ -7,48 +7,48 @@ import { Redirect } from "expo-router";
 import { ActivityIndicator, Dimensions, View } from "react-native";
 
 export default function TabsLayout() {
-  const { isLoggedIn, loading } = useAuth();
+    const { isLoggedIn, loading } = useAuth();
 
-  if (loading) {
+    if (loading) {
+        return (
+            <View
+                style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    alignItems: "center",
+                }}
+            >
+                <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+        );
+    }
+
+    if (!isLoggedIn) {
+        return <Redirect href="/auth/welcome" />;
+    }
+
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+        <>
+            <TabsBackExitHandler />
+            <SwipeTabs
+                initialLayout={{ width: Dimensions.get("window").width }}
+                tabBarPosition="bottom"
+                keyboardDismissMode="auto"
+                overScrollMode="never"
+                tabBar={(props) => <FloatingMenu {...props} />}
+                screenOptions={{
+                    headerShown: false,
+                    swipeEnabled: true,
+                    animationEnabled: true,
+                    lazy: true,
+                    lazyPreloadDistance: 1,
+                }}
+            >
+                <SwipeTabs.Screen name="note" />
+                <SwipeTabs.Screen name="excerpt" />
+                <SwipeTabs.Screen name="todo" />
+                <SwipeTabs.Screen name="user" />
+            </SwipeTabs>
+        </>
     );
-  }
-
-  if (!isLoggedIn) {
-    return <Redirect href="/auth/welcome" />;
-  }
-
-  return (
-    <>
-      <TabsBackExitHandler />
-      <SwipeTabs
-        initialLayout={{ width: Dimensions.get("window").width }}
-        tabBarPosition="bottom"
-        keyboardDismissMode="auto"
-        overScrollMode="never"
-        tabBar={(props) => <FloatingMenu {...props} />}
-        screenOptions={{
-          headerShown: false,
-          swipeEnabled: true,
-          animationEnabled: true,
-          lazy: true,
-          lazyPreloadDistance: 1,
-        }}
-      >
-        <SwipeTabs.Screen name="note" />
-        <SwipeTabs.Screen name="excerpt" />
-        <SwipeTabs.Screen name="todo" />
-        <SwipeTabs.Screen name="user" />
-      </SwipeTabs>
-    </>
-  );
 }

@@ -62,7 +62,7 @@ export function AuthScreenLayout({
                 keyboardDismissMode="on-drag"
                 contentContainerStyle={{ flexGrow: 1 }}
             >
-                <View className="flex-1 items-center px-4 pb-6 pt-3">
+                <View className="flex-1 items-center px-4 pt-3 pb-6">
                     <View className="w-full max-w-[440px]">
                         <View className="mb-2 h-11 flex-row items-center">
                             <BackButton

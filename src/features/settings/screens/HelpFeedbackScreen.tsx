@@ -1,17 +1,18 @@
-import { banner } from "@/core/notifications";
 import {
     createDiagnosticExport,
     diagnosticErrorCategory,
     recordDiagnostic,
 } from "@/core/diagnostics";
+import { banner } from "@/core/notifications";
 import { systemNotificationsAvailable } from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
+import NativeSystem from "@modules/irisnote-system";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
-import * as Sharing from "expo-sharing";
 import { router } from "expo-router";
+import * as Sharing from "expo-sharing";
 import {
     ChevronRight,
     CircleHelp,
@@ -31,7 +32,6 @@ import {
     Text,
     View,
 } from "react-native";
-import NativeSystem from "@modules/irisnote-system";
 import { SettingsPageHeader } from "../components/SettingsPageHeader";
 import { SettingsRow } from "../components/SettingsRow";
 import { DISCORD_CHANNEL_URL, FEEDBACK_EMAIL } from "../data/support-links";
@@ -257,7 +257,7 @@ export default function HelpFeedbackScreen() {
                                 className="ml-3 min-w-0 flex-1 py-1 active:opacity-[0.75]"
                                 onPress={() => void openEmail()}
                             >
-                                <Text className="text-[17px] text-text-primary">
+                                <Text className="text-text-primary text-[17px]">
                                     反馈邮箱
                                 </Text>
                                 <Text
@@ -296,7 +296,7 @@ export default function HelpFeedbackScreen() {
                         />
                     </Card>
 
-                    <Text className="mb-2 ml-1 mt-5 text-[13px] text-hyper-text-secondary">
+                    <Text className="mt-5 mb-2 ml-1 text-[13px] text-hyper-text-secondary">
                         诊断与排障
                     </Text>
                     <Card
@@ -327,7 +327,7 @@ export default function HelpFeedbackScreen() {
                         />
                     </Card>
 
-                    <Text className="mb-2 ml-1 mt-5 text-[13px] text-hyper-text-secondary">
+                    <Text className="mt-5 mb-2 ml-1 text-[13px] text-hyper-text-secondary">
                         使用帮助
                     </Text>
                     <Card

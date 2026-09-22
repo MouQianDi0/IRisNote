@@ -341,7 +341,7 @@ test("resuming a historical watermark catches a fresh round before projecting re
     assert.equal(result.notes[0].content, "latest receipt");
 });
 
-test("duplicate events are harmless and tombstones cannot be resurrected", async (t) => {
+test("duplicate and stale events are harmless; a newer server restore can follow a tombstone", async (t) => {
     const { port } = await database(t);
     await seed(port, [cloud(1)]);
     await repo.applyChanges(
@@ -352,16 +352,16 @@ test("duplicate events are harmless and tombstones cannot be resurrected", async
         noOp,
     );
     await repo.applyChanges(port, 1, "end", changePage([deletion(1)]), noOp);
-    await assert.rejects(
-        repo.applyChanges(
+    await repo.applyChanges(port, 1, "end", changePage([upsert(cloud(1, 1))]), noOp);
+    assert.equal((await repo.readCloudMirror(port, 1)).length, 0);
+    await repo.applyChanges(
             port,
             1,
             "end",
             changePage([upsert(cloud(1, 3))]),
             noOp,
-        ),
-        /不能复活/,
     );
+    assert.equal((await repo.readCloudMirror(port, 1))[0].version, 3);
 });
 
 test("protocol validates account ownership, decimal bigint ordering, and cursor shape", () => {
@@ -497,6 +497,9 @@ require.cache[transportPath] = {
     loaded: true,
     exports: { notesSyncTransport: fakeTransport },
 };
+const trashApiPath = require.resolve("../../src/features/notes/api/notes-trash.api.ts");
+require.cache[trashApiPath] = { id: trashApiPath, filename: trashApiPath, loaded: true,
+    exports: { notesTrashApi: { list: async () => { throw Error("trash endpoint unavailable in legacy fixture"); } } } };
 const coordinator = require("../../src/features/notes/services/note-sync-coordinator.ts");
 const connections = require("../../src/shared/http/connection-events.ts");
 const events = require("../../src/features/notes/notes.events.ts");

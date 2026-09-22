@@ -22,15 +22,28 @@ export default function TabsBackExitHandler() {
 
                     lastBackPressRef.current = now;
                     banner.dismiss("back-exit");
-                    banner.show({ id: "back-exit", type: "neutral", title: "再按一次返回退出应用",
-                        lifetime: { mode: "timed", durationMs: 1500 }, queueTtlMs: 1500 });
+                    banner.show({
+                        id: "back-exit",
+                        type: "neutral",
+                        title: "再按一次返回退出应用",
+                        lifetime: { mode: "timed", durationMs: 1500 },
+                        queueTtlMs: 1500,
+                    });
                     clearTimeout(timer);
-                    timer = setTimeout(() => { banner.dismiss("back-exit"); lastBackPressRef.current = -Infinity; }, 1500);
+                    timer = setTimeout(() => {
+                        banner.dismiss("back-exit");
+                        lastBackPressRef.current = -Infinity;
+                    }, 1500);
                     return true;
                 },
             );
 
-            return () => { subscription.remove(); clearTimeout(timer); banner.dismiss("back-exit"); lastBackPressRef.current = -Infinity; };
+            return () => {
+                subscription.remove();
+                clearTimeout(timer);
+                banner.dismiss("back-exit");
+                lastBackPressRef.current = -Infinity;
+            };
         }, []),
     );
 

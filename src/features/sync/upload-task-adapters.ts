@@ -1,5 +1,9 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { captureCloudStorageAccess, isCloudStoragePermissionError, isCloudStorageRequestDispatched } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+    isCloudStorageRequestDispatched,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import type { UploadQueueTask } from "@/core/sync";
 import { deleteNote } from "@/features/notes/api/notes.api";
 import {
@@ -70,10 +74,14 @@ const classifyFailure = (
 ): UploadTaskExecution => {
     if (isCloudStoragePermissionError(error)) {
         return {
-            state: unsafeCreate && isCloudStorageRequestDispatched(error) ? "blocked" : "suspended",
-            message: unsafeCreate && isCloudStorageRequestDispatched(error)
-                ? "分类创建结果未知，任务已保留，请开启云存储后先检查云端分类，避免重复创建"
-                : "云存储授权已关闭，任务已保留在本机",
+            state:
+                unsafeCreate && isCloudStorageRequestDispatched(error)
+                    ? "blocked"
+                    : "suspended",
+            message:
+                unsafeCreate && isCloudStorageRequestDispatched(error)
+                    ? "分类创建结果未知，任务已保留，请开启云存储后先检查云端分类，避免重复创建"
+                    : "云存储授权已关闭，任务已保留在本机",
             transferredBytes: 0,
         };
     }

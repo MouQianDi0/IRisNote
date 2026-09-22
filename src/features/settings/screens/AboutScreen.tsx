@@ -36,7 +36,7 @@ function ReleaseContent({
             ) : null}
             {sections.map((section) => (
                 <View className="mb-3" key={section.title}>
-                    <Text className="mb-1 text-[15px] text-text-primary">
+                    <Text className="text-text-primary mb-1 text-[15px]">
                         {section.title}
                     </Text>
                     {section.items.map((item) => (
@@ -108,7 +108,7 @@ export default function AboutScreen() {
                         backLabel="返回设置"
                         onBack={() => router.back()}
                     />
-                    <View className="items-center pb-6 pt-2">
+                    <View className="items-center pt-2 pb-6">
                         <Image
                             accessibilityLabel="IRisNote 应用图标"
                             source={
@@ -118,7 +118,7 @@ export default function AboutScreen() {
                             }
                             style={{ width: 76, height: 76, borderRadius: 18 }}
                         />
-                        <Text className="mt-3 text-[22px] text-text-primary">
+                        <Text className="text-text-primary mt-3 text-[22px]">
                             IRisNote
                         </Text>
                         <Text className="mt-1 text-sm text-hyper-text-secondary">
@@ -143,7 +143,7 @@ export default function AboutScreen() {
                                 <View className="w-7 items-center">
                                     {index < releases.length - 1 ? (
                                         <View
-                                            className="absolute bottom-0 top-3 w-0.5 bg-hyper-divider"
+                                            className="absolute top-3 bottom-0 w-0.5 bg-hyper-divider"
                                             accessibilityElementsHidden
                                         />
                                     ) : null}
@@ -157,7 +157,7 @@ export default function AboutScreen() {
                                 </View>
                                 <View className="min-w-0 flex-1 pb-6 pl-3">
                                     <View className="mb-2 flex-row flex-wrap items-center gap-2">
-                                        <Text className="text-[17px] text-text-primary">
+                                        <Text className="text-text-primary text-[17px]">
                                             v{release.version}
                                         </Text>
                                         {current ? (

@@ -4,7 +4,4 @@ export {
     type AppCalendarViewMode,
     type CalendarDateId,
 } from "./AppCalendar";
-export type {
-    CalendarRange,
-    CalendarValue,
-} from "./calendar-logic";
+export type { CalendarRange, CalendarValue } from "./calendar-logic";

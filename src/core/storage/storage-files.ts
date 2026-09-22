@@ -105,11 +105,16 @@ export async function scanStorageFiles(): Promise<StorageScan> {
     const documentUri = addRoot(() => Paths.document);
     addRoot(() => Paths.cache);
     if (documentUri) {
-        try { draftsUri = new Directory(documentUri, "drafts").uri; }
-        catch { result.errors++; }
+        try {
+            draftsUri = new Directory(documentUri, "drafts").uri;
+        } catch {
+            result.errors++;
+        }
     }
     if (defaultDatabaseDirectory) {
-        databaseUri = addRoot(() => new Directory(databaseDirectoryUri(defaultDatabaseDirectory)));
+        databaseUri = addRoot(
+            () => new Directory(databaseDirectoryUri(defaultDatabaseDirectory)),
+        );
     }
     const visited = new Set<string>();
     const pending = [...roots];

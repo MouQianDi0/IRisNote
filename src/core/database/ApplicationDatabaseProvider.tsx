@@ -19,7 +19,11 @@ export function ApplicationDatabaseProvider({ children }: PropsWithChildren) {
         void lease.ready.then(
             (resource) => {
                 if (lease.active) {
-                    setState({ lease, database: resource.database, error: null });
+                    setState({
+                        lease,
+                        database: resource.database,
+                        error: null,
+                    });
                 }
             },
             (error: unknown) => {
@@ -27,16 +31,21 @@ export function ApplicationDatabaseProvider({ children }: PropsWithChildren) {
                     setState({
                         lease,
                         database: null,
-                        error: error instanceof Error
-                            ? error
-                            : new Error("Unknown database initialization error."),
+                        error:
+                            error instanceof Error
+                                ? error
+                                : new Error(
+                                      "Unknown database initialization error.",
+                                  ),
                     });
                 }
             },
         );
         return () => {
             void lease.release().catch(() => {
-                console.error("[Database] Close failed; connection will not be reused.");
+                console.error(
+                    "[Database] Close failed; connection will not be reused.",
+                );
             });
         };
     }, []);

@@ -4,23 +4,25 @@ import * as Print from "expo-print";
 import { type ShareableNote } from "./CopyNoteToClipboard";
 
 const escapeHtml = (value: string) =>
-  value.replace(
-    /[&<>"']/g,
-    (character) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      })[character] ?? character,
-  );
+    value.replace(
+        /[&<>"']/g,
+        (character) =>
+            ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                '"': "&quot;",
+                "'": "&#39;",
+            })[character] ?? character,
+    );
 
 export const formatNoteAsPdfHtml = (note: ShareableNote) => {
-  const title = escapeHtml(note.title.trim() || "未命名笔记");
-  const content = escapeHtml(note.content?.trim() || "这篇笔记暂时没有正文。");
+    const title = escapeHtml(note.title.trim() || "未命名笔记");
+    const content = escapeHtml(
+        note.content?.trim() || "这篇笔记暂时没有正文。",
+    );
 
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
@@ -80,11 +82,11 @@ export const formatNoteAsPdfHtml = (note: ShareableNote) => {
 };
 
 export const createNotePdfFile = async (note: ShareableNote) => {
-  const { uri } = await Print.printToFileAsync({
-    html: formatNoteAsPdfHtml(note),
-  });
+    const { uri } = await Print.printToFileAsync({
+        html: formatNoteAsPdfHtml(note),
+    });
 
-  const file = new File(uri);
-  file.move(createShareCacheFile("pdf"));
-  return file.uri;
+    const file = new File(uri);
+    file.move(createShareCacheFile("pdf"));
+    return file.uri;
 };

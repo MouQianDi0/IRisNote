@@ -1,10 +1,10 @@
 import type { DatabaseMigration } from "../database.types";
 
 export const createTodoSync: DatabaseMigration = {
-  version: 9,
-  name: "create_todo_sync",
-  async up(database) {
-    await database.execAsync(`
+    version: 9,
+    name: "create_todo_sync",
+    async up(database) {
+        await database.execAsync(`
       CREATE TABLE local_todos_v9 (
         owner_key TEXT NOT NULL CHECK(length(owner_key) > 0),
         client_id TEXT NOT NULL CHECK(length(client_id)=36 AND substr(client_id,9,1)='-'
@@ -76,5 +76,5 @@ export const createTodoSync: DatabaseMigration = {
         PRIMARY KEY(owner_key, client_id)
       );
     `);
-  },
+    },
 };

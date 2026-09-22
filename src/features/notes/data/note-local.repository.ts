@@ -22,7 +22,16 @@ import {
     insertNoteRevision,
     revisionContentEquals,
 } from "./note-revision.repository";
-import { readEvictedNoteIdentity, removeEvictedNoteIdentity } from "./note-cache.repository";
+import {
+    readEvictedNoteIdentity,
+    removeEvictedNoteIdentity,
+} from "./note-cache.repository";
+import {
+    archiveLocalNote,
+    hasNoteTrash,
+    readServerTrash,
+    readTrash,
+} from "./note-trash.repository";
 
 type LocalNoteRow = {
     local_id: number;
@@ -254,6 +263,12 @@ export async function updatePendingLocalNote(
     draft?: DraftCommit,
 ) {
     return database.transaction(async (transaction) => {
+        if (
+            (await hasNoteTrash(transaction)) &&
+            (await readTrash(transaction, ownerUserId, note.id))
+        ) {
+            throw new Error("笔记已移入垃圾桶，请先恢复后再编辑");
+        }
         const existing = await readNoteByClientId(
             transaction,
             ownerUserId,
@@ -530,6 +545,8 @@ export async function reconcileNotesInTransaction(
     for (const [index, note] of serverNotes.entries()) {
         const serverId = note.server_id ?? note.id;
         serverIds.add(serverId);
+        // A stale full list/conflict response cannot recreate a note archived locally.
+        if (await readServerTrash(transaction, ownerUserId, serverId)) continue;
         const existing = await transaction.getFirst<LocalNoteRow>(
             `SELECT ${LOCAL_NOTE_COLUMNS}
                  FROM local_notes
@@ -697,28 +714,49 @@ export async function reconcileNotesInTransaction(
             continue;
         }
 
-        const identity = await readEvictedNoteIdentity(transaction, ownerUserId, serverId);
-        const restoredClientId = identity?.client_id ?? serverId;
-        const previousRevision = identity?.current_revision_id
-            ? await getNoteRevisionById(transaction, ownerUserId, identity.current_revision_id)
-            : null;
-        if (identity?.current_revision_id && (!previousRevision || previousRevision.client_id !== restoredClientId)) {
-            throw new Error("笔记缓存历史身份无法核实，已保留恢复记录");
-        }
-        const insertedRevisionId = previousRevision && revisionContentEquals({
-            title: note.title, content: note.content, categoryId: note.category_id ?? null,
-        }, previousRevision) ? previousRevision.revision_id : await insertNoteRevision(
+        const identity = await readEvictedNoteIdentity(
             transaction,
             ownerUserId,
-            restoredClientId,
-            {
-                parentId: previousRevision?.revision_id ?? null,
-                title: note.title,
-                content: note.content,
-                categoryId: note.category_id ?? null,
-                origin: "server-reconcile",
-            },
+            serverId,
         );
+        const restoredClientId = identity?.client_id ?? serverId;
+        const previousRevision = identity?.current_revision_id
+            ? await getNoteRevisionById(
+                  transaction,
+                  ownerUserId,
+                  identity.current_revision_id,
+              )
+            : null;
+        if (
+            identity?.current_revision_id &&
+            (!previousRevision ||
+                previousRevision.client_id !== restoredClientId)
+        ) {
+            throw new Error("笔记缓存历史身份无法核实，已保留恢复记录");
+        }
+        const insertedRevisionId =
+            previousRevision &&
+            revisionContentEquals(
+                {
+                    title: note.title,
+                    content: note.content,
+                    categoryId: note.category_id ?? null,
+                },
+                previousRevision,
+            )
+                ? previousRevision.revision_id
+                : await insertNoteRevision(
+                      transaction,
+                      ownerUserId,
+                      restoredClientId,
+                      {
+                          parentId: previousRevision?.revision_id ?? null,
+                          title: note.title,
+                          content: note.content,
+                          categoryId: note.category_id ?? null,
+                          origin: "server-reconcile",
+                      },
+                  );
         await transaction.run(
             `INSERT INTO local_notes (
                     owner_user_id,
@@ -766,13 +804,15 @@ export async function reconcileNotesInTransaction(
                 $isPinned: note.is_pinned ? 1 : 0,
                 $isStarred: note.is_starred ? 1 : 0,
                 $localOrder: note.local_order ?? identity?.local_order ?? index,
-                $pinnedOrder: note.pinned_order ?? identity?.pinned_order ?? null,
+                $pinnedOrder:
+                    note.pinned_order ?? identity?.pinned_order ?? null,
                 $localUpdatedAt: note.updated_at ?? note.created_at,
                 $serverUpdatedAt: note.updated_at ?? null,
                 $revisionId: insertedRevisionId,
             },
         );
-        if (identity) await removeEvictedNoteIdentity(transaction, ownerUserId, serverId);
+        if (identity)
+            await removeEvictedNoteIdentity(transaction, ownerUserId, serverId);
         added++;
     }
 
@@ -785,6 +825,8 @@ export async function reconcileNotesInTransaction(
     for (const row of syncedRows) {
         if (guard || mirror) break;
         if (row.server_id != null && !serverIds.has(row.server_id)) {
+            if (await archiveLocalNote(transaction, ownerUserId, row.client_id))
+                continue;
             // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
             await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
             await transaction.run(

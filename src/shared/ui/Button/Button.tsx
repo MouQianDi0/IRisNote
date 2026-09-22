@@ -10,10 +10,10 @@ import { buttonStyles, type ButtonStyleVariants } from "./button.styles";
  */
 type ButtonProps = PropsWithChildren<
     Omit<PressableProps, "disabled"> &
-    Omit<ButtonStyleVariants, "disabled"> & {
-        className?: string;
-        disabled?: boolean;
-    }
+        Omit<ButtonStyleVariants, "disabled"> & {
+            className?: string;
+            disabled?: boolean;
+        }
 >;
 
 export function Button({
