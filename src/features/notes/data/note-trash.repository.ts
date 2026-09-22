@@ -63,7 +63,7 @@ const localColumns = [
     "current_revision_id",
 ] as const;
 
-/** Old-schema migration diagnostics must retain their existing behavior. App startup requires v12. */
+/** Old-schema migration diagnostics retain their existing behavior. App startup applies v12 and v13 before exposing this API. */
 export async function hasNoteTrash(db: Tx) {
     return Boolean(
         await db.getFirst(
@@ -89,6 +89,29 @@ export async function readServerTrash(db: Tx, owner: number, serverId: number) {
         "SELECT * FROM note_trash WHERE owner_user_id=? AND server_id=?",
         [owner, serverId],
     );
+}
+export async function isRemovedLocalNote(
+    db: Tx,
+    owner: number,
+    clientId: number,
+) {
+    if (!(await hasNoteTrash(db))) return false;
+    return Boolean(
+        await db.getFirst(
+            `SELECT 1 FROM note_trash WHERE owner_user_id=? AND client_id=?
+        UNION ALL SELECT 1 FROM note_trash_purged WHERE owner_user_id=? AND client_id=? LIMIT 1`,
+            [owner, clientId, owner, clientId],
+        ),
+    );
+}
+export async function removedServerIds(db: Tx, owner: number) {
+    if (!(await hasNoteTrash(db))) return new Set<number>();
+    const rows = await db.getAll<{ server_id: number }>(
+        `SELECT server_id FROM note_trash WHERE owner_user_id=? AND server_id IS NOT NULL
+        UNION SELECT server_id FROM note_trash_purged WHERE owner_user_id=? AND server_id IS NOT NULL`,
+        [owner, owner],
+    );
+    return new Set(rows.map((row) => row.server_id));
 }
 export function trashReceipt(row: TrashRow): NoteDeletion {
     if (
@@ -136,6 +159,15 @@ export async function recordRemoteDeletion(
     cloud?: DeletedCloudNote,
 ) {
     if (!(await hasNoteTrash(tx))) return;
+    const purged = await tx.getFirst<{ cloud_id: string | null }>(
+        "SELECT cloud_id FROM note_trash_purged WHERE owner_user_id=? AND server_id=?",
+        [owner, receipt.id],
+    );
+    if (purged) {
+        if (purged.cloud_id !== null && purged.cloud_id !== receipt.client_id)
+            throw new Error("已清理笔记的身份不一致");
+        return;
+    }
     const old = await readServerTrash(tx, owner, receipt.id);
     if (old && old.version > receipt.version) return;
     if (old?.cloud_id && old.cloud_id !== receipt.client_id)
@@ -264,6 +296,14 @@ export async function restoreArchivedNote(
     cloud?: CloudNote,
 ) {
     if (
+        await tx.getFirst(
+            "SELECT 1 FROM note_trash_purged WHERE owner_user_id=? AND client_id=?",
+            [owner, row.client_id],
+        )
+    ) {
+        throw new Error("笔记已被彻底清理，无法恢复");
+    }
+    if (
         row.owner_user_id !== owner ||
         (cloud &&
             (cloud.user_id !== owner ||
@@ -308,13 +348,23 @@ export async function restoreArchivedNote(
             keepLocal && textDiffers && localTime === cloudTime,
         );
         const content = keepLocal ? local! : cloud!;
+        const categoryRemoved =
+            !cloud &&
+            content.category_id !== null &&
+            (await tx.getFirst("SELECT 1 FROM system_preferences WHERE key=?", [
+                `deleted-category:${owner}:${content.category_id}`,
+            ]));
         const next: LocalRow = {
             owner_user_id: owner,
             client_id: row.client_id,
             server_id: row.server_id,
             title: content.title,
             content: content.content,
-            category_id: cloud ? cloud.category_id : content.category_id,
+            category_id: cloud
+                ? cloud.category_id
+                : categoryRemoved
+                  ? null
+                  : content.category_id,
             created_at: content.created_at,
             is_pinned: Number(Boolean(cloud?.is_pinned ?? local?.is_pinned)),
             is_starred: Number(Boolean(cloud?.is_starred ?? local?.is_starred)),
@@ -366,10 +416,18 @@ export async function restoreArchivedNote(
             localColumns.map((key) => next[key]),
         );
         const drafts: NoteDraft[] = JSON.parse(row.drafts_json ?? "[]");
-        if (next.sync_status === "pending") await enqueueNoteUpload(tx, owner, {
-            id: row.client_id, server_id: next.server_id, user_id: owner, title: next.title, content: next.content,
-            category_id: next.category_id, created_at: next.created_at, current_revision_id: next.current_revision_id, sync_operation: next.sync_operation,
-        });
+        if (next.sync_status === "pending")
+            await enqueueNoteUpload(tx, owner, {
+                id: row.client_id,
+                server_id: next.server_id,
+                user_id: owner,
+                title: next.title,
+                content: next.content,
+                category_id: next.category_id,
+                created_at: next.created_at,
+                current_revision_id: next.current_revision_id,
+                sync_operation: next.sync_operation,
+            });
         for (const draft of drafts) {
             if (
                 draft.owner_user_id !== owner ||
@@ -388,7 +446,11 @@ export async function restoreArchivedNote(
                     draft.base_revision_id,
                     draft.title,
                     draft.content,
-                    cloud?.category_id === null ? null : draft.category_id,
+                    cloud?.category_id === null ||
+                    (categoryRemoved &&
+                        draft.category_id === local?.category_id)
+                        ? null
+                        : draft.category_id,
                     draft.sequence,
                     draft.updated_at,
                 ],
@@ -433,6 +495,10 @@ export async function purgeLocalTrash(
         )
     )
         return false;
+    await tx.run(
+        "INSERT OR IGNORE INTO note_trash_purged(owner_user_id,client_id,server_id,cloud_id) VALUES(?,?,?,?)",
+        [owner, row.client_id, row.server_id, row.cloud_id],
+    );
     await tx.run(
         "DELETE FROM note_revisions WHERE owner_user_id=? AND client_id=?",
         [owner, row.client_id],

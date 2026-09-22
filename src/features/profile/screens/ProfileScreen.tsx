@@ -3,7 +3,7 @@ import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
 import { colors } from "@/shared/theme";
 import { AnchoredPopover, Card, Screen } from "@/shared/ui";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
 import {
     Archive,
     BookOpenText,
@@ -268,16 +268,12 @@ export default function ProfileScreen() {
     const displayName = user.nickname?.trim() || user.email.split("@")[0];
     const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
     const openNotes = (view?: "starred", drafts?: boolean) => {
-        router.replace(
-            view || drafts
-                ? ({
-                      pathname: "/(tabs)/note",
-                      params: {
-                          ...(view ? { view } : {}),
-                          ...(drafts ? { drafts: "1" } : {}),
-                      },
-                  } as Href)
-                : "/(tabs)/note",
+        router.push(
+            drafts
+                ? "/pages/user/drafts"
+                : view === "starred"
+                  ? "/pages/user/starred"
+                  : "/pages/user/notes",
         );
     };
 

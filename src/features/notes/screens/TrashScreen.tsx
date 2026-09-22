@@ -94,7 +94,11 @@ export default function TrashScreen() {
                         ),
                     );
             } finally {
-                if (loadingRef.current === loadKey) loadingRef.current = null;
+                if (
+                    loadingRef.current === loadKey &&
+                    request === serial.current
+                )
+                    loadingRef.current = null;
                 if (valid()) {
                     setLoading(false);
                     setRefreshing(false);
@@ -124,6 +128,7 @@ export default function TrashScreen() {
             return () => {
                 active.current = false;
                 serial.current++;
+                loadingRef.current = null;
                 clearInterval(timer);
                 subscription.remove();
             };
@@ -143,7 +148,12 @@ export default function TrashScreen() {
                 getCloudStorageSnapshot().generation === currentGeneration
             )
                 setError(
-                    getApiErrorMessage(cause, cause instanceof Error ? cause.message : "恢复失败，请检查网络后重试"),
+                    getApiErrorMessage(
+                        cause,
+                        cause instanceof Error
+                            ? cause.message
+                            : "恢复失败，请检查网络后重试",
+                    ),
                 );
         } finally {
             if (

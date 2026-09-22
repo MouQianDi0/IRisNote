@@ -1,3 +1,29 @@
+## 2026-09-22 18:02:12 | 新增功能：15 天笔记垃圾桶（代码完成，未部署）
+
+- 变更概述：已按用户确认的规则与文字预览实现“我的 → 垃圾桶”、15×24 小时保留、恢复与到期清理。云端按服务器时间，App 启动/回前台/联网恢复与前台周期检查处理持久任务；离线或云存储关闭会延迟云端清理。纯本地笔记独立处理到期。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/trash.tsx、src/core/database/migrations/index.ts、src/core/database/migrations/0012-create-note-trash.ts、src/core/notifications/notification-provider.tsx、src/core/sync/upload-queue.repository.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/data/new-note-draft.repository.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、src/features/notes/screens/TrashScreen.tsx、src/features/notes/categories/components/CategoryDeleteConfirmModal.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、tests/trash/notes-trash.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-local.test.cjs、src/core/database/migrations/0013-add-note-purge-markers.ts、CHANGELOG.md。
+- 数据与同步：归档笔记、排序、历史指针及草稿，撤销未运行上传任务；在途上传及结果未知的新建笔记拒绝删除。恢复保留较新本地编辑与冲突草稿，并重新排队需要上传的版本。分类删除覆盖本地未上传笔记，分类消失时恢复到未分类。明确保存的关联文件草稿在垃圾桶期间隐藏，到期一并清理。
+- 并发保护：删除与清理绑定身份、版本、删除时间；超时后重试同一批次。恢复未确认的删除时先取得删除回执再恢复，阻止迟到删除回写。无正文清理标识阻止旧编辑页、草稿和同步快照重新创建已清理内容；账号代际与 SQLite 事务保护跨账号和失败回滚。
+- 迁移：0012 创建垃圾桶；期间外部操作已提交首版实现，因此保持已提交迁移不变，追加 0013 创建无正文清理标识，兼容已经升级到 0012 的本地库。客户端自动顺序迁移，不清空本地数据。
+- 界面：保留我的页面其他区块，新增垃圾桶入口；卡片含标题、两行摘要、剩余天/小时/分钟及恢复操作。覆盖加载、空列表、恢复中、失败重试、待联网确认和到期待清理状态；笔记与分类删除提示改为保留 15 天。
+- 最终检查：npm run check 中 typecheck、lint 通过；theme:check 因当前 global.css 生成块格式差异失败，逐项比较颜色/圆角语义差异为 0。独立 npm test：444 项中 442 通过、2 失败、0 跳过；垃圾桶专项 16/16 通过，包含真实 SQLite 文件关闭/重开、迁移保留、恢复与清理、过期边界、账号隔离、错误身份拒绝及队列/草稿保护。
+- 范围外失败：page-seam.test.cjs 固定 className 顺序断言与同期格式化后的 border-t/border-r/border-b 顺序不符；swipe-tabs.test.cjs 期望已安装依赖 DEAD_ZONE=100，实际仍为 12，仓库补丁要求 100。未修改这些导航文件、依赖或测试来掩盖失败。
+- 验收版本：288e266 加本轮工作区增量；最终检查前后本功能 27 个源码/测试文件 SHA256 无变化，范围内 git diff --check 与冲突标记扫描通过。最初方案阶段类型检查基线为 47bedd6，确认后实施起点为 a2af26c；期间 282122d/288e266 来自外部 Git 操作，本任务未执行提交或推送。
+- 验证记录：系统临时目录 irisnote-trash-final-check.log、irisnote-trash-final-tests.log；后端笔记单元 11 项与独立 PostgreSQL 18.4 集成 20 项通过，临时实例已核验并停止。当前 adb devices -l 无已连接设备，真机与 APK 打包未验收。
+- 上线边界：后端须另行执行 migrations/008_notes_trash.sql 并部署；未执行生产迁移、部署或真实数据清理，不能据上述检查宣称可发布。
+
+---
+
+## 2026-09-22 17:59:12 | 新增功能：我的页面独立笔记与草稿列表
+
+- 变更概述：将全部笔记、星标笔记和草稿箱接入独立二级页面，保留返回我的页面的导航历史。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/notes.tsx、src/app/pages/user/starred.tsx、src/app/pages/user/drafts.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/note-collection-screen.tsx、src/features/notes/screens/drafts-screen.tsx、src/features/notes/hooks/use-draft-manager.ts、src/features/notes/components/draft-manager-dialog.tsx、CHANGELOG.md。
+- 具体内容：全部与星标笔记共用本机优先列表，在云存储授权下复用同步服务；页面返回时刷新，按账号和会话隔离异步结果。草稿列表展示本机主动草稿与自动恢复内容，复用现有草稿仓储，并将单选续写、批量删除和 2 秒倒计时抽取为页面/弹窗共享 hook；离开页面或应用退到后台取消未执行的倒计时。
+- 界面：沿用 64dp 返回栏、16dp 页面/卡片内边距、12dp 卡片间距和 48dp 操作按钮，补充加载、空态、错误重试及底部安全区。
+- 验证：对应基于 288e266 的未提交工作区。修改前后 npm run typecheck 通过，完整 npm run check 的类型检查和 ESLint 通过，但 theme:check 因既有 global.css 色值大小写与主题生成结果不一致而失败；从 288e266 原文件复核可复现，本次未修改主题文件。单独执行 npm test：443 项中 441 通过、2 失败，分别为既有待办页 className 字符串断言不匹配（基线提交同样不匹配）和 react-native-tab-view 运行依赖 DEAD_ZONE=12、测试要求100；均不涉及本次修改文件。最终类型检查、定向 ESLint、git diff --check 及本次源码冲突标记检查通过。检查日志：系统临时目录 irisnote-profile-pages-check.log、irisnote-profile-pages-tests.log。ADB 无设备，现有预览端口8081的浏览器导航和状态读取均超时，未完成视觉或真机验收；未重启现有服务，未构建、提交或发布。
+
+---
+
 ## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
 
 - 用户已确认方案和界面预览，新增本地垃圾桶迁移、严格响应校验、删除/恢复/清理服务。
