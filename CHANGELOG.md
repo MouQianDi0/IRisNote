@@ -1,3 +1,31 @@
+## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
+
+- 用户已确认方案和界面预览，新增本地垃圾桶迁移、严格响应校验、删除/恢复/清理服务。
+- 文件：src/core/database/migrations/0012-create-note-trash.ts、src/core/database/migrations/index.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 删除时在本地事务中归档笔记/草稿、保留历史并撤销未运行上传任务；同步处理合法的更高版本恢复，到期清理依赖服务器确认；仍在上传或结果未知的新笔记拒绝删除。
+- 尚待界面接入、回归检查和最终记录；未执行线上迁移、部署或真实数据清理。
+
+---
+
+## 2026-09-22 17:03:13 | 修复问题：存储统计兼容 SQLite 原生目录路径
+
+- 变更概述：修复已确认的数据与存储功能在 Android 扫描 SQLite 目录时出现 Exception in HostFunction / URI is not absolute 的问题。
+- 修改文件：src/core/storage/storage-files.ts、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 问题根因：项目已安装的 expo-sqlite Android/iOS 实现返回不带协议的绝对本地路径；原实现直接交给 Expo FileSystem Directory，并在 try/catch 之外访问原生 uri getter。原测试替身自动为所有路径补 file:///，掩盖了真实模块边界。
+- 具体内容：① 仅在文件系统统计入口把 SQLite 绝对本地路径转换为 file URI，按路径段编码中文、空格、百分号、#、? 等字符，保留已有 file:/// URI，不改变 SQLite 打开数据库时的路径；② 目录初始化及遍历时的 uri getter 均纳入异常处理，单个目录失败计入部分统计并继续其他目录；③ 缓存规范化后的 SQLite 与草稿目录用于分类和去重；④ 测试替身不再凭空补协议，模拟裸路径 uri getter 抛错；增加裸路径、已有 URI、特殊字符、无效路径及目录 getter 异常回归。清理白名单、数据库数据、界面布局与默认选择保持原方案。
+- 验证：对应基于 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；node --test tests/storage/storage.test.cjs 为 13/13 通过。npm run check 的 typecheck、lint、theme:check 通过，428 项测试中 427 通过、1 失败，唯一失败仍为既有横滑依赖补丁未生效（运行依赖 DEAD_ZONE=12、原测试要求100），与本次路径修复无关。git diff --check 与本次文件冲突标记检查通过。完整日志位于系统临时目录 irisnote-storage-uri-check.log。ADB 未列出设备；原生根因已核对已安装 Kotlin/Swift 源码，但修复尚未通过真机复验，未构建、安装或发布。
+
+---
+
+## 2026-09-22 16:50:39 | 新增功能：数据与存储及可选缓存清理
+
+- 修改文件：src/app/_layout.tsx、src/features/notes/components/NoteShare/NoteShareManager.tsx、src/features/notes/components/NoteShare/NoteShareToImage.tsx、src/features/notes/components/NoteShare/NoteShareToMarkdown.tsx、src/features/notes/components/NoteShare/NoteShareToPdf.tsx、src/features/notes/components/NoteShare/NoteShareToTxt.tsx、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/settings/screens/SettingsScreen.tsx、src/features/updates/update-store.ts、tests/releases/releases.test.cjs、tests/sync/notes-sync.test.cjs、src/app/pages/user/data-storage.tsx、src/core/storage/share-cache.ts、src/core/storage/storage-files.ts、src/core/storage/storage-policy.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-cache.service.ts、src/features/settings/screens/DataStorageSettingsScreen.tsx、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 变更概述：已获用户确认页面文字预览与清理边界，接通设置中的“数据与存储”。用户可以勾选更新缓存、分享临时文件与笔记缓存；笔记缓存默认不勾选，每次重新进入页面恢复默认选择。
+- 具体内容：① 读取应用文档、缓存与 SQLite 实际目录，重叠路径去重，展示已统计占用、分类明细、可清理文件容量；读取失败明确标为部分统计，不包含应用安装体积，不把 SQL 内容字节数当成系统已释放空间；② 更新文件复用已安装构建号白名单，保留较新安装包及使用中的文件，清理前复核大小、修改时间与更新状态；③ 分享文件归入专用目录，TXT/Markdown 保留笔记标题文件名；记录正在使用及结束时间，保护并发分享和跨进程中断标记，仅清理超过 24 小时的已结束文件，保留未能确认来源的历史文件；④ 笔记缓存清理仅处理当前账号，要求已有云存储授权并联网读取完整快照验证身份、版本与正文，在事务内再次核实同步状态、草稿和上传队列；保留仅本机、未同步、恢复副本、历史版本及其他账号内容，不发送云端删除请求；⑤ 暂停并等待现有笔记同步，清理本地副本与对应镜像，重置下载游标；使用现有 system_preferences 保留稳定客户端 ID、排序和历史指针，完整同步重新下载时恢复，数据库空间留供复用，不执行 VACUUM 或删除数据库；⑥ 页面提供加载、禁用、确认、清理结果、跳过与部分失败反馈，支持重新统计，账号/授权/页面变化中止后续清理；⑦ 补充 18 项默认选择、文件白名单、使用中保护、并发分享、SQL 回滚、草稿队列保护、离线失败、账号切换及身份恢复测试。无依赖、数据库结构、后端或发布配置变更。
+- 验证：基于提交 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；最终 npm run check 的 typecheck、lint、theme:check 通过，425 项测试中 424 通过、1 失败，新增 18 项全部通过。唯一失败为既有 tests/navigation/swipe-tabs.test.cjs：本机 node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 仍为 DEAD_ZONE=12，仓库原有补丁与测试要求100；本次未修改相关依赖、补丁和测试。git diff --check 通过，本次变更文件无 Git 冲突标记。完整检查日志：系统临时目录 irisnote-storage-final-check.log。ADB 未列出已连接设备；尚未进行真机容量/视觉/离线重新下载验收，未构建、安装、部署或发布。
+
+---
+
 ## 2026-09-22 15:58:51 | 新增功能：统一云存储授权与构建环境开关
 
 - 修改文件：docs/待办/Todo前后端交接与验收.md、docs/待办/待办后端API预留契约.md、docs/待办/待办逻辑层设计.md、docs/构建发布/本地测试包构建.md、release.env.example、scripts/release/cli.mjs、src/app/_layout.tsx、src/core/notifications/notification-provider.tsx、src/core/providers/AppProviders.tsx、src/core/sync/upload-queue-coordinator.ts、src/features/auth/providers/AuthProvider.tsx、src/features/auth/screens/LoginScreen.tsx、src/features/auth/screens/RegisterScreen.tsx、src/features/notes/categories/components/CategoryBar.tsx、src/features/notes/components/editor/new-note-editor.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、src/features/notes/components/viewer/NoteViewerMeta.tsx、src/features/notes/components/viewer/note-operation-info.tsx、src/features/notes/hooks/useNotePin.ts、src/features/notes/hooks/useNoteStar.ts、src/features/notes/screens/NoteDetailScreen.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/profile/hooks/useAvatar.ts、src/features/profile/hooks/useProfileOverview.ts、src/features/profile/services/avatar-picker.service.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/sync/category-upload-queue.ts、src/features/sync/screens/SyncQueueScreen.tsx、src/features/sync/upload-task-adapters.ts、src/features/todos/components/TodoSyncQueueRow.tsx、src/features/todos/state/todo-sync-provider.tsx、src/shared/http/client.ts、src/shared/http/errors.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/releases/release-env.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-api.test.cjs、src/app/pages/user/cloud-storage.tsx、src/core/cloud-storage/cloud-storage-consent-controller.ts、src/core/cloud-storage/cloud-storage-policy.ts、src/core/cloud-storage/cloud-storage-provider.tsx、src/features/settings/screens/CloudStorageSettingsScreen.tsx、tests/sync/cloud-storage.test.cjs、tests/sync/upload-consent.test.cjs、.env.release.local（仅云存储变量，Git忽略）、CHANGELOG.md。

@@ -9,10 +9,11 @@ export function resolveInlineEditPress(
     field: InlineEditField,
     at: number,
 ) {
-    const openKeyboard = previous !== null
-        && previous.field === field
-        && at >= previous.at
-        && at - previous.at <= INLINE_EDIT_DOUBLE_PRESS_MS;
+    const openKeyboard =
+        previous !== null &&
+        previous.field === field &&
+        at >= previous.at &&
+        at - previous.at <= INLINE_EDIT_DOUBLE_PRESS_MS;
     return {
         openKeyboard,
         next: openKeyboard ? null : { field, at },

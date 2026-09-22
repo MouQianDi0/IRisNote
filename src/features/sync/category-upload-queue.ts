@@ -1,5 +1,8 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { captureCloudStorageAccess, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
 import {
     cancelUploadTaskByDedupeKey,
@@ -16,14 +19,28 @@ import type {
 function captureCategoryAccess(ownerUserId: number) {
     const report = (error: unknown): never => {
         if (isCloudStoragePermissionError(error)) {
-            banner.show({ id: "category-cloud-permission", type: "neutral", title: "需要开启云存储", message: error.message });
+            banner.show({
+                id: "category-cloud-permission",
+                type: "neutral",
+                title: "需要开启云存储",
+                message: error.message,
+            });
         }
         throw error;
     };
     let check: () => void;
-    try { check = captureCloudStorageAccess(ownerUserId); }
-    catch (error) { return report(error); }
-    return () => { try { check(); } catch (error) { report(error); } };
+    try {
+        check = captureCloudStorageAccess(ownerUserId);
+    } catch (error) {
+        return report(error);
+    }
+    return () => {
+        try {
+            check();
+        } catch (error) {
+            report(error);
+        }
+    };
 }
 
 export async function enqueueCategoryCreate(
@@ -105,11 +122,17 @@ export async function applyQueuedCategoryChanges(
         if (task.kind === "category-update") {
             const categoryId = task.payload.categoryId;
             const changes = task.payload.changes;
-            if (typeof categoryId !== "number" || !changes || typeof changes !== "object") continue;
+            if (
+                typeof categoryId !== "number" ||
+                !changes ||
+                typeof changes !== "object"
+            )
+                continue;
             const category = next.get(categoryId);
             if (category) next.set(categoryId, { ...category, ...changes });
         } else if (task.kind === "category-delete") {
-            if (typeof task.payload.categoryId === "number") next.delete(task.payload.categoryId);
+            if (typeof task.payload.categoryId === "number")
+                next.delete(task.payload.categoryId);
         }
     }
     return [...next.values()];

@@ -1,9 +1,5 @@
 export type NoteSyncStatus =
-    | "pending"
-    | "syncing"
-    | "synced"
-    | "rejected"
-    | "unknown";
+    "pending" | "syncing" | "synced" | "rejected" | "unknown";
 
 export type NoteSyncOperation = "create" | "update";
 

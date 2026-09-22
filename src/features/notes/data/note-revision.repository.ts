@@ -1,10 +1,7 @@
 import type { ApplicationDatabaseTransaction } from "@/core/database";
 
 export type NoteRevisionOrigin =
-    | "local-save"
-    | "server-reconcile"
-    | "restore"
-    | "migrate";
+    "local-save" | "server-reconcile" | "restore" | "migrate";
 
 export type NoteRevision = {
     revision_id: string;

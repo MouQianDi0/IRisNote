@@ -55,9 +55,10 @@ export const InputSave = forwardRef<TextInput, InputSaveProps>(
         ref,
     ) {
         const unavailable = disabled || saving;
-        const recipe = componentRecipes.iconButton.tonal[
-            disabled ? "disabled" : "default"
-        ];
+        const recipe =
+            componentRecipes.iconButton.tonal[
+                disabled ? "disabled" : "default"
+            ];
         const iconColor = unavailable
             ? semanticColors.textDisabled
             : semanticColors.textSecondary;

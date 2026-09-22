@@ -1,5 +1,5 @@
-import { useApplicationDatabase } from "@/core/database";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { useApplicationDatabase } from "@/core/database";
 import {
     openDeviceNetworkSettings,
     readUploadQueueSummary,
@@ -30,7 +30,8 @@ import { startConnectionCoordinator } from "./server-connection-coordinator";
 export function NotificationProvider({ children }: PropsWithChildren) {
     const database = useApplicationDatabase();
     const { user, loading } = useAuth();
-    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const { enabled: cloudEnabled, generation: cloudGeneration } =
+        useCloudStorage();
     const owner = useRef<number | null | undefined>(undefined);
     const announced = useRef(new Set<string>());
     const welcomed = useRef(new Set<number>());
@@ -62,8 +63,27 @@ export function NotificationProvider({ children }: PropsWithChildren) {
         }
     }, [user?.id, loading]);
     useEffect(() => {
+        if (!user?.id || loading || cloudEnabled) return;
+        // Local-only notes still expire while the app is active; this coordinator sends no cloud requests without consent.
+        const notes = startNoteSyncCoordinator(database, user.id);
+        notes.setActive(AppState.currentState === "active");
+        const subscription = AppState.addEventListener("change", (state) =>
+            notes.setActive(state === "active"),
+        );
+        return () => {
+            notes.stop();
+            subscription.remove();
+        };
+    }, [database, user?.id, loading, cloudEnabled, cloudGeneration]);
+    useEffect(() => {
         if (!user?.id || loading || !cloudEnabled) {
-            for (const id of ["upload-queue-sync", "upload-queue-paused", "upload-queue-blocked", "server-connection"]) notificationStore.withdraw(id);
+            for (const id of [
+                "upload-queue-sync",
+                "upload-queue-paused",
+                "upload-queue-blocked",
+                "server-connection",
+            ])
+                notificationStore.withdraw(id);
             return;
         }
         const openQueue = () => router.push("/pages/user/sync-queue");

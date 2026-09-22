@@ -1,5 +1,9 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { captureCloudStorageAccess, getCloudStorageSnapshot, subscribeCloudStorage } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    subscribeCloudStorage,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import {
     onConnectionEvent,
     onConnectionReset,
@@ -13,6 +17,7 @@ import {
     onNoteCloudWrite,
 } from "../notes.events";
 import { runNoteSync } from "./note-sync.service";
+import { synchronizeNoteTrash } from "./note-trash.service";
 
 type Result = Awaited<ReturnType<typeof runNoteSync>>;
 const jobs = new WeakMap<
@@ -20,7 +25,32 @@ const jobs = new WeakMap<
     Map<number, { controller: AbortController; promise: Promise<Result> }>
 >();
 const controllers = new Set<AbortController>();
-subscribeCloudStorage(() => controllers.forEach((controller) => controller.abort()));
+const cacheMaintenance = new WeakMap<ApplicationDatabase, Set<number>>();
+
+export async function withNoteCacheMaintenance<T>(
+    db: ApplicationDatabase,
+    owner: number,
+    task: () => Promise<T>,
+) {
+    let owners = cacheMaintenance.get(db);
+    if (!owners) {
+        owners = new Set();
+        cacheMaintenance.set(db, owners);
+    }
+    if (owners.has(owner)) throw new Error("笔记缓存正在清理，请稍后重试");
+    owners.add(owner);
+    try {
+        const running = jobs.get(db)?.get(owner);
+        running?.controller.abort();
+        if (running) await running.promise.catch(() => {});
+        return await task();
+    } finally {
+        owners.delete(owner);
+    }
+}
+subscribeCloudStorage(() =>
+    controllers.forEach((controller) => controller.abort()),
+);
 let session = 0;
 let currentOwner: number | null = null;
 onConnectionReset(() => {
@@ -40,10 +70,15 @@ export function syncNotes(
     db: ApplicationDatabase,
     owner: number,
 ): Promise<Result> {
+    if (cacheMaintenance.get(db)?.has(owner))
+        return Promise.reject(new Error("笔记缓存正在清理，请稍后同步"));
     // Return a rejected Promise (rather than throwing before callers attach .catch).
     let checkPermission: () => void;
-    try { checkPermission = captureCloudStorageAccess(owner); }
-    catch (error) { return Promise.reject(error); }
+    try {
+        checkPermission = captureCloudStorageAccess(owner);
+    } catch (error) {
+        return Promise.reject(error);
+    }
     let owners = jobs.get(db);
     if (!owners) {
         owners = new Map();
@@ -54,7 +89,7 @@ export function syncNotes(
         return existing.promise;
     const generation = session;
     const controller = new AbortController();
-    const stamp = noteCloudWriteStamp();
+    let stamp = noteCloudWriteStamp();
     const check = () => {
         checkPermission();
         if (
@@ -69,6 +104,10 @@ export function syncNotes(
     };
     controllers.add(controller);
     const promise = (async () => {
+        check();
+        // Trash has its own durable receipts; an unavailable trash endpoint must not block normal sync.
+        await synchronizeNoteTrash(db, owner).catch(() => {});
+        stamp = noteCloudWriteStamp();
         check();
         const before = await getLocalNotes(db, owner);
         const result = await runNoteSync(
@@ -115,10 +154,14 @@ export function startNoteSyncCoordinator(
         stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const request = () => {
-        if (!active || stopped || timer || !getCloudStorageSnapshot().enabled) return;
+        if (!active || stopped || timer) return;
         timer = setTimeout(() => {
             timer = undefined;
-            if (!active || stopped || !getCloudStorageSnapshot().enabled) return;
+            if (!active || stopped) return;
+            if (!getCloudStorageSnapshot().enabled) {
+                void synchronizeNoteTrash(db, owner).catch(() => {});
+                return;
+            }
             const stamp = noteCloudWriteStamp();
             const wasRunning = jobs.get(db)?.has(owner);
             void syncNotes(db, owner).catch(() => {
@@ -129,6 +172,7 @@ export function startNoteSyncCoordinator(
         }, 100);
     };
     const unsubscribe = onNoteCloudWrite(request);
+    const expiryTimer = setInterval(request, 60_000);
     let unavailable = false;
     const unsubscribeConnection = onConnectionEvent((event) => {
         if (event.outcome === "unavailable") unavailable = true;
@@ -145,6 +189,7 @@ export function startNoteSyncCoordinator(
         },
         stop() {
             stopped = true;
+            clearInterval(expiryTimer);
             unsubscribe();
             unsubscribeConnection();
             if (timer) clearTimeout(timer);

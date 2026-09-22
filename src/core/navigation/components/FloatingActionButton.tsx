@@ -41,9 +41,7 @@ export default function FloatingActionButton() {
                             ? { backgroundColor: colors.action, opacity: 0.7 }
                             : undefined
                     }
-                    onPress={() =>
-                        onNavigate(action.route as Href)
-                    }
+                    onPress={() => onNavigate(action.route as Href)}
                 >
                     <Animated.View
                         style={{

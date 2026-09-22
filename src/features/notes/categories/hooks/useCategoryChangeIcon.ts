@@ -14,15 +14,27 @@ export function useCategoryChangeIcon(
         (category: Category, icon: string) => {
             if (ownerUserId == null) return;
             const previousIcon = category.icon;
-            setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, icon } : c));
-            setLongPressVisible((prev) => prev ? { ...prev, icon } : null);
-            void enqueueCategoryUpdate(database, ownerUserId, category, { icon })
+            setCategories((prev) =>
+                prev.map((c) => (c.id === category.id ? { ...c, icon } : c)),
+            );
+            setLongPressVisible((prev) => (prev ? { ...prev, icon } : null));
+            void enqueueCategoryUpdate(database, ownerUserId, category, {
+                icon,
+            })
                 .then(() => {
                     notifyCategoriesChanged();
                 })
                 .catch((err) => {
-                    setCategories((prev) => prev.map((c) => c.id === category.id ? { ...c, icon: previousIcon } : c));
-                    setLongPressVisible((prev) => prev ? { ...prev, icon: previousIcon } : null);
+                    setCategories((prev) =>
+                        prev.map((c) =>
+                            c.id === category.id
+                                ? { ...c, icon: previousIcon }
+                                : c,
+                        ),
+                    );
+                    setLongPressVisible((prev) =>
+                        prev ? { ...prev, icon: previousIcon } : null,
+                    );
                     console.error("更换图标失败:", err.message);
                 });
         },

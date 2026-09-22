@@ -9,90 +9,90 @@ import { notifyTodoSyncChanged } from "./todo-sync-events";
 
 export const todoRepository = new TodoLocalRepository(null, recordTodoChanges);
 type TodoStore = {
-  ready: boolean;
-  ownerKey: string | null;
-  generation: number;
-  entities: readonly TodoEntity[];
-  selectedDateId: string | null;
+    ready: boolean;
+    ownerKey: string | null;
+    generation: number;
+    entities: readonly TodoEntity[];
+    selectedDateId: string | null;
 };
 export const useTodoStore = create<TodoStore>(() => ({
-  ready: false,
-  ownerKey: null,
-  generation: 0,
-  entities: [],
-  selectedDateId: null,
+    ready: false,
+    ownerKey: null,
+    generation: 0,
+    entities: [],
+    selectedDateId: null,
 }));
 todoRepository.subscribe(() => {
-  const ownerKey = todoRepository.ownerKey;
-  const switched = useTodoStore.getState().ownerKey !== ownerKey;
-  useTodoStore.setState({
-    ready: todoRepository.ready,
-    ownerKey,
-    generation: todoRepository.generation,
-    entities: ownerKey ? todoRepository.list(ownerKey) : [],
-    ...(switched ? { selectedDateId: null } : {}),
-  });
-  notifyTodoSyncChanged();
+    const ownerKey = todoRepository.ownerKey;
+    const switched = useTodoStore.getState().ownerKey !== ownerKey;
+    useTodoStore.setState({
+        ready: todoRepository.ready,
+        ownerKey,
+        generation: todoRepository.generation,
+        entities: ownerKey ? todoRepository.list(ownerKey) : [],
+        ...(switched ? { selectedDateId: null } : {}),
+    });
+    notifyTodoSyncChanged();
 });
 
 export function selectTodoDate(ownerKey: string, dateId: string) {
-  if (todoRepository.ownerKey === ownerKey)
-    useTodoStore.setState({ selectedDateId: dateId });
+    if (todoRepository.ownerKey === ownerKey)
+        useTodoStore.setState({ selectedDateId: dateId });
 }
 
 let activation: {
-  ownerKey: string;
-  database: ApplicationDatabase;
-  pending: Promise<void>;
+    ownerKey: string;
+    database: ApplicationDatabase;
+    pending: Promise<void>;
 } | null = null;
 
 export function activateTodoOwner(
-  ownerKey: string,
-  database: ApplicationDatabase,
+    ownerKey: string,
+    database: ApplicationDatabase,
 ): Promise<void> {
-  if (activation?.ownerKey === ownerKey && activation.database === database)
-    return activation.pending;
-  const loading = todoRepository.activate(ownerKey, database);
-  const generation = todoRepository.generation;
-  const pending = loading
-    .then(async () => {
-      if (
-        __DEV__ &&
-        process.env.EXPO_PUBLIC_TODO_PREVIEW === "1" &&
-        ownerKey.startsWith("preview:")
-      )
-        await seedTodoPreview(todoRepository, ownerKey, new Date());
-    })
-    .catch((cause: unknown) => {
-      if (
-        todoRepository.ownerKey !== ownerKey ||
-        todoRepository.generation !== generation
-      )
-        return;
-      banner.show({
-        title: "待办加载失败",
-        message: cause instanceof Error ? cause.message : "请重试",
-        type: "important",
-        action: {
-          label: "重试",
-          onPress: () => {
+    if (activation?.ownerKey === ownerKey && activation.database === database)
+        return activation.pending;
+    const loading = todoRepository.activate(ownerKey, database);
+    const generation = todoRepository.generation;
+    const pending = loading
+        .then(async () => {
             if (
-              todoRepository.ownerKey === ownerKey &&
-              todoRepository.generation === generation
+                __DEV__ &&
+                process.env.EXPO_PUBLIC_TODO_PREVIEW === "1" &&
+                ownerKey.startsWith("preview:")
             )
-              return activateTodoOwner(ownerKey, database);
-          },
-        },
-      });
-    })
-    .finally(() => {
-      if (activation?.pending === pending) activation = null;
-    });
-  activation = { ownerKey, database, pending };
-  return pending;
+                await seedTodoPreview(todoRepository, ownerKey, new Date());
+        })
+        .catch((cause: unknown) => {
+            if (
+                todoRepository.ownerKey !== ownerKey ||
+                todoRepository.generation !== generation
+            )
+                return;
+            banner.show({
+                title: "待办加载失败",
+                message: cause instanceof Error ? cause.message : "请重试",
+                type: "important",
+                action: {
+                    label: "重试",
+                    onPress: () => {
+                        if (
+                            todoRepository.ownerKey === ownerKey &&
+                            todoRepository.generation === generation
+                        )
+                            return activateTodoOwner(ownerKey, database);
+                    },
+                },
+            });
+        })
+        .finally(() => {
+            if (activation?.pending === pending) activation = null;
+        });
+    activation = { ownerKey, database, pending };
+    return pending;
 }
 
 export function deactivateTodoOwner() {
-  activation = null;
-  todoRepository.deactivate();
+    activation = null;
+    todoRepository.deactivate();
 }

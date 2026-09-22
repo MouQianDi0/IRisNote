@@ -19,14 +19,15 @@ export type CalendarValue = string | CalendarRange | null;
 /** range 模式内部阶段：起点已选未定终点 / 范围已完成。 */
 export type RangePhase = "idle" | "pending" | "done";
 
-export function isCalendarRange(
-    value: CalendarValue,
-): value is CalendarRange {
+export function isCalendarRange(value: CalendarValue): value is CalendarRange {
     return typeof value === "object" && value !== null;
 }
 
 /** single：再次点击已选日不取消（§5.3），任何点击即成为选中值。 */
-export function nextSingleValue(_current: CalendarValue, picked: string): string {
+export function nextSingleValue(
+    _current: CalendarValue,
+    picked: string,
+): string {
     return picked;
 }
 
@@ -83,12 +84,12 @@ export function toActiveDateRanges(
     value: CalendarValue,
 ): ActiveDateRange[] {
     if (mode === "single") {
-        return typeof value === "string" ? [{ startId: value, endId: value }] : [];
+        return typeof value === "string"
+            ? [{ startId: value, endId: value }]
+            : [];
     }
     if (isCalendarRange(value)) {
-        return [
-            { startId: value.startDateId, endId: value.endDateId },
-        ];
+        return [{ startId: value.startDateId, endId: value.endDateId }];
     }
     return [];
 }

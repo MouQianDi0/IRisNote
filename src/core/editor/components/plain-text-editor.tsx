@@ -13,8 +13,14 @@ import {
     View,
     type KeyboardEvent,
 } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import EditorBottomToolbar, { FLOATING_BOTTOM, FLOATING_TOUCH_HEIGHT } from "./editor-bottom-toolbar";
+import Animated, {
+    useAnimatedStyle,
+    useSharedValue,
+} from "react-native-reanimated";
+import EditorBottomToolbar, {
+    FLOATING_BOTTOM,
+    FLOATING_TOUCH_HEIGHT,
+} from "./editor-bottom-toolbar";
 import {
     advanceToolbarScroll,
     EDIT_PRESS_INTERVAL_MS,
@@ -55,7 +61,9 @@ export default function PlainTextEditor({
     const contentInput = useRef<TextInput>(null);
     const [contentHeight, setContentHeight] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
-    const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
+    const [keyboardVisible, setKeyboardVisible] = useState(() =>
+        Keyboard.isVisible(),
+    );
     const keyboardOpen = useRef(Keyboard.isVisible());
     const {
         keyboardOverlap,
@@ -69,13 +77,16 @@ export default function PlainTextEditor({
     const focusFrame = useRef<number | null>(null);
     const blocked = useRef(controlsDisabled);
     const scroll = useRef(resetToolbarScroll());
-    const toolbarRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const toolbarRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(
+        null,
+    );
     const floatingVisible = useSharedValue(true);
     const floatingStyle = useAnimatedStyle(() => ({
         display: floatingVisible.get() ? "flex" : "none",
     }));
     // 留白属于滚动内容，而非 TextInput 内边距或正文视口外的占位。
-    const contentEndSpace = keyboardVisible ? CONTENT_END_GAP
+    const contentEndSpace = keyboardVisible
+        ? CONTENT_END_GAP
         : FLOATING_TOUCH_HEIGHT + FLOATING_BOTTOM + CONTENT_END_GAP;
 
     const releaseFocusLock = () => {
@@ -85,7 +96,8 @@ export default function PlainTextEditor({
     };
 
     const clearToolbarRestoreTimer = () => {
-        if (toolbarRestoreTimer.current !== null) clearTimeout(toolbarRestoreTimer.current);
+        if (toolbarRestoreTimer.current !== null)
+            clearTimeout(toolbarRestoreTimer.current);
         toolbarRestoreTimer.current = null;
     };
 
@@ -104,7 +116,8 @@ export default function PlainTextEditor({
     useEffect(() => {
         blocked.current = controlsDisabled;
         if (controlsDisabled) {
-            if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+            if (focusFrame.current !== null)
+                cancelAnimationFrame(focusFrame.current);
             focusFrame.current = null;
             releaseFocusLock();
         }
@@ -120,25 +133,44 @@ export default function PlainTextEditor({
             handleKeyboardEvent(visible, event);
             releaseFocusLock();
         };
-        const show = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", (event) => updateKeyboard(true, event));
-        const frame = Platform.OS === "ios" ? Keyboard.addListener("keyboardWillChangeFrame", (event) => {
-            if (keyboardOpen.current) updateKeyboard(true, event);
-        }) : null;
-        const hide = Keyboard.addListener("keyboardDidHide", () => updateKeyboard(false));
+        const show = Keyboard.addListener(
+            Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+            (event) => updateKeyboard(true, event),
+        );
+        const frame =
+            Platform.OS === "ios"
+                ? Keyboard.addListener("keyboardWillChangeFrame", (event) => {
+                      if (keyboardOpen.current) updateKeyboard(true, event);
+                  })
+                : null;
+        const hide = Keyboard.addListener("keyboardDidHide", () =>
+            updateKeyboard(false),
+        );
         return () => {
-            show.remove(); hide.remove(); frame?.remove(); releaseFocusLock(); clearToolbarRestoreTimer();
-            if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+            show.remove();
+            hide.remove();
+            frame?.remove();
+            releaseFocusLock();
+            clearToolbarRestoreTimer();
+            if (focusFrame.current !== null)
+                cancelAnimationFrame(focusFrame.current);
         };
     }, [handleKeyboardEvent, floatingVisible]);
 
     const editContent = () => {
         const now = performance.now();
-        if (controlsDisabled || focusLocked.current || now - lastPress.current < EDIT_PRESS_INTERVAL_MS) return;
+        if (
+            controlsDisabled ||
+            focusLocked.current ||
+            now - lastPress.current < EDIT_PRESS_INTERVAL_MS
+        )
+            return;
         if (contentInput.current?.isFocused() && keyboardOpen.current) return;
         lastPress.current = now;
         focusLocked.current = true;
         // Android 返回键可能只收起键盘而保留焦点，此时先失焦再重新请求。
-        if (contentInput.current?.isFocused() && !keyboardOpen.current) contentInput.current.blur();
+        if (contentInput.current?.isFocused() && !keyboardOpen.current)
+            contentInput.current.blur();
         focusTimer.current = setTimeout(releaseFocusLock, FOCUS_TIMEOUT_MS);
         focusFrame.current = requestAnimationFrame(() => {
             focusFrame.current = null;
@@ -162,102 +194,181 @@ export default function PlainTextEditor({
     };
 
     return (
-        <View ref={stableContainer} collapsable={false} className="flex-1 bg-white" onLayout={onStableLayout}>
-        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: keyboardOverlap }}>
-            <View className="flex-row items-center justify-between border-b border-border-soft px-4 pb-3 pt-3">
-                <BackButton
-                    onPress={onCancel}
-                    disabled={controlsDisabled}
-                    accessibilityLabel="返回"
-                />
-
-                <View pointerEvents="none" style={{ position: "absolute", left: 104, right: 104, top: 0, bottom: 0, justifyContent: "center" }}>
-                    <Text numberOfLines={1} className="text-center text-[18px] font-semibold text-gray-800">
-                        {screenTitle}
-                    </Text>
-                </View>
-
-                <View className="flex-row items-center gap-1">
-                    {headerActions}
-                    <Pressable
-                        onPress={() => void onSubmit(latest.current)}
-                        disabled={controlsDisabled}
-                        accessibilityRole="button"
-                        accessibilityLabel="保存"
-                        accessibilityState={{ disabled: controlsDisabled }}
-                        className="p-2"
-                    >
-                        {saving ? (
-                            <ActivityIndicator
-                                size="small"
-                                color={colors.primary}
-                            />
-                        ) : (
-                            <Check size={24} color={colors.primary} />
-                        )}
-                    </Pressable>
-                </View>
-            </View>
-
-            {statusContent}
-
-            <TextInput
-                value={value.title}
-                onChangeText={setTitle}
-                onBlur={onBlur}
-                editable={!controlsDisabled}
-                placeholder={titlePlaceholder}
-                accessibilityLabel="标题"
-                className="border-b border-border-soft px-5 py-4 text-[22px] font-semibold text-gray-900"
-            />
-            <ScrollView
-                style={{ flex: 1 }}
-                contentContainerStyle={{ flexGrow: 1, paddingBottom: contentEndSpace }}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="none"
-                automaticallyAdjustKeyboardInsets={false}
-                scrollEventThrottle={16}
-                onLayout={(event) => {
-                    const height = Math.ceil(event.nativeEvent.layout.height);
-                    setViewportHeight((current) => current === height ? current : height);
-                }}
-                onScroll={(event) => {
-                    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-                    const offset = Math.min(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height));
-                    const next = advanceToolbarScroll(scroll.current, offset,
-                        keyboardOpen.current || focusLocked.current);
-                    if (next.visible !== scroll.current.visible) floatingVisible.set(next.visible);
-                    scroll.current = next;
-                    scheduleToolbarRestore();
+        <View
+            ref={stableContainer}
+            collapsable={false}
+            className="flex-1 bg-white"
+            onLayout={onStableLayout}
+        >
+            <View
+                style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: keyboardOverlap,
                 }}
             >
+                <View className="flex-row items-center justify-between border-b border-border-soft px-4 pt-3 pb-3">
+                    <BackButton
+                        onPress={onCancel}
+                        disabled={controlsDisabled}
+                        accessibilityLabel="返回"
+                    />
+
+                    <View
+                        pointerEvents="none"
+                        style={{
+                            position: "absolute",
+                            left: 104,
+                            right: 104,
+                            top: 0,
+                            bottom: 0,
+                            justifyContent: "center",
+                        }}
+                    >
+                        <Text
+                            numberOfLines={1}
+                            className="text-center text-[18px] font-semibold text-gray-800"
+                        >
+                            {screenTitle}
+                        </Text>
+                    </View>
+
+                    <View className="flex-row items-center gap-1">
+                        {headerActions}
+                        <Pressable
+                            onPress={() => void onSubmit(latest.current)}
+                            disabled={controlsDisabled}
+                            accessibilityRole="button"
+                            accessibilityLabel="保存"
+                            accessibilityState={{ disabled: controlsDisabled }}
+                            className="p-2"
+                        >
+                            {saving ? (
+                                <ActivityIndicator
+                                    size="small"
+                                    color={colors.primary}
+                                />
+                            ) : (
+                                <Check size={24} color={colors.primary} />
+                            )}
+                        </Pressable>
+                    </View>
+                </View>
+
+                {statusContent}
+
                 <TextInput
-                    ref={contentInput}
-                    autoFocus={autoFocusContent && !controlsDisabled}
-                    value={value.content}
-                    onChangeText={setContent}
+                    value={value.title}
+                    onChangeText={setTitle}
                     onBlur={onBlur}
                     editable={!controlsDisabled}
-                    placeholder={contentPlaceholder}
-                    accessibilityLabel="正文"
-                    multiline
-                    scrollEnabled={false}
-                    onContentSizeChange={(event) => {
-                        const height = Math.ceil(event.nativeEvent.contentSize.height);
-                        setContentHeight((current) => current === height ? current : height);
-                    }}
-                    textAlignVertical="top"
-                    style={{ height: Math.max(80, contentHeight, viewportHeight - contentEndSpace),
-                        paddingHorizontal: 20, paddingVertical: 16 }}
-                    className="text-[16px] text-gray-700"
+                    placeholder={titlePlaceholder}
+                    accessibilityLabel="标题"
+                    className="border-b border-border-soft px-5 py-4 text-[22px] font-semibold text-gray-900"
                 />
-            </ScrollView>
-            {keyboardVisible && <EditorBottomToolbar docked disabled={controlsDisabled} onEdit={editContent} />}
-            {!keyboardVisible && <Animated.View pointerEvents="box-none"
-                style={[{ position: "absolute", bottom: FLOATING_BOTTOM, alignSelf: "center" }, floatingStyle]}>
-                <EditorBottomToolbar docked={false} disabled={controlsDisabled} onEdit={editContent} />
-            </Animated.View>}
-        </View>
+                <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{
+                        flexGrow: 1,
+                        paddingBottom: contentEndSpace,
+                    }}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="none"
+                    automaticallyAdjustKeyboardInsets={false}
+                    scrollEventThrottle={16}
+                    onLayout={(event) => {
+                        const height = Math.ceil(
+                            event.nativeEvent.layout.height,
+                        );
+                        setViewportHeight((current) =>
+                            current === height ? current : height,
+                        );
+                    }}
+                    onScroll={(event) => {
+                        const {
+                            contentOffset,
+                            contentSize,
+                            layoutMeasurement,
+                        } = event.nativeEvent;
+                        const offset = Math.min(
+                            contentOffset.y,
+                            Math.max(
+                                0,
+                                contentSize.height - layoutMeasurement.height,
+                            ),
+                        );
+                        const next = advanceToolbarScroll(
+                            scroll.current,
+                            offset,
+                            keyboardOpen.current || focusLocked.current,
+                        );
+                        if (next.visible !== scroll.current.visible)
+                            floatingVisible.set(next.visible);
+                        scroll.current = next;
+                        scheduleToolbarRestore();
+                    }}
+                >
+                    <TextInput
+                        ref={contentInput}
+                        autoFocus={autoFocusContent && !controlsDisabled}
+                        value={value.content}
+                        onChangeText={setContent}
+                        onBlur={onBlur}
+                        editable={!controlsDisabled}
+                        placeholder={contentPlaceholder}
+                        accessibilityLabel="正文"
+                        multiline
+                        scrollEnabled={false}
+                        onContentSizeChange={(event) => {
+                            const height = Math.ceil(
+                                event.nativeEvent.contentSize.height,
+                            );
+                            setContentHeight((current) =>
+                                current === height ? current : height,
+                            );
+                        }}
+                        textAlignVertical="top"
+                        style={{
+                            height: Math.max(
+                                80,
+                                contentHeight,
+                                viewportHeight - contentEndSpace,
+                            ),
+                            paddingHorizontal: 20,
+                            paddingVertical: 16,
+                        }}
+                        className="text-[16px] text-gray-700"
+                    />
+                </ScrollView>
+                {keyboardVisible && (
+                    <EditorBottomToolbar
+                        docked
+                        disabled={controlsDisabled}
+                        onEdit={editContent}
+                    />
+                )}
+                {!keyboardVisible && (
+                    <Animated.View
+                        pointerEvents="box-none"
+                        style={[
+                            {
+                                position: "absolute",
+                                bottom: FLOATING_BOTTOM,
+                                alignSelf: "center",
+                            },
+                            floatingStyle,
+                        ]}
+                    >
+                        <EditorBottomToolbar
+                            docked={false}
+                            disabled={controlsDisabled}
+                            onEdit={editContent}
+                        />
+                    </Animated.View>
+                )}
+            </View>
         </View>
     );
 }

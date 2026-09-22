@@ -25,8 +25,7 @@ const pressedOpacity = defaultThemePreset.motion.pressedOpacity;
 const cornerRadius = radii.control;
 
 /** 模块级格式化函数：引用稳定，满足 flash-calendar 相等性检查要求。 */
-export const formatCalendarDay = (date: Date): string =>
-    String(date.getDate());
+export const formatCalendarDay = (date: Date): string => String(date.getDate());
 export const formatCalendarMonth = (date: Date): string =>
     `${date.getFullYear()}年${date.getMonth() + 1}月`;
 const WEEKDAY_NARROW = ["日", "一", "二", "三", "四", "五", "六"] as const;

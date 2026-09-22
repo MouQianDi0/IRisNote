@@ -1,4 +1,1 @@
-export {
-    AnchoredPopover,
-    type AnchoredPopoverProps,
-} from "./anchored-popover";
+export { AnchoredPopover, type AnchoredPopoverProps } from "./anchored-popover";

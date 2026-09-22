@@ -1,6 +1,10 @@
 import { useApplicationDatabase } from "@/core/database";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
-import { captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { getCategories } from "@/features/notes/categories/api/categories.api";
 import { getLocalNotes } from "@/features/notes/data/note-local.repository";
 import { readingProgressStore } from "@/features/notes/data/note-reading-progress";
@@ -30,12 +34,15 @@ async function loadProfileOverview(
     ]);
     let notesAvailable = localResult[0].status === "fulfilled";
     let notes =
-        localResult[0].status === "fulfilled"
-            ? localResult[0].value
-            : [];
+        localResult[0].status === "fulfilled" ? localResult[0].value : [];
     let categoryCount: number | null = null;
     const cloud = getCloudStorageSnapshot();
-    if (cloudEnabled && cloud.enabled && cloud.ownerUserId === ownerUserId && cloud.generation === cloudGeneration) {
+    if (
+        cloudEnabled &&
+        cloud.enabled &&
+        cloud.ownerUserId === ownerUserId &&
+        cloud.generation === cloudGeneration
+    ) {
         try {
             const checkAccess = captureCloudStorageAccess(ownerUserId);
             const [syncResult, categoriesResult] = await Promise.allSettled([
@@ -47,7 +54,8 @@ async function loadProfileOverview(
                 notes = syncResult.value.notes;
                 notesAvailable = true;
             }
-            if (categoriesResult.status === "fulfilled") categoryCount = categoriesResult.value.length;
+            if (categoriesResult.status === "fulfilled")
+                categoryCount = categoriesResult.value.length;
         } catch (error) {
             if (!isCloudStoragePermissionError(error)) throw error;
         }
@@ -68,7 +76,8 @@ async function loadProfileOverview(
 
 export function useProfileOverview(ownerUserId?: number) {
     const database = useApplicationDatabase();
-    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const { enabled: cloudEnabled, generation: cloudGeneration } =
+        useCloudStorage();
     const [overview, setOverview] = useState<ProfileOverview>(emptyOverview);
     const [loading, setLoading] = useState(ownerUserId != null);
 
@@ -85,12 +94,25 @@ export function useProfileOverview(ownerUserId?: number) {
             }
 
             setLoading(true);
-            void loadProfileOverview(database, ownerUserId, cloudEnabled, cloudGeneration)
+            void loadProfileOverview(
+                database,
+                ownerUserId,
+                cloudEnabled,
+                cloudGeneration,
+            )
                 .then((nextOverview) => {
-                    if (active && getCloudStorageSnapshot().generation === cloudGeneration) setOverview(nextOverview);
+                    if (
+                        active &&
+                        getCloudStorageSnapshot().generation === cloudGeneration
+                    )
+                        setOverview(nextOverview);
                 })
                 .finally(() => {
-                    if (active && getCloudStorageSnapshot().generation === cloudGeneration) setLoading(false);
+                    if (
+                        active &&
+                        getCloudStorageSnapshot().generation === cloudGeneration
+                    )
+                        setLoading(false);
                 });
 
             return () => {

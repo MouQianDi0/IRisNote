@@ -15,15 +15,21 @@ export function resetToolbarScroll(offset = 0): ToolbarScrollState {
 }
 
 /** 正文 offset 增大对应手指上滑；仅向上累计 400px 后隐藏，忽略顶部回弹。 */
-export function advanceToolbarScroll(state: ToolbarScrollState, rawOffset: number, pinned: boolean): ToolbarScrollState {
+export function advanceToolbarScroll(
+    state: ToolbarScrollState,
+    rawOffset: number,
+    pinned: boolean,
+): ToolbarScrollState {
     const offset = Math.max(0, rawOffset);
     if (pinned) return resetToolbarScroll(offset);
     const delta = offset - state.offset;
     if (delta === 0) return state;
     const direction = Math.sign(delta);
-    const distance = (direction === state.direction ? state.distance : 0) + Math.abs(delta);
-    const visible = direction > 0 && distance >= TOOLBAR_HIDE_SCROLL_DISTANCE
-        ? false
-        : state.visible;
+    const distance =
+        (direction === state.direction ? state.distance : 0) + Math.abs(delta);
+    const visible =
+        direction > 0 && distance >= TOOLBAR_HIDE_SCROLL_DISTANCE
+            ? false
+            : state.visible;
     return { offset, direction, distance, visible };
 }

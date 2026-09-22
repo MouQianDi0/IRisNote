@@ -1,6 +1,10 @@
 import { useApplicationDatabase } from "@/core/database";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
-import { captureCloudStorageAccess, getCloudStorageSnapshot, isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import type { Note } from "@/features/notes/notes.types";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -19,7 +23,8 @@ type LoadState = "loading" | "ready" | "error" | "not-found" | "local-only";
 export default function NoteDetailScreen() {
     const database = useApplicationDatabase();
     const { user } = useAuth();
-    const { enabled: cloudEnabled, generation: cloudGeneration } = useCloudStorage();
+    const { enabled: cloudEnabled, generation: cloudGeneration } =
+        useCloudStorage();
     const requestGeneration = useRef(0);
     const params = useLocalSearchParams<{
         id?: string | string[];
@@ -44,7 +49,9 @@ export default function NoteDetailScreen() {
 
     const fetchNote = useCallback(async () => {
         const generation = ++requestGeneration.current;
-        const isCurrent = () => requestGeneration.current === generation && getCloudStorageSnapshot().generation === cloudGeneration;
+        const isCurrent = () =>
+            requestGeneration.current === generation &&
+            getCloudStorageSnapshot().generation === cloudGeneration;
         if (numericNoteId == null || !user) {
             setNote(null);
             setLoadState("not-found");
@@ -112,7 +119,9 @@ export default function NoteDetailScreen() {
     useEffect(() => {
         // 微任务中加载，避免 effect 体内同步 setState 触发级联渲染。
         void Promise.resolve().then(fetchNote);
-        return () => { requestGeneration.current += 1; };
+        return () => {
+            requestGeneration.current += 1;
+        };
     }, [fetchNote]);
 
     useFocusEffect(

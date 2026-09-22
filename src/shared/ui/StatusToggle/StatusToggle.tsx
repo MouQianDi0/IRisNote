@@ -1,8 +1,4 @@
-import {
-    componentRecipes,
-    defaultThemePreset,
-    radii,
-} from "@/shared/theme";
+import { componentRecipes, defaultThemePreset, radii } from "@/shared/theme";
 import type { ComponentType } from "react";
 import {
     Pressable,

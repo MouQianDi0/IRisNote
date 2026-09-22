@@ -143,10 +143,7 @@ export function AppCalendar({
     );
     const [weekAnchorId, setWeekAnchorId] = useState(() =>
         startOfWeekId(
-            anchorDateId(
-                initialValueResolved,
-                initialMonthId ?? todayDateId(),
-            ),
+            anchorDateId(initialValueResolved, initialMonthId ?? todayDateId()),
             firstDayOfWeek,
         ),
     );
@@ -219,10 +216,8 @@ export function AppCalendar({
         setWeekAnchorId(weekStartId);
     }, []);
 
-    const canPrev =
-        !minDateId || visibleMonthId > toMonthId(minDateId);
-    const canNext =
-        !maxDateId || visibleMonthId < toMonthId(maxDateId);
+    const canPrev = !minDateId || visibleMonthId > toMonthId(minDateId);
+    const canNext = !maxDateId || visibleMonthId < toMonthId(maxDateId);
 
     const shiftMonth = useCallback(
         (delta: number) => {
@@ -318,7 +313,11 @@ export function AppCalendar({
             {...panResponder.panHandlers}
         >
             <Animated.View
-                style={{ height: heightAnim, overflow: "hidden", width: "100%" }}
+                style={{
+                    height: heightAnim,
+                    overflow: "hidden",
+                    width: "100%",
+                }}
             >
                 {gridWidth > 0 && resolvedView === "week" ? (
                     <WeekStrip
@@ -348,9 +347,7 @@ export function AppCalendar({
                                 {formatMonthTitle(visibleMonthId)}
                             </AppText>
                             {showMonthNav ? (
-                                <View
-                                    style={{ flexDirection: "row", gap: 4 }}
-                                >
+                                <View style={{ flexDirection: "row", gap: 4 }}>
                                     <IconButton
                                         accessibilityLabel="上一月"
                                         disabled={!canPrev}

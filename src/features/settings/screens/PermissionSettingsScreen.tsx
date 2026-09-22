@@ -355,7 +355,9 @@ export default function PermissionSettingsScreen() {
                             label="云存储权限"
                             value={cloudStatus}
                             description="统一管理笔记、待办等内容的云端同步"
-                            onPress={() => router.push("/pages/user/cloud-storage" as Href)}
+                            onPress={() =>
+                                router.push("/pages/user/cloud-storage" as Href)
+                            }
                             last
                         />
                     </Card>

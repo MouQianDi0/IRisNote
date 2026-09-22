@@ -149,7 +149,10 @@ export function useAnchoredPopoverLayout({
         const left = clamp(
             anchorCenterX - resolvedWidth / 2,
             SCREEN_MARGIN,
-            Math.max(SCREEN_MARGIN, windowWidth - SCREEN_MARGIN - resolvedWidth),
+            Math.max(
+                SCREEN_MARGIN,
+                windowWidth - SCREEN_MARGIN - resolvedWidth,
+            ),
         );
         const spaceAbove = anchorLayout.y - ANCHOR_GAP - topBoundary;
         const spaceBelow =

@@ -25,7 +25,7 @@ export function SettingsPageHeader({
             </Pressable>
             <Text
                 accessibilityRole="header"
-                className="text-2xl text-text-primary"
+                className="text-text-primary text-2xl"
             >
                 {title}
             </Text>

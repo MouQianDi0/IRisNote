@@ -65,6 +65,14 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/data-storage"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/trash"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/about"
                         options={{ headerShown: false }}
                     />

@@ -1,4 +1,7 @@
-import { getCloudStorageSnapshot, setCloudStorageSession } from "./cloud-storage-policy";
+import {
+    getCloudStorageSnapshot,
+    setCloudStorageSession,
+} from "./cloud-storage-policy";
 
 type ConsentOperationState = { saving: boolean; error: string | null };
 type Options = {
@@ -7,7 +10,8 @@ type Options = {
     onState?: (state: ConsentOperationState) => void;
 };
 
-const disableSaveError = "云存储已暂停，但关闭设置保存失败；请重试保存，避免重启后恢复旧设置";
+const disableSaveError =
+    "云存储已暂停，但关闭设置保存失败；请重试保存，避免重启后恢复旧设置";
 
 /** Serial account writes, immediate revocation, and receipts tied to the active session. */
 export function createCloudStorageConsentController(options: Options) {
@@ -31,7 +35,9 @@ export function createCloudStorageConsentController(options: Options) {
         getState: () => state,
         subscribe(listener: () => void) {
             listeners.add(listener);
-            return () => { listeners.delete(listener); };
+            return () => {
+                listeners.delete(listener);
+            };
         },
         activate(nextOwner: number | null, loading = false) {
             const session = ++activation;
@@ -39,7 +45,9 @@ export function createCloudStorageConsentController(options: Options) {
             update({ saving: false, error: null });
             setCloudStorageSession(owner, owner === null && !loading, false);
             const generation = getCloudStorageSnapshot().generation;
-            const current = () => activation === session && owner === nextOwner &&
+            const current = () =>
+                activation === session &&
+                owner === nextOwner &&
                 getCloudStorageSnapshot().generation === generation &&
                 getCloudStorageSnapshot().ownerUserId === nextOwner;
             if (nextOwner === null) return;
@@ -50,12 +58,19 @@ export function createCloudStorageConsentController(options: Options) {
                 const consented = await options.readConsent(nextOwner);
                 if (!current()) return;
                 const revoked = unpersistedRevocations.has(nextOwner);
-                setCloudStorageSession(nextOwner, true, revoked ? false : consented);
+                setCloudStorageSession(
+                    nextOwner,
+                    true,
+                    revoked ? false : consented,
+                );
                 if (revoked) update({ saving: false, error: disableSaveError });
             })().catch(() => {
                 if (!current()) return;
                 setCloudStorageSession(nextOwner, true, false);
-                update({ saving: false, error: "无法读取云存储授权，已暂停云存储，请重新设置授权" });
+                update({
+                    saving: false,
+                    error: "无法读取云存储授权，已暂停云存储，请重新设置授权",
+                });
             });
         },
         deactivate() {
@@ -64,11 +79,19 @@ export function createCloudStorageConsentController(options: Options) {
             update({ saving: false, error: null });
             setCloudStorageSession(null, false, false);
         },
-        setConsent(expectedOwner: number | null, enabled: boolean): Promise<void> {
+        setConsent(
+            expectedOwner: number | null,
+            enabled: boolean,
+        ): Promise<void> {
             const before = getCloudStorageSnapshot();
-            if (expectedOwner === null || owner !== expectedOwner ||
-                before.ownerUserId !== expectedOwner || !before.ready ||
-                (enabled && !before.available)) return Promise.resolve();
+            if (
+                expectedOwner === null ||
+                owner !== expectedOwner ||
+                before.ownerUserId !== expectedOwner ||
+                !before.ready ||
+                (enabled && !before.available)
+            )
+                return Promise.resolve();
             const session = activation;
             const intent = ++sequence;
             latestIntent.set(expectedOwner, intent);
@@ -77,34 +100,46 @@ export function createCloudStorageConsentController(options: Options) {
                 setCloudStorageSession(expectedOwner, true, false);
             }
             const generation = getCloudStorageSnapshot().generation;
-            const current = () => activation === session && owner === expectedOwner &&
+            const current = () =>
+                activation === session &&
+                owner === expectedOwner &&
                 latestIntent.get(expectedOwner) === intent &&
                 getCloudStorageSnapshot().generation === generation &&
                 getCloudStorageSnapshot().ownerUserId === expectedOwner;
             update({ saving: true, error: null });
             const previous = writes.get(expectedOwner) ?? Promise.resolve();
-            const pending = previous.then(() => options.writeConsent(expectedOwner, enabled)).then(
-                () => {
-                    if (latestIntent.get(expectedOwner) === intent) {
-                        unpersistedRevocations.delete(expectedOwner);
+            const pending = previous
+                .then(() => options.writeConsent(expectedOwner, enabled))
+                .then(
+                    () => {
+                        if (latestIntent.get(expectedOwner) === intent) {
+                            unpersistedRevocations.delete(expectedOwner);
+                        }
+                        if (!current()) return;
+                        setCloudStorageSession(expectedOwner, true, enabled);
+                        update({ saving: false, error: null });
+                    },
+                    () => {
+                        if (!current()) return;
+                        update({
+                            saving: false,
+                            error: enabled
+                                ? "授权保存失败，云存储仍未开启，请重试"
+                                : disableSaveError,
+                        });
+                    },
+                )
+                .finally(() => {
+                    if (writes.get(expectedOwner) === pending)
+                        writes.delete(expectedOwner);
+                    if (
+                        activation === session &&
+                        latestIntent.get(expectedOwner) === intent &&
+                        state.saving
+                    ) {
+                        update({ saving: false, error: state.error });
                     }
-                    if (!current()) return;
-                    setCloudStorageSession(expectedOwner, true, enabled);
-                    update({ saving: false, error: null });
-                },
-                () => {
-                    if (!current()) return;
-                    update({
-                        saving: false,
-                        error: enabled ? "授权保存失败，云存储仍未开启，请重试" : disableSaveError,
-                    });
-                },
-            ).finally(() => {
-                if (writes.get(expectedOwner) === pending) writes.delete(expectedOwner);
-                if (activation === session && latestIntent.get(expectedOwner) === intent && state.saving) {
-                    update({ saving: false, error: state.error });
-                }
-            });
+                });
             writes.set(expectedOwner, pending);
             return pending;
         },

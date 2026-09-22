@@ -1,5 +1,9 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { captureCloudStorageAccess, isCloudStoragePermissionError, subscribeCloudStorage } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+    subscribeCloudStorage,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import {
     banner,
     captureNotificationSession,
@@ -38,12 +42,17 @@ type Options = {
 };
 
 const MAX_ATTEMPTS = 10;
-const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
-    const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); };
-    const timer = setTimeout(done, ms);
-    signal.addEventListener("abort", done, { once: true });
-    if (signal.aborted) done();
-});
+const wait = (ms: number, signal: AbortSignal) =>
+    new Promise<void>((resolve) => {
+        const done = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", done);
+            resolve();
+        };
+        const timer = setTimeout(done, ms);
+        signal.addEventListener("abort", done, { once: true });
+        if (signal.aborted) done();
+    });
 // A newly authorized session waits for the previous session's receipts/bookkeeping.
 const flushes = new WeakMap<ApplicationDatabase, Map<number, Promise<void>>>();
 const usable = (state: Network.NetworkState) =>
@@ -58,7 +67,14 @@ const showOrUpdateBanner = (
 
 export function startUploadQueueCoordinator(options: Options) {
     const checkPermission = captureCloudStorageAccess(options.ownerUserId);
-    const allowed = () => { try { checkPermission(); return true; } catch { return false; } };
+    const allowed = () => {
+        try {
+            checkPermission();
+            return true;
+        } catch {
+            return false;
+        }
+    };
     const lifetime = new AbortController();
     const permissionSubscription = subscribeCloudStorage(() => {
         if (!allowed()) lifetime.abort();
@@ -77,7 +93,10 @@ export function startUploadQueueCoordinator(options: Options) {
     lifetime.signal.addEventListener("abort", () => probeController?.abort());
 
     const showPaused = async (message: string) => {
-        const summary = await readUploadQueueSummary(options.database, options.ownerUserId);
+        const summary = await readUploadQueueSummary(
+            options.database,
+            options.ownerUserId,
+        );
         if (stopped || !allowed()) return;
         showOrUpdateBanner("upload-queue-paused", {
             id: "upload-queue-paused",
@@ -96,7 +115,10 @@ export function startUploadQueueCoordinator(options: Options) {
     };
 
     const showBlocked = async (message: string) => {
-        const summary = await readUploadQueueSummary(options.database, options.ownerUserId);
+        const summary = await readUploadQueueSummary(
+            options.database,
+            options.ownerUserId,
+        );
         if (stopped || !allowed()) return;
         showOrUpdateBanner("upload-queue-blocked", {
             id: "upload-queue-blocked",
@@ -111,14 +133,18 @@ export function startUploadQueueCoordinator(options: Options) {
     };
 
     const showOfflineQueue = async () => {
-        const summary = await readUploadQueueSummary(options.database, options.ownerUserId);
+        const summary = await readUploadQueueSummary(
+            options.database,
+            options.ownerUserId,
+        );
         if (
             !summary.count ||
             stopped ||
             !allowed() ||
             usable(networkState) ||
             isServerConnectionBannerSuppressed()
-        ) return;
+        )
+            return;
         showOrUpdateBanner("server-connection", {
             id: "server-connection",
             type: "important",
@@ -132,12 +158,25 @@ export function startUploadQueueCoordinator(options: Options) {
     };
 
     const flush = async () => {
-        if (!initialized || stopped || !allowed() || !active || processing || !usable(networkState)) return;
+        if (
+            !initialized ||
+            stopped ||
+            !allowed() ||
+            !active ||
+            processing ||
+            !usable(networkState)
+        )
+            return;
         let owners = flushes.get(options.database);
-        if (!owners) { owners = new Map(); flushes.set(options.database, owners); }
+        if (!owners) {
+            owners = new Map();
+            flushes.set(options.database, owners);
+        }
         if (owners.has(options.ownerUserId)) return;
         let release = () => {};
-        const pending = new Promise<void>((resolve) => { release = resolve; });
+        const pending = new Promise<void>((resolve) => {
+            release = resolve;
+        });
         owners.set(options.ownerUserId, pending);
         processing = true;
         updateUploadQueueRuntime({ running: true, server: "checking" });
@@ -154,14 +193,18 @@ export function startUploadQueueCoordinator(options: Options) {
                 title: "服务器连接已恢复",
                 lifetime: { mode: "timed", durationMs: 3000 },
             });
-            const initial = await readUploadQueueSummary(options.database, options.ownerUserId);
+            const initial = await readUploadQueueSummary(
+                options.database,
+                options.ownerUserId,
+            );
             if (!initial.count) return;
             let completedCount = 0;
             let completedBytes = 0;
 
             while (!stopped && allowed() && active && usable(networkState)) {
-                const task = (await listUploadTasks(options.database, options.ownerUserId))
-                    .find((item) => item.status === "queued");
+                const task = (
+                    await listUploadTasks(options.database, options.ownerUserId)
+                ).find((item) => item.status === "queued");
                 if (!task || !allowed() || stopped) break;
                 let finished = false;
                 if (task.attemptCount >= MAX_ATTEMPTS) {
@@ -174,8 +217,18 @@ export function startUploadQueueCoordinator(options: Options) {
                     await showPaused("已连续重试 10 次，请检查本机网络状态");
                     continue;
                 }
-                for (let attempt = task.attemptCount + 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-                    if (stopped || !allowed() || !active || !usable(networkState)) break;
+                for (
+                    let attempt = task.attemptCount + 1;
+                    attempt <= MAX_ATTEMPTS;
+                    attempt += 1
+                ) {
+                    if (
+                        stopped ||
+                        !allowed() ||
+                        !active ||
+                        !usable(networkState)
+                    )
+                        break;
                     const claimed = await markUploadTaskRunning(
                         options.database,
                         task.taskId,
@@ -192,7 +245,10 @@ export function startUploadQueueCoordinator(options: Options) {
                         lifetime: { mode: "persistent" },
                         progress: {
                             mode: "determinate",
-                            value: Math.min(1, completedCount / Math.max(1, initial.count)),
+                            value: Math.min(
+                                1,
+                                completedCount / Math.max(1, initial.count),
+                            ),
                         },
                     });
                     let result: Execution;
@@ -200,9 +256,16 @@ export function startUploadQueueCoordinator(options: Options) {
                         checkPermission();
                         result = await options.execute(task);
                     } catch (error) {
-                        const message = error instanceof Error ? error.message : "上传任务执行失败";
+                        const message =
+                            error instanceof Error
+                                ? error.message
+                                : "上传任务执行失败";
                         result = {
-                            state: isCloudStoragePermissionError(error) ? "suspended" : message.startsWith("[Upload queue]") ? "blocked" : "retry",
+                            state: isCloudStoragePermissionError(error)
+                                ? "suspended"
+                                : message.startsWith("[Upload queue]")
+                                  ? "blocked"
+                                  : "retry",
                             message,
                             transferredBytes: task.estimatedBytes,
                         };
@@ -221,17 +284,29 @@ export function startUploadQueueCoordinator(options: Options) {
                             "blocked",
                             result.message ?? "云端明确拒绝或创建结果未知",
                         );
-                        await showBlocked(result.message ?? "任务需要检查后才能继续");
+                        await showBlocked(
+                            result.message ?? "任务需要检查后才能继续",
+                        );
                         finished = true;
                         break;
                     }
                     if (stopped || !allowed()) {
-                        await markUploadTaskRetry(options.database, task.taskId, 0, "云存储已暂停，任务保留在本机");
+                        await markUploadTaskRetry(
+                            options.database,
+                            task.taskId,
+                            0,
+                            "云存储已暂停，任务保留在本机",
+                        );
                         finished = true;
                         break;
                     }
                     if (result.state === "suspended" || !allowed() || stopped) {
-                        await markUploadTaskRetry(options.database, task.taskId, 0, "云存储已暂停，任务保留在本机");
+                        await markUploadTaskRetry(
+                            options.database,
+                            task.taskId,
+                            0,
+                            "云存储已暂停，任务保留在本机",
+                        );
                         finished = true;
                         break;
                     }
@@ -248,7 +323,9 @@ export function startUploadQueueCoordinator(options: Options) {
                             "paused",
                             result.message ?? "连续重试 10 次仍未成功",
                         );
-                        await showPaused("已连续重试 10 次，请检查本机网络状态");
+                        await showPaused(
+                            "已连续重试 10 次，请检查本机网络状态",
+                        );
                         finished = true;
                         break;
                     }
@@ -259,12 +336,20 @@ export function startUploadQueueCoordinator(options: Options) {
                         message: `${task.operationLabel} · 第 ${attempt}/${MAX_ATTEMPTS} 次失败`,
                         lifetime: { mode: "persistent" },
                     });
-                    await wait(Math.min(30000, 1000 * 2 ** Math.min(attempt - 1, 5)), lifetime.signal);
+                    await wait(
+                        Math.min(30000, 1000 * 2 ** Math.min(attempt - 1, 5)),
+                        lifetime.signal,
+                    );
                 }
                 if (!finished) break;
             }
 
-            if (completedCount > 0 && allowed() && !stopped && sessionCurrent()) {
+            if (
+                completedCount > 0 &&
+                allowed() &&
+                !stopped &&
+                sessionCurrent()
+            ) {
                 banner.resolve("upload-queue-sync", {
                     type: "success",
                     icon: "check",
@@ -274,12 +359,14 @@ export function startUploadQueueCoordinator(options: Options) {
                 });
             }
         } catch {
-            if (allowed() && !stopped) updateUploadQueueRuntime({ server: "unavailable" });
+            if (allowed() && !stopped)
+                updateUploadQueueRuntime({ server: "unavailable" });
         } finally {
             if (probeController === controller) probeController = null;
             processing = false;
             updateUploadQueueRuntime({ running: false });
-            if (owners.get(options.ownerUserId) === pending) owners.delete(options.ownerUserId);
+            if (owners.get(options.ownerUserId) === pending)
+                owners.delete(options.ownerUserId);
             release();
         }
     };
@@ -302,7 +389,10 @@ export function startUploadQueueCoordinator(options: Options) {
         }
         if (sawOffline && !wasUsable) {
             sawOffline = false;
-            void resumePausedUploadTasks(options.database, options.ownerUserId).then(() => {
+            void resumePausedUploadTasks(
+                options.database,
+                options.ownerUserId,
+            ).then(() => {
                 if (stopped || !allowed()) return;
                 banner.resolve("upload-queue-paused", {
                     type: "special",
@@ -319,22 +409,27 @@ export function startUploadQueueCoordinator(options: Options) {
     void (async () => {
         await flushes.get(options.database)?.get(options.ownerUserId);
         if (stopped || !allowed()) return;
-        await recoverInterruptedUploadTasks(options.database, options.ownerUserId);
+        await recoverInterruptedUploadTasks(
+            options.database,
+            options.ownerUserId,
+        );
         if (stopped || !allowed()) return;
         initialized = true;
         handleNetwork(await Network.getNetworkStateAsync());
     })().catch((error) => {
-        if (allowed() && !stopped) console.warn("[Upload queue] 初始化失败", error);
+        if (allowed() && !stopped)
+            console.warn("[Upload queue] 初始化失败", error);
     });
     const networkSubscription = Network.addNetworkStateListener(handleNetwork);
     const queueSubscription = onUploadQueueChanged(() => {
         if (usable(networkState)) void flush();
         else void showOfflineQueue();
     });
-    const suppressionSubscription =
-        onServerConnectionBannerSuppressionChanged((suppressed) => {
+    const suppressionSubscription = onServerConnectionBannerSuppressionChanged(
+        (suppressed) => {
             if (!suppressed) void showOfflineQueue();
-        });
+        },
+    );
 
     return {
         setActive(value: boolean) {
