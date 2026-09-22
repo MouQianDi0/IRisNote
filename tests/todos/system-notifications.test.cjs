@@ -7,11 +7,15 @@ const ts = require("typescript");
 const { PNG } = require("pngjs");
 const root = path.resolve(__dirname, "../..");
 
-function service(platform, initial = { granted: false, canAskAgain: true }) {
+function service(
+  platform,
+  initial = { granted: false, canAskAgain: true },
+  exactAlarm = "denied",
+) {
   let permissions = initial;
   const calls = [];
   const native = {
-    AndroidImportance: { HIGH: 4, NONE: 0 },
+    AndroidImportance: { HIGH: 4, DEFAULT: 3, LOW: 2, NONE: 0 },
     AndroidNotificationVisibility: { PRIVATE: 0 },
     IosAuthorizationStatus: { PROVISIONAL: 3, EPHEMERAL: 4 },
     SchedulableTriggerInputTypes: { DATE: "date" },
@@ -33,6 +37,9 @@ function service(platform, initial = { granted: false, canAskAgain: true }) {
     async getAllScheduledNotificationsAsync() {
       return [];
     },
+    async getPresentedNotificationsAsync() {
+      return [];
+    },
     async scheduleNotificationAsync(request) {
       calls.push(["schedule", request]);
       return request.identifier;
@@ -48,6 +55,10 @@ function service(platform, initial = { granted: false, canAskAgain: true }) {
     "expo-notifications": native,
     "expo-application": { applicationId: "com.mouqiandi.irisNote" },
     "expo-intent-launcher": {
+      ActivityAction: {
+        REQUEST_SCHEDULE_EXACT_ALARM:
+          "android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+      },
       async startActivityAsync(...args) {
         calls.push(["settings", ...args]);
       },
@@ -58,6 +69,16 @@ function service(platform, initial = { granted: false, canAskAgain: true }) {
         async openURL(url) {
           calls.push(["settings", url]);
         },
+      },
+    },
+    "@/core/diagnostics": {
+      diagnosticErrorCategory: () => "Error",
+      opaqueDiagnosticId: (value) => `opaque:${value}`,
+      recordDiagnostic: async () => {},
+    },
+    "@modules/irisnote-system": {
+      async getExactAlarmAccess() {
+        return exactAlarm;
       },
     },
   };
@@ -199,7 +220,67 @@ test("系统设置链接使用平台入口，Web 不调用通知原生 API", asy
   assert.deepEqual(web.calls, []);
 });
 
-test("最终 Expo 原生配置移除 APNs entitlement，且没有远程后台通知或精确闹钟声明", () => {
+test("Android 精确提醒读取特殊权限并打开闹钟和提醒设置", async () => {
+  const android = service("android", undefined, "denied");
+  assert.equal(await android.exactAlarmAccess(), "denied");
+  await android.openExactAlarmSettings();
+  assert.deepEqual(android.calls.at(-1), [
+    "settings",
+    "android.settings.REQUEST_SCHEDULE_EXACT_ALARM",
+    { data: "package:com.mouqiandi.irisNote" },
+  ]);
+  const ios = service("ios");
+  assert.equal(await ios.exactAlarmAccess(), "not-required");
+});
+
+test("常驻通知使用 LOW 独立渠道且不可侧滑，关闭时同时取消和移除", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  await s.ensureRuntimeNotification();
+  const channel = s.calls.find(
+    ([call, id]) => call === "channel" && id === "irisnote.runtime.v1",
+  );
+  assert.deepEqual(channel[2], {
+    name: "运行状态",
+    description: "显示 IRisNote 正在运行",
+    importance: 2,
+    sound: null,
+    enableVibrate: false,
+    showBadge: false,
+    lockscreenVisibility: 0,
+  });
+  const request = s.calls.find(
+    ([call, value]) =>
+      call === "schedule" && value.identifier === "irisnote.runtime.status",
+  )[1];
+  assert.equal(request.content.title, "IRisNote正在运行");
+  assert.equal(request.content.sticky, true);
+  assert.equal(request.content.autoDismiss, false);
+  assert.deepEqual(request.trigger, { channelId: "irisnote.runtime.v1" });
+  await s.removeRuntimeNotification();
+  assert.deepEqual(s.calls.slice(-2), [
+    ["cancel", "irisnote.runtime.status"],
+    ["dismiss", "irisnote.runtime.status"],
+  ]);
+});
+
+test("测试通知使用 DEFAULT 独立渠道并发送可自动关闭的普通通知", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  await s.sendDiagnosticTestNotification();
+  const channel = s.calls.find(
+    ([call, id]) => call === "channel" && id === "irisnote.diagnostics.v1",
+  );
+  assert.equal(channel[2].importance, 3);
+  assert.equal(channel[2].sound, "default");
+  const request = s.calls.find(
+    ([call, value]) =>
+      call === "schedule" && value.content.data.kind === "diagnostic-test",
+  )[1];
+  assert.equal(request.content.autoDismiss, true);
+  assert.equal(request.content.sticky, undefined);
+  assert.deepEqual(request.trigger, { channelId: "irisnote.diagnostics.v1" });
+});
+
+test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {
   const config = JSON.parse(
     execFileSync(
       process.execPath,
@@ -220,10 +301,39 @@ test("最终 Expo 原生配置移除 APNs entitlement，且没有远程后台通
     ),
     false,
   );
+  // 单一来源约束：app.json 不重复声明，权限由模块 Manifest 经 gradle 合并。
   assert.equal(
     JSON.stringify(native.android.manifest).includes("SCHEDULE_EXACT_ALARM"),
     false,
   );
+});
+
+test("Android 系统模块声明精确闹钟权限并限制日志来源写入 Download/irisnoteLog", () => {
+  const kotlin = fs.readFileSync(
+    path.join(
+      root,
+      "modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt",
+    ),
+    "utf8",
+  );
+  assert.match(kotlin, /canScheduleExactAlarms\(\)/);
+  assert.match(kotlin, /MediaStore\.Downloads\.EXTERNAL_CONTENT_URI/);
+  assert.match(kotlin, /Environment\.DIRECTORY_DOWNLOADS}\/irisnoteLog/);
+  assert.match(kotlin, /cacheDir\.canonicalFile/);
+  const manifest = fs.readFileSync(
+    path.join(
+      root,
+      "modules/irisnote-system/android/src/main/AndroidManifest.xml",
+    ),
+    "utf8",
+  );
+  assert.match(manifest, /android\.permission\.SCHEDULE_EXACT_ALARM/);
+  const help = fs.readFileSync(
+    path.join(root, "src/features/settings/screens/HelpFeedbackScreen.tsx"),
+    "utf8",
+  );
+  assert.match(help, /保存并分享/);
+  assert.match(help, /Download\/irisnoteLog/);
 });
 
 test("Android 通知图标为 96px 白色透明 PNG，且有非空图形和透明背景", () => {
@@ -258,7 +368,10 @@ test("Expo Go 安全入口不静态加载通知原生模块，原生实现单独
     "utf8",
   );
   assert.match(provider, /isRunningInExpoGo/);
-  assert.match(provider, /lazy\(\(\)\s*=>\s*import\("\.\/system-notification-native-provider"\)/);
+  assert.match(
+    provider,
+    /lazy\(\(\)\s*=>\s*import\("\.\/system-notification-native-provider"\)/,
+  );
   assert.doesNotMatch(provider, /from "expo-notifications"/);
   assert.doesNotMatch(provider, /from "\.\/system-notification\.service"/);
   assert.match(nativeProvider, /from "expo-notifications"/);

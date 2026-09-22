@@ -754,6 +754,7 @@ export default function NotesScreen() {
                         <NotesSyncHeader
                             key={user?.id ?? "signed-out"}
                             count={filteredNotes.length}
+                            itemLabel="笔记"
                             lastSyncTime={
                                 syncHistory?.userId === user?.id
                                     ? (syncHistory?.timestamp ?? null)
@@ -762,6 +763,11 @@ export default function NotesScreen() {
                             enabled={!!user && !loading}
                             scrollOffset={scrollOffset}
                             onRefresh={handleRefresh}
+                            successMessage={({ addedCount }) =>
+                                addedCount > 0
+                                    ? `同步${addedCount}条笔记`
+                                    : "暂无新笔记"
+                            }
                         >
                             <FlatList
                                 ref={flatListRef}

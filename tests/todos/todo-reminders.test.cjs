@@ -40,6 +40,9 @@ const {
 const {
   TodoReminderRepository,
 } = require("@/features/todos/data/todo-reminder.repository.ts");
+const {
+  SystemPreferencesRepository,
+} = require("@/features/settings/data/system-preferences.repository.ts");
 const { databaseMigrations } = require("@/core/database/migrations/index.ts");
 const {
   createTodoSync,
@@ -186,6 +189,8 @@ test("明确保存才弹权限，自动保存只给开启入口，异常不会�
     },
     publish: () => calls.push("publish"),
     showDisabled: () => calls.push("disabled"),
+    exactAlarmAccess: async () => "granted",
+    showExactAlarmDisabled: () => calls.push("exact-disabled"),
     showError: () => calls.push("error"),
     reconcile: async () => {
       calls.push("reconcile");
@@ -216,6 +221,26 @@ test("明确保存才弹权限，自动保存只给开启入口，异常不会�
     now,
   );
   assert.deepEqual(calls, ["error"]);
+});
+
+test("明确保存未来提醒时提示精确提醒特殊权限，自动保存不打扰", async () => {
+  const calls = [];
+  const port = {
+    isCurrent: () => true,
+    permission: async () => ({ granted: true, canAskAgain: true }),
+    request: async () => ({ granted: true, canAskAgain: true }),
+    publish: () => calls.push("publish"),
+    showDisabled: () => calls.push("disabled"),
+    exactAlarmAccess: async () => "denied",
+    showExactAlarmDisabled: () => calls.push("exact-disabled"),
+    showError: () => calls.push("error"),
+    reconcile: async () => calls.push("reconcile"),
+  };
+  await afterSavedTodoReminder(todo(), "dismiss", port, now);
+  assert.deepEqual(calls, ["publish", "reconcile"]);
+  calls.length = 0;
+  await afterSavedTodoReminder(todo(), "confirm", port, now);
+  assert.deepEqual(calls, ["publish", "exact-disabled", "reconcile"]);
 });
 
 test("权限查询或请求期间会话过期，不继续弹窗或显示旧会话结果", async () => {
@@ -310,6 +335,17 @@ test("重复保存和并发对账幂等，仅创建一条提醒", async () => {
   assert.equal(f.osQueue.size, 1);
   assert.equal(f.calls.filter(([call]) => call === "schedule").length, 1);
   assert.equal([...f.rows.values()][0].state, "scheduled");
+});
+
+test("获得精确提醒权限后强制取消并重建已有未来提醒", async () => {
+  const f = fixture();
+  await f.coordinator.reconcile();
+  await f.coordinator.reconcile({ forceReschedule: true });
+  assert.deepEqual(
+    f.calls.map(([call]) => call),
+    ["schedule", "cancel", "schedule"],
+  );
+  assert.equal(f.osQueue.size, 1);
 });
 
 test("修改先取消再重建，完成取消，取消完成重新提醒，关闭开关取消", async () => {
@@ -466,7 +502,7 @@ test("连续编辑期间只保留最新版本的开始时刻", async () => {
   );
 });
 
-test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级联丢失清理任务", async (t) => {
+test("迁移 1–11 后提醒绑定与系统偏好均可落盘重开", async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "iris-reminders-"));
   const filename = path.join(directory, "database.sqlite");
   let db = new DatabaseSync(filename);
@@ -491,8 +527,12 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
     async getAll(sql, params = []) {
       return db.prepare(sql).all(...params);
     },
+    async getFirst(sql, params = []) {
+      return db.prepare(sql).get(...params) ?? null;
+    },
   };
   const repository = new TodoReminderRepository(port);
+  const preferences = new SystemPreferencesRepository(port);
   const record = {
     owner_key: "user:one",
     todo_id: todo().clientId,
@@ -504,9 +544,13 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
     updated_at: new Date(now).toISOString(),
   };
   await repository.put(record);
+  await preferences.setRuntimeNotificationEnabled(true);
+  await preferences.setExactAlarmAccess("denied");
   db.close();
   db = new DatabaseSync(filename);
   assert.deepEqual({ ...(await repository.list())[0] }, record);
+  assert.equal(await preferences.runtimeNotificationEnabled(), true);
+  assert.equal(await preferences.exactAlarmAccess(), "denied");
   await repository.put({ ...record, state: "scheduled", todo_version: 3 });
   assert.equal((await repository.list()).length, 1);
   await port.run("DELETE FROM local_todos");
@@ -514,4 +558,8 @@ test("迁移 1–8 可重入且绑定落盘重开保留，删除待办不会级�
   await assert.rejects(repository.put({ ...record, state: "invalid" }));
   await repository.remove(record);
   assert.equal((await repository.list()).length, 0);
+  await preferences.setRuntimeNotificationEnabled(false);
+  assert.equal(await preferences.runtimeNotificationEnabled(), false);
+  await preferences.setExactAlarmAccess("granted");
+  assert.equal(await preferences.exactAlarmAccess(), "granted");
 });

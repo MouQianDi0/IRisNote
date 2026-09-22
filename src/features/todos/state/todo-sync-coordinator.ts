@@ -15,6 +15,20 @@ export function startTodoSyncCoordinator(options: {
   let requested = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let controller: AbortController | null = null;
+  let waiters: {
+    resolve: (result: TodoSyncResult) => void;
+    reject: (cause: Error) => void;
+  }[] = [];
+  const rejectWaiters = (cause: Error) => {
+    const current = waiters;
+    waiters = [];
+    current.forEach(({ reject }) => reject(cause));
+  };
+  const resolveWaiters = (result: TodoSyncResult) => {
+    const current = waiters;
+    waiters = [];
+    current.forEach(({ resolve }) => resolve(result));
+  };
   const schedule = (delay = 1000) => {
     if (stopped || !active || !online || authPaused) return;
     requested = true;
@@ -33,7 +47,10 @@ export function startTodoSyncCoordinator(options: {
     let failed = false;
     try {
       const result = await options.run(request.signal);
-      if (!stopped && !request.signal.aborted) options.onSuccess(result);
+      if (!stopped && !request.signal.aborted) {
+        options.onSuccess(result);
+        resolveWaiters(result);
+      }
     } catch (error) {
       failed = true;
       if (!stopped && !request.signal.aborted) {
@@ -41,6 +58,9 @@ export function startTodoSyncCoordinator(options: {
           authPaused = true;
         options.onError(error);
       }
+      rejectWaiters(
+        error instanceof Error ? error : new Error("待办同步失败"),
+      );
     } finally {
       running = false;
       controller = null;
@@ -56,20 +76,44 @@ export function startTodoSyncCoordinator(options: {
   };
   return {
     wake,
+    refresh() {
+      if (stopped)
+        return Promise.reject(new Error("待办同步协调器已停止"));
+      if (!active || !online || authPaused)
+        return Promise.reject(new Error("待办云同步当前不可用"));
+      return new Promise<TodoSyncResult>((resolve, reject) => {
+        waiters.push({ resolve, reject });
+        // A user-triggered refresh joins the in-flight drain rather than
+        // scheduling a second network pass after it completes.
+        if (running) return;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        schedule(0);
+      });
+    },
     setActive(value: boolean) {
       active = value;
-      if (!value) controller?.abort();
+      if (!value) {
+        controller?.abort();
+        rejectWaiters(new Error("待办同步已暂停"));
+      }
       else wake();
     },
     setOnline(value: boolean) {
       online = value;
-      if (!value) controller?.abort();
+      if (!value) {
+        controller?.abort();
+        rejectWaiters(new Error("待办云同步当前离线"));
+      }
       else wake();
     },
     stop() {
       stopped = true;
       controller?.abort();
       if (timer) clearTimeout(timer);
+      rejectWaiters(new Error("待办同步协调器已停止"));
     },
   };
 }

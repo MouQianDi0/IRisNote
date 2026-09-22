@@ -1,0 +1,56 @@
+diff --git a/node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js b/node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js
+index 0000000..0000000 100644
+--- a/node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js
++++ b/node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js
+@@ -5,6 +5,6 @@ import useLatestCallback from 'use-latest-callback';
+ import { useAnimatedValue } from "./useAnimatedValue.js";
+ import { jsx as _jsx } from "react/jsx-runtime";
+-const DEAD_ZONE = 12;
++const DEAD_ZONE = 100;
+ const DefaultTransitionSpec = {
+   timing: Animated.spring,
+   stiffness: 1000,
+@@ -39,7 +39,6 @@ export function PanResponderAdapter({
+   const onTabSelectRef = React.useRef(onTabSelect);
+   const currentIndexRef = React.useRef(index);
+   const pendingIndexRef = React.useRef(undefined);
+-  const swipeVelocityThreshold = 0.15;
+   const swipeDistanceThreshold = layout.width / 1.75;
+   const jumpToIndex = useLatestCallback((index, animate = animationEnabled) => {
+     const offset = -index * layoutRef.current.width;
+@@ -133,7 +132,7 @@ export function PanResponderAdapter({
+   const finishGesture = (_, gestureState) => {
+     panX.flattenOffset();
+     onSwipeEnd?.();
+     const currentIndex = typeof pendingIndexRef.current === 'number' ? pendingIndexRef.current : currentIndexRef.current;
+     let nextIndex = currentIndex;
+-    if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.vx) > Math.abs(gestureState.vy) && (Math.abs(gestureState.dx) > swipeDistanceThreshold || Math.abs(gestureState.vx) > swipeVelocityThreshold)) {
++    if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > swipeDistanceThreshold) {
+       nextIndex = Math.round(Math.min(Math.max(0, layoutDirection === 'rtl' ? currentIndex + gestureState.dx / Math.abs(gestureState.dx) : currentIndex - gestureState.dx / Math.abs(gestureState.dx)), routes.length - 1));
+diff --git a/node_modules/react-native-tab-view/src/PanResponderAdapter.tsx b/node_modules/react-native-tab-view/src/PanResponderAdapter.tsx
+index 0000000..0000000 100644
+--- a/node_modules/react-native-tab-view/src/PanResponderAdapter.tsx
++++ b/node_modules/react-native-tab-view/src/PanResponderAdapter.tsx
+@@ -40,7 +40,7 @@ type Props<T extends Route> = PagerProps & {
+   ) => React.ReactElement;
+ };
+ 
+-const DEAD_ZONE = 12;
++const DEAD_ZONE = 100;
+ 
+ const DefaultTransitionSpec = {
+   timing: Animated.spring,
+@@ -77,5 +77,4 @@ export function PanResponderAdapter<T extends Route>({
+   const currentIndexRef = React.useRef(index);
+   const pendingIndexRef = React.useRef<number>(undefined);
+ 
+-  const swipeVelocityThreshold = 0.15;
+   const swipeDistanceThreshold = layout.width / 1.75;
+@@ -222,6 +221,4 @@ export function PanResponderAdapter<T extends Route>({
+     if (
+       Math.abs(gestureState.dx) > Math.abs(gestureState.dy) &&
+-      Math.abs(gestureState.vx) > Math.abs(gestureState.vy) &&
+-      (Math.abs(gestureState.dx) > swipeDistanceThreshold ||
+-        Math.abs(gestureState.vx) > swipeVelocityThreshold)
++      Math.abs(gestureState.dx) > swipeDistanceThreshold
+     ) {

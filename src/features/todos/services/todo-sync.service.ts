@@ -28,12 +28,18 @@ export type TodoSyncSession = {
   transport: TodoTransport;
   isCurrent: () => boolean;
 };
-export type TodoSyncResult = { pending: number; uploaded: number };
+export type TodoSyncResult = {
+  pending: number;
+  uploaded: number;
+  downloaded: number;
+  changed: number;
+};
 export async function syncTodos(
   session: TodoSyncSession,
 ): Promise<TodoSyncResult> {
   const { repository, ownerKey, transport } = session;
   let uploaded = 0;
+  let downloaded = 0;
   const check = () => {
     if (!session.isCurrent()) throw new Error("待办同步会话已结束");
   };
@@ -56,7 +62,12 @@ export async function syncTodos(
     const records = await transaction(ownerKey, (tx) =>
       listTodoSyncRecords(tx, ownerKey),
     );
-    return { pending: records.length, uploaded };
+    return {
+      pending: records.length,
+      uploaded,
+      downloaded,
+      changed: uploaded + downloaded,
+    };
   }
   async function accepted(op: TodoOperation, remote: TodoRemote) {
     check();
@@ -237,15 +248,19 @@ export async function syncTodos(
           visited.add(cursor);
           const page = await transport.changes(cursor);
           check();
-          await transaction(ownerKey, async (tx) => {
+          const applied = await transaction(ownerKey, async (tx) => {
+            let changed = 0;
             for (const event of page.data)
-              await applyRemote(
+              if (await applyRemote(
                 tx,
                 ownerKey,
                 event.operation === "upsert" ? event.data : event,
-              );
+              ))
+                changed++;
             await saveCursor(tx, ownerKey, page.page.next_cursor);
+            return changed;
           });
+          downloaded += applied;
           cursor = page.page.next_cursor;
           if (!page.page.has_more) break;
         }
@@ -278,7 +293,7 @@ export async function syncTodos(
         stageSnapshot(tx, ownerKey, page.data),
       );
       if (!page.page.has_more) {
-        await transaction(ownerKey, (tx) =>
+        downloaded += await transaction(ownerKey, (tx) =>
           finishSnapshot(tx, ownerKey, page.sync.changes_cursor),
         );
         break;

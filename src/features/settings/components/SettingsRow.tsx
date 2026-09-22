@@ -1,5 +1,6 @@
 import { colors } from "@/shared/theme";
 import { ChevronRight, type LucideIcon } from "lucide-react-native";
+import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 type SettingsRowProps = {
@@ -10,6 +11,7 @@ type SettingsRowProps = {
   disabled?: boolean;
   last?: boolean;
   onPress?: () => void;
+  trailing?: ReactNode;
 };
 
 /** 说明行保持只读；未开放项目禁用，只有可跳转项目显示箭头。 */
@@ -21,6 +23,7 @@ export function SettingsRow({
   disabled = false,
   last = false,
   onPress,
+  trailing,
 }: SettingsRowProps) {
   const content = (
     <>
@@ -54,9 +57,10 @@ export function SettingsRow({
           </Text>
         ) : null}
       </View>
-      {onPress && !disabled ? (
-        <ChevronRight size={18} color={colors.textMuted} />
-      ) : null}
+      {trailing ??
+        (onPress && !disabled ? (
+          <ChevronRight size={18} color={colors.textMuted} />
+        ) : null)}
     </>
   );
 

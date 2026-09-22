@@ -14,6 +14,76 @@
 - 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
 - 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
 
+## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
+
+- 变更概述：应用户"全修正"要求，落实代码审查报告的全部建议项（建议 1–4）与提示项（3/5）：app.json 恢复 HEAD 消除全文件格式重排 diff；`SCHEDULE_EXACT_ALARM` 权限收敛为模块 Manifest 单一来源；同名类型改名消歧；偏好写库增加值未变短路；统一模块导入别名；清理 Kotlin 文件名正则冗余字符。
+- 修改文件：app.json（git checkout 恢复）、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、tsconfig.json、tests/todos/system-notifications.test.cjs、CHANGELOG.md。
+- 具体内容：① app.json 整体恢复 HEAD（撤销缩进重排与 permissions 中的权限声明，diff 归零）；② 权限唯一来源改为 modules/irisnote-system 的 AndroidManifest（经 gradle manifest merger 合并进 APK），模块 AndroidManifest 保持不动；③ 模块侧 `ExactAlarmAccess` 改名 `NativeExactAlarmAccess`（3 值原生态），`system-notification.types.ts` 改为 `NativeExactAlarmAccess | "unavailable"` 组合表达继承关系（import type，无运行时导入）；④ Provider 中 `setExactAlarmAccess` 仅在值变化时写库（含 null→值的首次落盘），消除每次前台切换的冗余写入与 iOS 写 "not-required"；⑤ tsconfig paths 新增 `@modules/*`，service 与 HelpFeedbackScreen 的多级相对导入统一为 `@modules/irisnote-system`；⑥ Kotlin 文件名白名单正则 `[A-Za-z0-9T-]`→`[A-Za-z0-9-]`（T 冗余，行为不变）；⑦ 同步测试：introspect 断言反转为"app 原生配置不含 SCHEDULE_EXACT_ALARM"以锁定单一来源不回退，模块断言测试更名，测试 stub key 改为别名。
+- 验证：`npm run typecheck` 通过（0 错误，中途发现并修复改名遗漏的方法签名引用）；定向测试 30/30 通过；`npm run check` 全量通过（typecheck、lint、theme:check、354/354 测试）；`gradlew :app:processDebugMainManifest` BUILD SUCCESSFUL，合并后 Debug Manifest 含 `SCHEDULE_EXACT_ALARM` 且 app 源 manifest（prebuild 产物）不含——node_modules 全量搜索确认无第三方库声明该权限，合并来源 100% 为本模块。未做真机验收（Android 14+ REQUEST_SCHEDULE_EXACT_ALARM 弃用行为仍建议真机验证）。
+
+---
+
+## 2026-09-22 02:56:31 | 新增功能：系统通知模块负责说明文档
+
+- 变更概述：应代码审查与模块梳理需求，新增通知模块架构文档，覆盖文件职责、UI 到系统通知的全链路时序、通知分级、精确闹钟权限专节与五个端到端示范案例，供团队开发与排障参考。
+- 修改文件：docs/架构指南/系统通知模块负责说明.md（新增）、CHANGELOG.md。
+- 具体内容：① 模块总览分层图与逐文件职责清单（core/system-notifications 5 文件、modules/irisnote-system 本地模块含 Kotlin 行为契约、features 消费方、diagnostics 支撑）；② 待办提醒/常驻通知/测试通知 × Android 渠道对照表与 importance 档位语义；③ 四条全链路时序（待办保存→排程→到点→点击、常驻开关、测试通知、冷启动 refresh 对账）；④ 精确闹钟权限专节（SCHEDULE_EXACT_ALARM 背景、双处声明、四态语义、forceReschedule 强制重排机制、用户触点与平台差异）；⑤ 五个示范案例与边界降级矩阵（Expo Go/Web/iOS/权限拒绝/模块缺失）。文档基于当前工作区现状（含未提交的精确闹钟改动）并在文首标注。
+- 验证：纯文档新增，无代码改动；无需 typecheck/测试。
+
+---
+
+## 2026-09-22 02:48:43 | 修复问题：Android 待办精确提醒权限与诊断日志下载导出
+
+- 变更概述：已获用户确认，为 Android 待办提醒接入“闹钟和提醒”特殊权限与授权后的全量重排，避免 Expo 在无精确权限时使用的非精确闹钟被系统/OPlus 长时间调整；同时将诊断日志直接保存到公共 `Download/irisnoteLog` 后显示全局横幅并自动打开系统分享面板。
+- 修改文件：app.json、modules/irisnote-system/**（新增）、src/core/diagnostics/diagnostic-log.ts、src/core/system-notifications/{system-notification-native-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 声明 `SCHEDULE_EXACT_ALARM`，新增本地 Expo Android 模块读取 `AlarmManager.canScheduleExactAlarms()`，权限设置页新增“准时提醒”状态与系统设置入口；② 明确保存未来提醒且缺少权限时显示“去开启”横幅，授权返回后持久化状态并强制取消、重建已有未来提醒，使 Expo SDK 57 重新按精确闹钟调度；③ 日志导出改为返回缓存文件及文件名，Android 10+ 通过 `MediaStore.Downloads` 写入 `Download/irisnoteLog`，Android 9 及以下按需申请旧版存储权限，保存成功后显示实际路径并继续调用系统分享面板；④ 补充权限读取、设置跳转、重排、下载保存和分享结果的脱敏日志及回归测试。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；通知/提醒定向测试 30/30 通过；`npm run check` 的 typecheck、lint、theme:check 与 354/354 项测试全部通过；Expo 本地模块自动链接识别 `irisnote-system` 且无重复；`:irisnote-system:compileDebugKotlin` 与 `:app:processDebugMainManifest` 均 `BUILD SUCCESSFUL`，合并后的 Debug Manifest 含 `SCHEDULE_EXACT_ALARM`；未构建 APK、未安装或执行真机权限/到点通知/下载分享验收，安装包构建由用户完成。
+
+---
+
+## 2026-09-22 01:53:02 | 新增功能：staging 测试包独立包名共存与构建指南文档
+
+- 变更概述：已获用户确认，为本地 staging 测试包启用独立包名 `com.mouqiandi.irisNote.staging`（applicationIdSuffix），实现与正式包双应用共存、数据隔离，桌面显示名改为"IRisNote 测试"以作区分；并新增测试包构建指南文档，固化阿里云镜像用法、命令与注意事项。
+- 修改文件：android/app/build.gradle（Git 忽略目录，仅本机生效）、docs/构建发布/本地测试包构建.md（新增）、CHANGELOG.md。
+- 具体内容：① staging 构建块新增 `applicationIdSuffix ".staging"` 与 `resValue "string", "app_name", "IRisNote 测试"`，包名独立后应用内更新器经 `updateSupported()`（校验 applicationId === com.mouqiandi.irisNote）自动禁用，测试包无更新误装风险；② 文档覆盖：staging 与正式包差异对照表、构建命令（含 arm64 瘦身参数与镜像绝对路径要求）、阿里云镜像脚本位置与原理（规避 dl.google.com TLS 握手中断）、.expo/ 与 android/ 的 Git 忽略说明、staging 块参考代码（供 prebuild 重新生成后找回）、限制与常见问题（http 明文不可用、Debug 签名、依赖下载失败排查、残留进程清理）。
+- 验证：`npm run gradle -- help --init-script D:\IRisNote\.expo\gradle-aliyun-init.gradle` 配置阶段通过（验证 Groovy 语法与 resValue 合并有效，结果见后续汇报）；未触及 TS 源码，typecheck/lint 不受影响；正式发布链路使用重新生成的 Android 工程，不含 staging 配置。APK 构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:49:00 | 新增功能：本地构建阿里云镜像脚本固定至 .expo
+
+- 变更概述：已获用户确认，将原先临时存放于系统 Temp 的 Gradle 阿里云镜像 init 脚本固定到项目 `.expo/`（整目录已被 Git 忽略），避免系统清理临时文件后脚本丢失。当日 staging 测试包构建曾因直连 dl.google.com 下载 androidx 依赖 TLS 握手中断而失败，需本脚本镜像兜底。
+- 修改文件：.expo/gradle-aliyun-init.gradle（新增，位于 Git 忽略目录，不入版本库）、CHANGELOG.md。
+- 具体内容：脚本内容沿用原 Temp 版本——在 google()/mavenCentral() 之前追加阿里云 google/public 镜像仓库（allprojects 的 buildscript 与项目仓库均追加）；头部注释由"仅为本次临时"改为固定用途说明，并补充用法示例（--init-script 需用绝对路径，npm run gradle 的工作目录在 android/ 下，相对路径不生效）。
+- 验证：文件已写入 `D:\IRisNote\.expo\gradle-aliyun-init.gradle`；`git check-ignore` 确认 .expo/ 整目录被忽略（.gitignore 第 8 行）；镜像仓库地址与原 Temp 脚本一致。本记录仅为构建辅助文件落位，不触及应用源码，未运行 typecheck/check（无代码变更），构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:23:32 | 新增功能：通知全链路诊断、常驻通知与测试通知
+
+- 变更概述：已获用户确认，为 Android 系统通知补齐应用内可导出的诊断链路，在权限设置中增加可持久化的常驻通知开关，并在帮助与反馈中增加诊断日志导出和普通测试通知入口。
+- 修改文件：src/core/diagnostics/{diagnostic-log,index}.ts、src/core/database/migrations/{0011-create-system-preferences,index}.ts、src/core/system-notifications/{system-notification-context,system-notification-native-provider,system-notification-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/components/SettingsRow.tsx、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-local,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 记录通知权限、渠道、待办保存与资格判断、对账、排程、取消、前后台切换、接收和点击等事件，日志仅保留计数、布尔值、时间与不可逆短标识，不记录待办正文、账号标识或令牌；② 诊断日志以最多 400 条 JSONL 持久化，并可从“帮助与反馈 → 诊断与排障”调起系统分享；③ 新增 `irisnote.runtime.v1` LOW 渠道和“IRisNote正在运行”不可侧滑通知，开关通过共享 SQLite 的 `system_preferences` 表持久化；④ 新增 `irisnote.diagnostics.v1` DEFAULT 渠道，点击“发送测试通知”会发送一条可关闭的普通通知并自动写入诊断日志；⑤ 前台通知处理器分别处理待办、常驻状态和测试通知，保持待办点击跳转与账号隔离逻辑。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；定向通知/提醒/迁移测试 39/39 通过；`npm run check` 的 typecheck、lint、theme:check 与 350/350 项测试全部通过；`git diff --check` 通过。按用户要求中止本地 Debug 构建，未生成、安装或真机验收新的安装包。
+
+---
+
+## 2026-09-21 23:55:23 | 修复问题：合并 master 设置模块与测试串行化的两处冲突
+
+- 变更概述：已获用户确认，将 master（PR #115 设置模块、测试串行化等 8 个提交）合入 kroos_todo，解决 2 个文件的内容冲突，17 个文件（设置新页面、_layout、release.env.example 移根目录等）自动合并成功。
+- 修改文件：package.json、CHANGELOG.md（冲突解决）；合并带入 src/features/settings/**、src/app/pages/user/{about,help-feedback,permissions}.tsx、releases/notes-0.3.0.txt、release.env.example（rename）等。
+- 具体内容：① package.json 取双方并集——保留本侧 patch-package 依赖与 postinstall 脚本（横滑手势补丁依赖），采纳 master 的 test 脚本 --test-concurrency=1 串行参数，统一 2 空格缩进；② CHANGELOG.md 双方 11 条日志按时间倒序交叉合并（22:17→…→18:03），一条不丢；③ 清理合并过程残留的 >>>>>>> 标记并补齐条目分隔线。
+- 验证：全仓冲突标记扫描清零；package.json JSON 解析有效；合并后 npm run typecheck 通过；npm test（已固化串行）348/348 全部通过。
+
+---
+
+## 2026-09-21 22:17:04 | 修复问题：待办分页横滑时的内容区细线
+
+- 变更概述：将待办页面的白色填充与圆角边框分层绘制，消除 Android 横滑分页过程中可能露出的灰色或黑色竖线。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、src/features/todos/screens/TodosScreen.tsx、tests/navigation/page-seam.test.cjs、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.13，明确分页表面、15dp 顶部留白、75dp 右侧栏、30dp 单侧圆角、1dp 边框及填充/边框层 0dp 间隙约束；② 待办页外层仅绘制白色填充和右上圆角，内层仅绘制上/右/下边框与内容内边距，移除 `height: 100%` 与底部 margin 留缝；③ 新增静态回归测试，锁定分页白色表面和待办页的分层结构。
+- 验证：修改前后 `npm run typecheck` 通过；定向 `node --test --test-concurrency=1 tests/navigation/page-seam.test.cjs` 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅复现既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 348/348 通过；`git diff --check` 通过。未连接 adb 设备，未做真机滑动显示验收。
+
 ---
 
 ## 2026-09-21 22:00:51 | 优化代码：权限项目统一直达系统设置
@@ -43,6 +113,51 @@
 
 ---
 
+## 2026-09-21 20:33:24 | 优化代码：主页面横滑开始跟手门槛提高至 100dp
+
+- 变更概述：进一步降低主页面横滑误触；水平位移不足 100dp 时不再由页面切换控件接管。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① `react-native-tab-view@4.3.2` Pager 的 `DEAD_ZONE` 从 50dp 提高至 100dp；② 保留松手仅按 `layout.width / 1.75` 位移切页的规则，快速短甩仍不切页；③ 静态回归测试同步更新为 100dp。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为完整原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 20:12:26 | 修复问题：主页面横滑切换不再由甩动速度触发
+
+- 变更概述：移除主页面横滑松手后的速度捷径，避免短距离快速甩动直接切换页面。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 删除 `react-native-tab-view@4.3.2` Pager 的 `swipeVelocityThreshold`；② 松手切页仅在横向位移超过既有 `layout.width / 1.75` 阈值时触发；③ 保留 50dp 起滑门槛以及横纵向手势意图识别；④ 回归测试覆盖运行时速度阈值不存在且距离判定保留。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 19:24:30 | 优化代码：主页面横滑切换的最小位移提高至 50dp
+
+- 变更概述：降低主页面左右滑动切换 Tab 的误触概率；手势累计水平位移未达到 50dp 时，不再由页面切换控件接管。
+- 修改文件：package.json、package-lock.json、patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 使用 `patch-package` 固化 `react-native-tab-view@4.3.2` 运行时 Pager 的 `DEAD_ZONE`，由 12dp 调整为 50dp；② `postinstall` 自动重新应用补丁，避免重装依赖后阈值回退；③ 新增静态回归测试，校验补丁内容、安装脚本及运行时模块均为 50dp。原有页面切换方向判断、长距离阈值和释放速度阈值不变。
+- 验证：修改前后 `npm run typecheck` 通过；补丁还原后执行 `npx patch-package --error-on-fail` 成功重新应用；定向手势阈值测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 18:47:04 | 新增功能：待办列表下拉云同步与实际变更统计
+
+- 变更概述：待办列表接入与笔记列表一致的顶部下拉云同步；同步完成准确展示本轮实际变更项数，全程复用现有 Todo 同步协议与后端接口。
+- 修改文件：src/features/notes/components/NotesSyncHeader.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/{data/todo-sync-history.ts,data/todo-sync.repository.ts,services/todo-sync.service.ts,state/todo-sync-coordinator.ts,state/todo-sync-provider.tsx,screens/TodosScreen.tsx}、tests/todos/todo-sync.test.cjs、CHANGELOG.md。
+- 具体内容：① 笔记下拉同步头泛化为可传入实体名称和成功文案的复用组件，笔记文案保持不变；② 待办 `SectionList` 仅在滚动到顶部时可下拉，展示待办数量、同步状态、上次成功同步时间与“同步 N 项待办/暂无待办变更”；③ 同步服务统计成功上传与真正写入、更新或删除本地待办的远端变更，陈旧回包、同版本回显和未覆盖本地的冲突不重复计数；④ 手动同步加入既有单一协调器，等待当前轮结果且不另发并发或后继请求；⑤ 上次同步时间仅存为可失败的本地展示元数据，不影响同步事实。
+- 验证：修改前后 `npm run typecheck` 通过；`node --test --test-concurrency=1 "tests/todos/todo-sync.test.cjs"` 27/27、全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 346/346 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 克隆错误，随后串行验证通过；`git diff --check` 和源码/测试目录冲突标记扫描通过。
+
+---
+
+## 2026-09-21 18:22:57 | 优化代码：补充发布环境变量模板维护约定
+
+- 变更概述：明确发布相关环境变量的文档同步责任，避免发布脚本或构建配置变更后模板缺项或误放密钥。
+- 修改文件：docs/构建发布/android-releases.md、CHANGELOG.md。
+- 具体内容：在 `.env.release.local` 配置步骤中规定：新增、删除或调整发布构建/发布工具读取的环境变量时，必须同步更新 `docs/构建发布/release.env.example`；密钥示例仅保留空值和用途注释。
+- 验证：复核 Markdown 内容、模板现有变量和 Git 差异；纯文档改动，未运行类型检查、测试、构建或设备验收。
+
+---
+
 ## 2026-09-21 18:21:30 | 修复问题：测试脚本固化串行参数规避 Windows 并行 IPC 错误
 
 - 变更概述：已获用户确认执行。0.3.0 发布构建两次在"完整代码检查"阶段因 Node 测试运行器并行 IPC 错误中断（tests/releases/workspace.test.cjs 报 Unable to deserialize cloned data，其余 343 项测试全部通过，该文件单独串行运行 9/9 通过），系 Node v24 Windows 并行子进程结果回传的管道字节流错位缺陷，非应用代码问题。按方案将 npm test 默认改为串行执行（--test-concurrency=1），该参数为项目多次使用的稳定回退方案，彻底消除此类偶发阻断。
@@ -50,6 +165,15 @@
 - 具体内容：① test 脚本由 `node --test "tests/**/*.test.cjs"` 改为 `node --test --test-concurrency=1 "tests/**/*.test.cjs"`；② 发布配置模板文件移动到根目录（用户工作区已有移动，按确认提交为 rename）；③ 实测对比：并行约 17.2 秒、串行约 19.6-21.0 秒，代价约 2-4 秒，测试覆盖与断言完全不变。
 - 验证：修改后 npm test 343/343 通过（exit 0）；npm run typecheck 通过。影响后续所有 npm run check（本地与发布构建内检查均串行）。
 - 发布上下文：受此提交影响，0.3.0 原 build 14（reserved，绑定 8e60ebd）作废不再使用，将重新预留构建号；用户已在 .env.release.local 配置 EXPO_PUBLIC_TODO_CLOUD_SYNC=1，发布工具自动加载并透传进构建。
+
+---
+
+## 2026-09-21 18:03:59 | 优化代码：release 环境变量模板补充待办云同步开关
+
+- 变更概述：已获用户确认，在发布环境变量模板中新增 EXPO_PUBLIC_TODO_CLOUD_SYNC=1 示例，与上一条待办云同步功能配套；同时修正 HPatchz 注释笔误（"路径s"→"路径"）。
+- 修改文件：docs/构建发布/release.env.example、CHANGELOG.md。
+- 具体内容：① 模板新增 EXPO_PUBLIC_TODO_CLOUD_SYNC=1 # Expo 代办云同步 一行，使发布构建可参照开启该开关；② 修复 IRIS_HPATCHZ_PATH 行尾注释的误加字符 "s"；③ 以 docs(release): 补充待办云同步环境变量示例 提交至 kroos_todo 分支（e8e928f）。
+- 验证：git diff --cached 复核改动内容；纯文档模板变更，不涉及代码逻辑，未运行 typecheck/测试。
 
 ---
 
