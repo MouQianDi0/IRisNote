@@ -20,6 +20,10 @@ const pendingNotificationState: SystemNotificationContextValue = {
     runtimeNotificationEnabled: false,
     runtimeNotificationPending: true,
     setRuntimeNotificationEnabled: async () => false,
+    liveUpdateCapable: false,
+    liveTodoRealtimeEnabled: false,
+    liveTodoRealtimePending: false,
+    setLiveTodoRealtimeEnabled: async () => false,
     afterSave: async () => {},
     openSettings: () => {},
 };
@@ -34,6 +38,17 @@ const expoGoNotificationState: SystemNotificationContextValue = {
     setRuntimeNotificationEnabled: async () => {
         banner.show({
             title: "Expo Go 不支持常驻通知",
+            message: "请使用开发构建或正式安装包",
+            type: "neutral",
+        });
+        return false;
+    },
+    liveUpdateCapable: false,
+    liveTodoRealtimeEnabled: false,
+    liveTodoRealtimePending: false,
+    setLiveTodoRealtimeEnabled: async () => {
+        banner.show({
+            title: "Expo Go 不支持后台实时刷新",
             message: "请使用开发构建或正式安装包",
             type: "neutral",
         });
