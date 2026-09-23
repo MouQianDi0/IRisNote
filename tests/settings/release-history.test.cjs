@@ -17,11 +17,8 @@ require.extensions[".ts"] = (module, filename) => {
     );
 };
 
-const {
-    parseReleaseNotes,
-    parseReleaseHistory,
-    compareVersions,
-} = require("../../src/features/settings/data/release-history.ts");
+const { parseReleaseNotes, parseReleaseHistory, compareVersions } =
+    require("../../src/features/settings/data/release-history.ts");
 
 test("parseReleaseNotes：标题行分组、跳过占位标题、散落条目归入默认分组", () => {
     const notes = [
@@ -39,10 +36,7 @@ test("parseReleaseNotes：标题行分组、跳过占位标题、散落条目归
     assert.deepEqual(parseReleaseNotes(notes), [
         {
             title: "新增功能",
-            items: [
-                "笔记垃圾桶：删除的笔记会保留 15 天。",
-                "我的页面新增内容管理。",
-            ],
+            items: ["笔记垃圾桶：删除的笔记会保留 15 天。", "我的页面新增内容管理。"],
         },
         {
             title: "体验优化",
@@ -75,8 +69,9 @@ test("parseReleaseHistory：校验字段、去重、提取发布日期；非法�
     ]);
     // 无法识别的时间格式置空但不拒绝。
     assert.equal(
-        parseReleaseHistory([{ ...valid[0], publishedAt: "unknown" }])[0]
-            .publishedOn,
+        parseReleaseHistory([
+            { ...valid[0], publishedAt: "unknown" },
+        ])[0].publishedOn,
         "",
     );
     for (const bad of [
@@ -87,19 +82,9 @@ test("parseReleaseHistory：校验字段、去重、提取发布日期；非法�
         [{ version: "0.4.0", buildCode: 0, notes: "x", publishedAt: "d" }],
         [{ version: "0.4.0", buildCode: 1.5, notes: "x", publishedAt: "d" }],
         [{ version: "0.4.0", buildCode: 16, notes: 123, publishedAt: "d" }],
-        [
-            {
-                version: "0.4.0",
-                buildCode: 16,
-                notes: "x".repeat(12001),
-                publishedAt: "d",
-            },
-        ],
+        [{ version: "0.4.0", buildCode: 16, notes: "x".repeat(12001), publishedAt: "d" }],
         [{ version: "0.4.0", buildCode: 16, notes: "x", publishedAt: 123 }],
-        [
-            { version: "0.4.0", buildCode: 16, notes: "x", publishedAt: "d" },
-            { version: "0.4.0", buildCode: 17, notes: "y", publishedAt: "d" },
-        ],
+        [{ version: "0.4.0", buildCode: 16, notes: "x", publishedAt: "d" }, { version: "0.4.0", buildCode: 17, notes: "y", publishedAt: "d" }],
     ])
         assert.equal(parseReleaseHistory(bad), null);
     // 条数上限保护。
