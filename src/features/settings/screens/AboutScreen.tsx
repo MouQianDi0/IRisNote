@@ -1,9 +1,9 @@
 import { colors } from "@/shared/theme";
-import { AppBrandIcon, Card, PageHeader, Screen } from "@/shared/ui";
+import { AppBrandIcon, Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { router } from "expo-router";
-import { ChevronDown, ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronUp, MapPin } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
     ActivityIndicator,
@@ -116,6 +116,21 @@ export default function AboutScreen() {
                             {buildCode ? `（构建 ${buildCode}）` : ""}
                         </Text>
                     </View>
+
+                    <Text className="mb-2 ml-1 text-[13px] text-hyper-text-secondary">
+                        数据来源
+                    </Text>
+                    <Card
+                        className="mb-5 overflow-hidden rounded-hyper-card"
+                        style={{ borderCurve: "continuous" }}
+                    >
+                        <ListRow
+                            icon={MapPin}
+                            label="地区数据"
+                            description="Countries States Cities Database，ODbL v1.0；已按国内表述规范调整部分名称"
+                            last
+                        />
+                    </Card>
 
                     <Text className="mb-3 ml-1 text-[13px] text-hyper-text-secondary">
                         版本记录

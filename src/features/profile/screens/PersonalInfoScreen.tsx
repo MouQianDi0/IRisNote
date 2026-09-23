@@ -2,6 +2,7 @@ import { banner } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useAvatarUpdate } from "@/features/profile/hooks/useAvatarUpdate";
+import { useProfileSave } from "@/features/profile/hooks/useProfileSave";
 import { colors } from "@/shared/theme";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as Clipboard from "expo-clipboard";
@@ -20,10 +21,9 @@ import {
     UserRound,
     Users,
 } from "lucide-react-native";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -32,11 +32,20 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AvatarActionsMenu } from "../components/AvatarActionsMenu";
 import { AvatarPreviewDialog } from "../components/AvatarPreviewDialog";
+import { UserAvatarImage } from "../components/UserAvatarImage";
+import {
+    GenderPickerDialog,
+    type GenderSelection,
+} from "../components/GenderPickerDialog";
+import { formatGender, parseCreatedAt } from "../utils/profile-validation";
 
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
 const userTabRoute = "/(tabs)/user" as Href;
 const linkedAccountsRoute = "/pages/user/profile/platforms" as Href;
+const nicknameRoute = "/pages/user/profile/nickname" as Href;
+const bioRoute = "/pages/user/profile/bio" as Href;
+const regionRoute = "/pages/user/profile/region" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
 const PLANNED = "规划中";
@@ -56,10 +65,12 @@ export function maskEmail(email: string): string {
     return `${email[0]}***${email.slice(at)}`;
 }
 
-/** created_at 转为本地 YYYY-MM-DD；无法解析时返回 null。 */
-export function formatJoinedDate(createdAt: string): string | null {
-    const date = new Date(createdAt);
-    if (Number.isNaN(date.getTime())) return null;
+/** created_at 转为本地 YYYY-MM-DD；为空或无法解析时返回 null。 */
+export function formatJoinedDate(
+    createdAt: string | null | undefined,
+): string | null {
+    const date = parseCreatedAt(createdAt);
+    if (!date) return null;
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${date.getFullYear()}-${month}-${day}`;
@@ -67,9 +78,12 @@ export function formatJoinedDate(createdAt: string): string | null {
 
 export default function PersonalInfoScreen() {
     const { user, isLoggedIn, loading } = useAuth();
-    const { avatarSource, avatarKey } = useAvatar();
+    const { avatarSource } = useAvatar();
     const avatarUpdate = useAvatarUpdate();
     const avatarAnchorRef = useRef<View>(null);
+    const { save: saveProfile, saving: savingGender } = useProfileSave();
+    const [genderVisible, setGenderVisible] = useState(false);
+    const [genderError, setGenderError] = useState<string | null>(null);
     const insets = useSafeAreaInsets();
 
     const goBack = () => {
@@ -134,6 +148,17 @@ export default function PersonalInfoScreen() {
     const joinedAt = formatJoinedDate(user.created_at) ?? "暂不可用";
     const userId = String(user.id);
 
+    const saveGender = async (selection: GenderSelection) => {
+        setGenderError(null);
+        const outcome = await saveProfile(selection);
+        if (outcome.status === "saved") {
+            setGenderVisible(false);
+            banner.show({ title: "已保存", type: "success" });
+            return;
+        }
+        setGenderError(outcome.message);
+    };
+
     const copyUserId = async () => {
         try {
             await Clipboard.setStringAsync(userId);
@@ -175,18 +200,15 @@ export default function PersonalInfoScreen() {
                             className="h-16 w-16"
                         >
                             <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
-                                {avatarSource ? (
-                                    <Image
-                                        key={avatarKey}
-                                        className="h-full w-full rounded-full"
-                                        source={avatarSource}
-                                    />
-                                ) : (
-                                    <UserRound
-                                        size={30}
-                                        color={colors.primary}
-                                    />
-                                )}
+                                <UserAvatarImage
+                                    className="h-full w-full rounded-full"
+                                    fallback={
+                                        <UserRound
+                                            size={30}
+                                            color={colors.primary}
+                                        />
+                                    }
+                                />
                             </View>
                             <View className="absolute -bottom-0.5 -right-0.5 h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white bg-primary">
                                 <Camera size={12} color={colors.surfaceFull} />
@@ -220,6 +242,15 @@ export default function PersonalInfoScreen() {
                         onClose={avatarUpdate.closeMenu}
                         onSelect={avatarUpdate.selectAction}
                     />
+                    <GenderPickerDialog
+                        key={`gender-${genderVisible}`}
+                        visible={genderVisible}
+                        gender={user.gender}
+                        saving={savingGender}
+                        error={genderError}
+                        onClose={() => setGenderVisible(false)}
+                        onSave={(selection) => void saveGender(selection)}
+                    />
                     <AvatarPreviewDialog
                         preview={avatarUpdate.preview}
                         savedSource={avatarSource}
@@ -238,24 +269,31 @@ export default function PersonalInfoScreen() {
                                 icon={UserRound}
                                 label="用户名"
                                 value={displayName}
+                                onPress={() => router.push(nicknameRoute)}
                             />
                             <ListRow
                                 icon={Users}
                                 label="性别"
-                                value={PLANNED}
-                                disabled
+                                value={formatGender(user.gender)}
+                                onPress={() => {
+                                    setGenderError(null);
+                                    setGenderVisible(true);
+                                }}
                             />
                             <ListRow
                                 icon={MapPin}
                                 label="地区"
-                                value={PLANNED}
-                                disabled
+                                value={user.region_label?.trim() || "不设置"}
+                                onPress={() => router.push(regionRoute)}
                             />
                             <ListRow
                                 icon={FileText}
                                 label="个人简介"
-                                value={PLANNED}
-                                disabled
+                                description={
+                                    user.bio?.trim() || "介绍一下自己"
+                                }
+                                descriptionLines={2}
+                                onPress={() => router.push(bioRoute)}
                                 last
                             />
                         </Card>

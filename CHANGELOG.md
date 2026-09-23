@@ -1,3 +1,46 @@
+## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
+
+- 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
+- 修改文件：scripts/build-region-dictionary.mjs（新增）、src/features/profile/data/{regions.json,region-index.ts,REGIONS-LICENSE.md}（新增）、src/features/profile/utils/region-dictionary.ts（新增）、src/features/profile/hooks/useUnsavedLeaveGuard.ts（新增）、src/features/profile/screens/SelectRegionScreen.tsx（新增）、src/app/pages/user/profile/region.tsx（新增）、src/app/_layout.tsx、src/features/profile/components/ProfileTextEditor.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/profile.types.ts、src/shared/types/user.ts、src/features/settings/screens/AboutScreen.tsx、tests/profile/region-dictionary.test.cjs（新增）、docs/第三方数据许可.md（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 生成脚本固定 dr5hn `v3.2-export.7` 并校验 SHA-256，每国只取无上级条目，剔除军邮区、海外属地与地理单元；台湾、香港、澳门不作为第一级，归入中国省级并显示为中国台湾/中国香港/中国澳门；修正“汉城”“阿穆尔河”、印尼各巴布亚省误译为“巴布亚新几内亚”等错误，并以人工对照区分 18 组同名条目；出现未处理的重名、港澳台规则被破坏或名称超长时生成失败；② 字典 247 国家、3975 省州、约 159KB，首次使用时建立索引，JSON 行格式在运行时校验；③ P04：搜索（中英文名/编码，最多 50 条）、面包屑、分级列表、“不设置”与“选择某国不再细分”、失效编码提示、固定底栏“已选”与保存，保存携带编码、名称快照与字典版本；④ 未保存离开保护抽为 `useUnsavedLeaveGuard`，P02/P03 改用；⑤ 关于页“数据来源”只读行满足 ODbL 署名；⑥ 视觉规范升至 1.18。
+- 协作说明：本阶段期间另一会话完成了取消性别“自定义”及头像缓存 `File.move()` 后误删缓存的修复（见其各自记录），本条不包含这些改动。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试除既有 2 项失败（发布归档本机路径过长、待办迁移版本）外全部通过，新增 6 项地区测试通过；`git diff --check` 通过。未做浏览器或真机验收；后端迁移 011 未执行；未提交 Git。
+
+---
+
+## 2026-09-24 02:29:22 | 优化代码：性别取消「自定义」，只保留不设置/男/女（客户端）
+
+- 变更概述：用户认为“自定义”选项与 `gender_custom` 字段多余，确认取消，并确认修改计划与性别弹窗文字预览。后端迁移 010 未在任何数据库执行，直接修订（见 irisapi CHANGELOG 同时间记录）。
+- 修改文件：src/shared/types/user.ts、src/features/profile/profile.types.ts、src/features/profile/utils/profile-validation.ts、src/features/profile/components/GenderPickerDialog.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、tests/profile/profile-editing.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `UserGender` 改为 `male | female`，删除 `User` 与 `ProfileChanges` 的 `gender_custom`；② 删除 `GENDER_CUSTOM_MAX`、`checkGenderCustom`，`formatGender` 只接收性别，未知取值（旧缓存残留的 custom）显示“不设置”；③ 性别弹窗移除“自定义”行、输入框与计数，保存只提交 `{ gender }`，未改变选择时保存禁用；未知初始值按“不设置”处理；④ 测试删除自定义校验用例，补充旧值显示用例；⑤ 视觉规范升至 1.17；规划文档修订 D04、D12、7.3 节、M03 与测试项。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 465/469 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。工作区另有进行中的 B2 地区改动（未提交），本次只改性别相关行。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:24:11 | 修复问题：头像本地缓存写入后被立即删除
+
+- 变更概述：用户确认问题分析与修复方案。`File.move()` 在 expo-file-system 57 中会把对象自身的 uri 改为目标位置，缓存写入收尾时按原对象清理“临时文件”，实际删掉了刚写好的缓存。导致「我的」页头像远程→空白→远程来回闪烁、离线或云存储关闭时只显示默认图标、每次启动重复下载、上传后闪烁。
+- 修改文件：src/features/profile/services/avatar-cache.ts、CHANGELOG.md。
+- 具体内容：`commit()` 的 finally 改为按临时文件名重新定位后再清理，不再使用已被 `move` 改指向的对象；去掉同步方法 `move` 前多余的 `await`。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 01:37:19 | 新增功能：个人资料编辑与头像本地缓存（B1 客户端）
+
+- 变更概述：用户确认 B1 计划与文字预览。开放用户名、个人简介、性别编辑（单项保存、版本冲突与结果未知处理、未保存离开确认）；头像改为本地缓存优先，加载失败回退默认图标；修正注册时间为空时显示 1970 年的问题。依赖后端 B1（迁移 010 与 `PATCH /api/user/profile`），后端未升级时保存提示“服务器暂不支持修改资料”。
+- 修改文件：src/shared/types/user.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、src/features/profile/profile.types.ts、src/features/profile/api/profile.api.ts、src/features/profile/hooks/{useProfileSave.ts（新增）,useAvatar.ts,useAvatarUpdate.ts}、src/features/profile/utils/{profile-validation.ts（新增）,avatar-cache-key.ts（新增）}、src/features/profile/services/avatar-cache.ts（新增）、src/features/profile/components/{ProfileTextEditor.tsx,GenderPickerDialog.tsx,UnsavedProfileDialog.tsx,UserAvatarImage.tsx}（新增）、src/features/profile/screens/{EditNicknameScreen.tsx,EditBioScreen.tsx}（新增）、src/features/profile/screens/{PersonalInfoScreen.tsx,ProfileScreen.tsx}、src/features/notes/categories/components/CategoryBar.tsx、src/shared/ui/ListRow/ListRow.tsx、src/app/pages/user/profile/{nickname.tsx,bio.tsx}（新增）、src/app/_layout.tsx、tests/profile/{profile-editing.test.cjs,avatar-cache.test.cjs}（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `User` 新增可选资料字段，`created_at` 允许为空；`AuthProvider.applyUser` 核对账号后以服务端完整资料回写状态与缓存；② `useProfileSave` 以 `profile_version` 条件保存，请求 15 秒超时；409 载入最新资料并保留输入；无响应或请求已发出后授权被撤销时重新读取资料并提示结果未确认；未发出即被云存储拦截时提示开启云存储；③ P02/P03 共用 `ProfileTextEditor`（码点计数、清空、失焦后显示错误、`usePreventRemove` 离开确认、保存中阻止离开）；④ M03 性别弹窗暂存选择、保存中锁定；⑤ P01 用户名/性别/简介行开放，简介最多两行预览，`ListRow` 新增 `descriptionLines`；⑥ 头像缓存存于 `Paths.document/avatars/<用户ID>/`，仅缓存属于当前用户且命名合规的文件，下载与写入先落临时文件并校验大小与文件头后改名，每用户保留一个文件；同一文件并发只下载一次；本地文件显示失败即丢弃并在本次运行内不再自动下载；上传成功直接写入缓存；云存储关闭时显示本地缓存；⑦ 三处头像改用 `UserAvatarImage`，保留各自原有默认图标外观；⑧ 视觉规范升至 1.16。
+- 验证：修改前后 `npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过（新增 10 项），2 项失败（发布归档本机路径过长、待办迁移版本）与 `2783a37` 基线相同、与本次无关；`git diff --check` 通过。未做浏览器或真机验收；依赖的后端改动尚未迁移与部署；未提交 Git。
+
+---
+
+## 2026-09-24 01:13:05 | 优化代码：个人资料 B0 后端核实结论与接口约定（仅文档）
+
+- 变更概述：用户提供后端仓库（irisapi `Timmi` / `301d754`）并通过选项确认全部待定决策；冻结 B1/B3 接口约定，B1 范围并入旧头像清理与头像本地缓存。
+- 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
+- 验证：仅文档改动，未运行代码检查；后端未做任何修改。
 ## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
 
 - 变更概述：已获用户确认执行合并全流程（含验证收尾）。合并 origin/master（个人资料页、15 天垃圾桶、导航白屏修复等 16 提交）验证中暴露：① `todo-local.test.cjs` 断言 `CURRENT_DATABASE_VERSION` 期望 12、实际 13——master 新增迁移 0013（笔记垃圾桶清除标记表 `note_trash_purged`，因 v12 已发布故升版本号）后未同步该断言，属 master 固有失败（其 CHANGELOG 18:41:40 已记录同一现象），按项目惯例（22:10:55 先例）同步断言使全量检查恢复全绿；② 合并冲突解决中本分支新增的两个设置页行残留旧组件名 `SettingsRow`（master 已将该组件迁移更名为 `@/shared/ui` 的 `ListRow` 并删除原文件），同步适配为 `ListRow`（外观与接口不变）；③ CHANGELOG 冲突区两侧共 23 条记录按时间戳全局倒序重排交织。
