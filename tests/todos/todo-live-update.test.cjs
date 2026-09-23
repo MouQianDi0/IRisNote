@@ -31,6 +31,8 @@ const {
   liveUpdateEligibleTodo,
   desiredTodoLiveUpdate,
   desiredTodoLiveUpdates,
+  desiredTodoLiveTimeline,
+  desiredTodoLiveTimelines,
 } = require("@/features/todos/services/todo-live-update.service.ts");
 const {
   TodoLiveUpdateCoordinator,
@@ -62,6 +64,27 @@ const todo = (patch = {}) => ({
 const at = (hour, minute, second = 0) =>
   new Date(2030, 8, 20, hour, minute, second);
 
+/** 统一 port 桩：sinks 收集 handoff/persistTimeline/timelineCancels/fgs 调用记录。 */
+function portStub(sinks = {}, overrides = {}) {
+  sinks.posts ??= [];
+  sinks.cancels ??= [];
+  sinks.handoffs ??= [];
+  sinks.timelineCancels ??= [];
+  sinks.persists ??= [];
+  sinks.fgs ??= [];
+  return {
+    supported: () => true,
+    permissionGranted: async () => true,
+    post: async (card) => sinks.posts.push({ ...card }),
+    cancel: async (id) => sinks.cancels.push(id),
+    handoff: async (cards) => sinks.handoffs.push(...cards),
+    cancelTimeline: async () => sinks.timelineCancels.push(true),
+    persistTimeline: async (cards) => sinks.persists.push(...cards),
+    ensureForegroundService: async (active) => sinks.fgs.push(active),
+    ...overrides,
+  };
+}
+
 test("动态通知整型 ID 稳定、区分账号与待办且大于保留段", () => {
   const first = liveUpdateNotificationId("user:one", "todo-1");
   assert.equal(first, liveUpdateNotificationId("user:one", "todo-1"));
@@ -85,7 +108,85 @@ test("进行中资格与列表状态口径一致：恰好开始/结束仍在窗�
   );
 });
 
-test("有结束时间的进行中卡片计算分钟进度", () => {
+test("时间线资格前瞻：未开始的当日待办入快照，过结束时刻排除", () => {
+  assert.equal(
+    desiredTodoLiveTimeline(todo({ startTime: "11:00", endTime: "12:00" }), at(9, 30)) !==
+      null,
+    true,
+  );
+  assert.equal(
+    desiredTodoLiveTimeline(todo(), at(10, 1)),
+    null,
+  );
+  assert.equal(
+    desiredTodoLiveTimeline(todo({ endTime: null, startTime: "11:00" }), at(9, 30)) !==
+      null,
+    true,
+  );
+});
+
+test("时间线快照携带墙钟重算所需的全部字段", () => {
+  const card = desiredTodoLiveTimeline(todo(), at(9, 30));
+  assert.ok(card);
+  assert.equal(card.channelId, LIVE_TODO_CHANNEL);
+  assert.equal(card.startAt, at(9, 0).getTime());
+  assert.equal(card.endAt, at(10, 0).getTime());
+  assert.equal(card.textStarted, null);
+  assert.equal(card.promoted, true);
+  const open = desiredTodoLiveTimeline(todo({ endTime: null }), at(9, 30));
+  assert.ok(open);
+  assert.equal(open.endAt, null);
+  assert.equal(open.textStarted, "已开始 09:00，进行中");
+});
+
+test("时间线汇总（全部进行中）组内按通知 ID 排序截断", () => {
+  const entities = Array.from({ length: 5 }, (_, index) =>
+    todo({
+      clientId: `00000000-0000-4000-8000-00000000000${index + 1}`,
+      startTime: `09:0${index}`,
+      endTime: "11:00",
+    }),
+  );
+  const cards = desiredTodoLiveTimelines(entities, at(9, 30));
+  assert.equal(cards.length, LIVE_TODO_MAX_CARDS);
+  const ids = cards.map((card) => card.notificationId);
+  assert.deepEqual([...ids].sort((a, b) => a - b), ids);
+  assert.deepEqual(desiredTodoLiveTimelines([], at(9, 30)), []);
+});
+
+test("时间线快照进行中优先：未来卡不挤掉进行中卡", () => {
+  // 6 个候选按 notificationId 排序：最小 3 个作未来卡、最大 3 个作进行中卡——
+  // 旧口径（纯 ID 截断）会全部取未来卡，新口径保证进行中卡全部保留。
+  const pool = Array.from({ length: 6 }, (_, index) =>
+    `00000000-0000-4000-8000-${String(10 + index).padStart(12, "0")}`,
+  );
+  const byId = pool
+    .map((clientId) => ({
+      clientId,
+      id: liveUpdateNotificationId("user:one", clientId),
+    }))
+    .sort((a, b) => a.id - b.id);
+  const futureIds = byId.slice(0, 3);
+  const activeIds = byId.slice(3);
+  const entities = [
+    ...activeIds.map(({ clientId }) =>
+      todo({ clientId, startTime: "09:00", endTime: "11:00" }),
+    ),
+    ...futureIds.map(({ clientId }) =>
+      todo({ clientId, startTime: "13:00", endTime: "14:00" }),
+    ),
+  ];
+  const cards = desiredTodoLiveTimelines(entities, at(9, 30));
+  assert.equal(cards.length, LIVE_TODO_MAX_CARDS);
+  assert.deepEqual(
+    [...new Set(cards.map((card) => card.notificationId))].sort(
+      (a, b) => a - b,
+    ),
+    activeIds.map(({ id }) => id).sort((a, b) => a - b),
+  );
+});
+
+test("有结束时间的进行中卡片计算分钟进度并携带倒计时锚点", () => {
   const card = desiredTodoLiveUpdate(todo(), at(9, 15));
   assert.ok(card);
   assert.equal(card.channelId, LIVE_TODO_CHANNEL);
@@ -94,19 +195,23 @@ test("有结束时间的进行中卡片计算分钟进度", () => {
   assert.equal(card.max, 60);
   assert.equal(card.text, "已进行 15 / 60 分钟");
   assert.equal(card.ongoing, true);
+  assert.equal(card.chronoAt, at(10, 0).getTime());
+  assert.equal(card.chronoCountdown, true);
   assert.equal(
     card.notificationId,
     liveUpdateNotificationId("user:one", todo().clientId),
   );
 });
 
-test("仅开始时间的待办使用不定进度并显示开始时刻", () => {
+test("仅开始时间的待办使用不定进度、正计时锚点并显示开始时刻", () => {
   const card = desiredTodoLiveUpdate(todo({ endTime: null }), at(9, 5));
   assert.ok(card);
   assert.equal(card.indeterminate, true);
   assert.equal(card.max, 0);
   assert.equal(card.progress, 0);
   assert.equal(card.text, "已开始 09:00，进行中");
+  assert.equal(card.chronoAt, at(9, 0).getTime());
+  assert.equal(card.chronoCountdown, false);
 });
 
 test("标题复用提醒摘要脱敏：控制字符折叠为空格", () => {
@@ -138,107 +243,86 @@ test("汇总按通知 ID 确定性排序并截断到上限", () => {
 });
 
 test("协调器：发卡、按内容去重更新、完成后撤卡、停机清场", async () => {
-  const posts = [];
-  const cancels = [];
+  const sinks = {};
   let entities = [todo()];
   let granted = true;
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => granted,
-      post: async (card) => posts.push({ ...card }),
-      cancel: async (id) => cancels.push(id),
-    },
+    portStub(sinks, { permissionGranted: async () => granted }),
     () => ({ ownerKey: "user:one", ready: true, entities }),
     () => at(9, 30),
   );
 
   await coordinator.start();
-  assert.equal(posts.length, 1);
-  assert.equal(posts[0].progress, 30);
+  assert.equal(sinks.posts.length, 1);
+  assert.equal(sinks.posts[0].progress, 30);
 
   // 分钟与文案未变：不重复发卡
   await coordinator.refresh();
-  assert.equal(posts.length, 1);
+  assert.equal(sinks.posts.length, 1);
 
   // 待办完成：撤下对应卡片
   entities = [todo({ isCompleted: true })];
   await coordinator.refresh();
-  assert.equal(cancels.length, 1);
-  assert.equal(cancels[0], posts[0].notificationId);
+  assert.equal(sinks.cancels.length, 1);
+  assert.equal(sinks.cancels[0], sinks.posts[0].notificationId);
 
   // 权限被收回：已发卡片全部撤下且不再新发
   entities = [todo()];
   granted = true;
   await coordinator.refresh();
-  assert.equal(posts.length, 2);
+  assert.equal(sinks.posts.length, 2);
   granted = false;
   await coordinator.refresh();
-  assert.equal(posts.length, 2);
-  assert.equal(cancels.length, 2);
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.cancels.length, 2);
 
   // 恢复权限后重发，stop 撤下全部；重复 stop 幂等
   granted = true;
   await coordinator.refresh();
-  assert.equal(posts.length, 3);
+  assert.equal(sinks.posts.length, 3);
   await coordinator.stop();
-  assert.equal(cancels.length, 3);
+  assert.equal(sinks.cancels.length, 3);
   await coordinator.stop();
-  assert.equal(cancels.length, 3);
+  assert.equal(sinks.cancels.length, 3);
 });
 
 test("协调器：能力不可用时 refresh 为空操作", async () => {
-  const posts = [];
-  const cancels = [];
+  const sinks = {};
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => false,
-      permissionGranted: async () => true,
-      post: async (card) => posts.push(card),
-      cancel: async (id) => cancels.push(id),
-    },
+    portStub(sinks, { supported: () => false }),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, 30),
   );
   await coordinator.refresh();
   await coordinator.stop();
-  assert.equal(posts.length, 0);
-  assert.equal(cancels.length, 0);
+  assert.equal(sinks.posts.length, 0);
+  assert.equal(sinks.cancels.length, 0);
+  assert.equal(sinks.timelineCancels.length, 0);
 });
 
 test("协调器：时间推进后同一卡片原位更新而非新发", async () => {
-  const posts = [];
+  const sinks = {};
   let minute = 30;
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => true,
-      post: async (card) => posts.push({ ...card }),
-      cancel: async () => {},
-    },
+    portStub(sinks),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, minute),
   );
   await coordinator.start();
   minute = 45;
   await coordinator.refresh();
-  assert.equal(posts.length, 2);
-  assert.equal(posts[0].notificationId, posts[1].notificationId);
-  assert.equal(posts[0].progress, 30);
-  assert.equal(posts[1].progress, 45);
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.posts[0].notificationId, sinks.posts[1].notificationId);
+  assert.equal(sinks.posts[0].progress, 30);
+  assert.equal(sinks.posts[1].progress, 45);
   await coordinator.stop();
 });
 
 test("协调器：去重包含标题，编辑正文后原位更新标题", async () => {
-  const posts = [];
+  const sinks = {};
   let body = "写周报";
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => true,
-      post: async (card) => posts.push({ ...card }),
-      cancel: async () => {},
-    },
+    portStub(sinks),
     () => ({
       ownerKey: "user:one",
       ready: true,
@@ -247,145 +331,406 @@ test("协调器：去重包含标题，编辑正文后原位更新标题", async
     () => at(9, 30),
   );
   await coordinator.start();
-  assert.equal(posts.length, 1);
+  assert.equal(sinks.posts.length, 1);
   // 无结束时间的不定进度卡：text/progress/indeterminate 恒定，仅标题变化
   body = "写月报";
   await coordinator.refresh();
-  assert.equal(posts.length, 2);
-  assert.equal(posts[0].notificationId, posts[1].notificationId);
-  assert.equal(posts[1].title, "写月报");
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.posts[0].notificationId, sinks.posts[1].notificationId);
+  assert.equal(sinks.posts[1].title, "写月报");
   await coordinator.stop();
 });
 
 test("协调器：stop 使权限读取中的刷新失效，不再发卡", async () => {
-  const posts = [];
+  const sinks = {};
   let resolvePermission;
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
+    portStub(sinks, {
       permissionGranted: () =>
         new Promise((resolve) => {
           resolvePermission = resolve;
         }),
-      post: async (card) => posts.push({ ...card }),
-      cancel: async () => {},
-    },
+    }),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, 30),
   );
   const started = coordinator.start();
+  // 让 start 越过收回接管权的 await，停在 run() 的权限读取上
+  await new Promise((resolve) => setImmediate(resolve));
   await coordinator.stop();
   resolvePermission(true);
   await started;
-  assert.equal(posts.length, 0);
+  assert.equal(sinks.posts.length, 0);
   // stop 之后由仓库订阅触发的 refresh 直接跳过（active 门）
   await coordinator.refresh();
-  assert.equal(posts.length, 0);
+  assert.equal(sinks.posts.length, 0);
 });
 
 test("协调器：post 在途时 stop，恢复后补撤该卡且不写入状态", async () => {
-  const posts = [];
-  const cancels = [];
+  const sinks = {};
   let hanging = false;
   let resolveHanging;
   let entities = [todo()];
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => true,
+    portStub(sinks, {
       post: (card) => {
-        posts.push({ ...card });
+        sinks.posts.push({ ...card });
         if (!hanging) return Promise.resolve();
         return new Promise((resolve) => {
           resolveHanging = resolve;
         });
       },
-      cancel: async (id) => cancels.push(id),
-    },
+    }),
     () => ({ ownerKey: "user:one", ready: true, entities }),
     () => at(9, 30),
   );
   await coordinator.start();
-  assert.equal(posts.length, 1);
+  assert.equal(sinks.posts.length, 1);
   hanging = true;
   entities = [todo({ body: "写月报" })];
   const pending = coordinator.refresh();
   // 让本轮 run() 越过权限读取、停在 post 的 await 上
   await new Promise((resolve) => setImmediate(resolve));
   await coordinator.stop();
-  assert.equal(cancels.length, 1);
+  assert.equal(sinks.cancels.length, 1);
   resolveHanging();
   await pending;
-  assert.equal(posts.length, 2);
-  assert.equal(cancels.length, 2);
-  assert.deepEqual(cancels, [
-    posts[0].notificationId,
-    posts[0].notificationId,
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.cancels.length, 2);
+  assert.deepEqual(sinks.cancels, [
+    sinks.posts[0].notificationId,
+    sinks.posts[0].notificationId,
   ]);
 });
 
 test("协调器：start 幂等，已启动时再次 start 仅刷新", async () => {
-  const posts = [];
+  const sinks = {};
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => true,
-      post: async (card) => posts.push({ ...card }),
-      cancel: async () => {},
-    },
+    portStub(sinks),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, 30),
   );
   await coordinator.start();
   await coordinator.start();
-  assert.equal(posts.length, 1);
+  assert.equal(sinks.posts.length, 1);
   await coordinator.stop();
 });
 
 test("协调器：post 失败不落状态，下一轮重试成功", async () => {
-  const posts = [];
-  const cancels = [];
+  const sinks = {};
   let failures = 1;
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
-      permissionGranted: async () => true,
+    portStub(sinks, {
       post: async (card) => {
-        posts.push({ ...card });
+        sinks.posts.push({ ...card });
         if (failures > 0) {
           failures -= 1;
           throw new Error("post failed");
         }
       },
-      cancel: async (id) => cancels.push(id),
-    },
+    }),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, 30),
   );
   await coordinator.start();
-  assert.equal(posts.length, 1);
+  assert.equal(sinks.posts.length, 1);
   await coordinator.refresh();
-  assert.equal(posts.length, 2);
-  assert.equal(posts[1].notificationId, posts[0].notificationId);
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.posts[1].notificationId, sinks.posts[0].notificationId);
   await coordinator.stop();
-  assert.equal(cancels.length, 1);
+  assert.equal(sinks.cancels.length, 1);
 });
 
 test("协调器：权限读取失败时本轮跳过且不抛出", async () => {
-  const posts = [];
+  const sinks = {};
   const coordinator = new TodoLiveUpdateCoordinator(
-    {
-      supported: () => true,
+    portStub(sinks, {
       permissionGranted: async () => {
         throw new Error("permission read failed");
       },
-      post: async (card) => posts.push({ ...card }),
-      cancel: async () => {},
-    },
+    }),
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, 30),
   );
   await coordinator.start();
-  assert.equal(posts.length, 0);
+  assert.equal(sinks.posts.length, 0);
+  await coordinator.stop();
+});
+
+test("协调器：handoff 移交时间线（含未来卡）、停 JS 驱动且不撤已发卡片", async () => {
+  const sinks = {};
+  const future = todo({
+    clientId: "00000000-0000-4000-8000-000000000002",
+    startTime: "11:00",
+    endTime: "12:00",
+  });
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks),
+    () => ({
+      ownerKey: "user:one",
+      ready: true,
+      entities: [todo(), future],
+    }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  // 未来卡未开始：前台只发进行中一张
+  assert.equal(sinks.posts.length, 1);
+
+  await coordinator.handoff();
+  // 时间线快照含进行中 + 未来两张，映射为原生契约（notificationId → id）
+  assert.equal(sinks.handoffs.length, 2);
+  const activeId = liveUpdateNotificationId("user:one", todo().clientId);
+  const activeHandoff = sinks.handoffs.find((card) => card.id === activeId);
+  assert.ok(activeHandoff);
+  assert.equal(activeHandoff.startAt, at(9, 0).getTime());
+  assert.equal(activeHandoff.endAt, at(10, 0).getTime());
+  // 有资格卡：handoff 只移交，不取消原生接管（start 已收回过一次）
+  assert.equal(sinks.timelineCancels.length, 1);
+  // handoff 不撤已发卡片
+  assert.equal(sinks.cancels.length, 0);
+  // JS 例行驱动已停：handoff 后订阅触发的 refresh 是空操作
+  await coordinator.refresh();
+  assert.equal(sinks.posts.length, 1);
+  await coordinator.stop();
+});
+
+test("协调器：handoff 权限未授予或无资格卡时取消原生接管", async () => {
+  const sinks = {};
+  let granted = true;
+  let entities = [todo()];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, { permissionGranted: async () => granted }),
+    () => ({ ownerKey: "user:one", ready: true, entities }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 1);
+
+  // 权限被收回：handoff 取消原生接管并撤下已发卡片（start 已收回过一次）
+  granted = false;
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 0);
+  assert.equal(sinks.timelineCancels.length, 2);
+  assert.equal(sinks.cancels.length, 1);
+
+  // 无资格卡（全部完成）：同样取消原生接管
+  granted = true;
+  entities = [todo({ isCompleted: true })];
+  await coordinator.refresh();
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 0);
+  assert.equal(sinks.timelineCancels.length, 3);
+  await coordinator.stop();
+});
+
+test("协调器：start 收回原生接管权（cancelTimeline），handoff 后可重新接管", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.timelineCancels.length, 1);
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 1);
+  // 回前台：重新收回接管权并恢复 JS 驱动（handoff 已清空卡片状态，重新发卡）
+  await coordinator.start();
+  assert.equal(sinks.timelineCancels.length, 2);
+  await coordinator.refresh();
+  assert.equal(sinks.posts.length, 2);
+  await coordinator.stop();
+});
+
+test("协调器：start 等待收回期间 stop 插入，恢复后不再复活协调器", async () => {
+  const sinks = {};
+  const pendingTimelineResolves = [];
+  // 仅 start 的首次 cancelTimeline 挂起；stop 的后续调用立即放行，避免互相等待
+  let firstTimelineGate = true;
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      cancelTimeline: () => {
+        if (firstTimelineGate) {
+          firstTimelineGate = false;
+          return new Promise((resolve) => {
+            pendingTimelineResolves.push(resolve);
+          });
+        }
+        return Promise.resolve();
+      },
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  const started = coordinator.start();
+  await coordinator.stop();
+  // 放行 start 挂起的收回调用：stop 已插入，start 恢复后放弃启动
+  pendingTimelineResolves.splice(0).forEach((resolve) => resolve());
+  await started;
+  // stop 之后 start 放弃启动：无例行驱动、不发卡
+  await coordinator.refresh();
+  assert.equal(sinks.posts.length, 0);
+});
+
+test("协调器：start 收回接管失败时放弃本轮启动，保持原生驱动", async () => {
+  const sinks = {};
+  let reclaimFails = true;
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      cancelTimeline: async () => {
+        if (reclaimFails) throw new Error("reclaim failed");
+        sinks.timelineCancels.push(true);
+      },
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  // 收回失败：不接管、不发卡、不建例行驱动
+  assert.equal(sinks.posts.length, 0);
+  await coordinator.refresh();
+  assert.equal(sinks.posts.length, 0);
+  // 收回恢复后：下一次 start 正常接管
+  reclaimFails = false;
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 1);
+  await coordinator.stop();
+});
+
+test("协调器：开关开启时先持久化快照再启动前台服务，停止时撤销", async () => {
+  const sinks = {};
+  const order = [];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      persistTimeline: async (cards) => {
+        sinks.persists.push(...cards.map((card) => ({ ...card })));
+        order.push("persist");
+      },
+      ensureForegroundService: async (active) => {
+        sinks.fgs.push(active);
+        order.push(active ? "fgs-start" : "fgs-stop");
+      },
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  // 开关关闭且 FGS 未运行：不产生任何 FGS 调用
+  assert.deepEqual(sinks.fgs, []);
+  coordinator.setForegroundServiceEnabled(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  // 数据先于启动：FGS 启动时快照已就位
+  assert.deepEqual(order, ["persist", "fgs-start"]);
+  assert.equal(sinks.persists.length, 1);
+  assert.equal(sinks.persists[0].id, sinks.posts[0].notificationId);
+  await coordinator.stop();
+  assert.deepEqual(sinks.fgs, [true, false]);
+});
+
+test("协调器：开关关闭停止前台服务后强制重发，避免锚点卡永久消失", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 1);
+  coordinator.setForegroundServiceEnabled(true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sinks.fgs, [true]);
+  coordinator.setForegroundServiceEnabled(false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sinks.fgs, [true, false]);
+  // FGS 停止移除锚点卡通知：已发表清空，内容无差异也强制原位重发
+  await coordinator.refresh();
+  assert.equal(sinks.posts.length, 2);
+  assert.equal(sinks.posts[1].notificationId, sinks.posts[0].notificationId);
+  await coordinator.stop();
+  assert.equal(sinks.cancels.length, 1);
+});
+
+test("协调器：handoff 移交失败时撤销原生接管并撤下已发卡片", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      handoff: async () => {
+        throw new Error("schedule failed");
+      },
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 1);
+  await coordinator.handoff();
+  // 失败：撤销可能的半写原生状态（start 已收回 1 次 + 失败撤销 1 次）
+  assert.equal(sinks.timelineCancels.length, 2);
+  // 卡片被撤下，不留冻结错误进度
+  assert.deepEqual(sinks.cancels, [sinks.posts[0].notificationId]);
+  await coordinator.stop();
+});
+
+test("协调器：handoff 在途时 start 重新接管，移交落地后被撤销避免双驱动", async () => {
+  const sinks = {};
+  let resolveHandoff;
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      handoff: () =>
+        new Promise((resolve) => {
+          resolveHandoff = resolve;
+        }),
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  const handoffDone = coordinator.handoff();
+  // 让 handoff 越过权限读取，停在 port.handoff 的 await 上
+  await new Promise((resolve) => setImmediate(resolve));
+  // 用户快速回前台：start 收回接管权并重建 JS 驱动
+  await coordinator.start();
+  resolveHandoff();
+  await handoffDone;
+  // 移交落地后被补偿撤销（start 的收回 + handoff 的撤销）
+  assert.equal(sinks.timelineCancels.length, 2);
+  // JS 新代已重新认领卡片：handoff 清场让位，不撤卡
+  assert.equal(sinks.cancels.length, 0);
+  assert.equal(sinks.posts.length, 1);
+  await coordinator.stop();
+});
+
+test("协调器：post 在途时 handoff 成功移交，恢复后不误撤原生接管的卡", async () => {
+  const sinks = {};
+  let hanging = false;
+  let resolveHanging;
+  let entities = [todo()];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      post: (card) => {
+        sinks.posts.push({ ...card });
+        if (!hanging) return Promise.resolve();
+        return new Promise((resolve) => {
+          resolveHanging = resolve;
+        });
+      },
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 1);
+  hanging = true;
+  entities = [todo({ body: "写月报" })];
+  const pending = coordinator.refresh();
+  // 让本轮 run() 越过权限读取、停在 post 的 await 上
+  await new Promise((resolve) => setImmediate(resolve));
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 1);
+  resolveHanging();
+  await pending;
+  // 原生已接管该卡：恢复后不补撤（原生下一节拍续算）
+  assert.equal(sinks.cancels.length, 0);
+  assert.equal(sinks.posts.length, 2);
   await coordinator.stop();
 });

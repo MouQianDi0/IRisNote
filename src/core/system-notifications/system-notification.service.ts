@@ -2,7 +2,9 @@ import * as Notifications from "expo-notifications";
 import * as Application from "expo-application";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Linking, Platform } from "react-native";
-import NativeSystem from "@modules/irisnote-system";
+import NativeSystem, {
+    type NativeLiveTodoTimelineCard,
+} from "@modules/irisnote-system";
 import {
     diagnosticErrorCategory,
     opaqueDiagnosticId,
@@ -387,6 +389,10 @@ export type LiveUpdateContent = {
      * 普通提醒类不经此函数，政策禁区不受影响。36.0 设备原生侧自动退化。
      */
     promoted?: boolean;
+    /** 系统 chronometer 秒级计时锚点（epoch ms）；null 不启用。 */
+    chronoAt?: number | null;
+    /** true = 倒计时（锚点为终点），false = 正向计时（锚点为起点）。 */
+    chronoCountdown?: boolean;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -455,6 +461,8 @@ export async function postLiveUpdate(
             indeterminate: content.indeterminate,
             ongoing: content.ongoing,
             promoted: content.promoted ?? true,
+            chronoAt: content.chronoAt ?? null,
+            chronoCountdown: content.chronoCountdown ?? false,
         });
     } catch (cause) {
         void recordDiagnostic(
@@ -487,6 +495,131 @@ export async function cancelLiveUpdate(id: number): Promise<void> {
             "error",
         );
         throw cause;
+    }
+}
+
+/**
+ * 方案 A：退后台移交时间线快照——原生闹钟节拍按墙钟差量刷新（分钟级），
+ * 进程被杀后从持久化快照恢复续算。空数组等价于取消原生接管。
+ */
+export async function handoffLiveTodoTimelines(
+    timelines: readonly NativeLiveTodoTimelineCard[],
+): Promise<void> {
+    if (!liveUpdateSupported()) return;
+    const native = NativeSystem;
+    if (!native) return;
+    try {
+        await native.scheduleLiveTodoCards([...timelines]);
+        void recordDiagnostic("live_update", "handoff_scheduled", {
+            cards: timelines.length,
+        });
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "handoff_failed",
+            {
+                cards: timelines.length,
+                error: diagnosticErrorCategory(cause),
+            },
+            "error",
+        );
+        throw cause;
+    }
+}
+
+/**
+ * 方案 B 数据供给：仅持久化时间线快照（不排闹钟）——JS 在前台启动
+ * 前台服务前调用，FGS 每秒从快照重算；空数组等价于清空快照。
+ * 失败记诊断后 rethrow，由协调器跳过本次 FGS 启动（保持方案 A 兜底）。
+ */
+export async function persistLiveTodoTimelines(
+    timelines: readonly NativeLiveTodoTimelineCard[],
+): Promise<void> {
+    if (!liveUpdateSupported()) return;
+    const native = NativeSystem;
+    if (!native) return;
+    try {
+        await native.updateLiveTodoCards([...timelines]);
+        void recordDiagnostic("live_update", "timeline_persisted", {
+            cards: timelines.length,
+        });
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "timeline_persist_failed",
+            {
+                cards: timelines.length,
+                error: diagnosticErrorCategory(cause),
+            },
+            "error",
+        );
+        throw cause;
+    }
+}
+
+/**
+ * 回前台收回接管权：取消闹钟、清空原生快照；不动已展示的通知
+ * （JS 差量刷新按同 ID 原位覆盖对账，避免闪烁）。失败记诊断后 rethrow
+ * ——start() 据此放弃本轮接管，避免 JS 与原生闹钟双驱动（降级为原生
+ * 分钟级驱动，下一次 start 重试收回）。
+ */
+export async function reclaimLiveTodoTimelines(): Promise<void> {
+    if (!liveUpdateSupported()) return;
+    const native = NativeSystem;
+    if (!native) return;
+    try {
+        await native.cancelScheduledLiveTodoCards();
+        void recordDiagnostic("live_update", "reclaimed");
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "reclaim_failed",
+            { error: diagnosticErrorCategory(cause) },
+            "error",
+        );
+        throw cause;
+    }
+}
+
+/**
+ * 方案 B：启动前台服务秒级刷新。仅限应用前台调用（Android 12+ 禁止
+ * 后台启动前台服务）；后台误触发会被系统拒绝，此处捕获并记诊断，
+ * 行为降级为方案 A 分钟级（闹钟节拍始终并存兜底）。
+ */
+export async function startLiveTodoForegroundService(): Promise<boolean> {
+    if (!liveUpdateSupported()) return false;
+    const native = NativeSystem;
+    if (!native) return false;
+    try {
+        await native.startLiveTodoForegroundService();
+        void recordDiagnostic("live_update", "fgs_start_requested");
+        return true;
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "fgs_start_failed",
+            { error: diagnosticErrorCategory(cause) },
+            "error",
+        );
+        return false;
+    }
+}
+
+/** 方案 B：停止前台服务；FGS 通知撤除，其余卡片由接管方对账。 */
+export async function stopLiveTodoForegroundService(): Promise<void> {
+    if (!liveUpdateSupported()) return;
+    const native = NativeSystem;
+    if (!native) return;
+    try {
+        await native.stopLiveTodoForegroundService();
+        void recordDiagnostic("live_update", "fgs_stop_requested");
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "fgs_stop_failed",
+            { error: diagnosticErrorCategory(cause) },
+            "error",
+        );
     }
 }
 

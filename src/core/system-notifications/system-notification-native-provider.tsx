@@ -40,14 +40,19 @@ import {
     clearStaleLiveUpdates,
     exactAlarmAccess,
     ensureRuntimeNotification,
+    handoffLiveTodoTimelines,
     initializeSystemNotifications,
     liveUpdateSupported,
     openSystemNotificationSettings,
     openExactAlarmSettings,
+    persistLiveTodoTimelines,
     postLiveUpdate,
+    reclaimLiveTodoTimelines,
     removeRuntimeNotification,
     requestApplicationNotificationPermission,
     requestSystemNotificationPermission,
+    startLiveTodoForegroundService,
+    stopLiveTodoForegroundService,
     supportsSystemNotifications,
     systemNotifications,
 } from "./system-notification.service";
@@ -130,6 +135,10 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         useState(false);
     const [runtimeNotificationPending, setRuntimeNotificationPending] =
         useState(supportsSystemNotifications);
+    const [liveTodoRealtimeEnabled, setLiveTodoRealtimeEnabledState] =
+        useState(false);
+    const [liveTodoRealtimePending, setLiveTodoRealtimePending] =
+        useState(false);
     const [response, setResponse] =
         useState<Notifications.NotificationResponse | null>(null);
     const handled = useRef(new Set<string>());
@@ -170,8 +179,21 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                             max: card.max,
                             indeterminate: card.indeterminate,
                             ongoing: card.ongoing,
+                            chronoAt: card.chronoAt,
+                            chronoCountdown: card.chronoCountdown,
                         }),
                     cancel: (id) => cancelLiveUpdate(id),
+                    handoff: (timelines) =>
+                        handoffLiveTodoTimelines(timelines),
+                    cancelTimeline: async () => {
+                        await reclaimLiveTodoTimelines();
+                    },
+                    persistTimeline: (timelines) =>
+                        persistLiveTodoTimelines(timelines),
+                    ensureForegroundService: async (active) => {
+                        if (active) await startLiveTodoForegroundService();
+                        else await stopLiveTodoForegroundService();
+                    },
                 },
                 () => snapshot(),
             ),
@@ -219,6 +241,11 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                     await preferences.runtimeNotificationEnabled();
                 if (!active) return;
                 setRuntimeNotificationEnabledState(runtimeEnabled);
+                const realtimeEnabled =
+                    await preferences.liveTodoRealtimeEnabled();
+                if (!active) return;
+                setLiveTodoRealtimeEnabledState(realtimeEnabled);
+                liveCoordinator.setForegroundServiceEnabled(realtimeEnabled);
                 const applicationPermission =
                     await applicationNotificationPermission();
                 if (runtimeEnabled && applicationPermission.granted)
@@ -263,6 +290,9 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             if (state === "active") {
                 void refresh();
                 void liveCoordinator.start();
+            } else if (state === "background") {
+                // 退后台：卡片保留，时间线移交原生（方案 A 分钟级 + C 系统计时）。
+                void liveCoordinator.handoff();
             } else {
                 void liveCoordinator.stop();
             }
@@ -405,6 +435,39 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         }
     }
 
+    async function setLiveTodoRealtimeEnabled(enabled: boolean) {
+        setLiveTodoRealtimePending(true);
+        void recordDiagnostic("live_update", "realtime_toggle_requested", {
+            enabled,
+        });
+        try {
+            await preferences.setLiveTodoRealtimeEnabled(enabled);
+            setLiveTodoRealtimeEnabledState(enabled);
+            liveCoordinator.setForegroundServiceEnabled(enabled);
+            void recordDiagnostic("live_update", "realtime_toggle_completed", {
+                enabled,
+            });
+            return true;
+        } catch (cause) {
+            void recordDiagnostic(
+                "live_update",
+                "realtime_toggle_failed",
+                { enabled, error: diagnosticErrorCategory(cause) },
+                "error",
+            );
+            banner.show({
+                title: enabled
+                    ? "后台实时刷新开启失败"
+                    : "后台实时刷新关闭失败",
+                message: "诊断日志已记录本次失败",
+                type: "important",
+            });
+            return false;
+        } finally {
+            setLiveTodoRealtimePending(false);
+        }
+    }
+
     async function afterSave(todo: TodoEntity, reason: "confirm" | "dismiss") {
         const generation = todoRepository.generation;
         const current = () =>
@@ -478,6 +541,10 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                 runtimeNotificationEnabled,
                 runtimeNotificationPending,
                 setRuntimeNotificationEnabled,
+                liveUpdateCapable: liveUpdateSupported(),
+                liveTodoRealtimeEnabled,
+                liveTodoRealtimePending,
+                setLiveTodoRealtimeEnabled,
                 afterSave,
                 openSettings,
             }}

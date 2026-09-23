@@ -19,6 +19,7 @@ import {
     Image as ImageIcon,
     PackageCheck,
     RadioTower,
+    Zap,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
@@ -164,6 +165,10 @@ export default function PermissionSettingsScreen() {
         runtimeNotificationEnabled,
         runtimeNotificationPending,
         setRuntimeNotificationEnabled,
+        liveUpdateCapable,
+        liveTodoRealtimeEnabled,
+        liveTodoRealtimePending,
+        setLiveTodoRealtimeEnabled,
     } = useSystemNotifications();
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
@@ -313,6 +318,41 @@ export default function PermissionSettingsScreen() {
                                         }
                                         onValueChange={(value) => {
                                             void setRuntimeNotificationEnabled(
+                                                value,
+                                            );
+                                        }}
+                                    />
+                                </Host>
+                            }
+                        />
+                        <SettingsRow
+                            icon={Zap}
+                            label="后台实时刷新"
+                            value={
+                                liveTodoRealtimeEnabled ? "已开启" : "已关闭"
+                            }
+                            description={
+                                liveUpdateCapable
+                                    ? "退后台保持待办进度卡实时更新；开启后以前台服务运行，耗电略增"
+                                    : "需要 Android 16 及以上系统"
+                            }
+                            disabled={!liveUpdateCapable}
+                            trailing={
+                                <Host
+                                    matchContents
+                                    accessibilityLabel="后台实时刷新"
+                                >
+                                    <Switch
+                                        value={
+                                            liveTodoRealtimeEnabled &&
+                                            liveUpdateCapable
+                                        }
+                                        disabled={
+                                            liveTodoRealtimePending ||
+                                            !liveUpdateCapable
+                                        }
+                                        onValueChange={(value) => {
+                                            void setLiveTodoRealtimeEnabled(
                                                 value,
                                             );
                                         }}
