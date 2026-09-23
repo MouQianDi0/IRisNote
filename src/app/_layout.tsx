@@ -69,6 +69,18 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/notes"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/starred"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/drafts"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/trash"
                         options={{ headerShown: false }}
                     />
@@ -82,6 +94,14 @@ export default function RootLayout() {
                     />
                     <Stack.Screen
                         name="pages/user/sync-queue"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/profile/index"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/profile/platforms"
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen

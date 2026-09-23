@@ -1,0 +1,1 @@
+export { AppBrandIcon } from "./AppBrandIcon";

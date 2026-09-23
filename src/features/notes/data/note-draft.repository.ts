@@ -3,7 +3,7 @@ import type {
     ApplicationDatabaseTransaction,
 } from "@/core/database";
 import type { Note } from "../notes.types";
-import { hasNoteTrash, readTrash } from "./note-trash.repository";
+import { isRemovedLocalNote } from "./note-trash.repository";
 
 export type NoteDraftValue = {
     title: string;
@@ -68,11 +68,7 @@ export async function openNoteDraft(
     baseRevisionId: string | null = null,
 ) {
     return db.transaction(async (tx) => {
-        if (
-            noteId !== null &&
-            (await hasNoteTrash(tx)) &&
-            (await readTrash(tx, owner, noteId))
-        )
+        if (noteId !== null && (await isRemovedLocalNote(tx, owner, noteId)))
             throw new Error("笔记已移入垃圾桶，请先恢复");
         await tx.run(
             `INSERT INTO note_drafts

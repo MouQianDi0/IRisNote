@@ -1,3 +1,4 @@
+import { useTransitionLock } from "@/shared/hooks/useTransitionLock";
 import { colors } from "@/shared/theme";
 import { Button } from "@/shared/ui";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
@@ -17,10 +18,12 @@ export default function NoteDetailStateView({
     onBack,
     onRetry,
 }: NoteDetailStateViewProps) {
+    const guardBack = useTransitionLock();
+
     return (
         <View className="flex-1 bg-white px-6 py-5">
             <View className="flex-row items-center justify-between pb-5">
-                <Pressable onPress={onBack} className="px-1 py-2">
+                <Pressable onPress={guardBack(onBack)} className="px-1 py-2">
                     <Text className="text-base text-primary">返回</Text>
                 </Pressable>
             </View>

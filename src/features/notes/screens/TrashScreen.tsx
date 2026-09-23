@@ -2,10 +2,9 @@ import { useApplicationDatabase } from "@/core/database";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { getCloudStorageSnapshot } from "@/core/cloud-storage/cloud-storage-policy";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { SettingsPageHeader } from "@/features/settings/components/SettingsPageHeader";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, PageHeader, Screen } from "@/shared/ui";
 import { router, useFocusEffect } from "expo-router";
 import { Trash2, Undo2 } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
@@ -94,7 +93,11 @@ export default function TrashScreen() {
                         ),
                     );
             } finally {
-                if (loadingRef.current === loadKey) loadingRef.current = null;
+                if (
+                    loadingRef.current === loadKey &&
+                    request === serial.current
+                )
+                    loadingRef.current = null;
                 if (valid()) {
                     setLoading(false);
                     setRefreshing(false);
@@ -124,6 +127,7 @@ export default function TrashScreen() {
             return () => {
                 active.current = false;
                 serial.current++;
+                loadingRef.current = null;
                 clearInterval(timer);
                 subscription.remove();
             };
@@ -143,7 +147,12 @@ export default function TrashScreen() {
                 getCloudStorageSnapshot().generation === currentGeneration
             )
                 setError(
-                    getApiErrorMessage(cause, cause instanceof Error ? cause.message : "恢复失败，请检查网络后重试"),
+                    getApiErrorMessage(
+                        cause,
+                        cause instanceof Error
+                            ? cause.message
+                            : "恢复失败，请检查网络后重试",
+                    ),
                 );
         } finally {
             if (
@@ -164,7 +173,7 @@ export default function TrashScreen() {
     return (
         <Screen className="bg-app-background">
             <View style={{ paddingHorizontal: 16 }}>
-                <SettingsPageHeader
+                <PageHeader
                     title="垃圾桶"
                     backLabel="返回我的页面"
                     onBack={() => router.back()}

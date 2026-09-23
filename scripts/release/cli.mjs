@@ -214,6 +214,7 @@ async function build() {
                 "EXPO_PUBLIC_BASE_URL",
                 "EXPO_PUBLIC_RELEASE_API_URL",
                 "EXPO_PUBLIC_CLOUD_STORAGE_ENABLED",
+                "EXPO_PUBLIC_IMAGE",
             ]) {
                 if (process.env[key])
                     eas.build[profile].env[key] = process.env[key];

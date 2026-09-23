@@ -2,22 +2,20 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
 import { colors } from "@/shared/theme";
-import { AnchoredPopover, Card, Screen } from "@/shared/ui";
+import { Card, Screen } from "@/shared/ui";
 import { router, type Href } from "expo-router";
 import {
     Archive,
     BookOpenText,
-    Camera,
     ChevronRight,
     FileText,
     Folder,
-    Image as ImageIcon,
     Star,
     Trash2,
     User as UserIcon,
     type LucideIcon,
 } from "lucide-react-native";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -29,47 +27,7 @@ import {
 
 const cardStyle = { borderCurve: "continuous" as const };
 
-const OPEN_COOLDOWN_MS = 300;
-
-type AvatarSource = "library" | "camera";
-
-const AVATAR_OPTIONS: {
-    key: AvatarSource;
-    label: string;
-    icon: LucideIcon;
-}[] = [
-    { key: "library", label: "从相册选择", icon: ImageIcon },
-    { key: "camera", label: "拍照", icon: Camera },
-];
-
-function AvatarOptionRow({
-    icon: Icon,
-    label,
-    last,
-    onPress,
-}: {
-    icon: LucideIcon;
-    label: string;
-    last?: boolean;
-    onPress: () => void;
-}) {
-    return (
-        <>
-            <Pressable
-                accessibilityLabel={label}
-                accessibilityRole="button"
-                className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-hyper-card-selected active:opacity-[0.85]"
-                onPress={onPress}
-            >
-                <Icon size={22} color={colors.primary} />
-                <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
-                    {label}
-                </Text>
-            </Pressable>
-            {!last ? <View className="mx-4 h-px bg-hyper-divider" /> : null}
-        </>
-    );
-}
+const personalInfoRoute = "/pages/user/profile" as Href;
 
 function SectionTitle({ children }: { children: string }) {
     return (
@@ -96,7 +54,9 @@ function OverviewMetric({
             accessibilityLabel={`${label}，${value ?? "暂不可用"}`}
             className="min-w-0 flex-1 items-center px-1 py-1"
         >
-            <Icon size={22} color={colors.primary} />
+            <View className="h-6 w-6 items-center justify-center">
+                <Icon size={22} color={colors.primary} />
+            </View>
             <View className="mt-2 h-6 items-center justify-center">
                 {loading ? (
                     <ActivityIndicator color={colors.primary} size="small" />
@@ -134,7 +94,9 @@ function ContentRow({
                 className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-surface-muted active:opacity-[0.85]"
                 onPress={onPress}
             >
-                <Icon size={22} color={colors.primary} />
+                <View className="h-6 w-6 items-center justify-center">
+                    <Icon size={22} color={colors.primary} />
+                </View>
                 <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
                     {label}
                 </Text>
@@ -152,53 +114,8 @@ function ContentRow({
 
 export default function ProfileScreen() {
     const { user, isLoggedIn, loading: authLoading } = useAuth();
-    const { avatarSource, avatarKey, avatarUploading, updateAvatar } =
-        useAvatar();
+    const { avatarSource, avatarKey } = useAvatar();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
-
-    const avatarAnchorRef = useRef<View>(null);
-    const [avatarMenuVisible, setAvatarMenuVisible] = useState(false);
-    const openLockedRef = useRef(false);
-    const closeStartedRef = useRef(false);
-    const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(
-        () => () => {
-            if (cooldownTimerRef.current !== null) {
-                clearTimeout(cooldownTimerRef.current);
-            }
-        },
-        [],
-    );
-
-    const handleOpenAvatarMenu = () => {
-        if (openLockedRef.current) return;
-
-        openLockedRef.current = true;
-        closeStartedRef.current = false;
-        setAvatarMenuVisible(true);
-    };
-
-    const handleCloseAvatarMenu = () => {
-        if (closeStartedRef.current) return;
-
-        closeStartedRef.current = true;
-        setAvatarMenuVisible(false);
-
-        if (cooldownTimerRef.current !== null) {
-            clearTimeout(cooldownTimerRef.current);
-        }
-        cooldownTimerRef.current = setTimeout(() => {
-            cooldownTimerRef.current = null;
-            openLockedRef.current = false;
-            closeStartedRef.current = false;
-        }, OPEN_COOLDOWN_MS);
-    };
-
-    const handlePickAvatarSource = (source: AvatarSource) => {
-        handleCloseAvatarMenu();
-        updateAvatar(source);
-    };
 
     useEffect(() => {
         const mountedAt = Date.now();
@@ -268,16 +185,12 @@ export default function ProfileScreen() {
     const displayName = user.nickname?.trim() || user.email.split("@")[0];
     const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
     const openNotes = (view?: "starred", drafts?: boolean) => {
-        router.replace(
-            view || drafts
-                ? ({
-                      pathname: "/(tabs)/note",
-                      params: {
-                          ...(view ? { view } : {}),
-                          ...(drafts ? { drafts: "1" } : {}),
-                      },
-                  } as Href)
-                : "/(tabs)/note",
+        router.push(
+            drafts
+                ? "/pages/user/drafts"
+                : view === "starred"
+                  ? "/pages/user/starred"
+                  : "/pages/user/notes",
         );
     };
 
@@ -293,22 +206,14 @@ export default function ProfileScreen() {
                     style={{ flexGrow: 1 }}
                 >
                     <View>
-                        <Card
-                            className="flex-row items-center rounded-hyper-card p-4"
+                        <Pressable
+                            accessibilityLabel={`${displayName}，${user.email}，查看个人资料`}
+                            accessibilityRole="button"
+                            className="min-h-24 flex-row items-center rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                            onPress={() => router.push(personalInfoRoute)}
                             style={cardStyle}
                         >
-                            <Pressable
-                                ref={avatarAnchorRef}
-                                accessibilityLabel={`更换${displayName}的头像`}
-                                accessibilityRole="button"
-                                accessibilityState={{
-                                    disabled: avatarUploading,
-                                    expanded: avatarMenuVisible,
-                                }}
-                                className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected active:opacity-[0.85]"
-                                disabled={avatarUploading}
-                                onPress={handleOpenAvatarMenu}
-                            >
+                            <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
                                 {avatarSource ? (
                                     <Image
                                         key={avatarKey}
@@ -321,42 +226,7 @@ export default function ProfileScreen() {
                                         color={colors.primary}
                                     />
                                 )}
-                                {avatarUploading ? (
-                                    <View className="absolute inset-0 items-center justify-center bg-overlay">
-                                        <ActivityIndicator
-                                            accessibilityLabel="正在上传头像"
-                                            color={colors.surfaceFull}
-                                        />
-                                    </View>
-                                ) : null}
-                            </Pressable>
-                            <AnchoredPopover
-                                visible={avatarMenuVisible}
-                                anchorRef={avatarAnchorRef}
-                                onClose={handleCloseAvatarMenu}
-                                width={232}
-                                maxHeight={180}
-                                accessibilityLabel="更换头像来源菜单"
-                            >
-                                <View>
-                                    {AVATAR_OPTIONS.map((option, index) => (
-                                        <AvatarOptionRow
-                                            key={option.key}
-                                            icon={option.icon}
-                                            label={option.label}
-                                            last={
-                                                index ===
-                                                AVATAR_OPTIONS.length - 1
-                                            }
-                                            onPress={() =>
-                                                handlePickAvatarSource(
-                                                    option.key,
-                                                )
-                                            }
-                                        />
-                                    ))}
-                                </View>
-                            </AnchoredPopover>
+                            </View>
                             <View className="ml-[14px] min-w-0 flex-1">
                                 <Text
                                     className="text-text-primary text-xl"
@@ -377,12 +247,18 @@ export default function ProfileScreen() {
                                     {joinedAt} 加入
                                 </Text>
                             </View>
-                        </Card>
+                            <View className="ml-2">
+                                <ChevronRight
+                                    size={18}
+                                    color={colors.textMuted}
+                                />
+                            </View>
+                        </Pressable>
 
                         <Card
                             accessible
                             accessibilityLabel="个人内容概览"
-                            className="mt-4 flex-row rounded-hyper-card px-2 py-3"
+                            className="mt-4 min-h-28 flex-row rounded-hyper-card px-2 py-3"
                             style={cardStyle}
                         >
                             <OverviewMetric
@@ -414,7 +290,7 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel={`继续阅读${overview.continueReading.title}，已读${overview.continueReading.percent}%`}
                                 accessibilityRole="button"
-                                className="rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                                className="min-h-[120px] rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
                                 onPress={() =>
                                     router.push({
                                         pathname: "/pages/note/[id]",
@@ -429,10 +305,12 @@ export default function ProfileScreen() {
                                 style={cardStyle}
                             >
                                 <View className="flex-row items-center">
-                                    <BookOpenText
-                                        size={22}
-                                        color={colors.primary}
-                                    />
+                                    <View className="h-[26px] w-[26px] items-center justify-center">
+                                        <BookOpenText
+                                            size={22}
+                                            color={colors.primary}
+                                        />
+                                    </View>
                                     <Text
                                         className="text-text-primary ml-3 min-w-0 flex-1 text-[17px]"
                                         numberOfLines={1}
@@ -460,21 +338,23 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel="还没有阅读记录，去看看笔记"
                                 accessibilityRole="button"
-                                className="items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
+                                className="min-h-[120px] items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
                                 onPress={() => openNotes()}
                                 style={cardStyle}
                             >
-                                {overviewLoading ? (
-                                    <ActivityIndicator
-                                        accessibilityLabel="正在加载阅读记录"
-                                        color={colors.primary}
-                                    />
-                                ) : (
-                                    <BookOpenText
-                                        size={26}
-                                        color={colors.hyperTextSecondary}
-                                    />
-                                )}
+                                <View className="h-[26px] w-[26px] items-center justify-center">
+                                    {overviewLoading ? (
+                                        <ActivityIndicator
+                                            accessibilityLabel="正在加载阅读记录"
+                                            color={colors.primary}
+                                        />
+                                    ) : (
+                                        <BookOpenText
+                                            size={26}
+                                            color={colors.hyperTextSecondary}
+                                        />
+                                    )}
+                                </View>
                                 <Text className="text-text-primary mt-3 text-sm">
                                     {overviewLoading
                                         ? "正在读取阅读记录…"

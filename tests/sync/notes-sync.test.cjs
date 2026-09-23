@@ -59,7 +59,9 @@ const {
 } = require("../../src/features/notes/services/note-sync.service.ts");
 const protocol = require("../../src/features/notes/api/notes-sync.types.ts");
 const cacheRepo = require("../../src/features/notes/data/note-cache.repository.ts");
-const { createSystemPreferences } = require("../../src/core/database/migrations/0011-create-system-preferences.ts");
+const {
+    createSystemPreferences,
+} = require("../../src/core/database/migrations/0011-create-system-preferences.ts");
 const signal = () => new AbortController().signal;
 const cloud = (id, version = 1, body = "body", owner = 1) => ({
     id,
@@ -352,14 +354,20 @@ test("duplicate and stale events are harmless; a newer server restore can follow
         noOp,
     );
     await repo.applyChanges(port, 1, "end", changePage([deletion(1)]), noOp);
-    await repo.applyChanges(port, 1, "end", changePage([upsert(cloud(1, 1))]), noOp);
+    await repo.applyChanges(
+        port,
+        1,
+        "end",
+        changePage([upsert(cloud(1, 1))]),
+        noOp,
+    );
     assert.equal((await repo.readCloudMirror(port, 1)).length, 0);
     await repo.applyChanges(
-            port,
-            1,
-            "end",
-            changePage([upsert(cloud(1, 3))]),
-            noOp,
+        port,
+        1,
+        "end",
+        changePage([upsert(cloud(1, 3))]),
+        noOp,
     );
     assert.equal((await repo.readCloudMirror(port, 1))[0].version, 3);
 });
@@ -497,9 +505,20 @@ require.cache[transportPath] = {
     loaded: true,
     exports: { notesSyncTransport: fakeTransport },
 };
-const trashApiPath = require.resolve("../../src/features/notes/api/notes-trash.api.ts");
-require.cache[trashApiPath] = { id: trashApiPath, filename: trashApiPath, loaded: true,
-    exports: { notesTrashApi: { list: async () => { throw Error("trash endpoint unavailable in legacy fixture"); } } } };
+const trashApiPath =
+    require.resolve("../../src/features/notes/api/notes-trash.api.ts");
+require.cache[trashApiPath] = {
+    id: trashApiPath,
+    filename: trashApiPath,
+    loaded: true,
+    exports: {
+        notesTrashApi: {
+            list: async () => {
+                throw Error("trash endpoint unavailable in legacy fixture");
+            },
+        },
+    },
+};
 const coordinator = require("../../src/features/notes/services/note-sync-coordinator.ts");
 const connections = require("../../src/shared/http/connection-events.ts");
 const events = require("../../src/features/notes/notes.events.ts");
@@ -921,7 +940,11 @@ test("transport validation attaches only fixed endpoint and HTTP status; HTTP fa
     const { notesSyncTransport } = require(transportPath);
     const axios = require("axios");
     const privateData = "private-body-token-and-cursor";
-    const badNote = { ...cloud(1), is_pinned: "not-a-boolean", content: privateData };
+    const badNote = {
+        ...cloud(1),
+        is_pinned: "not-a-boolean",
+        content: privateData,
+    };
     client.defaults.adapter = async (config) => ({
         status: 200,
         statusText: "OK",
@@ -980,70 +1003,121 @@ test("transport validation attaches only fixed endpoint and HTTP status; HTTP fa
     );
 });
 
-
 function isolatedCoordinator() {
-    const filename = path.join(root, 'src/features/notes/services/note-sync-coordinator.ts');
+    const filename = path.join(
+        root,
+        "src/features/notes/services/note-sync-coordinator.ts",
+    );
     const localRequire = Module.createRequire(filename);
     const mod = { exports: {} };
-    const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
+        compilerOptions: {
+            module: ts.ModuleKind.CommonJS,
+            target: ts.ScriptTarget.ES2022,
+        },
     }).outputText;
-    new Function('require', 'module', 'exports', code)(name =>
-        name === '../api/notes-sync.api' ? { notesSyncTransport: fakeTransport } : localRequire(name), mod, mod.exports);
+    new Function("require", "module", "exports", code)(
+        (name) =>
+            name === "../api/notes-sync.api"
+                ? { notesSyncTransport: fakeTransport }
+                : localRequire(name),
+        mod,
+        mod.exports,
+    );
     return mod.exports;
 }
 
 // Run the real Provider layout effect with refs retained across module reloads.
 function providerHarness(port) {
     const refs = [];
-    let refIndex = 0, layouts = [], activeCoordinator;
+    let refIndex = 0,
+        layouts = [],
+        activeCoordinator;
     const counts = { resets: 0, welcomes: 0 };
     const profile = { user: { id: 1 }, loading: false };
     const react = {
-        useRef(value) { return refs[refIndex++] ??= { current: value }; },
-        useLayoutEffect(effect) { layouts.push(effect); },
+        useRef(value) {
+            return (refs[refIndex++] ??= { current: value });
+        },
+        useLayoutEffect(effect) {
+            layouts.push(effect);
+        },
         useEffect() {},
-        useCallback(fn) { return fn; },
+        useCallback(fn) {
+            return fn;
+        },
     };
     const dependencies = {
-        'react': react,
-        'react/jsx-runtime': require('react/jsx-runtime'),
-        'react-native': {},
-        'expo-router': {},
-        '@/core/database': { useApplicationDatabase: () => port },
-        '@/core/cloud-storage/cloud-storage-provider': { useCloudStorage: () => cloudPolicy.getCloudStorageSnapshot() },
-        '@/core/sync': {},
-        '@/features/auth/hooks/useAuth': { useAuth: () => profile },
-        '@/features/sync': {},
-        '@/shared/http/client': {},
-        '@/shared/http/connection-events': { resetConnectionSession() { counts.resets++; connections.resetConnectionSession(); } },
-        '@/shared/ui/Overlay/overlay-context': { OverlayProvider: () => null },
-        './notification-host': { NotificationHost: () => null },
-        './notification.service': { banner: { clearSession() {}, show() { counts.welcomes++; } } },
-        './server-connection-coordinator': {},
+        react: react,
+        "react/jsx-runtime": require("react/jsx-runtime"),
+        "react-native": {},
+        "expo-router": {},
+        "@/core/database": { useApplicationDatabase: () => port },
+        "@/core/cloud-storage/cloud-storage-provider": {
+            useCloudStorage: () => cloudPolicy.getCloudStorageSnapshot(),
+        },
+        "@/core/sync": {},
+        "@/features/auth/hooks/useAuth": { useAuth: () => profile },
+        "@/features/sync": {},
+        "@/shared/http/client": {},
+        "@/shared/http/connection-events": {
+            resetConnectionSession() {
+                counts.resets++;
+                connections.resetConnectionSession();
+            },
+        },
+        "@/shared/ui/Overlay/overlay-context": { OverlayProvider: () => null },
+        "./notification-host": { NotificationHost: () => null },
+        "./notification.service": {
+            banner: {
+                clearSession() {},
+                show() {
+                    counts.welcomes++;
+                },
+            },
+        },
+        "./server-connection-coordinator": {},
     };
     return {
-        counts, profile,
+        counts,
+        profile,
         render(coordinatorModule) {
             activeCoordinator = coordinatorModule;
-            refIndex = 0; layouts = [];
-            const filename = path.join(root, 'src/core/notifications/notification-provider.tsx');
-            const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
-                compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+            refIndex = 0;
+            layouts = [];
+            const filename = path.join(
+                root,
+                "src/core/notifications/notification-provider.tsx",
+            );
+            const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
+                compilerOptions: {
+                    module: ts.ModuleKind.CommonJS,
+                    target: ts.ScriptTarget.ES2022,
+                    jsx: ts.JsxEmit.ReactJSX,
+                },
             }).outputText;
             const mod = { exports: {} };
-            new Function('require', 'module', 'exports', code)(name => {
-                if (name === '@/features/notes/services/note-sync-coordinator') return activeCoordinator;
-                if (!(name in dependencies)) throw new Error('Unexpected dependency: ' + name);
-                return dependencies[name];
-            }, mod, mod.exports);
+            new Function("require", "module", "exports", code)(
+                (name) => {
+                    if (
+                        name ===
+                        "@/features/notes/services/note-sync-coordinator"
+                    )
+                        return activeCoordinator;
+                    if (!(name in dependencies))
+                        throw new Error("Unexpected dependency: " + name);
+                    return dependencies[name];
+                },
+                mod,
+                mod.exports,
+            );
             mod.exports.NotificationProvider({ children: null });
-            layouts.forEach(effect => effect());
+            layouts.forEach((effect) => effect());
         },
     };
 }
 
-test('same-account Provider rebinds a reloaded coordinator without resetting banners or active requests', async t => {
+test("same-account Provider rebinds a reloaded coordinator without resetting banners or active requests", async (t) => {
     authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
@@ -1057,8 +1131,12 @@ test('same-account Provider rebinds a reloaded coordinator without resetting ban
     provider.render(reloaded);
     await reloaded.syncNotes(port, 1);
     assert.deepEqual(provider.counts, { resets: 1, welcomes: 1 });
-    const started = deferred(), response = deferred();
-    fakeTransport.changes = async () => { started.resolve(); return response.promise; };
+    const started = deferred(),
+        response = deferred();
+    fakeTransport.changes = async () => {
+        started.resolve();
+        return response.promise;
+    };
     const inFlight = reloaded.syncNotes(port, 1);
     await started.promise;
     provider.render(reloaded);
@@ -1067,14 +1145,19 @@ test('same-account Provider rebinds a reloaded coordinator without resetting ban
     await inFlight;
 });
 
-test('direct owner switch and switch-back cancel old requests before any cursor is committed', async t => {
+test("direct owner switch and switch-back cancel old requests before any cursor is committed", async (t) => {
     authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();
-    const started = deferred(), response = deferred();
+    const started = deferred(),
+        response = deferred();
     let requestSignal;
-    fakeTransport.snapshot = async (_owner, _query, signal) => { requestSignal = signal; started.resolve(); return response.promise; };
+    fakeTransport.snapshot = async (_owner, _query, signal) => {
+        requestSignal = signal;
+        started.resolve();
+        return response.promise;
+    };
     local.setNoteSyncOwner(1);
     const inFlight = local.syncNotes(port, 1);
     await started.promise;
@@ -1087,14 +1170,18 @@ test('direct owner switch and switch-back cancel old requests before any cursor 
     assert.equal((await repo.readSyncState(port, 1)).changes_cursor, null);
 });
 
-test('logout rejects late results and a same-account login can establish a fresh baseline', async t => {
+test("logout rejects late results and a same-account login can establish a fresh baseline", async (t) => {
     authorizeCloud(t);
     const { port } = await database(t);
     t.after(() => connections.resetConnectionSession());
     const local = isolatedCoordinator();
     const provider = providerHarness(port);
-    const started = deferred(), response = deferred();
-    fakeTransport.snapshot = async () => { started.resolve(); return response.promise; };
+    const started = deferred(),
+        response = deferred();
+    fakeTransport.snapshot = async () => {
+        started.resolve();
+        return response.promise;
+    };
     provider.render(local);
     const inFlight = local.syncNotes(port, 1);
     await started.promise;
@@ -1111,97 +1198,166 @@ test('logout rejects late results and a same-account login can establish a fresh
     assert.equal((await local.syncNotes(port, 1)).notes.length, 1);
 });
 
-
-test('nullable legacy flags survive snapshot and changes parsing, then normalize for local use', () => {
-    for (const pin of [null, false, true]) for (const star of [null, false, true]) {
-        const source = { ...cloud(1), is_pinned: pin, is_starred: star };
-        const fromSnapshot = protocol.parseSnapshot(snapshot([source]), 1).data[0];
-        const fromChanges = protocol.parseChanges(changePage([upsert(source)]), 1).data[0].data;
-        for (const parsed of [fromSnapshot, fromChanges]) {
-            assert.equal(parsed.is_pinned, pin);
-            assert.equal(parsed.is_starred, star);
-            const local = protocol.cloudNoteToLocal(parsed);
-            assert.equal(local.is_pinned, pin ?? false);
-            assert.equal(local.is_starred, star ?? false);
+test("nullable legacy flags survive snapshot and changes parsing, then normalize for local use", () => {
+    for (const pin of [null, false, true])
+        for (const star of [null, false, true]) {
+            const source = { ...cloud(1), is_pinned: pin, is_starred: star };
+            const fromSnapshot = protocol.parseSnapshot(snapshot([source]), 1)
+                .data[0];
+            const fromChanges = protocol.parseChanges(
+                changePage([upsert(source)]),
+                1,
+            ).data[0].data;
+            for (const parsed of [fromSnapshot, fromChanges]) {
+                assert.equal(parsed.is_pinned, pin);
+                assert.equal(parsed.is_starred, star);
+                const local = protocol.cloudNoteToLocal(parsed);
+                assert.equal(local.is_pinned, pin ?? false);
+                assert.equal(local.is_starred, star ?? false);
+            }
+        }
+    for (const field of ["is_pinned", "is_starred"]) {
+        for (const invalid of [undefined, 0, 1, "false", "true", {}, []]) {
+            assert.throws(
+                () =>
+                    protocol.parseSnapshot(
+                        snapshot([{ ...cloud(1), [field]: invalid }]),
+                        1,
+                    ),
+                (error) => error.field === "data[0]." + field,
+            );
         }
     }
-    for (const field of ['is_pinned', 'is_starred']) {
-        for (const invalid of [undefined, 0, 1, 'false', 'true', {}, []]) {
-            assert.throws(() => protocol.parseSnapshot(snapshot([{ ...cloud(1), [field]: invalid }]), 1),
-                error => error.field === 'data[0].' + field);
-        }
-    }
-    assert.throws(() => protocol.parseChanges({ ...changePage(), page: { next_cursor: 'cursor', has_more: null } }, 1),
-        error => error.field === 'page.has_more');
+    assert.throws(
+        () =>
+            protocol.parseChanges(
+                {
+                    ...changePage(),
+                    page: { next_cursor: "cursor", has_more: null },
+                },
+                1,
+            ),
+        (error) => error.field === "page.has_more",
+    );
 });
 
-test('real SQLite sync retains NULL flags in the mirror and applies false/true transitions without changing edit time', async t => {
+test("real SQLite sync retains NULL flags in the mirror and applies false/true transitions without changing edit time", async (t) => {
     const { port } = await database(t);
     const legacy = { ...cloud(1), is_pinned: null, is_starred: null };
     const first = await seed(port, [legacy]);
     assert.equal(first.notes[0].is_pinned, false);
     assert.equal(first.notes[0].is_starred, false);
     assert.equal((await repo.readCloudMirror(port, 1))[0].is_pinned, null);
-    await repo.applyChanges(port, 1, 'end', changePage([upsert(legacy)]), noOp);
+    await repo.applyChanges(port, 1, "end", changePage([upsert(legacy)]), noOp);
     const pinned = { ...cloud(1, 2), is_pinned: true, is_starred: true };
-    await repo.applyChanges(port, 1, 'end', changePage([upsert(pinned)]), noOp);
+    await repo.applyChanges(port, 1, "end", changePage([upsert(pinned)]), noOp);
     await repo.projectMirror(port, 1, noOp);
     const current = (await notes.getLocalNotes(port, 1))[0];
     assert.equal(current.is_pinned, true);
     assert.equal(current.is_starred, true);
     assert.equal(current.updated_at, first.notes[0].updated_at);
     const cleared = { ...cloud(1, 3), is_pinned: null, is_starred: false };
-    await repo.applyChanges(port, 1, 'end', changePage([upsert(cleared)]), noOp);
+    await repo.applyChanges(
+        port,
+        1,
+        "end",
+        changePage([upsert(cleared)]),
+        noOp,
+    );
     await repo.projectMirror(port, 1, noOp);
     assert.equal((await notes.getLocalNotes(port, 1))[0].is_pinned, false);
     assert.equal((await notes.getLocalNotes(port, 1))[0].is_starred, false);
 });
 
-test('cache eviction retains history, stable negative identity and order through a full re-download', async t => {
+test("cache eviction retains history, stable negative identity and order through a full re-download", async (t) => {
     const { port, sql, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
     const original = cloud(1);
     await seed(port, [original]);
-    sql.exec("UPDATE local_notes SET client_id=-55, local_order=19, pinned_order=3 WHERE server_id=1; UPDATE note_revisions SET client_id=-55 WHERE client_id=1");
+    sql.exec(
+        "UPDATE local_notes SET client_id=-55, local_order=19, pinned_order=3 WHERE server_id=1; UPDATE note_revisions SET client_id=-55 WHERE client_id=1",
+    );
     const before = (await notes.getLocalNotes(port, 1))[0];
-    const history = sql.prepare('SELECT * FROM note_revisions').all();
+    const history = sql.prepare("SELECT * FROM note_revisions").all();
     const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
     assert.equal(candidates.length, 1);
     assert.ok(candidates[0].bytes > 0);
     const cleared = await cacheRepo.evictNoteCache(port, 1, candidates, noOp);
     assert.deepEqual(cleared.ids, [-55]);
     assert.equal((await notes.getLocalNotes(port, 1)).length, 0);
-    assert.deepEqual(sql.prepare('SELECT * FROM note_revisions').all(), history);
+    assert.deepEqual(
+        sql.prepare("SELECT * FROM note_revisions").all(),
+        history,
+    );
     assert.equal((await repo.readSyncState(port, 1)).changes_cursor, null);
     const again = await seed(port, [original]);
     assert.equal(again.notes[0].id, -55);
     assert.equal(again.notes[0].local_order, 19);
     assert.equal(again.notes[0].pinned_order, 3);
-    assert.equal(again.notes[0].current_revision_id, before.current_revision_id);
-    assert.deepEqual(sql.prepare('SELECT * FROM note_revisions').all(), history);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM system_preferences').get().n, 0);
+    assert.equal(
+        again.notes[0].current_revision_id,
+        before.current_revision_id,
+    );
+    assert.deepEqual(
+        sql.prepare("SELECT * FROM note_revisions").all(),
+        history,
+    );
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM system_preferences").get().n,
+        0,
+    );
 });
 
-test('cache eligibility excludes dirty notes, drafts, queues, missing or mismatched cloud copies and other owners', async t => {
+test("cache eligibility excludes dirty notes, drafts, queues, missing or mismatched cloud copies and other owners", async (t) => {
     const { port, sql, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
-    await seed(port, [1,2,3,4,5,6,7].map(id => cloud(id)));
+    await seed(
+        port,
+        [1, 2, 3, 4, 5, 6, 7].map((id) => cloud(id)),
+    );
     sql.exec("UPDATE local_notes SET sync_status='pending' WHERE client_id=2");
-    await drafts.openNoteDraft(port, 1, 'note:3', 'editing', 3, { title: 'draft', content: 'unsaved', categoryId: null }, null);
+    await drafts.openNoteDraft(
+        port,
+        1,
+        "note:3",
+        "editing",
+        3,
+        { title: "draft", content: "unsaved", categoryId: null },
+        null,
+    );
     await port.run(`INSERT INTO upload_queue_tasks(task_id,owner_user_id,task_kind,dedupe_key,title,operation_label,payload_json,status,created_at,updated_at)
         VALUES('queued',1,'note','note:4','note','upload','{}','queued','now','now')`);
-    sql.exec("UPDATE note_sync_mirror SET payload=NULL WHERE server_id=5; UPDATE local_notes SET content='different' WHERE client_id=6; UPDATE local_notes SET owner_user_id=2 WHERE client_id=7");
+    sql.exec(
+        "UPDATE note_sync_mirror SET payload=NULL WHERE server_id=5; UPDATE local_notes SET content='different' WHERE client_id=6; UPDATE local_notes SET owner_user_id=2 WHERE client_id=7",
+    );
     const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
-    assert.deepEqual(candidates.map(row => row.client_id), [1]);
-    const revisions = sql.prepare('SELECT count(*) AS n FROM note_revisions').get().n;
+    assert.deepEqual(
+        candidates.map((row) => row.client_id),
+        [1],
+    );
+    const revisions = sql
+        .prepare("SELECT count(*) AS n FROM note_revisions")
+        .get().n;
     await cacheRepo.evictNoteCache(port, 1, candidates, noOp);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM note_revisions').get().n, revisions);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM local_notes').get().n, 6);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM note_drafts').get().n, 1);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM upload_queue_tasks').get().n, 1);
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM note_revisions").get().n,
+        revisions,
+    );
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM local_notes").get().n,
+        6,
+    );
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM note_drafts").get().n,
+        1,
+    );
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM upload_queue_tasks").get().n,
+        1,
+    );
 });
 
-test('cache deletion rechecks state and rolls back all deletions if the session guard fails', async t => {
+test("cache deletion rechecks state and rolls back all deletions if the session guard fails", async (t) => {
     const { port, sql, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
     await seed(port, [cloud(1), cloud(2)]);
@@ -1212,90 +1368,144 @@ test('cache deletion rechecks state and rolls back all deletions if the session 
     assert.equal(skipped.skipped, 1);
     assert.equal((await notes.getLocalNotes(port, 1))[0].id, 1);
     await seed(port, [cloud(1), cloud(2)]);
-    sql.exec("UPDATE local_notes SET sync_status='synced',sync_operation=NULL WHERE client_id=1");
+    sql.exec(
+        "UPDATE local_notes SET sync_status='synced',sync_operation=NULL WHERE client_id=1",
+    );
     const candidates = await cacheRepo.readNoteCacheCandidates(port, 1);
     let calls = 0;
-    await assert.rejects(cacheRepo.evictNoteCache(port, 1, candidates, () => { if (++calls === 3) throw Error('session changed'); }), /session changed/);
+    await assert.rejects(
+        cacheRepo.evictNoteCache(port, 1, candidates, () => {
+            if (++calls === 3) throw Error("session changed");
+        }),
+        /session changed/,
+    );
     assert.equal((await notes.getLocalNotes(port, 1)).length, 2);
     assert.equal((await repo.readCloudMirror(port, 1)).length, 2);
-    assert.equal(sql.prepare('SELECT count(*) AS n FROM system_preferences').get().n, 0);
+    assert.equal(
+        sql.prepare("SELECT count(*) AS n FROM system_preferences").get().n,
+        0,
+    );
 });
 
-test('cache maintenance aborts an existing download and prevents concurrent synchronization', async t => {
+test("cache maintenance aborts an existing download and prevents concurrent synchronization", async (t) => {
     authorizeCloud(t);
     const { port } = await database(t);
     const local = isolatedCoordinator();
     local.setNoteSyncOwner(1);
-    const started = deferred(), reply = deferred(), held = deferred(), entered = deferred();
+    const started = deferred(),
+        reply = deferred(),
+        held = deferred(),
+        entered = deferred();
     let requestSignal;
-    fakeTransport.snapshot = async (_owner, _query, signal) => { requestSignal = signal; started.resolve(); return reply.promise; };
+    fakeTransport.snapshot = async (_owner, _query, signal) => {
+        requestSignal = signal;
+        started.resolve();
+        return reply.promise;
+    };
     const sync = local.syncNotes(port, 1);
     const rejected = assert.rejects(sync, /取消|账号/);
     await started.promise;
-    const clean = local.withNoteCacheMaintenance(port, 1, async () => { entered.resolve(); await held.promise; });
+    const clean = local.withNoteCacheMaintenance(port, 1, async () => {
+        entered.resolve();
+        await held.promise;
+    });
     assert.equal(requestSignal.aborted, true);
     await assert.rejects(local.syncNotes(port, 1), /缓存正在清理/);
     reply.resolve(snapshot([]));
     await rejected;
     await entered.promise;
-    await assert.rejects(local.withNoteCacheMaintenance(port, 1, noOp), /缓存正在清理/);
-    held.resolve(); await clean;
+    await assert.rejects(
+        local.withNoteCacheMaintenance(port, 1, noOp),
+        /缓存正在清理/,
+    );
+    held.resolve();
+    await clean;
     fakeTransport.snapshot = async () => snapshot([cloud(1)]);
     fakeTransport.changes = async () => changePage();
     assert.equal((await local.syncNotes(port, 1)).notes.length, 1);
 });
 
-const savedFilesPath = require.resolve('../../src/features/notes/data/saved-draft-files.ts');
+const savedFilesPath =
+    require.resolve("../../src/features/notes/data/saved-draft-files.ts");
 const savedCacheDrafts = new Map();
-require.cache[savedFilesPath] = { id: savedFilesPath, filename: savedFilesPath, loaded: true,
-    exports: { savedDraftFiles: { keys: async () => [...savedCacheDrafts.keys()], read: async (_owner, key) => savedCacheDrafts.get(key) ?? null } } };
-const { clearNoteCache } = require('../../src/features/notes/services/note-cache.service.ts');
+require.cache[savedFilesPath] = {
+    id: savedFilesPath,
+    filename: savedFilesPath,
+    loaded: true,
+    exports: {
+        savedDraftFiles: {
+            keys: async () => [...savedCacheDrafts.keys()],
+            read: async (_owner, key) => savedCacheDrafts.get(key) ?? null,
+        },
+    },
+};
+const {
+    clearNoteCache,
+} = require("../../src/features/notes/services/note-cache.service.ts");
 
-test('cache service fails closed offline and performs no database or cloud deletion', async t => {
+test("cache service fails closed offline and performs no database or cloud deletion", async (t) => {
     authorizeCloud(t);
     const { port, sql, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
     await seed(port, [cloud(1)]);
-    const before = sql.prepare('SELECT * FROM local_notes').all();
-    fakeTransport.snapshot = async () => { throw Error('offline'); };
+    const before = sql.prepare("SELECT * FROM local_notes").all();
+    fakeTransport.snapshot = async () => {
+        throw Error("offline");
+    };
     await assert.rejects(clearNoteCache(port, 1, noOp), /offline/);
-    assert.deepEqual(sql.prepare('SELECT * FROM local_notes').all(), before);
+    assert.deepEqual(sql.prepare("SELECT * FROM local_notes").all(), before);
     assert.equal((await repo.readCloudMirror(port, 1)).length, 1);
 });
 
-test('cache service verifies complete cloud snapshot, preserving saved drafts and changed cloud versions', async t => {
+test("cache service verifies complete cloud snapshot, preserving saved drafts and changed cloud versions", async (t) => {
     authorizeCloud(t);
     const { port, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
     await seed(port, [cloud(1), cloud(2), cloud(3)]);
-    savedCacheDrafts.set('new:a', JSON.stringify({ note_id: 2 }));
+    savedCacheDrafts.set("new:a", JSON.stringify({ note_id: 2 }));
     t.after(() => savedCacheDrafts.clear());
     const calls = [];
     fakeTransport.snapshot = async (_owner, query) => {
         calls.push(query);
-        return query.cursor ? snapshot([cloud(2), cloud(3, 2, 'changed')]) : snapshot([cloud(1)], 'next');
+        return query.cursor
+            ? snapshot([cloud(2), cloud(3, 2, "changed")])
+            : snapshot([cloud(1)], "next");
     };
     const result = await clearNoteCache(port, 1, noOp);
-    assert.deepEqual(result.ids, [1]); assert.equal(result.skipped, 2);
-    assert.equal(calls.length, 2); assert.equal(calls[1].snapshot_token, 'snapshot');
-    assert.deepEqual((await notes.getLocalNotes(port, 1)).map(n => n.id).sort(), [2,3]);
+    assert.deepEqual(result.ids, [1]);
+    assert.equal(result.skipped, 2);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].snapshot_token, "snapshot");
+    assert.deepEqual(
+        (await notes.getLocalNotes(port, 1)).map((n) => n.id).sort(),
+        [2, 3],
+    );
 });
 
-test('new draft created while cloud verification is in flight is rechecked before cache eviction', async t => {
+test("new draft created while cloud verification is in flight is rechecked before cache eviction", async (t) => {
     authorizeCloud(t);
     const { port, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
     await seed(port, [cloud(1)]);
     fakeTransport.snapshot = async () => {
-        await drafts.openNoteDraft(port, 1, 'note:1', 'session', 1, { title:'unsaved', content:'keep', categoryId:null }, null);
+        await drafts.openNoteDraft(
+            port,
+            1,
+            "note:1",
+            "session",
+            1,
+            { title: "unsaved", content: "keep", categoryId: null },
+            null,
+        );
         return snapshot([cloud(1)]);
     };
     const result = await clearNoteCache(port, 1, noOp);
-    assert.equal(result.ids.length, 0); assert.equal(result.skipped, 1);
+    assert.equal(result.ids.length, 0);
+    assert.equal(result.skipped, 1);
     assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
 });
 
-test('cache service rejects changed account permission and non-progressing snapshot pagination', async t => {
+test("cache service rejects changed account permission and non-progressing snapshot pagination", async (t) => {
     authorizeCloud(t);
     const { port, migrationPort } = await database(t);
     await createSystemPreferences.up(migrationPort);
@@ -1307,7 +1517,7 @@ test('cache service rejects changed account permission and non-progressing snaps
     await assert.rejects(clearNoteCache(port, 1, noOp));
     assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
     cloudPolicy.setCloudStorageSession(1, true, true);
-    fakeTransport.snapshot = async () => snapshot([cloud(1)], 'same');
+    fakeTransport.snapshot = async () => snapshot([cloud(1)], "same");
     await assert.rejects(clearNoteCache(port, 1, noOp), /重复|分页/);
     assert.equal((await notes.getLocalNotes(port, 1)).length, 1);
 });

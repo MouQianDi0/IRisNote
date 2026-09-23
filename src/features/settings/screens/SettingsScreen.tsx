@@ -3,7 +3,7 @@ import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import Constants from "expo-constants";
 import * as Application from "expo-application";
 import { checkForUpdate } from "@/features/updates/update-store";
@@ -32,8 +32,6 @@ import {
     View,
 } from "react-native";
 import { SettingsOverviewItem } from "../components/SettingsOverviewItem";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
-import { SettingsRow } from "../components/SettingsRow";
 import { ICP_FILING_NUMBER, ICP_QUERY_URL } from "../data/support-links";
 
 const cardStyle = { borderCurve: "continuous" as const };
@@ -42,6 +40,7 @@ const permissionsRoute = "/pages/user/permissions" as Href;
 const cloudStorageRoute = "/pages/user/cloud-storage" as Href;
 const aboutRoute = "/pages/user/about" as Href;
 const helpFeedbackRoute = "/pages/user/help-feedback" as Href;
+const personalInfoRoute = "/pages/user/profile" as Href;
 
 function SettingsGroupTitle({ children }: { children: string }) {
     return (
@@ -114,7 +113,7 @@ export default function SettingsScreen() {
         return (
             <Screen className="bg-app-background">
                 <View className="w-full max-w-[560px] flex-1 self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="设置"
                         backLabel="返回登录与注册"
                         onBack={() => router.replace(welcomeRoute)}
@@ -159,7 +158,7 @@ export default function SettingsScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="设置"
                         backLabel="返回用户中心"
                         onBack={returnToUser}
@@ -224,10 +223,26 @@ export default function SettingsScreen() {
                         </Pressable>
                     </Card> */}
 
+                    <View className="mt-4">
+                        <SettingsGroupTitle>账户</SettingsGroupTitle>
+                        <Card
+                            className="overflow-hidden rounded-hyper-card"
+                            style={cardStyle}
+                        >
+                            <ListRow
+                                icon={UserRound}
+                                label="个人资料"
+                                description="头像、用户名与账户信息"
+                                onPress={() => router.push(personalInfoRoute)}
+                                last
+                            />
+                        </Card>
+                    </View>
+
                     <Card
                         accessible
                         accessibilityLabel="当前设置概览"
-                        className="mt-4 flex-row rounded-hyper-card px-2 py-3"
+                        className="mt-5 flex-row rounded-hyper-card px-2 py-3"
                         style={cardStyle}
                     >
                         <SettingsOverviewItem
@@ -258,14 +273,14 @@ export default function SettingsScreen() {
                             className="overflow-hidden rounded-hyper-card"
                             style={cardStyle}
                         >
-                            <SettingsRow
+                            <ListRow
                                 icon={Palette}
                                 label="外观与主题"
                                 value="浅色"
                                 description="深色模式与跟随系统尚未接入"
                                 disabled
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={BookOpenText}
                                 label="编辑与阅读"
                                 value="规划中"
@@ -282,20 +297,20 @@ export default function SettingsScreen() {
                             className="overflow-hidden rounded-hyper-card"
                             style={cardStyle}
                         >
-                            <SettingsRow
+                            <ListRow
                                 icon={Smartphone}
                                 label="权限设置"
                                 description="管理云存储、通知、相机与更新安装授权"
                                 onPress={() => router.push(permissionsRoute)}
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={Cloud}
                                 label="同步与备份"
                                 value={cloudStatus}
                                 description="统一管理笔记、待办等内容的云存储授权"
                                 onPress={() => router.push(cloudStorageRoute)}
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={Database}
                                 label="数据与存储"
                                 description="查看本地占用，选择清理缓存与临时文件"
@@ -305,7 +320,7 @@ export default function SettingsScreen() {
                                     )
                                 }
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={ShieldCheck}
                                 label="隐私与安全"
                                 value="规划中"
@@ -322,25 +337,25 @@ export default function SettingsScreen() {
                             className="overflow-hidden rounded-hyper-card"
                             style={cardStyle}
                         >
-                            <SettingsRow
+                            <ListRow
                                 icon={CircleHelp}
                                 label="帮助与反馈"
                                 description="反馈邮箱、Discord 频道与使用帮助"
                                 onPress={() => router.push(helpFeedbackRoute)}
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={Info}
                                 label="关于 IRisNote"
                                 value={`v${version}`}
                                 description="查看当前版本与历史更新记录"
                                 onPress={() => router.push(aboutRoute)}
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={Cloud}
                                 label="检查更新"
                                 onPress={() => void checkForUpdate(true)}
                             />
-                            <SettingsRow
+                            <ListRow
                                 icon={ExternalLink}
                                 label="ICP备案号"
                                 description={ICP_FILING_NUMBER}

@@ -123,26 +123,28 @@ async function restored(
 ) {
     const finish = beginNoteCloudWrite();
     try {
-    await db.transaction(async (tx) => {
+        await db.transaction(async (tx) => {
+            check();
+            const current = await readTrash(tx, owner, row.client_id);
+            if (
+                !current ||
+                current.version !== row.version ||
+                current.deleted_at !== row.deleted_at
+            )
+                throw new Error("垃圾桶状态已变化，请刷新重试");
+            await restoreArchivedNote(tx, owner, current, cloud);
+            check();
+        });
         check();
-        const current = await readTrash(tx, owner, row.client_id);
-        if (
-            !current ||
-            current.version !== row.version ||
-            current.deleted_at !== row.deleted_at
-        )
-            throw new Error("垃圾桶状态已变化，请刷新重试");
-        await restoreArchivedNote(tx, owner, current, cloud);
-        check();
-    });
-    check();
-    const note = await getLocalNoteByClientId(db, owner, row.client_id);
-    if (note) {
-        check();
-        setCachedNote(note);
-        notifyNotesChanged({ type: "upsert", note });
+        const note = await getLocalNoteByClientId(db, owner, row.client_id);
+        if (note) {
+            check();
+            setCachedNote(note);
+            notifyNotesChanged({ type: "upsert", note });
+        }
+    } finally {
+        finish();
     }
-    } finally { finish(); }
 }
 async function rememberDeletion(
     db: ApplicationDatabase,
@@ -153,23 +155,28 @@ async function rememberDeletion(
 ) {
     let finish: (() => void) | undefined;
     try {
-    const clientId = await db.transaction(async (tx) => {
+        const clientId = await db.transaction(async (tx) => {
+            check();
+            const active = await tx.getFirst<{ client_id: number }>(
+                "SELECT client_id FROM local_notes WHERE owner_user_id=? AND server_id=?",
+                [owner, receipt.id],
+            );
+            if (active) finish = beginNoteCloudWrite();
+            await recordRemoteDeletion(tx, owner, receipt, cloud);
+            const row = await tx.getFirst<TrashRow>(
+                "SELECT * FROM note_trash WHERE owner_user_id=? AND server_id=?",
+                [owner, receipt.id],
+            );
+            if (!row) return null; // A delayed response for an already purged identity carries no new content.
+            const archived = await archiveLocalNote(tx, owner, row.client_id);
+            check();
+            return archived && active ? row.client_id : null;
+        });
         check();
-        const active = await tx.getFirst<{ client_id: number }>("SELECT client_id FROM local_notes WHERE owner_user_id=? AND server_id=?", [owner, receipt.id]);
-        if (active) finish = beginNoteCloudWrite();
-        await recordRemoteDeletion(tx, owner, receipt, cloud);
-        const row = await tx.getFirst<TrashRow>(
-            "SELECT * FROM note_trash WHERE owner_user_id=? AND server_id=?",
-            [owner, receipt.id],
-        );
-        if (!row) throw new Error("未能保存删除回执");
-        const archived = await archiveLocalNote(tx, owner, row.client_id);
-        check();
-        return archived && active ? row.client_id : null;
-    });
-    check();
-    if (clientId !== null) removed(owner, clientId);
-    } finally { finish?.(); }
+        if (clientId !== null) removed(owner, clientId);
+    } finally {
+        finish?.();
+    }
 }
 async function rememberError(
     db: ApplicationDatabase,
@@ -198,6 +205,12 @@ async function acceptState(
     check: () => void,
 ) {
     check();
+    const identity =
+        state.state === "active" || state.state === "deleted"
+            ? state.note
+            : state.deletion;
+    if (row.cloud_id !== null && identity.client_id !== row.cloud_id)
+        throw new Error("垃圾桶笔记身份已变化，已保留本地内容");
     if (state.state === "active") {
         await restored(db, owner, row, check, state.note);
     } else if (state.state === "deleted") {
@@ -325,9 +338,18 @@ export function restoreTrashedNote(
             const status = await notesTrashApi.status(owner, row.server_id!);
             checkCloud();
             if (status.state === "active") {
-                if (row.state === "deleting" && status.note.version === row.version && status.note.client_id === row.cloud_id) {
+                if (
+                    row.state === "deleting" &&
+                    status.note.version === row.version &&
+                    status.note.client_id === row.cloud_id
+                ) {
                     // Fence a timed-out delete that could otherwise commit after this status read.
-                    const receipt = await notesTrashApi.remove(owner, row.server_id!, row.cloud_id, row.version);
+                    const receipt = await notesTrashApi.remove(
+                        owner,
+                        row.server_id!,
+                        row.cloud_id,
+                        row.version,
+                    );
                     checkCloud();
                     const cloud = await notesTrashApi.restore(owner, receipt);
                     checkCloud();

@@ -3,7 +3,7 @@ import { ChevronRight, type LucideIcon } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
-type SettingsRowProps = {
+export type ListRowProps = {
     icon: LucideIcon;
     label: string;
     value?: string;
@@ -15,7 +15,7 @@ type SettingsRowProps = {
 };
 
 /** 说明行保持只读；未开放项目禁用，只有可跳转项目显示箭头。 */
-export function SettingsRow({
+export function ListRow({
     icon: Icon,
     label,
     value,
@@ -24,7 +24,7 @@ export function SettingsRow({
     last = false,
     onPress,
     trailing,
-}: SettingsRowProps) {
+}: ListRowProps) {
     const content = (
         <>
             <Icon

@@ -1,5 +1,7 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withNativewind } = require("nativewind/metro");
+const path = require("node:path");
+const { resolveBrandImage } = require("./scripts/brand-image.cjs");
 
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
@@ -21,4 +23,28 @@ config.server.enhanceMiddleware = (middleware) => {
     };
 };
 
-module.exports = withNativewind(config);
+const nativewindConfig = withNativewind(config);
+const previousResolveRequest = nativewindConfig.resolver.resolveRequest;
+const brandImagePath = resolveBrandImage(
+    __dirname,
+    process.env.EXPO_PUBLIC_IMAGE,
+    nativewindConfig.resolver.assetExts,
+);
+const brandImageImporter = path.join(
+    __dirname,
+    "src/shared/ui/AppBrandIcon/AppBrandIcon.tsx",
+);
+
+nativewindConfig.resolver.resolveRequest = (context, moduleName, platform) => {
+    if (
+        moduleName === "./brand-image" &&
+        path.normalize(context.originModulePath) === brandImageImporter
+    ) {
+        return context.resolveRequest(context, brandImagePath, platform);
+    }
+    return previousResolveRequest
+        ? previousResolveRequest(context, moduleName, platform)
+        : context.resolveRequest(context, moduleName, platform);
+};
+
+module.exports = nativewindConfig;

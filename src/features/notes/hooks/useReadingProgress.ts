@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo } from "react";
 import { AppState, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { banner, captureNotificationSession } from "@/core/notifications";
-import { readingProgressStore } from "../data/note-reading-progress";
+import {
+    notifyReadingProgressChanged,
+    readingProgressStore,
+} from "../data/note-reading-progress";
 import { ReadingSession } from "../reading/reading-session";
 import type { ReadingPosition } from "../reading/reading-position";
 
@@ -76,6 +79,7 @@ export function useReadingProgress({
                         serverId,
                         value,
                     );
+                    notifyReadingProgressChanged(ownerId);
                     resolveFailure();
                     return result;
                 } catch (error) {

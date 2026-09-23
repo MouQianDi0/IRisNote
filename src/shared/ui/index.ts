@@ -1,4 +1,5 @@
 export { AppButton, type AppButtonProps } from "./AppButton";
+export { AppBrandIcon } from "./AppBrandIcon";
 export { AppText, type AppTextProps } from "./AppText";
 export { BackButton, type BackButtonProps } from "./BackButton";
 export { Button } from "./Button";
@@ -22,7 +23,9 @@ export {
     type InlineHintSize,
     type InlineHintTone,
 } from "./InlineHint";
+export { ListRow, type ListRowProps } from "./ListRow";
 export { ModalPanel } from "./ModalPanel";
+export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { AnchoredPopover, type AnchoredPopoverProps } from "./Popover";
 export { Screen } from "./Screen";
 export { StatusToggle, type StatusToggleProps } from "./StatusToggle";

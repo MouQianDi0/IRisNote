@@ -17,7 +17,10 @@ import {
     deleteNoteDraft,
     type DraftCommit,
 } from "@/features/notes/data/note-draft.repository";
-import { getLocalNoteByClientId } from "@/features/notes/data/note-local.repository";
+import {
+    getLocalNoteByClientId,
+    getLocalNotes,
+} from "@/features/notes/data/note-local.repository";
 import { readCloudMirror } from "@/features/notes/data/note-sync.repository";
 import {
     uploadNoteNow,
@@ -220,9 +223,25 @@ async function executeCategoryTask(
                 await import("@/features/notes/services/note-sync-coordinator");
             await syncNotes(database, task.ownerUserId);
             checkPermission();
+            const { trashNote } =
+                await import("@/features/notes/services/note-trash.service");
+            const localNotes = (
+                await getLocalNotes(database, task.ownerUserId)
+            ).filter((note) => note.category_id === categoryId);
+            for (const note of localNotes) {
+                checkPermission();
+                await trashNote(database, task.ownerUserId, note.id);
+            }
+            const archivedServerIds = new Set(
+                localNotes.map((note) => note.server_id),
+            );
             const notes = (
                 await readCloudMirror(database, task.ownerUserId)
-            ).filter((note) => note.category_id === categoryId);
+            ).filter(
+                (note) =>
+                    note.category_id === categoryId &&
+                    !archivedServerIds.has(note.id),
+            );
             for (let index = 0; index < notes.length; index += 3) {
                 checkPermission();
                 await Promise.all(
@@ -233,6 +252,15 @@ async function executeCategoryTask(
             }
             checkPermission();
             await deleteCategory(categoryId);
+            checkPermission();
+            await database.run(
+                `INSERT INTO system_preferences(key,value,updated_at) VALUES(?,'true',?)
+                ON CONFLICT(key) DO UPDATE SET value='true',updated_at=excluded.updated_at`,
+                [
+                    `deleted-category:${task.ownerUserId}:${categoryId}`,
+                    new Date().toISOString(),
+                ],
+            );
         }
         // A successful create must be acknowledged even if consent changes immediately
         // afterwards; replaying a non-idempotent create would duplicate the category.
