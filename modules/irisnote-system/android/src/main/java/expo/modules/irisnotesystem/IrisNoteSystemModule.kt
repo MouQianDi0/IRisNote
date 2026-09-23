@@ -1,9 +1,7 @@
 package expo.modules.irisnotesystem
 
 import android.app.AlarmManager
-import android.app.Notification
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -12,6 +10,10 @@ import android.os.Environment
 import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.irisnotesystem.live.LiveTodoForegroundService
+import expo.modules.irisnotesystem.live.LiveTodoNotifier
+import expo.modules.irisnotesystem.live.LiveTodoScheduler
+import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
 import java.io.File
 
 class IrisNoteSystemModule : Module() {
@@ -97,83 +99,24 @@ class IrisNoteSystemModule : Module() {
   private fun notificationManager() =
     context().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-  private fun appLaunchPendingIntent(): PendingIntent {
-    val context = context()
-    val intent = requireNotNull(
-      context.packageManager.getLaunchIntentForPackage(context.packageName)
-    ) { "无法创建通知点击意图" }
-    return PendingIntent.getActivity(
-      context,
-      0,
-      intent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-    )
-  }
-
-  /**
-   * Android 16 ProgressStyle 进度式通知：同一通知 ID 原位更新（setOnlyAlertOnce 防重复打扰）。
-   * promoted=true 时请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶），
-   * 仅用于"用户主动发起、正在进行"的任务（倒计时演示、待办进行中卡片）；
-   * 普通提醒/日历事件类继续走非提升通道（政策禁区，见 docs/UI/通知渠道适配.md §2.4）。
-   * API 36.0 基础 SDK 无嵌套 Progress 类与 setRequestPromotedOngoing 符号（均为 36.1/QPR
-   * 引入）：进度用 setProgress(0-100 百分比) 与 setProgressIndeterminate 表达；
-   * 提升式经 requestPromotedOngoingCompat 反射请求，36.0 设备静默退化为普通进度卡片。
-   */
-  private fun buildProgressNotification(
-    channelId: String,
-    title: String,
-    text: String?,
-    progress: Int,
-    max: Int,
-    indeterminate: Boolean,
-    ongoing: Boolean,
-    promoted: Boolean,
-  ): Notification {
-    val context = context()
-    val style = Notification.ProgressStyle()
-    if (indeterminate) {
-      style.setProgressIndeterminate(true)
-    } else {
-      val percent =
-        if (max <= 0) 0
-        else ((progress.toLong() * 100) / max).toInt().coerceIn(0, 100)
-      style.setProgress(percent)
-    }
-    val smallIcon =
-      context.applicationInfo.icon.takeIf { it != 0 }
-        ?: android.R.drawable.sym_def_app_icon
-    val builder = Notification.Builder(context, channelId)
-      .setSmallIcon(smallIcon)
-      .setContentTitle(title)
-      .setStyle(style)
-      .setCategory(Notification.CATEGORY_PROGRESS)
-      .setOnlyAlertOnce(true)
-      .setAutoCancel(false)
-      // 提升式硬性要求 setOngoing(true)（通知渠道适配 §2.4），promoted 时强制进行中。
-      .setOngoing(ongoing || promoted)
-      .setContentIntent(appLaunchPendingIntent())
-    if (!text.isNullOrBlank()) builder.setContentText(text)
-    if (promoted) builder.requestPromotedOngoingCompat()
-    return builder.build()
-  }
-
-  /**
-   * setRequestPromotedOngoing(true) 属 API 36.1（QPR）框架符号，本工程 compileSdk 36.0
-   * 无该符号——反射按方法名请求提升式展示；方法不存在（36.0 设备/旧框架）时静默返回
-   * 原 builder，通知退化为普通进度卡片。用户在系统设置关闭"实时更新"时系统自行忽略
-   * 提升请求（canPostPromotedNotifications 总开关），无需应用侧预判。
-   */
-  private fun Notification.Builder.requestPromotedOngoingCompat(): Notification.Builder {
-    return try {
-      val method = Notification.Builder::class.java.getMethod(
-        "setRequestPromotedOngoing",
-        Boolean::class.javaPrimitiveType,
+  /** 时间线快照入参解析（scheduleLiveTodoCards / updateLiveTodoCards 共用）。 */
+  private fun parseLiveTodoCards(input: List<Map<String, Any?>>): List<LiveTodoTimelineCard> =
+    input.map { card ->
+      val id = (card["id"] as? Number)?.toInt()
+        ?: throw IllegalArgumentException("缺少 id")
+      LiveTodoTimelineCard(
+        id = id,
+        channelId = card["channelId"] as? String
+          ?: throw IllegalArgumentException("缺少 channelId"),
+        title = card["title"] as? String
+          ?: throw IllegalArgumentException("缺少 title"),
+        textStarted = card["textStarted"] as? String,
+        startAt = (card["startAt"] as? Number)?.toLong()
+          ?: throw IllegalArgumentException("缺少 startAt"),
+        endAt = (card["endAt"] as? Number)?.toLong(),
+        promoted = card["promoted"] == true,
       )
-      method.invoke(this, true) as Notification.Builder
-    } catch (_: Throwable) {
-      this
     }
-  }
 
   override fun definition() = ModuleDefinition {
     Name("IrisNoteSystem")
@@ -200,6 +143,8 @@ class IrisNoteSystemModule : Module() {
     /**
      * 入参为单对象（Map）：Expo Modules 的 AsyncFunction Lambda 最多 8 个具名参数，
      * 动态通知字段已超限（9 个），统一走 Map 收敛签名，后续加字段不再动原生签名。
+     * 构建/差量逻辑收敛在 live.LiveTodoNotifier（闹钟节拍与前台服务共用）；
+     * chronoAt/chronoCountdown 为方案 C：系统 chronometer 秒级计时锚点。
      */
     AsyncFunction("postProgressNotification") { input: Map<String, Any?> ->
       requireProgressNotificationSupport()
@@ -207,7 +152,8 @@ class IrisNoteSystemModule : Module() {
         val value = input[key] as? Number ?: throw IllegalArgumentException("缺少 $key")
         return value.toInt()
       }
-      val notification = buildProgressNotification(
+      val notification = LiveTodoNotifier.buildExplicitNotification(
+        context = context(),
         channelId = input["channelId"] as? String
           ?: throw IllegalArgumentException("缺少 channelId"),
         title = input["title"] as? String
@@ -218,6 +164,8 @@ class IrisNoteSystemModule : Module() {
         indeterminate = input["indeterminate"] == true,
         ongoing = input["ongoing"] == true,
         promoted = input["promoted"] == true,
+        chronoAt = (input["chronoAt"] as? Number)?.toLong(),
+        chronoCountdown = input["chronoCountdown"] == true,
       )
       notificationManager().notify(requireInt("id"), notification)
     }
@@ -238,6 +186,50 @@ class IrisNoteSystemModule : Module() {
           manager.cancel(statusBar.id)
         }
       }
+    }
+
+    /**
+     * 方案 A：退后台移交时间线快照（含今日稍后开始的待办）。原生闹钟节拍
+     * 按墙钟差量刷新，进程被杀后从 SharedPreferences 恢复续算；卡片全部
+     * 结束自动停摆。空数组等价于取消原生接管。
+     */
+    AsyncFunction("scheduleLiveTodoCards") { input: List<Map<String, Any?>> ->
+      requireProgressNotificationSupport()
+      LiveTodoScheduler.schedule(context(), parseLiveTodoCards(input))
+    }
+
+    /**
+     * 方案 B 数据供给：仅持久化时间线快照（不排闹钟）——JS 在前台启动
+     * 前台服务前调用，FGS 每秒从快照重算；JS run() 每轮刷新使编辑/完成
+     * 及时反映。退后台的完整移交仍走 scheduleLiveTodoCards。
+     */
+    AsyncFunction("updateLiveTodoCards") { input: List<Map<String, Any?>> ->
+      requireProgressNotificationSupport()
+      LiveTodoScheduler.persist(context(), parseLiveTodoCards(input))
+    }
+
+    /**
+     * 回前台收回接管权：取消闹钟并清空快照，不动已展示的通知（JS 差量
+     * 刷新按同 ID 原位覆盖对账）。
+     */
+    AsyncFunction("cancelScheduledLiveTodoCards") {
+      requireProgressNotificationSupport()
+      LiveTodoScheduler.reclaim(context())
+    }
+
+    /**
+     * 方案 B：启动前台服务秒级刷新（仅限应用前台调用；Android 12+ 禁止
+     * 后台启动前台服务，后台启动异常由 JS 捕获降级为方案 A 分钟级）。
+     */
+    AsyncFunction("startLiveTodoForegroundService") {
+      requireProgressNotificationSupport()
+      LiveTodoForegroundService.start(context())
+    }
+
+    /** 停止前台服务：FGS 通知撤除，其余卡片由接管方对账。 */
+    AsyncFunction("stopLiveTodoForegroundService") {
+      requireProgressNotificationSupport()
+      LiveTodoForegroundService.stop(context())
     }
   }
 }
