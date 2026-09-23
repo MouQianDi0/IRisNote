@@ -23,7 +23,9 @@ export {
     type InlineHintSize,
     type InlineHintTone,
 } from "./InlineHint";
+export { ListRow, type ListRowProps } from "./ListRow";
 export { ModalPanel } from "./ModalPanel";
+export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { AnchoredPopover, type AnchoredPopoverProps } from "./Popover";
 export { Screen } from "./Screen";
 export { StatusToggle, type StatusToggleProps } from "./StatusToggle";

@@ -1,5 +1,5 @@
 import { colors } from "@/shared/theme";
-import { AppBrandIcon, Card, Screen } from "@/shared/ui";
+import { AppBrandIcon, Card, PageHeader, Screen } from "@/shared/ui";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { router } from "expo-router";
@@ -12,7 +12,6 @@ import {
     Text,
     View,
 } from "react-native";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
 import {
     compareVersions,
     type ReleaseHistoryItem,
@@ -98,7 +97,7 @@ export default function AboutScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="关于 IRisNote"
                         backLabel="返回设置"
                         onBack={() => router.back()}

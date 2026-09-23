@@ -6,7 +6,7 @@ import {
 import { banner } from "@/core/notifications";
 import { systemNotificationsAvailable } from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import NativeSystem from "@modules/irisnote-system";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
@@ -32,8 +32,6 @@ import {
     Text,
     View,
 } from "react-native";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
-import { SettingsRow } from "../components/SettingsRow";
 import { DISCORD_CHANNEL_URL, FEEDBACK_EMAIL } from "../data/support-links";
 
 export default function HelpFeedbackScreen() {
@@ -236,7 +234,7 @@ export default function HelpFeedbackScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="帮助与反馈"
                         backLabel="返回设置"
                         onBack={() => router.back()}
@@ -281,7 +279,7 @@ export default function HelpFeedbackScreen() {
                             <ChevronRight size={18} color={colors.textMuted} />
                         </View>
                         <View className="mx-4 h-px bg-hyper-divider" />
-                        <SettingsRow
+                        <ListRow
                             icon={MessageCircle}
                             label="Discord 频道"
                             value={DISCORD_CHANNEL_URL ? "打开频道" : "待配置"}
@@ -303,7 +301,7 @@ export default function HelpFeedbackScreen() {
                         className="overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={FileDown}
                             label="导出诊断日志"
                             value={exporting ? "正在导出" : "保存并分享"}
@@ -311,7 +309,7 @@ export default function HelpFeedbackScreen() {
                             disabled={exporting}
                             onPress={() => void exportDiagnostics()}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={TestTube2}
                             label="发送测试通知"
                             value={testing ? "正在发送" : "立即发送"}
@@ -334,7 +332,7 @@ export default function HelpFeedbackScreen() {
                         className="overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={CircleHelp}
                             label="帮助内容"
                             value="整理中"

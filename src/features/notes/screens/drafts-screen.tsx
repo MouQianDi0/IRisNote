@@ -1,9 +1,8 @@
 import { useApplicationDatabase } from "@/core/database";
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { SettingsPageHeader } from "@/features/settings/components/SettingsPageHeader";
 import { colors } from "@/shared/theme";
-import { InlineHint, Screen } from "@/shared/ui";
+import { InlineHint, PageHeader, Screen } from "@/shared/ui";
 import { Redirect, router, useIsFocused } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { Check, CloudOff, Inbox, Trash2 } from "lucide-react-native";
@@ -64,7 +63,7 @@ function DraftsContent({ owner }: { owner: number }) {
     return (
         <Screen className="bg-app-background">
             <View style={{ paddingHorizontal: 16 }}>
-                <SettingsPageHeader
+                <PageHeader
                     title="草稿箱"
                     backLabel="返回我的页面"
                     onBack={goBack}

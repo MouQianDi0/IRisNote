@@ -2,17 +2,17 @@ import { colors } from "@/shared/theme";
 import { ArrowLeft } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 
-type SettingsPageHeaderProps = {
+export type PageHeaderProps = {
     title: string;
     backLabel: string;
     onBack: () => void;
 };
 
-export function SettingsPageHeader({
+export function PageHeader({
     title,
     backLabel,
     onBack,
-}: SettingsPageHeaderProps) {
+}: PageHeaderProps) {
     return (
         <View className="h-16 flex-row items-center justify-between">
             <Pressable

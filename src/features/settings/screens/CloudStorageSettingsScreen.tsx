@@ -1,7 +1,7 @@
 import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import { router } from "expo-router";
 import { Cloud, Database } from "lucide-react-native";
 import { useState } from "react";
@@ -13,8 +13,6 @@ import {
     Text,
     View,
 } from "react-native";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
-import { SettingsRow } from "../components/SettingsRow";
 
 const cardStyle = { borderCurve: "continuous" as const, borderRadius: 16 };
 
@@ -72,7 +70,7 @@ export default function CloudStorageSettingsScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="同步与备份"
                         backLabel="返回设置"
                         onBack={() =>
@@ -82,7 +80,7 @@ export default function CloudStorageSettingsScreen() {
                         }
                     />
                     <Card style={cardStyle}>
-                        <SettingsRow
+                        <ListRow
                             icon={Cloud}
                             label="允许云存储"
                             description="统一控制笔记、待办及后续云存储功能"
@@ -196,7 +194,7 @@ export default function CloudStorageSettingsScreen() {
                         )}
                     </Card>
                     <Card style={{ ...cardStyle, marginTop: 20 }}>
-                        <SettingsRow
+                        <ListRow
                             icon={Database}
                             label="同步队列"
                             description="查看保留在本机的待同步内容"

@@ -3,7 +3,7 @@ import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
 import { colors } from "@/shared/theme";
 import { AnchoredPopover, Card, Screen } from "@/shared/ui";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import {
     Archive,
     BookOpenText,
@@ -30,6 +30,7 @@ import {
 const cardStyle = { borderCurve: "continuous" as const };
 
 const OPEN_COOLDOWN_MS = 300;
+const personalInfoRoute = "/pages/user/profile" as Href;
 
 type AvatarSource = "library" | "camera";
 
@@ -357,26 +358,39 @@ export default function ProfileScreen() {
                                     ))}
                                 </View>
                             </AnchoredPopover>
-                            <View className="ml-[14px] min-w-0 flex-1">
-                                <Text
-                                    className="text-text-primary text-xl"
-                                    numberOfLines={1}
-                                >
-                                    {displayName}
-                                </Text>
-                                <Text
-                                    className="mt-1 text-[13px] text-hyper-text-secondary"
-                                    numberOfLines={1}
-                                >
-                                    {user.email}
-                                </Text>
-                                <Text
-                                    className="mt-1 text-[13px] text-hyper-text-secondary"
-                                    numberOfLines={1}
-                                >
-                                    {joinedAt} 加入
-                                </Text>
-                            </View>
+                            <Pressable
+                                accessibilityLabel={`${displayName}，查看个人资料`}
+                                accessibilityRole="button"
+                                className="-my-4 -mr-4 min-w-0 flex-1 flex-row items-center self-stretch py-4 pl-[14px] pr-4 active:opacity-[0.85]"
+                                onPress={() => router.push(personalInfoRoute)}
+                            >
+                                <View className="min-w-0 flex-1">
+                                    <Text
+                                        className="text-text-primary text-xl"
+                                        numberOfLines={1}
+                                    >
+                                        {displayName}
+                                    </Text>
+                                    <Text
+                                        className="mt-1 text-[13px] text-hyper-text-secondary"
+                                        numberOfLines={1}
+                                    >
+                                        {user.email}
+                                    </Text>
+                                    <Text
+                                        className="mt-1 text-[13px] text-hyper-text-secondary"
+                                        numberOfLines={1}
+                                    >
+                                        {joinedAt} 加入
+                                    </Text>
+                                </View>
+                                <View className="ml-2">
+                                    <ChevronRight
+                                        size={18}
+                                        color={colors.textMuted}
+                                    />
+                                </View>
+                            </Pressable>
                         </Card>
 
                         <Card

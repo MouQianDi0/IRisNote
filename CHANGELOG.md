@@ -1,3 +1,21 @@
+## 2026-09-23 23:01:26 | 新增功能：个人资料页入口与只读总览（A1）
+
+- 变更概述：用户确认 A1 计划与文字预览，并确认「我的」首卡头像在 A3 前保留原来源菜单（过渡方案）。新增个人资料页 P01，可从设置「账户 → 个人资料」及「我的」账户卡文字区进入；页面只读展示已有资料，未接入能力显示「规划中」。
+- 修改文件：src/shared/ui/PageHeader/PageHeader.tsx（由 settings/components/SettingsPageHeader.tsx 移入并更名）、src/shared/ui/PageHeader/index.ts（新增）、src/shared/ui/ListRow/ListRow.tsx（由 settings/components/SettingsRow.tsx 移入并更名）、src/shared/ui/ListRow/index.ts（新增）、src/shared/ui/index.ts、src/features/settings/screens/{SettingsScreen,AboutScreen,CloudStorageSettingsScreen,DataStorageSettingsScreen,HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/notes/screens/{TrashScreen,drafts-screen,note-collection-screen}.tsx、src/features/profile/screens/PersonalInfoScreen.tsx（新增）、src/features/profile/screens/ProfileScreen.tsx、src/app/pages/user/profile/index.tsx（新增）、src/app/_layout.tsx、tests/storage/storage.test.cjs、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 页头与列表行提升为公共 `PageHeader`/`ListRow`，外观与接口不变，9 个页面改为从 `@/shared/ui` 引用，存储测试的模块模拟同步调整；② 新增 `/pages/user/profile` 路由（无原生标题栏）；③ P01：64dp 顶栏、头像卡（64dp 头像、昵称 20sp、脱敏邮箱）、「基本资料」「账户与安全」「账户信息」三组；用户名、邮箱、用户 ID、注册时间只读展示，用户 ID 支持复制并提示横幅，性别/地区/简介/修改密码显示「规划中」，平台绑定显示「敬请期待」并禁用；注册时间无效时显示“暂不可用”；返回优先回到来源页，无历史回到用户中心；底部留白为底部安全区 + 32dp；④ 设置页标题下新增「账户」分组，状态概览下移 20dp；⑤「我的」账户卡文字区与新增 18dp 箭头作为独立按钮进入 P01（与头像按钮并列不嵌套），头像仍打开原来源菜单。
+- 验证：修改前后 `npm run typecheck` 均为 44 个既有错误（本机缺 expo-blur/expo-application/expo-haptics/expo-intent-launcher 等依赖及 typed routes 过期），无新增；`npm test` 修改前后均 431/450 通过，17 项失败完全相同，与本次无关；`npm run lint` 因本机 eslint 依赖损坏（fileEntryCache.create）无法运行，改用 `npx eslint --no-cache` 检查改动文件，仅有 4 个既有模块缺失错误；`theme:check` 通过；`git diff --check` 通过。因此 `npm run check` 未通过（环境原因）。未进行浏览器或真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 22:51:58 | 优化代码：个人资料功能分阶段方案与视觉规范（A0，仅文档）
+
+- 变更概述：用户确认个人资料功能分阶段实施：A 类纯客户端先行（A0 规范、A1 入口与只读总览、A2 平台占位、A3 头像迁移），B 类前后端一并实施（B0 后端核实、B1 普通资料、B2 地区、B3 邮箱与密码），C 集成验收；确认尺寸统一到现有组件、公共页头与列表行先提升到 `shared/ui`。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.14，新增「个人资料」节（入口、页面壳、头像卡、分组与资料行、未开放项「规划中」约定、编辑页、验证码与密码、弹层、头像菜单、状态），落地状态表新增对应行；② 规划文档升至 0.2：输入框/主按钮/弹窗按钮统一 48dp、弹窗按钮间距 10dp、底部留白安全区 + 32dp、头像 64dp，旧数值标注作废；文件清单改为提升 SettingsPageHeader/SettingsRow，后端改由本方在 B 类实施；第 9 节替换为 A/B/C 阶段表、更新任务勾选、执行记录与粗估人日（11–17.5）。
+- 验证：修改前 `npm run typecheck` 为 44 个既有错误（本机 node_modules 缺少 expo-blur、expo-application、expo-haptics、expo-intent-launcher 等包及 typed routes 过期），本次仅改文档，未改代码，错误与本次无关；未运行 `npm run check`、构建或真机验收。
+
+---
+
 ## 2026-09-23 18:41:40 | 修复问题：应用图标支持环境变量指定任意项目内图片
 
 - 变更概述：用户确认修订方案与界面文字预览。首页和关于页继续共用 `EXPO_PUBLIC_IMAGE`；修正此前只支持预登记本地图片文件名的限制，今后更换项目内图片只需修改环境变量并重新打包。
