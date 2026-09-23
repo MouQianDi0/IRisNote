@@ -1,3 +1,13 @@
+## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
+
+- 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
+- 修改文件：scripts/build-region-dictionary.mjs（新增）、src/features/profile/data/{regions.json,region-index.ts,REGIONS-LICENSE.md}（新增）、src/features/profile/utils/region-dictionary.ts（新增）、src/features/profile/hooks/useUnsavedLeaveGuard.ts（新增）、src/features/profile/screens/SelectRegionScreen.tsx（新增）、src/app/pages/user/profile/region.tsx（新增）、src/app/_layout.tsx、src/features/profile/components/ProfileTextEditor.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/profile.types.ts、src/shared/types/user.ts、src/features/settings/screens/AboutScreen.tsx、tests/profile/region-dictionary.test.cjs（新增）、docs/第三方数据许可.md（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 生成脚本固定 dr5hn `v3.2-export.7` 并校验 SHA-256，每国只取无上级条目，剔除军邮区、海外属地与地理单元；台湾、香港、澳门不作为第一级，归入中国省级并显示为中国台湾/中国香港/中国澳门；修正“汉城”“阿穆尔河”、印尼各巴布亚省误译为“巴布亚新几内亚”等错误，并以人工对照区分 18 组同名条目；出现未处理的重名、港澳台规则被破坏或名称超长时生成失败；② 字典 247 国家、3975 省州、约 159KB，首次使用时建立索引，JSON 行格式在运行时校验；③ P04：搜索（中英文名/编码，最多 50 条）、面包屑、分级列表、“不设置”与“选择某国不再细分”、失效编码提示、固定底栏“已选”与保存，保存携带编码、名称快照与字典版本；④ 未保存离开保护抽为 `useUnsavedLeaveGuard`，P02/P03 改用；⑤ 关于页“数据来源”只读行满足 ODbL 署名；⑥ 视觉规范升至 1.18。
+- 协作说明：本阶段期间另一会话完成了取消性别“自定义”及头像缓存 `File.move()` 后误删缓存的修复（见其各自记录），本条不包含这些改动。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试除既有 2 项失败（发布归档本机路径过长、待办迁移版本）外全部通过，新增 6 项地区测试通过；`git diff --check` 通过。未做浏览器或真机验收；后端迁移 011 未执行；未提交 Git。
+
+---
+
 ## 2026-09-24 02:29:22 | 优化代码：性别取消「自定义」，只保留不设置/男/女（客户端）
 
 - 变更概述：用户认为“自定义”选项与 `gender_custom` 字段多余，确认取消，并确认修改计划与性别弹窗文字预览。后端迁移 010 未在任何数据库执行，直接修订（见 irisapi CHANGELOG 同时间记录）。
