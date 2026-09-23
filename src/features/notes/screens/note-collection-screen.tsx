@@ -4,9 +4,8 @@ import { getCloudStorageSnapshot } from "@/core/cloud-storage/cloud-storage-poli
 import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { captureNotificationSession } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { SettingsPageHeader } from "@/features/settings/components/SettingsPageHeader";
 import { colors } from "@/shared/theme";
-import { Screen } from "@/shared/ui";
+import { PageHeader, Screen } from "@/shared/ui";
 import { Redirect, router, useFocusEffect } from "expo-router";
 import { FileText, Pin, Star } from "lucide-react-native";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -161,7 +160,7 @@ function NoteCollection({
     return (
         <Screen className="bg-app-background">
             <View style={{ paddingHorizontal: 16 }}>
-                <SettingsPageHeader
+                <PageHeader
                     title={title}
                     backLabel="返回我的页面"
                     onBack={() => {

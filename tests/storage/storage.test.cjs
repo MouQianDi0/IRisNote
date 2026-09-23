@@ -184,9 +184,8 @@ function screenHarness() {
     '@/features/notes/data/note-cache.repository':{readNoteCacheCandidates:async()=>[{bytes:300}]},
     '@/features/notes/services/note-cache.service':{clearNoteCache:async(_db,owner,check)=>{check();notesCalled.push(owner);return {ids:[1],skipped:0};}},
     '@/shared/theme':{colors:{primary:'green',surface:'white',appBackground:'gray'}},
-    '@/shared/ui':{Card:'Card',Screen:'Screen'},
+    '@/shared/ui':{Card:'Card',PageHeader:'Header',Screen:'Screen'},
     '@/shared/ui/Overlay/app-modal':{AppModal:'AppModal'},
-    '../components/SettingsPageHeader':{SettingsPageHeader:'Header'},
   }).default;
   function render() { cursor=0;tree=Screen();while(effects.length) effects.shift()();return tree; }
   function all(node) { if (!node || typeof node!=='object') return [];if(Array.isArray(node))return node.flatMap(all);return [node,...all(node.props?.children)]; }

@@ -1,3 +1,48 @@
+## 2026-09-23 23:59:13 | 新增功能：头像更换迁移至个人资料页（A3）
+
+- 变更概述：用户确认 A3 问题分析与文字预览，确认待确认预览点遮罩不关闭。头像更换从「我的」账户卡迁移到个人资料页：先选图并预览，确认后才上传；以服务端上传回执直接更新共享资料，修复资料同步失败时仍提示“头像已更新”却显示旧头像的问题；「我的」账户卡整卡进入个人资料页。
+- 修改文件：src/features/profile/hooks/useAvatarUpdate.ts（新增）、src/features/profile/components/AvatarActionsMenu.tsx（新增）、src/features/profile/components/AvatarPreviewDialog.tsx（新增）、src/features/profile/utils/avatar-errors.ts（新增）、tests/profile/avatar-update.test.cjs（新增）、src/features/profile/hooks/useAvatar.ts、src/features/profile/services/avatar-picker.service.ts、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 选图与上传拆分：删除一次采集即上传的 `collectAndUpload*`，新增 `useAvatarUpdate` 管理菜单 → 选图 → 待确认 → 上传中 → 结果；选图前先校验云存储授权，上传前后再次核对授权代际；② `AuthProvider` 新增 `applyAvatar(userId, avatar)`，按本地缓存账号核对后写入回执地址并更新共享用户，账号已变化则不写入；成功后后台刷新资料；回执之后的本地写入异常不再显示为上传失败，避免诱导重复上传；③ `useAvatar` 仅负责展示，`avatarKey` 由头像地址生成，调用方接口不变；④ 头像操作菜单（查看头像/从相册选择/拍照，高度随行数、无头像时查看禁用）与预览弹窗（查看模式通栏关闭；待确认模式重新选择/使用此头像，点遮罩不关闭，上传中锁定遮罩与返回，失败就地红字可重试）；弹层切换间隔 300ms；⑤ 个人资料头像卡整卡打开菜单，头像右下相机角标，右侧「更换头像」与箭头；⑥「我的」账户卡整卡进入个人资料页，移除头像菜单与上传遮罩；⑦ 错误提示抽为纯函数并补充测试（云存储、相册/相机权限、超过 2MB、无法读取、服务端原因、未知错误）；⑧ 视觉规范升至 1.15，同步用户中心与个人资料的头像规格。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 中类型检查、Lint、主题检查通过，测试 450/454 通过，2 项失败（发布归档测试因本机 /tmp 中文长路径 ENAMETOOLONG、待办迁移版本期望 7）在 `0a1bd41` 同样存在，与本次无关；`git diff --check` 通过。相机、系统裁剪、权限与上传未在真机验证，未提交 Git。
+
+---
+
+## 2026-09-23 23:50:12 | 修复问题：页面进入动画期间点击返回导致白屏
+
+- 变更概述：用户确认修复方案（含 Android 物理返回键拦截、兜底 600ms）。页面以 fade_from_bottom 抽屉式进入时，动画未结束即可点击返回，原生栈进入/退出转场冲突，偶发卡白屏。现改为进入动画结束前忽略返回操作，并在一次返回后短暂上锁以防连点。
+- 修改文件：src/shared/hooks/useTransitionLock.ts（新增）、src/shared/ui/PageHeader/PageHeader.tsx、src/shared/ui/BackButton/BackButton.tsx、src/features/sync/screens/SyncQueueScreen.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、CHANGELOG.md。
+- 具体内容：① 新增 `useTransitionLock`：挂载即上锁，监听当前页面 `transitionEnd`（非 closing）解锁；兜底 600ms 自动解锁，覆盖非原生栈页面或事件未触发的情况；锁定期间通过 `BackHandler` 吞掉 Android 物理返回键；返回的包装函数在锁定时忽略点击，触发后重新上锁 600ms 防止重复返回；② 公共 PageHeader（11 个页面）与 BackButton（笔记详情、登录/注册、编辑器）接入后自动生效；③ 同步队列页自绘返回按钮、笔记详情状态页返回按钮单独接入。按钮外观、尺寸、配色不变，锁定期间不置灰。未覆盖 iOS 侧滑返回手势。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run lint`、`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）与上一条记录中的既有失败一致，与本次无关，因此 `npm run check` 未全部通过；`git diff --check` 通过，无冲突标记。未进行真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 23:33:22 | 新增功能：平台绑定占位页（A2）
+
+- 变更概述：用户确认 A2 文字预览，确认说明文案不写绑定用途、增加「绑定方式」分组标题。新增平台绑定占位页 P07，个人资料页「平台绑定」行开放进入；页面只做说明，不发起授权、绑定或任何网络请求，不列出具体平台。
+- 修改文件：src/features/profile/screens/LinkedAccountsScreen.tsx（新增）、src/app/pages/user/profile/platforms.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① P07 使用公共 PageHeader（64dp 顶栏、标题「平台绑定」），顶栏下 16dp 为白色说明卡（16dp 圆角与内边距，Link2 22dp 主色图标与 17sp 标题间隔 12dp，下隔 8dp 为 14sp 蓝灰正文“未来支持将第三方平台账户与 IRisNote 账户关联。目前尚未开放，已有账户仍使用邮箱登录。”）；② 说明卡下 20dp 为「绑定方式」分组（标题 13sp 蓝灰，距卡片 8dp），内含公共 ListRow 禁用行「第三方平台绑定 · 敬请期待」，灰色、无箭头、不可点；③ 加载与未登录状态沿用 P01；返回优先回到来源页，无历史时进入个人资料页；底部留白为底部安全区 + 32dp；④ 个人资料页「平台绑定」行改为可点并显示箭头。
+- 验证：`npm run typecheck` 0 错误（用户已补装依赖，此前 44 个环境错误消失）；`npm run lint` 通过；`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档、待办迁移版本）在不含本次改动的 `3d21e03` 上同样存在，与本次无关，因此 `npm run check` 仍未全部通过；`git diff --check` 通过。未进行浏览器或真机验收，未提交 Git。工作区中 package-lock.json 的 `hasInstallScript` 变更来自依赖补装，未纳入本次改动。
+
+---
+
+## 2026-09-23 23:01:26 | 新增功能：个人资料页入口与只读总览（A1）
+
+- 变更概述：用户确认 A1 计划与文字预览，并确认「我的」首卡头像在 A3 前保留原来源菜单（过渡方案）。新增个人资料页 P01，可从设置「账户 → 个人资料」及「我的」账户卡文字区进入；页面只读展示已有资料，未接入能力显示「规划中」。
+- 修改文件：src/shared/ui/PageHeader/PageHeader.tsx（由 settings/components/SettingsPageHeader.tsx 移入并更名）、src/shared/ui/PageHeader/index.ts（新增）、src/shared/ui/ListRow/ListRow.tsx（由 settings/components/SettingsRow.tsx 移入并更名）、src/shared/ui/ListRow/index.ts（新增）、src/shared/ui/index.ts、src/features/settings/screens/{SettingsScreen,AboutScreen,CloudStorageSettingsScreen,DataStorageSettingsScreen,HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/notes/screens/{TrashScreen,drafts-screen,note-collection-screen}.tsx、src/features/profile/screens/PersonalInfoScreen.tsx（新增）、src/features/profile/screens/ProfileScreen.tsx、src/app/pages/user/profile/index.tsx（新增）、src/app/_layout.tsx、tests/storage/storage.test.cjs、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 页头与列表行提升为公共 `PageHeader`/`ListRow`，外观与接口不变，9 个页面改为从 `@/shared/ui` 引用，存储测试的模块模拟同步调整；② 新增 `/pages/user/profile` 路由（无原生标题栏）；③ P01：64dp 顶栏、头像卡（64dp 头像、昵称 20sp、脱敏邮箱）、「基本资料」「账户与安全」「账户信息」三组；用户名、邮箱、用户 ID、注册时间只读展示，用户 ID 支持复制并提示横幅，性别/地区/简介/修改密码显示「规划中」，平台绑定显示「敬请期待」并禁用；注册时间无效时显示“暂不可用”；返回优先回到来源页，无历史回到用户中心；底部留白为底部安全区 + 32dp；④ 设置页标题下新增「账户」分组，状态概览下移 20dp；⑤「我的」账户卡文字区与新增 18dp 箭头作为独立按钮进入 P01（与头像按钮并列不嵌套），头像仍打开原来源菜单。
+- 验证：修改前后 `npm run typecheck` 均为 44 个既有错误（本机缺 expo-blur/expo-application/expo-haptics/expo-intent-launcher 等依赖及 typed routes 过期），无新增；`npm test` 修改前后均 431/450 通过，17 项失败完全相同，与本次无关；`npm run lint` 因本机 eslint 依赖损坏（fileEntryCache.create）无法运行，改用 `npx eslint --no-cache` 检查改动文件，仅有 4 个既有模块缺失错误；`theme:check` 通过；`git diff --check` 通过。因此 `npm run check` 未通过（环境原因）。未进行浏览器或真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 22:51:58 | 优化代码：个人资料功能分阶段方案与视觉规范（A0，仅文档）
+
+- 变更概述：用户确认个人资料功能分阶段实施：A 类纯客户端先行（A0 规范、A1 入口与只读总览、A2 平台占位、A3 头像迁移），B 类前后端一并实施（B0 后端核实、B1 普通资料、B2 地区、B3 邮箱与密码），C 集成验收；确认尺寸统一到现有组件、公共页头与列表行先提升到 `shared/ui`。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.14，新增「个人资料」节（入口、页面壳、头像卡、分组与资料行、未开放项「规划中」约定、编辑页、验证码与密码、弹层、头像菜单、状态），落地状态表新增对应行；② 规划文档升至 0.2：输入框/主按钮/弹窗按钮统一 48dp、弹窗按钮间距 10dp、底部留白安全区 + 32dp、头像 64dp，旧数值标注作废；文件清单改为提升 SettingsPageHeader/SettingsRow，后端改由本方在 B 类实施；第 9 节替换为 A/B/C 阶段表、更新任务勾选、执行记录与粗估人日（11–17.5）。
+- 验证：修改前 `npm run typecheck` 为 44 个既有错误（本机 node_modules 缺少 expo-blur、expo-application、expo-haptics、expo-intent-launcher 等包及 typed routes 过期），本次仅改文档，未改代码，错误与本次无关；未运行 `npm run check`、构建或真机验收。
+
+---
+
 ## 2026-09-23 18:41:40 | 修复问题：应用图标支持环境变量指定任意项目内图片
 
 - 变更概述：用户确认修订方案与界面文字预览。首页和关于页继续共用 `EXPO_PUBLIC_IMAGE`；修正此前只支持预登记本地图片文件名的限制，今后更换项目内图片只需修改环境变量并重新打包。
