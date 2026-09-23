@@ -1,4 +1,5 @@
 export { AppButton, type AppButtonProps } from "./AppButton";
+export { AppBrandIcon } from "./AppBrandIcon";
 export { AppText, type AppTextProps } from "./AppText";
 export { BackButton, type BackButtonProps } from "./BackButton";
 export { Button } from "./Button";

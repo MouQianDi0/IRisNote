@@ -1,3 +1,30 @@
+## 2026-09-23 18:41:40 | 修复问题：应用图标支持环境变量指定任意项目内图片
+
+- 变更概述：用户确认修订方案与界面文字预览。首页和关于页继续共用 `EXPO_PUBLIC_IMAGE`；修正此前只支持预登记本地图片文件名的限制，今后更换项目内图片只需修改环境变量并重新打包。
+- 修改文件：scripts/brand-image.cjs（新增）、metro.config.js、src/shared/ui/AppBrandIcon/AppBrandIcon.tsx、src/shared/ui/AppBrandIcon/brand-image.ts（新增）、scripts/release/cli.mjs、release.env.example、tests/ui/brand-image.test.cjs（新增）、tests/releases/release-env.test.cjs、CHANGELOG.md。
+- 具体内容：Metro 按环境变量解析并打包项目内图片，兼容原有相对路径，拒绝缺失、项目外及不受支持的资源；共享图标组件移除文件名白名单，并通过可解析的默认图片模块保留类型与 Lint 检查；EAS 发布流程传递图标变量，示例配置注明项目根目录相对路径；补充路径与发布变量检查。
+- 验证：修改前后 `npm run typecheck` 通过；`npm run check` 的类型检查、Lint、主题检查通过，测试 449/450 通过。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），与本次图标修改无关；使用旧白名单外的 `notification-icon.png` 实际完成 Android 资源导出，产物清单包含该图片。未构建 APK，未进行真机显示验收。
+
+---
+
+## 2026-09-23 17:35:31 | 修复问题：首页与关于页应用图标显示异常
+
+- 变更概述：已获用户对修复方案及界面文字预览的确认。首页和“关于 IRisNote”页继续统一使用 `EXPO_PUBLIC_IMAGE` 配置应用图标，修复发布环境中本地相对路径被当作网络地址加载的问题。
+- 修改文件：src/shared/ui/AppBrandIcon/AppBrandIcon.tsx（新增）、src/shared/ui/AppBrandIcon/index.ts（新增）、src/shared/ui/index.ts、src/features/auth/screens/WelcomeScreen.tsx、src/features/settings/screens/AboutScreen.tsx、CHANGELOG.md。
+- 具体内容：新增共享图标组件，将已登记的本地图标路径映射为静态打包资源；远程 HTTP(S) 图标加载时显示内置占位图，加载失败后回退内置图标；两页改用共享组件，保留原有尺寸与布局。
+- 验证：修改前后 `npm run typecheck` 均通过；`npm run check` 中类型检查、Lint、主题检查通过，测试 447/448 通过。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），不涉及本次图标文件；无连接真机，本次未进行真机显示验收。
+
+---
+
+## 2026-09-23 17:34:44 | 修复问题：我的页面按内容变更更新并稳定卡片尺寸
+
+- 变更概述：已获用户对计划、问题分析和界面文字预览的明确确认。我的页面首次进入或账号、云存储状态变化时读取概览；笔记、分类及阅读进度变更时更新，不再因每次获得焦点重启加载。
+- 修改文件：src/features/profile/hooks/useProfileOverview.ts、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/data/note-reading-progress.ts、src/features/notes/hooks/useReadingProgress.ts、CHANGELOG.md。
+- 具体内容：① 概览订阅已有笔记与分类通知，并在阅读进度保存后接收新通知；页面失焦期间累积变更，返回时合并处理，避免并发读取和旧结果覆盖；② 后续笔记与阅读变更只重算本地概览，分类变更才重新获取分类数，初次读取仍沿用现有云同步；③ 后续更新及读取失败时保留已显示数据和图标，不重新展示加载态；④ 概览和继续阅读卡片增加最小高度，切换图标的区域采用固定尺寸占位。
+- 验证：修改前后 `npm run typecheck` 通过；最终代码复跑 `npm run check`，类型检查、Lint、主题检查通过，448 项测试通过 447 项。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），该测试及待办实现不在本次改动范围内；`git diff --check` 通过，修改文件无冲突标记。未构建版本包或进行真机验收。
+
+---
+
 ## 2026-09-23 16:26:01 | 新增功能：IRisNote 0.4.1 正式发布
 
 - 变更概述：已获用户确认（含连续执行 publish 授权）。完成 0.4.1 版本全流程发布：doctor → 预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。

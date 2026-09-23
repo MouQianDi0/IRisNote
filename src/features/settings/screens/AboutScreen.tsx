@@ -1,8 +1,7 @@
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { AppBrandIcon, Card, Screen } from "@/shared/ui";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { useMemo, useState } from "react";
@@ -91,9 +90,6 @@ export default function AboutScreen() {
             return next;
         });
     };
-    const FALLBACK_IMAGE = require("../../../../assets/images/IRisNote_iris.png");
-    const aboutImage = process.env.EXPO_PUBLIC_IMAGE?.trim();
-
     return (
         <Screen className="bg-app-background">
             <ScrollView
@@ -108,14 +104,10 @@ export default function AboutScreen() {
                         onBack={() => router.back()}
                     />
                     <View className="items-center pt-2 pb-6">
-                        <Image
+                        <AppBrandIcon
                             accessibilityLabel="IRisNote 应用图标"
-                            source={
-                                aboutImage
-                                    ? [{ uri: aboutImage }, FALLBACK_IMAGE]
-                                    : FALLBACK_IMAGE
-                            }
-                            style={{ width: 76, height: 76, borderRadius: 18 }}
+                            size={76}
+                            borderRadius={18}
                         />
                         <Text className="text-text-primary mt-3 text-[22px]">
                             IRisNote

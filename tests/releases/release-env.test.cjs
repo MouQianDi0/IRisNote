@@ -59,8 +59,9 @@ test('unreadable release configuration stops instead of silently continuing', t 
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('EAS builds receive the unified cloud-storage flag and retire the Todo-only flag', () => {
+test('EAS builds receive shared public settings and retire the Todo-only flag', () => {
   const source = fs.readFileSync(releaseCli, 'utf8');
   assert.match(source, /"EXPO_PUBLIC_CLOUD_STORAGE_ENABLED"/);
+  assert.match(source, /"EXPO_PUBLIC_IMAGE"/);
   assert.doesNotMatch(source, /"EXPO_PUBLIC_TODO_CLOUD_SYNC"/);
 });

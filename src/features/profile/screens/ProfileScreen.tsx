@@ -96,7 +96,9 @@ function OverviewMetric({
             accessibilityLabel={`${label}，${value ?? "暂不可用"}`}
             className="min-w-0 flex-1 items-center px-1 py-1"
         >
-            <Icon size={22} color={colors.primary} />
+            <View className="h-6 w-6 items-center justify-center">
+                <Icon size={22} color={colors.primary} />
+            </View>
             <View className="mt-2 h-6 items-center justify-center">
                 {loading ? (
                     <ActivityIndicator color={colors.primary} size="small" />
@@ -134,7 +136,9 @@ function ContentRow({
                 className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-surface-muted active:opacity-[0.85]"
                 onPress={onPress}
             >
-                <Icon size={22} color={colors.primary} />
+                <View className="h-6 w-6 items-center justify-center">
+                    <Icon size={22} color={colors.primary} />
+                </View>
                 <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
                     {label}
                 </Text>
@@ -290,7 +294,7 @@ export default function ProfileScreen() {
                 >
                     <View>
                         <Card
-                            className="flex-row items-center rounded-hyper-card p-4"
+                            className="min-h-24 flex-row items-center rounded-hyper-card p-4"
                             style={cardStyle}
                         >
                             <Pressable
@@ -378,7 +382,7 @@ export default function ProfileScreen() {
                         <Card
                             accessible
                             accessibilityLabel="个人内容概览"
-                            className="mt-4 flex-row rounded-hyper-card px-2 py-3"
+                            className="mt-4 min-h-28 flex-row rounded-hyper-card px-2 py-3"
                             style={cardStyle}
                         >
                             <OverviewMetric
@@ -410,7 +414,7 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel={`继续阅读${overview.continueReading.title}，已读${overview.continueReading.percent}%`}
                                 accessibilityRole="button"
-                                className="rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                                className="min-h-[120px] rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
                                 onPress={() =>
                                     router.push({
                                         pathname: "/pages/note/[id]",
@@ -425,10 +429,12 @@ export default function ProfileScreen() {
                                 style={cardStyle}
                             >
                                 <View className="flex-row items-center">
-                                    <BookOpenText
-                                        size={22}
-                                        color={colors.primary}
-                                    />
+                                    <View className="h-[26px] w-[26px] items-center justify-center">
+                                        <BookOpenText
+                                            size={22}
+                                            color={colors.primary}
+                                        />
+                                    </View>
                                     <Text
                                         className="text-text-primary ml-3 min-w-0 flex-1 text-[17px]"
                                         numberOfLines={1}
@@ -456,21 +462,23 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel="还没有阅读记录，去看看笔记"
                                 accessibilityRole="button"
-                                className="items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
+                                className="min-h-[120px] items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
                                 onPress={() => openNotes()}
                                 style={cardStyle}
                             >
-                                {overviewLoading ? (
-                                    <ActivityIndicator
-                                        accessibilityLabel="正在加载阅读记录"
-                                        color={colors.primary}
-                                    />
-                                ) : (
-                                    <BookOpenText
-                                        size={26}
-                                        color={colors.hyperTextSecondary}
-                                    />
-                                )}
+                                <View className="h-[26px] w-[26px] items-center justify-center">
+                                    {overviewLoading ? (
+                                        <ActivityIndicator
+                                            accessibilityLabel="正在加载阅读记录"
+                                            color={colors.primary}
+                                        />
+                                    ) : (
+                                        <BookOpenText
+                                            size={26}
+                                            color={colors.hyperTextSecondary}
+                                        />
+                                    )}
+                                </View>
                                 <Text className="text-text-primary mt-3 text-sm">
                                     {overviewLoading
                                         ? "正在读取阅读记录…"
