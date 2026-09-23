@@ -40,6 +40,8 @@ declare class IrisNoteSystemModule extends NativeModule {
     ongoing: boolean,
   ): Promise<void>;
   cancelProgressNotification(id: number): Promise<void>;
+  /** 按渠道清理本应用当前展示的全部通知（冷启动 reconcile 被杀残留的动态卡片）。 */
+  cancelProgressNotificationsByChannel(channelId: string): Promise<void>;
 }
 
 export default requireOptionalNativeModule<IrisNoteSystemModule>(

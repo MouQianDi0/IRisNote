@@ -93,16 +93,25 @@ function permissionResult(
     };
 }
 
+/**
+ * 进程内记忆上次记录的授权状态：仅翻转时写 application_permission_read，
+ * 避免动态卡片 30 秒节律的重复读取冲刷诊断窗口（其余调用方为低频，不受影响）。
+ */
+let lastRecordedPermissionGranted: boolean | null = null;
+
 export async function applicationNotificationPermission() {
     if (!supportsSystemNotifications)
         return { granted: false, canAskAgain: false };
     const permission = permissionResult(
         await Notifications.getPermissionsAsync(),
     );
-    void recordDiagnostic("notifications", "application_permission_read", {
-        granted: permission.granted,
-        canAskAgain: permission.canAskAgain,
-    });
+    if (permission.granted !== lastRecordedPermissionGranted) {
+        lastRecordedPermissionGranted = permission.granted;
+        void recordDiagnostic("notifications", "application_permission_read", {
+            granted: permission.granted,
+            canAskAgain: permission.canAskAgain,
+        });
+    }
     return permission;
 }
 
@@ -471,6 +480,40 @@ export async function cancelLiveUpdate(id: number): Promise<void> {
         );
         throw cause;
     }
+}
+
+let staleLiveUpdatesCleared: Promise<void> | null = null;
+
+/**
+ * 冷启动清理被杀残留：进程死亡时 JS 无机会撤卡，系统栏可能残留不可滑除的
+ * ongoing 卡片。启动时按 live-todo 渠道整清 + 无条件撤下演示通知；
+ * 进程内只执行一次，失败仅记诊断、不打断启动链路。
+ */
+export function clearStaleLiveUpdates(): Promise<void> {
+    if (!staleLiveUpdatesCleared) {
+        staleLiveUpdatesCleared = (async () => {
+            if (!liveUpdateSupported()) return;
+            const native = NativeSystem;
+            if (!native) return;
+            try {
+                await native.cancelProgressNotificationsByChannel(
+                    LIVE_TODO_CHANNEL,
+                );
+                await native.cancelProgressNotification(
+                    LIVE_TEST_NOTIFICATION_ID,
+                );
+                void recordDiagnostic("live_update", "stale_cleared");
+            } catch (cause) {
+                void recordDiagnostic(
+                    "live_update",
+                    "stale_clear_failed",
+                    { error: diagnosticErrorCategory(cause) },
+                    "error",
+                );
+            }
+        })();
+    }
+    return staleLiveUpdatesCleared;
 }
 
 export const LIVE_DEMO_SECONDS = 120;

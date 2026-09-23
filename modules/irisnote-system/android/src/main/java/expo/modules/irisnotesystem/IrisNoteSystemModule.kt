@@ -194,5 +194,19 @@ class IrisNoteSystemModule : Module() {
     AsyncFunction("cancelProgressNotification") { id: Int ->
       notificationManager().cancel(id)
     }
+
+    /**
+     * 按渠道清理本应用当前展示的全部通知：冷启动 reconcile 被杀残留的动态卡片
+     * （进程死亡时 JS 无机会撤卡，ongoing 卡片用户不可滑除）。
+     * activeNotifications 自 API 23 可用，无需版本门槛；仅遍历本应用通知。
+     */
+    AsyncFunction("cancelProgressNotificationsByChannel") { channelId: String ->
+      val manager = notificationManager()
+      for (statusBar in manager.activeNotifications) {
+        if (statusBar.notification?.channelId == channelId) {
+          manager.cancel(statusBar.id)
+        }
+      }
+    }
   }
 }

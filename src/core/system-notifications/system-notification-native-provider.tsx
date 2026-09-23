@@ -37,6 +37,7 @@ import { SystemNotificationContext } from "./system-notification-context";
 import {
     applicationNotificationPermission,
     cancelLiveUpdate,
+    clearStaleLiveUpdates,
     exactAlarmAccess,
     ensureRuntimeNotification,
     initializeSystemNotifications,
@@ -250,6 +251,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             }
         };
         void refresh();
+        void clearStaleLiveUpdates();
         if (AppState.currentState !== "background")
             void liveCoordinator.start();
         const unsubscribe = todoRepository.subscribe(() => {

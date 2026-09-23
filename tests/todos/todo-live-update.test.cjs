@@ -153,7 +153,7 @@ test("协调器：发卡、按内容去重更新、完成后撤卡、停机清�
     () => at(9, 30),
   );
 
-  await coordinator.refresh();
+  await coordinator.start();
   assert.equal(posts.length, 1);
   assert.equal(posts[0].progress, 30);
 
@@ -187,7 +187,8 @@ test("协调器：发卡、按内容去重更新、完成后撤卡、停机清�
   assert.equal(cancels.length, 3);
 });
 
-test("协调器：能力不可用时 refresh 为空操作", async () => {  const posts = [];
+test("协调器：能力不可用时 refresh 为空操作", async () => {
+  const posts = [];
   const cancels = [];
   const coordinator = new TodoLiveUpdateCoordinator(
     {
@@ -218,12 +219,173 @@ test("协调器：时间推进后同一卡片原位更新而非新发", async ()
     () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
     () => at(9, minute),
   );
-  await coordinator.refresh();
+  await coordinator.start();
   minute = 45;
   await coordinator.refresh();
   assert.equal(posts.length, 2);
   assert.equal(posts[0].notificationId, posts[1].notificationId);
   assert.equal(posts[0].progress, 30);
   assert.equal(posts[1].progress, 45);
+  await coordinator.stop();
+});
+
+test("协调器：去重包含标题，编辑正文后原位更新标题", async () => {
+  const posts = [];
+  let body = "写周报";
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: async () => true,
+      post: async (card) => posts.push({ ...card }),
+      cancel: async () => {},
+    },
+    () => ({
+      ownerKey: "user:one",
+      ready: true,
+      entities: [todo({ endTime: null, body })],
+    }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(posts.length, 1);
+  // 无结束时间的不定进度卡：text/progress/indeterminate 恒定，仅标题变化
+  body = "写月报";
+  await coordinator.refresh();
+  assert.equal(posts.length, 2);
+  assert.equal(posts[0].notificationId, posts[1].notificationId);
+  assert.equal(posts[1].title, "写月报");
+  await coordinator.stop();
+});
+
+test("协调器：stop 使权限读取中的刷新失效，不再发卡", async () => {
+  const posts = [];
+  let resolvePermission;
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: () =>
+        new Promise((resolve) => {
+          resolvePermission = resolve;
+        }),
+      post: async (card) => posts.push({ ...card }),
+      cancel: async () => {},
+    },
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  const started = coordinator.start();
+  await coordinator.stop();
+  resolvePermission(true);
+  await started;
+  assert.equal(posts.length, 0);
+  // stop 之后由仓库订阅触发的 refresh 直接跳过（active 门）
+  await coordinator.refresh();
+  assert.equal(posts.length, 0);
+});
+
+test("协调器：post 在途时 stop，恢复后补撤该卡且不写入状态", async () => {
+  const posts = [];
+  const cancels = [];
+  let hanging = false;
+  let resolveHanging;
+  let entities = [todo()];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: async () => true,
+      post: (card) => {
+        posts.push({ ...card });
+        if (!hanging) return Promise.resolve();
+        return new Promise((resolve) => {
+          resolveHanging = resolve;
+        });
+      },
+      cancel: async (id) => cancels.push(id),
+    },
+    () => ({ ownerKey: "user:one", ready: true, entities }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(posts.length, 1);
+  hanging = true;
+  entities = [todo({ body: "写月报" })];
+  const pending = coordinator.refresh();
+  // 让本轮 run() 越过权限读取、停在 post 的 await 上
+  await new Promise((resolve) => setImmediate(resolve));
+  await coordinator.stop();
+  assert.equal(cancels.length, 1);
+  resolveHanging();
+  await pending;
+  assert.equal(posts.length, 2);
+  assert.equal(cancels.length, 2);
+  assert.deepEqual(cancels, [
+    posts[0].notificationId,
+    posts[0].notificationId,
+  ]);
+});
+
+test("协调器：start 幂等，已启动时再次 start 仅刷新", async () => {
+  const posts = [];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: async () => true,
+      post: async (card) => posts.push({ ...card }),
+      cancel: async () => {},
+    },
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  await coordinator.start();
+  assert.equal(posts.length, 1);
+  await coordinator.stop();
+});
+
+test("协调器：post 失败不落状态，下一轮重试成功", async () => {
+  const posts = [];
+  const cancels = [];
+  let failures = 1;
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: async () => true,
+      post: async (card) => {
+        posts.push({ ...card });
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error("post failed");
+        }
+      },
+      cancel: async (id) => cancels.push(id),
+    },
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(posts.length, 1);
+  await coordinator.refresh();
+  assert.equal(posts.length, 2);
+  assert.equal(posts[1].notificationId, posts[0].notificationId);
+  await coordinator.stop();
+  assert.equal(cancels.length, 1);
+});
+
+test("协调器：权限读取失败时本轮跳过且不抛出", async () => {
+  const posts = [];
+  const coordinator = new TodoLiveUpdateCoordinator(
+    {
+      supported: () => true,
+      permissionGranted: async () => {
+        throw new Error("permission read failed");
+      },
+      post: async (card) => posts.push({ ...card }),
+      cancel: async () => {},
+    },
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(posts.length, 0);
   await coordinator.stop();
 });

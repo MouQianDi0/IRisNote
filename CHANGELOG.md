@@ -1,3 +1,12 @@
+## 2026-09-23 20:45:20 | 修复问题：收口动态通知评审发现的三项边界缺陷与诊断日志放大
+
+- 变更概述：已获用户确认（修复范围 A+B+C+D+测试，Minor 项留待后续）。修复双份独立代码评审一致确认的 Important 问题：① 进程被杀后 ongoing 卡片永久残留且冷启动无对账（JS 无机会撤卡、用户不可滑除、新进程 cards map 为空永不清理）；② stop()/refresh() 双缺口竞态——在途 run() 于 stop 后恢复会重发卡片，且 refresh() 无 active 门导致退后台后仓库订阅仍触发发卡，违反"退后台即撤"边界；③ 无结束时间卡片去重缺 title 比较，编辑正文后标题整段进行期不刷新。另修复诊断日志放大：30 秒节律每轮无条件记 application_permission_read + 每分钟最多 3 条 card_updated，叠加 recordDiagnostic 全文件重写（~60KB/次），前台 1 小时 ≈18MB I/O 且 400 条窗口约 80 分钟被冲掉。
+- 修改文件：src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、tests/todos/todo-live-update.test.cjs、docs/架构指南/系统通知模块负责说明.md、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 协调器竞态守卫：新增 epoch 代数，stop() 递增并解除 pending 引用；run() 在权限读取、逐卡 cancel、逐卡 post 全部 await 恢复点校验代数，过期即中止；post 恢复后发现过期且该卡未被新代认领时补撤；refresh() 增加 active 门（stop 后订阅触发直接跳过）；pending 清理改身份校验防误革新代；② 冷启动清理：原生新增 `cancelProgressNotificationsByChannel`（activeNotifications 按渠道过滤后 cancel，API 23+ 无版本门槛），服务层新增 `clearStaleLiveUpdates()`（进程内一次：live-todo 渠道整清 + 无条件撤演示 ID 7001，失败仅记 stale_clear_failed 诊断），provider mount 时调用；③ 去重比较补 title 与 max（cardEquals，任何用户可见字段变化均原位更新）；④ 诊断降采样：application_permission_read 改进程内翻转记录（仅授权状态变化写一条，低频调用方不受影响），card_updated 按卡 5 分钟采样（card_posted/card_removed 仍全量），采样状态随撤卡清理防泄漏；⑤ 文档同步：负责说明 §4.4 补冷启动清理链路、§2.2/§2.3 契约表新增两行、边界矩阵"退后台/被杀"改为如实表述（退后台 JS 全撤 + epoch 守卫；被杀下次启动清理）、快速索引补"被杀后卡片残留"条目；渠道适配 §6.2 边界同步；⑥ 测试 9→15：新增标题去重、stop 使权限读取中刷新失效、post 在途 stop 补撤、start 幂等、post 失败重试、权限读取失败六项，并修正 190 行格式瑕疵。
+- 验证：改前 typecheck 基线 exit 0（本会话早前实测）；改后 `npm run check` 全绿（typecheck、lint、theme:check、**453/453** 测试含新增 6 项）；Kotlin `:irisnote-system:compileDebugKotlin` 复跑 **BUILD SUCCESSFUL**（含新函数实际编译）。**Android 16 真机验收仍未做**（演示链路、进行中卡片、退后台撤下、冷启动清理、OEM 渲染差异）；评审 Minor 项（ID 注释、能力判定收口、demo in-flight 防护、smallIcon）未处理。
+
+---
+
 ## 2026-09-23 16:58:44 | 新增功能：引入 Android 16 动态通知（ProgressStyle）——设置页 120 秒演示 + 待办进行中进度卡片
 
 - 变更概述：已获用户确认（路径 A：自研 ProgressStyle 进度式动态通知；待办双语义：前台进行中卡片 + 后台到点仍走普通提醒；测试页 120 秒倒计时演示）。本次为 `docs/UI/通知渠道适配.md` §0"动态通知暂不立项"结论的**用户指令反转（2026-09-23）**，范围限定 Android 侧进度式通道：不声明 `POST_PROMOTED_NOTIFICATIONS`、不调用 `setRequestPromotedOngoing`，不进入提升式 Live Updates 政策禁区（政策禁止"普通提醒/即将到来的日历事件"，且完整形态需 API 36.1）；不引入生态 alpha 库 expo-live-updates。
