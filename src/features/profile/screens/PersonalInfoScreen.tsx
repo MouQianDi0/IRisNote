@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
 const userTabRoute = "/(tabs)/user" as Href;
+const linkedAccountsRoute = "/pages/user/profile/platforms" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
 const PLANNED = "规划中";
@@ -235,7 +236,7 @@ export default function PersonalInfoScreen() {
                                 icon={Link2}
                                 label="平台绑定"
                                 value="敬请期待"
-                                disabled
+                                onPress={() => router.push(linkedAccountsRoute)}
                                 last
                             />
                         </Card>
