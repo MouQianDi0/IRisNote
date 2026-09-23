@@ -1,12 +1,15 @@
 import { banner } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
+import { useAvatarUpdate } from "@/features/profile/hooks/useAvatarUpdate";
 import { colors } from "@/shared/theme";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as Clipboard from "expo-clipboard";
 import { router, type Href } from "expo-router";
 import {
     CalendarDays,
+    Camera,
+    ChevronRight,
     Copy,
     FileText,
     Hash,
@@ -17,6 +20,7 @@ import {
     UserRound,
     Users,
 } from "lucide-react-native";
+import { useRef } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -26,6 +30,8 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AvatarActionsMenu } from "../components/AvatarActionsMenu";
+import { AvatarPreviewDialog } from "../components/AvatarPreviewDialog";
 
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
@@ -62,6 +68,8 @@ export function formatJoinedDate(createdAt: string): string | null {
 export default function PersonalInfoScreen() {
     const { user, isLoggedIn, loading } = useAuth();
     const { avatarSource, avatarKey } = useAvatar();
+    const avatarUpdate = useAvatarUpdate();
+    const avatarAnchorRef = useRef<View>(null);
     const insets = useSafeAreaInsets();
 
     const goBack = () => {
@@ -149,22 +157,40 @@ export default function PersonalInfoScreen() {
                         onBack={goBack}
                     />
 
-                    <Card
-                        accessible
-                        accessibilityLabel={`${displayName}，${maskedEmail}`}
-                        className="mt-4 flex-row items-center rounded-hyper-card p-4"
+                    <Pressable
+                        accessibilityLabel={`更换头像，${displayName}，${maskedEmail}`}
+                        accessibilityRole="button"
+                        accessibilityState={{
+                            disabled: avatarUpdate.busy,
+                            expanded: avatarUpdate.menuVisible,
+                        }}
+                        className="mt-4 flex-row items-center rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                        disabled={avatarUpdate.busy}
+                        onPress={avatarUpdate.openMenu}
                         style={cardStyle}
                     >
-                        <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
-                            {avatarSource ? (
-                                <Image
-                                    key={avatarKey}
-                                    className="h-full w-full rounded-full"
-                                    source={avatarSource}
-                                />
-                            ) : (
-                                <UserRound size={30} color={colors.primary} />
-                            )}
+                        <View
+                            ref={avatarAnchorRef}
+                            collapsable={false}
+                            className="h-16 w-16"
+                        >
+                            <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
+                                {avatarSource ? (
+                                    <Image
+                                        key={avatarKey}
+                                        className="h-full w-full rounded-full"
+                                        source={avatarSource}
+                                    />
+                                ) : (
+                                    <UserRound
+                                        size={30}
+                                        color={colors.primary}
+                                    />
+                                )}
+                            </View>
+                            <View className="absolute -bottom-0.5 -right-0.5 h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-white bg-primary">
+                                <Camera size={12} color={colors.surfaceFull} />
+                            </View>
                         </View>
                         <View className="ml-[14px] min-w-0 flex-1">
                             <Text
@@ -180,7 +206,27 @@ export default function PersonalInfoScreen() {
                                 {maskedEmail}
                             </Text>
                         </View>
-                    </Card>
+                        <View className="ml-2 flex-row items-center gap-2">
+                            <Text className="text-[13px] text-hyper-text-secondary">
+                                更换头像
+                            </Text>
+                            <ChevronRight size={18} color={colors.textMuted} />
+                        </View>
+                    </Pressable>
+                    <AvatarActionsMenu
+                        visible={avatarUpdate.menuVisible}
+                        anchorRef={avatarAnchorRef}
+                        hasAvatar={Boolean(avatarSource)}
+                        onClose={avatarUpdate.closeMenu}
+                        onSelect={avatarUpdate.selectAction}
+                    />
+                    <AvatarPreviewDialog
+                        preview={avatarUpdate.preview}
+                        savedSource={avatarSource}
+                        onClose={avatarUpdate.closePreview}
+                        onRechoose={avatarUpdate.rechoose}
+                        onConfirm={() => void avatarUpdate.confirm()}
+                    />
 
                     <View className="mt-5">
                         <GroupTitle>基本资料</GroupTitle>

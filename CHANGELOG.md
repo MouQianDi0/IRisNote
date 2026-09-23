@@ -1,3 +1,12 @@
+## 2026-09-23 23:59:13 | 新增功能：头像更换迁移至个人资料页（A3）
+
+- 变更概述：用户确认 A3 问题分析与文字预览，确认待确认预览点遮罩不关闭。头像更换从「我的」账户卡迁移到个人资料页：先选图并预览，确认后才上传；以服务端上传回执直接更新共享资料，修复资料同步失败时仍提示“头像已更新”却显示旧头像的问题；「我的」账户卡整卡进入个人资料页。
+- 修改文件：src/features/profile/hooks/useAvatarUpdate.ts（新增）、src/features/profile/components/AvatarActionsMenu.tsx（新增）、src/features/profile/components/AvatarPreviewDialog.tsx（新增）、src/features/profile/utils/avatar-errors.ts（新增）、tests/profile/avatar-update.test.cjs（新增）、src/features/profile/hooks/useAvatar.ts、src/features/profile/services/avatar-picker.service.ts、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 选图与上传拆分：删除一次采集即上传的 `collectAndUpload*`，新增 `useAvatarUpdate` 管理菜单 → 选图 → 待确认 → 上传中 → 结果；选图前先校验云存储授权，上传前后再次核对授权代际；② `AuthProvider` 新增 `applyAvatar(userId, avatar)`，按本地缓存账号核对后写入回执地址并更新共享用户，账号已变化则不写入；成功后后台刷新资料；回执之后的本地写入异常不再显示为上传失败，避免诱导重复上传；③ `useAvatar` 仅负责展示，`avatarKey` 由头像地址生成，调用方接口不变；④ 头像操作菜单（查看头像/从相册选择/拍照，高度随行数、无头像时查看禁用）与预览弹窗（查看模式通栏关闭；待确认模式重新选择/使用此头像，点遮罩不关闭，上传中锁定遮罩与返回，失败就地红字可重试）；弹层切换间隔 300ms；⑤ 个人资料头像卡整卡打开菜单，头像右下相机角标，右侧「更换头像」与箭头；⑥「我的」账户卡整卡进入个人资料页，移除头像菜单与上传遮罩；⑦ 错误提示抽为纯函数并补充测试（云存储、相册/相机权限、超过 2MB、无法读取、服务端原因、未知错误）；⑧ 视觉规范升至 1.15，同步用户中心与个人资料的头像规格。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 中类型检查、Lint、主题检查通过，测试 450/454 通过，2 项失败（发布归档测试因本机 /tmp 中文长路径 ENAMETOOLONG、待办迁移版本期望 7）在 `0a1bd41` 同样存在，与本次无关；`git diff --check` 通过。相机、系统裁剪、权限与上传未在真机验证，未提交 Git。
+
+---
+
 ## 2026-09-23 23:50:12 | 修复问题：页面进入动画期间点击返回导致白屏
 
 - 变更概述：用户确认修复方案（含 Android 物理返回键拦截、兜底 600ms）。页面以 fade_from_bottom 抽屉式进入时，动画未结束即可点击返回，原生栈进入/退出转场冲突，偶发卡白屏。现改为进入动画结束前忽略返回操作，并在一次返回后短暂上锁以防连点。
