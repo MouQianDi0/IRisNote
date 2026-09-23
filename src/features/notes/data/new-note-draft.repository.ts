@@ -8,7 +8,7 @@ import {
     type NoteDraftValue,
 } from "./note-draft.repository";
 import { savedDraftFiles } from "./saved-draft-files";
-import { hasNoteTrash, readTrash } from "./note-trash.repository";
+import { hasNoteTrash, isRemovedLocalNote } from "./note-trash.repository";
 
 export type DraftEntry = {
     key: string;
@@ -66,7 +66,7 @@ export async function listNewNoteDrafts(
         if (
             trashEnabled &&
             row.note_id !== null &&
-            (await readTrash(db, owner, row.note_id))
+            (await isRemovedLocalNote(db, owner, row.note_id))
         )
             continue;
         if (row.sequence > 0 && hasDraftContent(draftValue(row)))
@@ -86,7 +86,7 @@ export async function listNewNoteDrafts(
         if (
             trashEnabled &&
             row.note_id !== null &&
-            (await readTrash(db, owner, row.note_id))
+            (await isRemovedLocalNote(db, owner, row.note_id))
         )
             continue;
         if (hasDraftContent(draftValue(row)))
@@ -109,7 +109,7 @@ export async function resumeNewNoteDraft(
     if (
         recovery?.note_id != null &&
         (await hasNoteTrash(db)) &&
-        (await readTrash(db, owner, recovery.note_id))
+        (await isRemovedLocalNote(db, owner, recovery.note_id))
     )
         throw new Error("笔记已移入垃圾桶，请先恢复");
     if (recovery)
@@ -128,7 +128,7 @@ export async function resumeNewNoteDraft(
     if (
         saved.note_id !== null &&
         (await hasNoteTrash(db)) &&
-        (await readTrash(db, owner, saved.note_id))
+        (await isRemovedLocalNote(db, owner, saved.note_id))
     )
         throw new Error("笔记已移入垃圾桶，请先恢复");
     return db.transaction(async (tx) => {

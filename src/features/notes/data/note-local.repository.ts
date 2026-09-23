@@ -28,9 +28,8 @@ import {
 } from "./note-cache.repository";
 import {
     archiveLocalNote,
-    hasNoteTrash,
-    readServerTrash,
-    readTrash,
+    isRemovedLocalNote,
+    removedServerIds,
 } from "./note-trash.repository";
 
 type LocalNoteRow = {
@@ -263,11 +262,8 @@ export async function updatePendingLocalNote(
     draft?: DraftCommit,
 ) {
     return database.transaction(async (transaction) => {
-        if (
-            (await hasNoteTrash(transaction)) &&
-            (await readTrash(transaction, ownerUserId, note.id))
-        ) {
-            throw new Error("笔记已移入垃圾桶，请先恢复后再编辑");
+        if (await isRemovedLocalNote(transaction, ownerUserId, note.id)) {
+            throw new Error("笔记已移入垃圾桶或被清理，请返回列表后再操作");
         }
         const existing = await readNoteByClientId(
             transaction,
@@ -541,12 +537,13 @@ export async function reconcileNotesInTransaction(
 ) {
     let added = 0;
     const serverIds = new Set<number>();
+    const removedIds = await removedServerIds(transaction, ownerUserId);
 
     for (const [index, note] of serverNotes.entries()) {
         const serverId = note.server_id ?? note.id;
         serverIds.add(serverId);
         // A stale full list/conflict response cannot recreate a note archived locally.
-        if (await readServerTrash(transaction, ownerUserId, serverId)) continue;
+        if (removedIds.has(serverId)) continue;
         const existing = await transaction.getFirst<LocalNoteRow>(
             `SELECT ${LOCAL_NOTE_COLUMNS}
                  FROM local_notes

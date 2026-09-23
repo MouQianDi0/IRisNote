@@ -69,6 +69,18 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/notes"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/starred"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/drafts"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/trash"
                         options={{ headerShown: false }}
                     />

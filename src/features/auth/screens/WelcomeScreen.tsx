@@ -1,13 +1,9 @@
 import { colors } from "@/shared/theme";
-import { Image } from "expo-image";
+import { AppBrandIcon } from "@/shared/ui";
 import { Redirect, router } from "expo-router";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { AuthButton } from "../components/AuthButton";
 import { useAuth } from "../hooks/useAuth";
-
-const FALLBACK_IMAGE = require("../../../../assets/images/IRisNote_iris.png");
-// 构建期内联的远程图标地址；未配置或加载失败时回退内置图标。
-const welcomeImage = process.env.EXPO_PUBLIC_IMAGE?.trim();
 
 export default function WelcomeScreen() {
     const { isLoggedIn, loading } = useAuth();
@@ -33,15 +29,9 @@ export default function WelcomeScreen() {
             <View className="flex-1 items-center">
                 <View className="w-full max-w-[528px] flex-1 px-11 pb-6">
                     <View className="min-h-[320px] flex-1 items-center justify-center py-8">
-                        <Image
-                            source={
-                                welcomeImage
-                                    ? [{ uri: welcomeImage }, FALLBACK_IMAGE]
-                                    : FALLBACK_IMAGE
-                            }
+                        <AppBrandIcon
                             accessibilityLabel="IRisNote 图标"
-                            contentFit="contain"
-                            style={{ width: 80, height: 80 }}
+                            size={80}
                         />
                         <Text
                             accessibilityRole="header"
