@@ -60,6 +60,26 @@ export function AuthProvider({
         }
     }, []);
 
+    const applyAvatar = useCallback(
+        async (userId: number, avatar: string) => {
+            const { user: storedUser } = await readStoredSession();
+            if (!storedUser || storedUser.id !== userId) return false;
+            try {
+                await AsyncStorage.setItem(
+                    storageKeys.authUser,
+                    JSON.stringify({ ...storedUser, avatar }),
+                );
+            } catch {
+                // 缓存写入失败时仍以回执更新界面，后续资料同步会再次落盘
+            }
+            setUser((current) =>
+                current?.id === userId ? { ...current, avatar } : current,
+            );
+            return true;
+        },
+        [],
+    );
+
     useEffect(() => {
         let active = true;
         void readStoredSession().then((session) => {
@@ -101,6 +121,7 @@ export function AuthProvider({
                 logout,
                 refresh: load,
                 syncProfile,
+                applyAvatar,
             }}
         >
             {children}

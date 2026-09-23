@@ -54,4 +54,6 @@ export type AuthState = {
     logout: () => Promise<void>;
     refresh: () => Promise<void>;
     syncProfile: () => Promise<void>;
+    /** 以服务端上传回执更新当前账号头像；账号已变化时不写入并返回 false。 */
+    applyAvatar: (userId: number, avatar: string) => Promise<boolean>;
 };
