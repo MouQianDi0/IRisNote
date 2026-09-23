@@ -7,5 +7,6 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.formatOnSave": true,
     "tailwindCSS.classFunctions": ["tv"],
-    "Codegeex.RepoIndex": true
+    "Codegeex.RepoIndex": true,
+    "java.compile.nullAnalysis.mode": "automatic"
 }
