@@ -22,6 +22,7 @@ import {
 } from "@/features/todos/state/todo-store";
 import { TodoReminderRepository } from "@/features/todos/data/todo-reminder.repository";
 import { TodoReminderCoordinator } from "@/features/todos/state/todo-reminder-coordinator";
+import { TodoLiveUpdateCoordinator } from "@/features/todos/state/todo-live-update-coordinator";
 import {
     afterSavedTodoReminder,
     resolveReminderTarget,
@@ -35,11 +36,14 @@ import {
 import { SystemNotificationContext } from "./system-notification-context";
 import {
     applicationNotificationPermission,
+    cancelLiveUpdate,
     exactAlarmAccess,
     ensureRuntimeNotification,
     initializeSystemNotifications,
+    liveUpdateSupported,
     openSystemNotificationSettings,
     openExactAlarmSettings,
+    postLiveUpdate,
     removeRuntimeNotification,
     requestApplicationNotificationPermission,
     requestSystemNotificationPermission,
@@ -148,6 +152,30 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             ),
         [database],
     );
+    const liveCoordinator = useMemo(
+        () =>
+            new TodoLiveUpdateCoordinator(
+                {
+                    supported: () => liveUpdateSupported(),
+                    permissionGranted: async () =>
+                        (await applicationNotificationPermission()).granted,
+                    post: (card) =>
+                        postLiveUpdate({
+                            id: card.notificationId,
+                            channelId: card.channelId,
+                            title: card.title,
+                            text: card.text,
+                            progress: card.progress,
+                            max: card.max,
+                            indeterminate: card.indeterminate,
+                            ongoing: card.ongoing,
+                        }),
+                    cancel: (id) => cancelLiveUpdate(id),
+                },
+                () => snapshot(),
+            ),
+        [],
+    );
 
     useEffect(() => {
         if (!supportsSystemNotifications) return;
@@ -222,12 +250,20 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             }
         };
         void refresh();
+        if (AppState.currentState !== "background")
+            void liveCoordinator.start();
         const unsubscribe = todoRepository.subscribe(() => {
             void coordinator.reconcile();
+            void liveCoordinator.refresh();
         });
         const appState = AppState.addEventListener("change", (state) => {
             void recordDiagnostic("application", "state_changed", { state });
-            if (state === "active") void refresh();
+            if (state === "active") {
+                void refresh();
+                void liveCoordinator.start();
+            } else {
+                void liveCoordinator.stop();
+            }
         });
         const receivedListener = Notifications.addNotificationReceivedListener(
             (notification) => {
@@ -257,8 +293,9 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             appState.remove();
             listener.remove();
             receivedListener.remove();
+            void liveCoordinator.stop();
         };
-    }, [coordinator, preferences]);
+    }, [coordinator, preferences, liveCoordinator]);
 
     useEffect(() => {
         if (!response || !navigation?.key || !scope.ready) return;

@@ -10,6 +10,9 @@ import {
 } from "@/core/diagnostics";
 import {
     DIAGNOSTIC_CHANNEL,
+    LIVE_TEST_CHANNEL,
+    LIVE_TEST_NOTIFICATION_ID,
+    LIVE_TODO_CHANNEL,
     REMINDER_CHANNEL,
     RUNTIME_CHANNEL,
     RUNTIME_NOTIFICATION_ID,
@@ -349,6 +352,217 @@ export async function sendDiagnosticTestNotification() {
         );
         throw cause;
     }
+}
+
+export function liveUpdateSupported(): boolean {
+    return (
+        Platform.OS === "android" &&
+        Number(Platform.Version) >= 36 &&
+        NativeSystem !== null
+    );
+}
+
+export type LiveUpdateContent = {
+    id: number;
+    channelId: string;
+    title: string;
+    text: string | null;
+    progress: number;
+    max: number;
+    indeterminate: boolean;
+    ongoing: boolean;
+};
+
+async function initializeLiveUpdateChannels() {
+    if (Platform.OS !== "android") return;
+    await Notifications.setNotificationChannelAsync(LIVE_TEST_CHANNEL, {
+        name: "动态通知测试",
+        description: "用于验证 Android 16 动态通知展示链路",
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: "default",
+        enableVibrate: true,
+        showBadge: false,
+        lockscreenVisibility:
+            Notifications.AndroidNotificationVisibility.PRIVATE,
+    });
+    void recordDiagnostic("live_update", "test_channel_ready", {
+        channel: LIVE_TEST_CHANNEL,
+        importance: "default",
+    });
+    await Notifications.setNotificationChannelAsync(LIVE_TODO_CHANNEL, {
+        name: "待办进行中",
+        description: "正在进行中的待办动态进度卡片",
+        importance: Notifications.AndroidImportance.LOW,
+        sound: null,
+        enableVibrate: false,
+        showBadge: false,
+        lockscreenVisibility:
+            Notifications.AndroidNotificationVisibility.PRIVATE,
+    });
+    void recordDiagnostic("live_update", "todo_channel_ready", {
+        channel: LIVE_TODO_CHANNEL,
+        importance: "low",
+    });
+}
+
+let liveUpdateChannelsReady: Promise<void> | null = null;
+
+/** 渠道初始化进程内记忆一次；失败后允许下次重试。 */
+export function ensureLiveUpdateChannels(): Promise<void> {
+    if (!liveUpdateChannelsReady) {
+        liveUpdateChannelsReady = initializeLiveUpdateChannels().catch(
+            (cause) => {
+                liveUpdateChannelsReady = null;
+                throw cause;
+            },
+        );
+    }
+    return liveUpdateChannelsReady;
+}
+
+export async function postLiveUpdate(
+    content: LiveUpdateContent,
+): Promise<void> {
+    if (!liveUpdateSupported())
+        throw new Error("动态通知需要 Android 16 及以上设备");
+    await ensureLiveUpdateChannels();
+    const native = NativeSystem;
+    if (!native) throw new Error("当前安装包不支持动态通知");
+    try {
+        await native.postProgressNotification(
+            content.id,
+            content.channelId,
+            content.title,
+            content.text,
+            content.progress,
+            content.max,
+            content.indeterminate,
+            content.ongoing,
+        );
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "post_failed",
+            {
+                notification: content.id,
+                error: diagnosticErrorCategory(cause),
+            },
+            "error",
+        );
+        throw cause;
+    }
+}
+
+export async function cancelLiveUpdate(id: number): Promise<void> {
+    if (!liveUpdateSupported()) return;
+    const native = NativeSystem;
+    if (!native) return;
+    try {
+        await native.cancelProgressNotification(id);
+    } catch (cause) {
+        void recordDiagnostic(
+            "live_update",
+            "cancel_failed",
+            {
+                notification: id,
+                error: diagnosticErrorCategory(cause),
+            },
+            "error",
+        );
+        throw cause;
+    }
+}
+
+export const LIVE_DEMO_SECONDS = 120;
+
+export type LiveUpdateDemoResult = "completed" | "cancelled" | "failed";
+
+export type LiveUpdateDemoHandle = {
+    cancel(): void;
+    completion: Promise<LiveUpdateDemoResult>;
+};
+
+/**
+ * 设置页动态通知演示：120 秒倒计时，进度每秒原位更新同一条通知
+ * （同一整型 ID + setOnlyAlertOnce），倒计时归零后自动消除。
+ */
+export function startDiagnosticLiveUpdateDemo(options?: {
+    onTick?: (remainingSeconds: number) => void;
+}): LiveUpdateDemoHandle {
+    let remaining = LIVE_DEMO_SECONDS;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let finished = false;
+    let settle: (result: LiveUpdateDemoResult) => void = () => {};
+    const completion = new Promise<LiveUpdateDemoResult>((resolve) => {
+        settle = resolve;
+    });
+
+    const post = async () => {
+        if (finished) return;
+        await postLiveUpdate({
+            id: LIVE_TEST_NOTIFICATION_ID,
+            channelId: LIVE_TEST_CHANNEL,
+            title: "IRisNote 动态通知",
+            text: `倒计时演示：剩余 ${remaining} 秒`,
+            progress: remaining,
+            max: LIVE_DEMO_SECONDS,
+            indeterminate: false,
+            ongoing: true,
+        });
+        options?.onTick?.(remaining);
+    };
+
+    const finish = async (result: LiveUpdateDemoResult) => {
+        if (finished) return;
+        finished = true;
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
+        }
+        try {
+            await cancelLiveUpdate(LIVE_TEST_NOTIFICATION_ID);
+        } catch {
+            // 取消失败已写入诊断日志，不影响演示结果上报
+        }
+        void recordDiagnostic("live_update", "demo_finished", { result });
+        settle(result);
+    };
+
+    void (async () => {
+        try {
+            if (!liveUpdateSupported())
+                throw new Error("动态通知需要 Android 16 及以上设备");
+            await post();
+            void recordDiagnostic("live_update", "demo_started", {
+                seconds: LIVE_DEMO_SECONDS,
+            });
+            timer = setInterval(() => {
+                if (finished) return;
+                remaining = Math.max(0, remaining - 1);
+                void post()
+                    .then(() => {
+                        if (remaining <= 0) return finish("completed");
+                    })
+                    .catch(() => finish("failed"));
+            }, 1000);
+        } catch (cause) {
+            void recordDiagnostic(
+                "live_update",
+                "demo_failed",
+                { error: diagnosticErrorCategory(cause) },
+                "error",
+            );
+            finished = true;
+            settle("failed");
+        }
+    })();
+
+    return {
+        cancel: () => {
+            void finish("cancelled");
+        },
+        completion,
+    };
 }
 
 export async function openSystemNotificationSettings() {

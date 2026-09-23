@@ -29,10 +29,19 @@ export const TODO_NOTIFICATION_PREFIX = "irisnote.todo.";
 export const REMINDER_CHANNEL = "irisnote.reminders.v1";
 export const RUNTIME_CHANNEL = "irisnote.runtime.v1";
 export const DIAGNOSTIC_CHANNEL = "irisnote.diagnostics.v1";
+export const LIVE_TEST_CHANNEL = "irisnote.live-test.v1";
+export const LIVE_TODO_CHANNEL = "irisnote.live-todo.v1";
 export const RUNTIME_NOTIFICATION_ID = "irisnote.runtime.status";
+/** Android 原生 NotificationManager 的整型通知 ID：设置页动态通知演示专用。 */
+export const LIVE_TEST_NOTIFICATION_ID = 7001;
 // Reserved semantic only; no unused Android channel is created.
 export type SystemNotificationPurpose =
-    "reminder" | "runtime-status" | "diagnostic-test" | "sync";
+    | "reminder"
+    | "runtime-status"
+    | "diagnostic-test"
+    | "live-update-test"
+    | "live-update-todo"
+    | "sync";
 
 export function parseTodoNotificationData(
     data: Record<string, unknown> | undefined,

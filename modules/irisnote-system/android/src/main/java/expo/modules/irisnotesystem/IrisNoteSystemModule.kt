@@ -1,6 +1,9 @@
 package expo.modules.irisnotesystem
 
 import android.app.AlarmManager
+import android.app.Notification
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -84,6 +87,71 @@ class IrisNoteSystemModule : Module() {
     )
   }
 
+  /** ProgressStyle 属于 Android 16（API 36）；低版本设备在 JS 层已禁用，此处兜底拒绝。 */
+  private fun requireProgressNotificationSupport() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
+      throw IllegalStateException("动态通知需要 Android 16 及以上系统")
+    }
+  }
+
+  private fun notificationManager() =
+    context().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+  private fun appLaunchPendingIntent(): PendingIntent {
+    val context = context()
+    val intent = requireNotNull(
+      context.packageManager.getLaunchIntentForPackage(context.packageName)
+    ) { "无法创建通知点击意图" }
+    return PendingIntent.getActivity(
+      context,
+      0,
+      intent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+  }
+
+  /**
+   * Android 16 ProgressStyle 进度式通知：同一通知 ID 原位更新（setOnlyAlertOnce 防重复打扰）。
+   * 刻意不调用 setRequestPromotedOngoing、不依赖 POST_PROMOTED_NOTIFICATIONS——
+   * 提升式 Live Updates 对"普通提醒/即将到来的日历事件"属政策禁区。
+   * API 36.0 基础 SDK 无嵌套 Progress 类（36.1 重构）：进度用 setProgress(0-100 百分比)
+   * 与 setProgressIndeterminate 表达，不依赖 segments。
+   */
+  private fun buildProgressNotification(
+    channelId: String,
+    title: String,
+    text: String?,
+    progress: Int,
+    max: Int,
+    indeterminate: Boolean,
+    ongoing: Boolean,
+  ): Notification {
+    val context = context()
+    val style = Notification.ProgressStyle()
+    if (indeterminate) {
+      style.setProgressIndeterminate(true)
+    } else {
+      val percent =
+        if (max <= 0) 0
+        else ((progress.toLong() * 100) / max).toInt().coerceIn(0, 100)
+      style.setProgress(percent)
+    }
+    val smallIcon =
+      context.applicationInfo.icon.takeIf { it != 0 }
+        ?: android.R.drawable.sym_def_app_icon
+    val builder = Notification.Builder(context, channelId)
+      .setSmallIcon(smallIcon)
+      .setContentTitle(title)
+      .setStyle(style)
+      .setCategory(Notification.CATEGORY_PROGRESS)
+      .setOnlyAlertOnce(true)
+      .setAutoCancel(false)
+      .setOngoing(ongoing)
+      .setContentIntent(appLaunchPendingIntent())
+    if (!text.isNullOrBlank()) builder.setContentText(text)
+    return builder.build()
+  }
+
   override fun definition() = ModuleDefinition {
     Name("IrisNoteSystem")
 
@@ -104,6 +172,27 @@ class IrisNoteSystemModule : Module() {
       } else {
         saveLegacy(source, safeName)
       }
+    }
+
+    AsyncFunction(
+      "postProgressNotification",
+    ) { id: Int, channelId: String, title: String, text: String?,
+        progress: Int, max: Int, indeterminate: Boolean, ongoing: Boolean ->
+      requireProgressNotificationSupport()
+      val notification = buildProgressNotification(
+        channelId,
+        title,
+        text,
+        progress,
+        max,
+        indeterminate,
+        ongoing,
+      )
+      notificationManager().notify(id, notification)
+    }
+
+    AsyncFunction("cancelProgressNotification") { id: Int ->
+      notificationManager().cancel(id)
     }
   }
 }

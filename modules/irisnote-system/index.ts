@@ -7,12 +7,39 @@ export type SavedDiagnosticLog = {
   displayPath: string;
 };
 
+/**
+ * Android 16（API 36）ProgressStyle 进度式动态通知的原生入参。
+ * 进度按 progress/max 折算为百分比；indeterminate 时显示不定进度条。
+ * 不申请 promoted 提升式 Live Updates（Google 政策对"普通提醒/日历事件"禁入）。
+ */
+export type NativeProgressNotification = {
+  id: number;
+  channelId: string;
+  title: string;
+  text: string | null;
+  progress: number;
+  max: number;
+  indeterminate: boolean;
+  ongoing: boolean;
+};
+
 declare class IrisNoteSystemModule extends NativeModule {
   getExactAlarmAccess(): Promise<NativeExactAlarmAccess>;
   saveDiagnosticLog(
     sourceUri: string,
     fileName: string,
   ): Promise<SavedDiagnosticLog>;
+  postProgressNotification(
+    id: number,
+    channelId: string,
+    title: string,
+    text: string | null,
+    progress: number,
+    max: number,
+    indeterminate: boolean,
+    ongoing: boolean,
+  ): Promise<void>;
+  cancelProgressNotification(id: number): Promise<void>;
 }
 
 export default requireOptionalNativeModule<IrisNoteSystemModule>(
