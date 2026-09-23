@@ -79,6 +79,40 @@
 - 界面：沿用 64dp 返回栏、16dp 页面/卡片内边距、12dp 卡片间距和 48dp 操作按钮，补充加载、空态、错误重试及底部安全区。
 - 验证：对应基于 288e266 的未提交工作区。修改前后 npm run typecheck 通过，完整 npm run check 的类型检查和 ESLint 通过，但 theme:check 因既有 global.css 色值大小写与主题生成结果不一致而失败；从 288e266 原文件复核可复现，本次未修改主题文件。单独执行 npm test：443 项中 441 通过、2 失败，分别为既有待办页 className 字符串断言不匹配（基线提交同样不匹配）和 react-native-tab-view 运行依赖 DEAD_ZONE=12、测试要求100；均不涉及本次修改文件。最终类型检查、定向 ESLint、git diff --check 及本次源码冲突标记检查通过。检查日志：系统临时目录 irisnote-profile-pages-check.log、irisnote-profile-pages-tests.log。ADB 无设备，现有预览端口8081的浏览器导航和状态读取均超时，未完成视觉或真机验收；未重启现有服务，未构建、提交或发布。
 
+## 2026-09-22 22:17:17 | 优化代码：按项目现状重写测试包构建指南新电脑从零构建章节
+
+- 变更概述：已获用户确认（从系统环境变量之后写起，环境配置部分不展开；按项目改动后现状重新参考）。项目统一云存储改造（47bedd6）后旧开关 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已从代码移除，且此前写入文档的"新电脑从零搭建"章节已随 330780b 移除。本次按当前代码现状重写该章节：不含软件清单与环境变量小节（引言一句带过前提），从克隆代码到产出 APK 组织为步骤 1–7 流水线。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零构建」——步骤 1 克隆与 npm install（含 npmmirror、postinstall patch-package 横滑补丁说明）；步骤 2 `.env.local` 改为**可选**（按新代码事实：`EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 未配置/空/`1` 时云存储开放、API 默认 `https://tech-mou.top/api`，仅显式覆盖时才建文件，并注明旧 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已废弃）；步骤 3 `npx expo prebuild -p android --no-install`；步骤 4 就地给出完整 staging 构建块及漏加症状（`Task 'assembleStaging' not found`）；步骤 5 debug.keystore 公开证书说明与 keytool 指纹核对命令（SHA256 FA:C6:17:45:…:9C）；步骤 6 镜像脚本 PowerShell 重建命令（英文注释避免编码问题）；步骤 7 构建命令（`"$PWD\.expo\..."` 绝对路径展开、Gradle 9.3.1 发行版腾讯镜像、冷构建约 19 分钟、产物路径）+ 尾注"日常只重复步骤 7"；② 原二~~六节顺延为三~~七节，「构建命令」改为速查定位并保留既有 `EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 语义说明；③ Git 忽略表补 `.env*.local`、`*.keystore`/`*.jks`；④ 常见问题补 Gradle 发行版卡住、npm install 慢、跨机器签名一致性三条；⑤ 第一节"登录同一账号云端数据不隔离"的举例由"Todo 云同步"更新为"云存储同步"。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档事实按当前 HEAD（0f42f65）实测核实：staging 块仍在 android/app/build.gradle L125、Gradle 9.3.1、JDK 17/Node 24.18.0 环境变量不变、镜像脚本与 debug.keystore 在位、`parseCloudStorageEnabled` 默认开放语义、`DEFAULT_API_BASE_URL` 仍为 https://tech-mou.top/api、patches/react-native-tab-view+4.3.2.patch 在位。新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
+---
+
+## 2026-09-22 22:10:55 | 修复问题：同步 master 固有的两处过期测试断言
+
+- 变更概述：已获用户确认（更新测试断言以匹配 master 新事实，不修改任何源码）。修复合并验证中暴露的 2 项 master 固有测试失败，使全量检查恢复全绿。
+- 修改文件：tests/navigation/page-seam.test.cjs、tests/todos/todo-local.test.cjs、CHANGELOG.md。
+- 具体内容：① page-seam 测试对 TodosScreen.tsx 的正则断言中 border 类顺序由 `border-b border-r border-t` 更新为 `border-t border-r border-b`——master 提交 282122d 统一代码风格时 prettier 重排了 tailwind 类顺序，类集合与"填充层/圆角边框层分离"结构意图均未变；② todo-local 测试 `CURRENT_DATABASE_VERSION` 断言由 11 更新为 12——master 新增迁移 0012-create-note-trash 后版本常量由迁移数组末项自动推导为 12，注释同步补充 0012 说明。
+- 验证：定向 node --test 两文件 14/14 通过；全量 npm run check 通过（typecheck、lint、theme:check、438/438 测试，exit code 0）。未修改任何 src/ 源码，无需真机验收。
+
+---
+
+## 2026-09-22 21:54:23 | 优化代码：合并 master 主分支并解决冲突
+
+- 变更概述：已获用户确认（先提交暂存改动→合并→检查通过即推送）。将 origin/master 领先的 9 个提交（15 天笔记垃圾桶、数据存储页面、云存储授权统一、全项目代码风格统一、PR #117 等）合入 kroos_todo，解决 CHANGELOG.md 冲突。合并前先将暂存区未提交改动（删除「新电脑从零搭建」章节）提交为独立提交 330780b。
+- 修改文件：CHANGELOG.md、global.css、docs/构建发布/本地测试包构建.md（master 侧自动合并）。
+- 具体内容：① 提交 330780b：移除本地测试包构建指南中「新电脑从零搭建」整章（-208 行）并保留表格对齐格式化；② git merge origin/master，唯一冲突 CHANGELOG.md 按"双侧条目全保留、时间倒序"解决；③ npm run theme:sync 刷新 global.css 主题块（50 行，仅 hex 颜色小写→大写规范化，修复 master 固有的 json/css 不同步）；④ 重新生成 .expo/types/router.d.ts（本地生成产物过期，不含 master 新增的 trash/cloud-storage/data-storage 路由导致 TS2345，短暂启动 expo start 触发类型生成）。
+- 验证：npm run typecheck 通过（路由类型再生成为 0 错误）；npm run lint 通过；npm run theme:check 通过。npm test 438 项中 436 通过、2 项失败——失败为 master 固有（src/ 与 tests/ 相对 origin/master 零差异）：① tests 断言 TodosScreen.tsx 旧 JSX 结构（master 重构后已不存在）；② tests/todos/todo-local.test.cjs 断言迁移数 11（master 新增 0012 后实际 12）。git status 无未解决冲突；全仓冲突标记仅命中 GitHub 教程既有演示内容与二进制字体误报。未做真机验收。
+
+---
+
+## 2026-09-22 21:05:24 | 优化代码：本地测试包构建指南补全新电脑从零搭建章节
+
+- 变更概述：已获用户确认。`docs/构建发布/本地测试包构建.md` 原先只覆盖"本机已有环境"的构建命令，缺少在另一台电脑从零构建所需的前置信息。新增完整「新电脑从零搭建」章节，把环境变量、软件版本、脚本内容、Git 忽略文件重建步骤全部写清，使任何新 Windows 电脑可仅凭该文档从零打出 staging 测试包。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零搭建」8 个子节——软件清单（Expo SDK 57 要求 Node ≥22.13.x，本机实测 24.18.0；新电脑建议 JDK 17，本机 JDK 21 已通过编译；Android SDK Platform 36 + Build-Tools 36.0.0 + Platform-Tools、Gradle 9.3.1 wrapper 自动下载）、必设系统环境变量（JAVA_HOME/ANDROID_HOME 含 setx 与验证命令）及项目自动注入变量说明（JAVA_TOOL_OPTIONS 回环修复、IRIS_GRADLE_SOCKET_DIR）、克隆与 npm ci（npmmirror 切换、postinstall patch-package）、创建 .env.local（完整内容与 EXPO_PUBLIC_TODO_CLOUD_SYNC / BASE_URL / RELEASE_API_URL 变量作用表）、`npx expo prebuild -p android --no-install` 生成工程并指引加回 staging 块、debug.keystore 公开调试证书说明（SHA256 指纹与 keytool 核对命令）、.expo/gradle-aliyun-init.gradle 的 PowerShell 重建命令（英文注释避免跨机器编码问题）、Gradle 发行版腾讯镜像替换方案；② 原二~~六节顺延为三~~七节，交叉引用同步更新；③ 构建命令节去掉 D:\IRisNote 硬编码，--init-script 改用 PowerShell "$PWD\.expo\..." 自动展开写法；④ Git 忽略说明表补 .env*.local 与 _.keystore/_.jks 两行；⑤ 常见问题补 Gradle 发行版下载卡住、npm install 慢两条排查项，签名注意补跨机器证书一致性指引。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档中全部事实（环境变量值、工具版本、SDK 版本 36/24、Gradle 9.3.1、debug.keystore SHA256 指纹、.env.local 内容、镜像脚本内容、仓库地址）均在本机实测核实；新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
 ---
 
 ## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
