@@ -10,6 +10,11 @@ import {
     collectAvatarFromCamera,
     collectAvatarFromLibrary,
 } from "../services/avatar-picker.service";
+import { writeCachedAvatar } from "../services/avatar-cache";
+import {
+    base64FromDataUri,
+    cacheableAvatarName,
+} from "../utils/avatar-cache-key";
 import { describeAvatarError } from "../utils/avatar-errors";
 
 /** 关闭弹层后再打开下一层（菜单、预览、系统选图），避免原生窗口切换冲突。 */
@@ -158,7 +163,15 @@ export function useAvatarUpdate() {
             return;
         }
 
-        // 服务端已保存：之后的本地写入失败不再视为上传失败，避免诱导重复上传
+        // 服务端已保存：之后的本地写入失败不再视为上传失败，避免诱导重复上传。
+        // 先用本地已有的图片数据写入缓存，资料切换到新地址时无需再下载。
+        const cacheName = cacheableAvatarName(receipt, userId);
+        const base64 = base64FromDataUri(avatar);
+        if (cacheName && base64) {
+            await writeCachedAvatar(userId, cacheName, base64).catch(
+                () => undefined,
+            );
+        }
         const applied = await applyAvatar(userId, receipt).catch(() => true);
         setPreview(null);
         if (!applied || !isCurrentSession()) return;

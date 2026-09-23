@@ -1,3 +1,21 @@
+## 2026-09-24 01:37:19 | 新增功能：个人资料编辑与头像本地缓存（B1 客户端）
+
+- 变更概述：用户确认 B1 计划与文字预览。开放用户名、个人简介、性别编辑（单项保存、版本冲突与结果未知处理、未保存离开确认）；头像改为本地缓存优先，加载失败回退默认图标；修正注册时间为空时显示 1970 年的问题。依赖后端 B1（迁移 010 与 `PATCH /api/user/profile`），后端未升级时保存提示“服务器暂不支持修改资料”。
+- 修改文件：src/shared/types/user.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、src/features/profile/profile.types.ts、src/features/profile/api/profile.api.ts、src/features/profile/hooks/{useProfileSave.ts（新增）,useAvatar.ts,useAvatarUpdate.ts}、src/features/profile/utils/{profile-validation.ts（新增）,avatar-cache-key.ts（新增）}、src/features/profile/services/avatar-cache.ts（新增）、src/features/profile/components/{ProfileTextEditor.tsx,GenderPickerDialog.tsx,UnsavedProfileDialog.tsx,UserAvatarImage.tsx}（新增）、src/features/profile/screens/{EditNicknameScreen.tsx,EditBioScreen.tsx}（新增）、src/features/profile/screens/{PersonalInfoScreen.tsx,ProfileScreen.tsx}、src/features/notes/categories/components/CategoryBar.tsx、src/shared/ui/ListRow/ListRow.tsx、src/app/pages/user/profile/{nickname.tsx,bio.tsx}（新增）、src/app/_layout.tsx、tests/profile/{profile-editing.test.cjs,avatar-cache.test.cjs}（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `User` 新增可选资料字段，`created_at` 允许为空；`AuthProvider.applyUser` 核对账号后以服务端完整资料回写状态与缓存；② `useProfileSave` 以 `profile_version` 条件保存，请求 15 秒超时；409 载入最新资料并保留输入；无响应或请求已发出后授权被撤销时重新读取资料并提示结果未确认；未发出即被云存储拦截时提示开启云存储；③ P02/P03 共用 `ProfileTextEditor`（码点计数、清空、失焦后显示错误、`usePreventRemove` 离开确认、保存中阻止离开）；④ M03 性别弹窗暂存选择、保存中锁定；⑤ P01 用户名/性别/简介行开放，简介最多两行预览，`ListRow` 新增 `descriptionLines`；⑥ 头像缓存存于 `Paths.document/avatars/<用户ID>/`，仅缓存属于当前用户且命名合规的文件，下载与写入先落临时文件并校验大小与文件头后改名，每用户保留一个文件；同一文件并发只下载一次；本地文件显示失败即丢弃并在本次运行内不再自动下载；上传成功直接写入缓存；云存储关闭时显示本地缓存；⑦ 三处头像改用 `UserAvatarImage`，保留各自原有默认图标外观；⑧ 视觉规范升至 1.16。
+- 验证：修改前后 `npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过（新增 10 项），2 项失败（发布归档本机路径过长、待办迁移版本）与 `2783a37` 基线相同、与本次无关；`git diff --check` 通过。未做浏览器或真机验收；依赖的后端改动尚未迁移与部署；未提交 Git。
+
+---
+
+## 2026-09-24 01:13:05 | 优化代码：个人资料 B0 后端核实结论与接口约定（仅文档）
+
+- 变更概述：用户提供后端仓库（irisapi `Timmi` / `301d754`）并通过选项确认全部待定决策；冻结 B1/B3 接口约定，B1 范围并入旧头像清理与头像本地缓存。
+- 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
+- 验证：仅文档改动，未运行代码检查；后端未做任何修改。
+
+---
+
 ## 2026-09-23 23:59:13 | 新增功能：头像更换迁移至个人资料页（A3）
 
 - 变更概述：用户确认 A3 问题分析与文字预览，确认待确认预览点遮罩不关闭。头像更换从「我的」账户卡迁移到个人资料页：先选图并预览，确认后才上传；以服务端上传回执直接更新共享资料，修复资料同步失败时仍提示“头像已更新”却显示旧头像的问题；「我的」账户卡整卡进入个人资料页。

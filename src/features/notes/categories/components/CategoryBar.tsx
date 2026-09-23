@@ -14,7 +14,7 @@ import { useLongPressNavigation } from "@/core/navigation/hooks/useLongPressNavi
 import { colors, radius } from "@/shared/theme";
 import { UserIcon } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, View } from "react-native";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { ALL_CATEGORY } from "../categories.constants";
@@ -29,7 +29,7 @@ import { useCategoryDelete } from "../hooks/useCategoryDelete";
 import { useCategoryPin } from "../hooks/useCategoryPin";
 import { useCategoryRename } from "../hooks/useCategoryRename";
 import { useCategoryStar } from "../hooks/useCategoryStar";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
+import { UserAvatarImage } from "@/features/profile/components/UserAvatarImage";
 import CategoryActionModal from "./CategoryActionModal";
 import CategoryButton from "./CategoryButton";
 import AddCategoryButton from "./AddCategoryButton";
@@ -194,7 +194,6 @@ export default function FloatingBar({
     const pinnedCategories = categories.filter((item) => item.is_pinned);
     const normalCategories = categories.filter((item) => !item.is_pinned);
 
-    const { avatarSource, avatarKey } = useAvatar();
 
     return (
         <View className="flex-col items-center justify-center">
@@ -205,18 +204,14 @@ export default function FloatingBar({
                             className="mb-[10px] h-[50px] w-[50px]"
                             onPress={() => onNavigate("/user")}
                         >
-                            {avatarSource ? (
-                                <Image
-                                    style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        borderRadius: radius.control,
-                                    }}
-                                    key={avatarKey}
-                                    className="border-[2px] border-floating-accent"
-                                    source={avatarSource}
-                                />
-                            ) : (
+                            <UserAvatarImage
+                                style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    borderRadius: radius.control,
+                                }}
+                                className="border-[2px] border-floating-accent"
+                                fallback={
                                 <View
                                     style={{
                                         width: "100%",
@@ -230,7 +225,8 @@ export default function FloatingBar({
                                         color={colors.surface}
                                     />
                                 </View>
-                            )}
+                                }
+                            />
                         </Pressable>
                     </GestureDetector>
                 </Animated.View>
