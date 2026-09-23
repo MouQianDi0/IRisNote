@@ -15,7 +15,7 @@ export type ProfileChanges = {
     nickname?: string;
     bio?: string | null;
     gender?: UserGender | null;
-    gender_custom?: string | null;
+    region?: { code: string; label: string; version: string } | null;
 };
 
 export type UpdateProfilePayload = ProfileChanges & { expected_version: number };

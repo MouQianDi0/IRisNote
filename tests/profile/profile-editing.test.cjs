@@ -20,7 +20,6 @@ const {
     BIO_MAX,
     NICKNAME_MAX,
     checkBio,
-    checkGenderCustom,
     checkNickname,
     codePointLength,
     formatGender,
@@ -51,20 +50,13 @@ test("简介可清空，统一换行并限制 200 字", () => {
     assert.match(checkBio("字".repeat(BIO_MAX + 1)).error, /200/);
 });
 
-test("自定义性别必填、单行、最多 20 字", () => {
-    assert.equal(checkGenderCustom(" ").error, "请填写自定义性别");
-    assert.equal(checkGenderCustom("a\nb").error, "自定义性别不能包含换行");
-    assert.deepEqual(checkGenderCustom(" 非二元 "), { value: "非二元", error: null });
-    assert.match(checkGenderCustom("字".repeat(21)).error, /20/);
-});
-
 test("性别展示文案", () => {
-    assert.equal(formatGender(null, null), "不设置");
-    assert.equal(formatGender(undefined, undefined), "不设置");
-    assert.equal(formatGender("male", null), "男");
-    assert.equal(formatGender("female", null), "女");
-    assert.equal(formatGender("custom", " 非二元 "), "非二元");
-    assert.equal(formatGender("custom", "  "), "不设置");
+    assert.equal(formatGender(null), "不设置");
+    assert.equal(formatGender(undefined), "不设置");
+    assert.equal(formatGender("male"), "男");
+    assert.equal(formatGender("female"), "女");
+    // 旧缓存可能残留已下线的 custom，按“不设置”显示
+    assert.equal(formatGender("custom"), "不设置");
 });
 
 test("注册时间为空或无法解析时返回 null，不显示为 1970 年", () => {

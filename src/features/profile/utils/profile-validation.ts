@@ -3,7 +3,6 @@ import type { UserGender } from "@/shared/types/user";
 /** 与服务端一致的长度上限，按 Unicode 码点计数。 */
 export const NICKNAME_MAX = 30;
 export const BIO_MAX = 200;
-export const GENDER_CUSTOM_MAX = 20;
 
 export function codePointLength(value: string): number {
     return [...value].length;
@@ -32,24 +31,10 @@ export function checkBio(input: string): FieldCheck {
     return { value, error: null };
 }
 
-/** 自定义性别：去首尾空白，1–20 个字，不含换行。 */
-export function checkGenderCustom(input: string): FieldCheck {
-    const value = input.trim();
-    if (!value) return { value: null, error: "请填写自定义性别" };
-    if (/[\r\n]/.test(value)) return { value, error: "自定义性别不能包含换行" };
-    if (codePointLength(value) > GENDER_CUSTOM_MAX) {
-        return { value, error: `自定义性别不能超过 ${GENDER_CUSTOM_MAX} 个字` };
-    }
-    return { value, error: null };
-}
-
-export function formatGender(
-    gender: UserGender | null | undefined,
-    custom: string | null | undefined,
-): string {
+/** 未知取值（如旧缓存中的历史值）按“不设置”显示。 */
+export function formatGender(gender: UserGender | null | undefined): string {
     if (gender === "male") return "男";
     if (gender === "female") return "女";
-    if (gender === "custom" && custom?.trim()) return custom.trim();
     return "不设置";
 }
 

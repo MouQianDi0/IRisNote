@@ -1,16 +1,10 @@
 import { colors } from "@/shared/theme";
 import type { UserGender } from "@/shared/types/user";
-import { Input } from "@/shared/ui";
 import { DialogButton, DraftDialog } from "@/shared/ui/Dialog/dialog";
 import { draftRowStyles, draftTitleStyles } from "@/shared/ui/Dialog/dialog.styles";
 import { Check } from "lucide-react-native";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import {
-    GENDER_CUSTOM_MAX,
-    checkGenderCustom,
-    codePointLength,
-} from "../utils/profile-validation";
 
 type Choice = UserGender | "unset";
 
@@ -18,18 +12,15 @@ const CHOICES: { key: Choice; label: string }[] = [
     { key: "unset", label: "不设置" },
     { key: "male", label: "男" },
     { key: "female", label: "女" },
-    { key: "custom", label: "自定义" },
 ];
 
 export type GenderSelection = {
     gender: UserGender | null;
-    gender_custom: string | null;
 };
 
 type GenderPickerDialogProps = {
     visible: boolean;
     gender: UserGender | null | undefined;
-    genderCustom: string | null | undefined;
     saving: boolean;
     error: string | null;
     onClose: () => void;
@@ -43,23 +34,17 @@ type GenderPickerDialogProps = {
 export function GenderPickerDialog({
     visible,
     gender,
-    genderCustom,
     saving,
     error,
     onClose,
     onSave,
 }: GenderPickerDialogProps) {
-    const initialChoice: Choice = gender ?? "unset";
-    const initialCustom = gender === "custom" ? (genderCustom ?? "") : "";
+    // 旧缓存中已下线的取值按“不设置”处理
+    const initialChoice: Choice =
+        gender === "male" || gender === "female" ? gender : "unset";
     const [choice, setChoice] = useState<Choice>(initialChoice);
-    const [custom, setCustom] = useState(initialCustom);
 
-    const customCheck = checkGenderCustom(custom);
-    const changed =
-        choice !== initialChoice ||
-        (choice === "custom" && customCheck.value !== initialCustom.trim());
-    const canSave =
-        !saving && changed && (choice !== "custom" || !customCheck.error);
+    const canSave = !saving && choice !== initialChoice;
     const close = () => {
         if (!saving) onClose();
     };
@@ -100,24 +85,6 @@ export function GenderPickerDialog({
                 })}
             </View>
 
-            {choice === "custom" ? (
-                <View className="mt-3">
-                    <Input
-                        accessibilityLabel="自定义性别"
-                        placeholder="输入自定义性别"
-                        value={custom}
-                        onChangeText={setCustom}
-                        disabled={saving}
-                        invalid={!!custom.trim() && !!customCheck.error}
-                        maxLength={GENDER_CUSTOM_MAX * 2}
-                        returnKeyType="done"
-                    />
-                    <Text className="mt-2 self-end text-[13px] text-hyper-text-secondary">
-                        {codePointLength(custom.trim())}/{GENDER_CUSTOM_MAX}
-                    </Text>
-                </View>
-            ) : null}
-
             {error ? (
                 <Text
                     accessibilityRole="alert"
@@ -141,16 +108,9 @@ export function GenderPickerDialog({
                     className="flex-1"
                     disabled={!canSave}
                     onPress={() =>
-                        onSave(
-                            choice === "unset"
-                                ? { gender: null, gender_custom: null }
-                                : choice === "custom"
-                                  ? {
-                                        gender: "custom",
-                                        gender_custom: customCheck.value,
-                                    }
-                                  : { gender: choice, gender_custom: null },
-                        )
+                        onSave({
+                            gender: choice === "unset" ? null : choice,
+                        })
                     }
                     leading={
                         saving ? (

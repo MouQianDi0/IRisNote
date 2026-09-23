@@ -45,6 +45,7 @@ const userTabRoute = "/(tabs)/user" as Href;
 const linkedAccountsRoute = "/pages/user/profile/platforms" as Href;
 const nicknameRoute = "/pages/user/profile/nickname" as Href;
 const bioRoute = "/pages/user/profile/bio" as Href;
+const regionRoute = "/pages/user/profile/region" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
 const PLANNED = "规划中";
@@ -245,7 +246,6 @@ export default function PersonalInfoScreen() {
                         key={`gender-${genderVisible}`}
                         visible={genderVisible}
                         gender={user.gender}
-                        genderCustom={user.gender_custom}
                         saving={savingGender}
                         error={genderError}
                         onClose={() => setGenderVisible(false)}
@@ -274,10 +274,7 @@ export default function PersonalInfoScreen() {
                             <ListRow
                                 icon={Users}
                                 label="性别"
-                                value={formatGender(
-                                    user.gender,
-                                    user.gender_custom,
-                                )}
+                                value={formatGender(user.gender)}
                                 onPress={() => {
                                     setGenderError(null);
                                     setGenderVisible(true);
@@ -286,8 +283,8 @@ export default function PersonalInfoScreen() {
                             <ListRow
                                 icon={MapPin}
                                 label="地区"
-                                value={PLANNED}
-                                disabled
+                                value={user.region_label?.trim() || "不设置"}
+                                onPress={() => router.push(regionRoute)}
                             />
                             <ListRow
                                 icon={FileText}

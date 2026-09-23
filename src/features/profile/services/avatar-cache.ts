@@ -75,7 +75,8 @@ async function commit(
 ) {
     const directory = userDirectory(userId);
     directory.create({ intermediates: true, idempotent: true });
-    const temporary = new File(directory, `.pending-${name}`);
+    const pendingName = `.pending-${name}`;
+    const temporary = new File(directory, pendingName);
     try {
         if (temporary.exists) temporary.delete();
         await produce(temporary);
@@ -90,13 +91,15 @@ async function commit(
         }
         const target = new File(directory, name);
         if (target.exists) target.delete();
-        await temporary.move(target);
+        temporary.move(target);
         pruneOthers(directory, name);
         known.set(cacheKey(userId, name), target.uri);
         notify();
     } finally {
+        // move 会把 temporary 改指向目标文件，必须按临时文件名重新定位，否则会删掉刚写入的缓存
         try {
-            if (temporary.exists) temporary.delete();
+            const leftover = new File(directory, pendingName);
+            if (leftover.exists) leftover.delete();
         } catch {
             // 临时文件会在下次写入同一用户目录时被清理
         }

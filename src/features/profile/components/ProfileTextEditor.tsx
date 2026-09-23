@@ -2,9 +2,7 @@ import { banner } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { colors } from "@/shared/theme";
 import { AppButton, Card, Input, PageHeader, Screen } from "@/shared/ui";
-import { router, type Href } from "expo-router";
-import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -16,12 +14,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfileSave } from "../hooks/useProfileSave";
+import { useUnsavedLeaveGuard } from "../hooks/useUnsavedLeaveGuard";
 import type { ProfileChanges } from "../profile.types";
 import { codePointLength, type FieldCheck } from "../utils/profile-validation";
 import { UnsavedProfileDialog } from "./UnsavedProfileDialog";
 
 const cardStyle = { borderCurve: "continuous" as const };
-const personalInfoRoute = "/pages/user/profile" as Href;
 
 type ProfileTextEditorProps = {
     title: string;
@@ -52,16 +50,11 @@ export function ProfileTextEditor({
     toChanges,
 }: ProfileTextEditorProps) {
     const { user, loading } = useAuth();
-    const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     const { save, saving } = useProfileSave();
     const [value, setValue] = useState(savedValue);
     const [touched, setTouched] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
-    const [leaveAction, setLeaveAction] = useState<
-        Parameters<typeof navigation.dispatch>[0] | null
-    >(null);
-    const allowLeaveRef = useRef(false);
 
     const result = check(value);
     const saved = check(savedValue).value;
@@ -70,28 +63,7 @@ export function ProfileTextEditor({
     const canSave = !saving && dirty && !result.error;
     const showError = touched && !!result.error;
 
-    usePreventRemove(saving || dirty, ({ data }) => {
-        if (allowLeaveRef.current) {
-            navigation.dispatch(data.action);
-            return;
-        }
-        if (saving) return;
-        setLeaveAction(data.action);
-    });
-
-    const goBack = () => {
-        if (router.canGoBack()) {
-            router.back();
-            return;
-        }
-        router.replace(personalInfoRoute);
-    };
-
-    const leave = () => {
-        allowLeaveRef.current = true;
-        if (leaveAction) navigation.dispatch(leaveAction);
-        else goBack();
-    };
+    const guard = useUnsavedLeaveGuard(dirty, saving);
 
     const submit = async () => {
         setTouched(true);
@@ -100,8 +72,7 @@ export function ProfileTextEditor({
         const outcome = await save(toChanges(result.value));
         if (outcome.status === "saved") {
             banner.show({ title: "已保存", type: "success" });
-            allowLeaveRef.current = true;
-            goBack();
+            guard.leaveAfterSave();
             return;
         }
         setSubmitError(outcome.message);
@@ -136,7 +107,7 @@ export function ProfileTextEditor({
                         <PageHeader
                             title={title}
                             backLabel="返回个人资料"
-                            onBack={goBack}
+                            onBack={guard.goBack}
                         />
 
                         <Card
@@ -226,9 +197,9 @@ export function ProfileTextEditor({
             </KeyboardAvoidingView>
 
             <UnsavedProfileDialog
-                visible={leaveAction !== null}
-                onDiscard={leave}
-                onContinue={() => setLeaveAction(null)}
+                visible={guard.confirmVisible}
+                onDiscard={guard.discardAndLeave}
+                onContinue={guard.continueEditing}
             />
         </Screen>
     );

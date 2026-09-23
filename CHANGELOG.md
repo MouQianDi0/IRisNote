@@ -1,3 +1,21 @@
+## 2026-09-24 02:29:22 | 优化代码：性别取消「自定义」，只保留不设置/男/女（客户端）
+
+- 变更概述：用户认为“自定义”选项与 `gender_custom` 字段多余，确认取消，并确认修改计划与性别弹窗文字预览。后端迁移 010 未在任何数据库执行，直接修订（见 irisapi CHANGELOG 同时间记录）。
+- 修改文件：src/shared/types/user.ts、src/features/profile/profile.types.ts、src/features/profile/utils/profile-validation.ts、src/features/profile/components/GenderPickerDialog.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、tests/profile/profile-editing.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `UserGender` 改为 `male | female`，删除 `User` 与 `ProfileChanges` 的 `gender_custom`；② 删除 `GENDER_CUSTOM_MAX`、`checkGenderCustom`，`formatGender` 只接收性别，未知取值（旧缓存残留的 custom）显示“不设置”；③ 性别弹窗移除“自定义”行、输入框与计数，保存只提交 `{ gender }`，未改变选择时保存禁用；未知初始值按“不设置”处理；④ 测试删除自定义校验用例，补充旧值显示用例；⑤ 视觉规范升至 1.17；规划文档修订 D04、D12、7.3 节、M03 与测试项。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 465/469 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。工作区另有进行中的 B2 地区改动（未提交），本次只改性别相关行。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:24:11 | 修复问题：头像本地缓存写入后被立即删除
+
+- 变更概述：用户确认问题分析与修复方案。`File.move()` 在 expo-file-system 57 中会把对象自身的 uri 改为目标位置，缓存写入收尾时按原对象清理“临时文件”，实际删掉了刚写好的缓存。导致「我的」页头像远程→空白→远程来回闪烁、离线或云存储关闭时只显示默认图标、每次启动重复下载、上传后闪烁。
+- 修改文件：src/features/profile/services/avatar-cache.ts、CHANGELOG.md。
+- 具体内容：`commit()` 的 finally 改为按临时文件名重新定位后再清理，不再使用已被 `move` 改指向的对象；去掉同步方法 `move` 前多余的 `await`。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
 ## 2026-09-24 01:37:19 | 新增功能：个人资料编辑与头像本地缓存（B1 客户端）
 
 - 变更概述：用户确认 B1 计划与文字预览。开放用户名、个人简介、性别编辑（单项保存、版本冲突与结果未知处理、未保存离开确认）；头像改为本地缓存优先，加载失败回退默认图标；修正注册时间为空时显示 1970 年的问题。依赖后端 B1（迁移 010 与 `PATCH /api/user/profile`），后端未升级时保存提示“服务器暂不支持修改资料”。
