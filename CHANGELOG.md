@@ -1,3 +1,12 @@
+## 2026-09-23 23:50:12 | 修复问题：页面进入动画期间点击返回导致白屏
+
+- 变更概述：用户确认修复方案（含 Android 物理返回键拦截、兜底 600ms）。页面以 fade_from_bottom 抽屉式进入时，动画未结束即可点击返回，原生栈进入/退出转场冲突，偶发卡白屏。现改为进入动画结束前忽略返回操作，并在一次返回后短暂上锁以防连点。
+- 修改文件：src/shared/hooks/useTransitionLock.ts（新增）、src/shared/ui/PageHeader/PageHeader.tsx、src/shared/ui/BackButton/BackButton.tsx、src/features/sync/screens/SyncQueueScreen.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、CHANGELOG.md。
+- 具体内容：① 新增 `useTransitionLock`：挂载即上锁，监听当前页面 `transitionEnd`（非 closing）解锁；兜底 600ms 自动解锁，覆盖非原生栈页面或事件未触发的情况；锁定期间通过 `BackHandler` 吞掉 Android 物理返回键；返回的包装函数在锁定时忽略点击，触发后重新上锁 600ms 防止重复返回；② 公共 PageHeader（11 个页面）与 BackButton（笔记详情、登录/注册、编辑器）接入后自动生效；③ 同步队列页自绘返回按钮、笔记详情状态页返回按钮单独接入。按钮外观、尺寸、配色不变，锁定期间不置灰。未覆盖 iOS 侧滑返回手势。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run lint`、`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）与上一条记录中的既有失败一致，与本次无关，因此 `npm run check` 未全部通过；`git diff --check` 通过，无冲突标记。未进行真机验收，未提交 Git。
+
+---
+
 ## 2026-09-23 23:33:22 | 新增功能：平台绑定占位页（A2）
 
 - 变更概述：用户确认 A2 文字预览，确认说明文案不写绑定用途、增加「绑定方式」分组标题。新增平台绑定占位页 P07，个人资料页「平台绑定」行开放进入；页面只做说明，不发起授权、绑定或任何网络请求，不列出具体平台。

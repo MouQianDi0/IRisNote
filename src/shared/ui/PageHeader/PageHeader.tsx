@@ -1,3 +1,4 @@
+import { useTransitionLock } from "@/shared/hooks/useTransitionLock";
 import { colors } from "@/shared/theme";
 import { ArrowLeft } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
@@ -13,13 +14,15 @@ export function PageHeader({
     backLabel,
     onBack,
 }: PageHeaderProps) {
+    const guardBack = useTransitionLock();
+
     return (
         <View className="h-16 flex-row items-center justify-between">
             <Pressable
                 accessibilityLabel={backLabel}
                 accessibilityRole="button"
                 className="h-11 w-11 items-center justify-center rounded-full active:bg-hyper-card active:opacity-[0.85]"
-                onPress={onBack}
+                onPress={guardBack(onBack)}
             >
                 <ArrowLeft size={24} color={colors.textPrimary} />
             </Pressable>

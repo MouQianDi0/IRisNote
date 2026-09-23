@@ -18,6 +18,7 @@ import {
     getUploadTaskCancellationAvailability,
     type UploadTaskCancellationAvailability,
 } from "@/features/sync/upload-task-cancellation";
+import { useTransitionLock } from "@/shared/hooks/useTransitionLock";
 import { colors } from "@/shared/theme";
 import { IconButton } from "@/shared/ui";
 import { router, useFocusEffect, type Href } from "expo-router";
@@ -64,6 +65,7 @@ const networkLabel = (type: string, connected: boolean) => {
 };
 
 export default function SyncQueueScreen() {
+    const guardBack = useTransitionLock();
     const database = useApplicationDatabase();
     const { user } = useAuth();
     const cloudStorage = useCloudStorage();
@@ -308,7 +310,7 @@ export default function SyncQueueScreen() {
                 <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="返回"
-                    onPress={() => router.back()}
+                    onPress={guardBack(() => router.back())}
                     style={{
                         width: 44,
                         height: 44,
