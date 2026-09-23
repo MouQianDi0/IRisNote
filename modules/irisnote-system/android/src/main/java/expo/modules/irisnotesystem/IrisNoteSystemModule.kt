@@ -112,10 +112,12 @@ class IrisNoteSystemModule : Module() {
 
   /**
    * Android 16 ProgressStyle 进度式通知：同一通知 ID 原位更新（setOnlyAlertOnce 防重复打扰）。
-   * 刻意不调用 setRequestPromotedOngoing、不依赖 POST_PROMOTED_NOTIFICATIONS——
-   * 提升式 Live Updates 对"普通提醒/即将到来的日历事件"属政策禁区。
-   * API 36.0 基础 SDK 无嵌套 Progress 类（36.1 重构）：进度用 setProgress(0-100 百分比)
-   * 与 setProgressIndeterminate 表达，不依赖 segments。
+   * promoted=true 时请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶），
+   * 仅用于"用户主动发起、正在进行"的任务（倒计时演示、待办进行中卡片）；
+   * 普通提醒/日历事件类继续走非提升通道（政策禁区，见 docs/UI/通知渠道适配.md §2.4）。
+   * API 36.0 基础 SDK 无嵌套 Progress 类与 setRequestPromotedOngoing 符号（均为 36.1/QPR
+   * 引入）：进度用 setProgress(0-100 百分比) 与 setProgressIndeterminate 表达；
+   * 提升式经 requestPromotedOngoingCompat 反射请求，36.0 设备静默退化为普通进度卡片。
    */
   private fun buildProgressNotification(
     channelId: String,
@@ -125,6 +127,7 @@ class IrisNoteSystemModule : Module() {
     max: Int,
     indeterminate: Boolean,
     ongoing: Boolean,
+    promoted: Boolean,
   ): Notification {
     val context = context()
     val style = Notification.ProgressStyle()
@@ -146,10 +149,30 @@ class IrisNoteSystemModule : Module() {
       .setCategory(Notification.CATEGORY_PROGRESS)
       .setOnlyAlertOnce(true)
       .setAutoCancel(false)
-      .setOngoing(ongoing)
+      // 提升式硬性要求 setOngoing(true)（通知渠道适配 §2.4），promoted 时强制进行中。
+      .setOngoing(ongoing || promoted)
       .setContentIntent(appLaunchPendingIntent())
     if (!text.isNullOrBlank()) builder.setContentText(text)
+    if (promoted) builder.requestPromotedOngoingCompat()
     return builder.build()
+  }
+
+  /**
+   * setRequestPromotedOngoing(true) 属 API 36.1（QPR）框架符号，本工程 compileSdk 36.0
+   * 无该符号——反射按方法名请求提升式展示；方法不存在（36.0 设备/旧框架）时静默返回
+   * 原 builder，通知退化为普通进度卡片。用户在系统设置关闭"实时更新"时系统自行忽略
+   * 提升请求（canPostPromotedNotifications 总开关），无需应用侧预判。
+   */
+  private fun Notification.Builder.requestPromotedOngoingCompat(): Notification.Builder {
+    return try {
+      val method = Notification.Builder::class.java.getMethod(
+        "setRequestPromotedOngoing",
+        Boolean::class.javaPrimitiveType,
+      )
+      method.invoke(this, true) as Notification.Builder
+    } catch (_: Throwable) {
+      this
+    }
   }
 
   override fun definition() = ModuleDefinition {
@@ -174,21 +197,29 @@ class IrisNoteSystemModule : Module() {
       }
     }
 
-    AsyncFunction(
-      "postProgressNotification",
-    ) { id: Int, channelId: String, title: String, text: String?,
-        progress: Int, max: Int, indeterminate: Boolean, ongoing: Boolean ->
+    /**
+     * 入参为单对象（Map）：Expo Modules 的 AsyncFunction Lambda 最多 8 个具名参数，
+     * 动态通知字段已超限（9 个），统一走 Map 收敛签名，后续加字段不再动原生签名。
+     */
+    AsyncFunction("postProgressNotification") { input: Map<String, Any?> ->
       requireProgressNotificationSupport()
+      fun requireInt(key: String): Int {
+        val value = input[key] as? Number ?: throw IllegalArgumentException("缺少 $key")
+        return value.toInt()
+      }
       val notification = buildProgressNotification(
-        channelId,
-        title,
-        text,
-        progress,
-        max,
-        indeterminate,
-        ongoing,
+        channelId = input["channelId"] as? String
+          ?: throw IllegalArgumentException("缺少 channelId"),
+        title = input["title"] as? String
+          ?: throw IllegalArgumentException("缺少 title"),
+        text = input["text"] as? String,
+        progress = requireInt("progress"),
+        max = requireInt("max"),
+        indeterminate = input["indeterminate"] == true,
+        ongoing = input["ongoing"] == true,
+        promoted = input["promoted"] == true,
       )
-      notificationManager().notify(id, notification)
+      notificationManager().notify(requireInt("id"), notification)
     }
 
     AsyncFunction("cancelProgressNotification") { id: Int ->

@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <!-- API 36.1（QPR）Live Updates 提升式安装级权限；36.0 及以下系统自动忽略未知权限。 -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
   <uses-permission
     android:name="android.permission.WRITE_EXTERNAL_STORAGE"
     android:maxSdkVersion="28" />

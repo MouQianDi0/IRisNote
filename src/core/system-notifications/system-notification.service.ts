@@ -380,6 +380,13 @@ export type LiveUpdateContent = {
     max: number;
     indeterminate: boolean;
     ongoing: boolean;
+    /**
+     * 请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶）。
+     * 默认开启：仅 live-test/live-todo 两渠道走本收口，内容均为
+     * "用户主动发起、正在进行"的任务（计时器/进行中待办），符合政策准入；
+     * 普通提醒类不经此函数，政策禁区不受影响。36.0 设备原生侧自动退化。
+     */
+    promoted?: boolean;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -438,16 +445,17 @@ export async function postLiveUpdate(
     const native = NativeSystem;
     if (!native) throw new Error("当前安装包不支持动态通知");
     try {
-        await native.postProgressNotification(
-            content.id,
-            content.channelId,
-            content.title,
-            content.text,
-            content.progress,
-            content.max,
-            content.indeterminate,
-            content.ongoing,
-        );
+        await native.postProgressNotification({
+            id: content.id,
+            channelId: content.channelId,
+            title: content.title,
+            text: content.text,
+            progress: content.progress,
+            max: content.max,
+            indeterminate: content.indeterminate,
+            ongoing: content.ongoing,
+            promoted: content.promoted ?? true,
+        });
     } catch (cause) {
         void recordDiagnostic(
             "live_update",
