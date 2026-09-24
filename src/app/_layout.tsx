@@ -117,6 +117,10 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/profile/password"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="auth/welcome"
                         options={{ headerShown: false }}
                     />
