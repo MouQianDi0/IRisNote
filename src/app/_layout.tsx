@@ -105,6 +105,18 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/profile/nickname"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/profile/bio"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/profile/region"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="auth/welcome"
                         options={{ headerShown: false }}
                     />

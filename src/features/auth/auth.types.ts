@@ -56,4 +56,6 @@ export type AuthState = {
     syncProfile: () => Promise<void>;
     /** 以服务端上传回执更新当前账号头像；账号已变化时不写入并返回 false。 */
     applyAvatar: (userId: number, avatar: string) => Promise<boolean>;
+    /** 以服务端返回的完整资料更新当前账号；账号已变化时不写入并返回 false。 */
+    applyUser: (user: User) => Promise<boolean>;
 };

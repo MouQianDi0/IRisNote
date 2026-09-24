@@ -324,6 +324,41 @@ export default function PermissionSettingsScreen() {
                             }
                         />
                         <ListRow
+                            icon={Zap}
+                            label="后台实时刷新"
+                            value={
+                                liveTodoRealtimeEnabled ? "已开启" : "已关闭"
+                            }
+                            description={
+                                liveUpdateCapable
+                                    ? "退后台保持待办进度卡实时更新；开启后以前台服务运行，耗电略增"
+                                    : "需要 Android 16 及以上系统"
+                            }
+                            disabled={!liveUpdateCapable}
+                            trailing={
+                                <Host
+                                    matchContents
+                                    accessibilityLabel="后台实时刷新"
+                                >
+                                    <Switch
+                                        value={
+                                            liveTodoRealtimeEnabled &&
+                                            liveUpdateCapable
+                                        }
+                                        disabled={
+                                            liveTodoRealtimePending ||
+                                            !liveUpdateCapable
+                                        }
+                                        onValueChange={(value) => {
+                                            void setLiveTodoRealtimeEnabled(
+                                                value,
+                                            );
+                                        }}
+                                    />
+                                </Host>
+                            }
+                        />
+                        <ListRow
                             icon={Camera}
                             label="相机"
                             value={snapshot.camera.label}

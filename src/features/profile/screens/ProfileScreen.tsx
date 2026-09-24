@@ -1,6 +1,7 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
+import { UserAvatarImage } from "@/features/profile/components/UserAvatarImage";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
+import { parseCreatedAt } from "@/features/profile/utils/profile-validation";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import { router, type Href } from "expo-router";
@@ -18,7 +19,6 @@ import {
 import { useEffect } from "react";
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -114,7 +114,6 @@ function ContentRow({
 
 export default function ProfileScreen() {
     const { user, isLoggedIn, loading: authLoading } = useAuth();
-    const { avatarSource, avatarKey } = useAvatar();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
 
     useEffect(() => {
@@ -183,7 +182,10 @@ export default function ProfileScreen() {
     }
 
     const displayName = user.nickname?.trim() || user.email.split("@")[0];
-    const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
+    const createdAt = parseCreatedAt(user.created_at);
+    const joinedText = createdAt
+        ? `${createdAt.toLocaleDateString("zh-CN")} 加入`
+        : "加入时间暂不可用";
     const openNotes = (view?: "starred", drafts?: boolean) => {
         router.push(
             drafts
@@ -214,18 +216,15 @@ export default function ProfileScreen() {
                             style={cardStyle}
                         >
                             <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
-                                {avatarSource ? (
-                                    <Image
-                                        key={avatarKey}
-                                        className="h-full w-full rounded-full"
-                                        source={avatarSource}
-                                    />
-                                ) : (
-                                    <UserIcon
-                                        size={30}
-                                        color={colors.primary}
-                                    />
-                                )}
+                                <UserAvatarImage
+                                    className="h-full w-full rounded-full"
+                                    fallback={
+                                        <UserIcon
+                                            size={30}
+                                            color={colors.primary}
+                                        />
+                                    }
+                                />
                             </View>
                             <View className="ml-[14px] min-w-0 flex-1">
                                 <Text
@@ -244,7 +243,7 @@ export default function ProfileScreen() {
                                     className="mt-1 text-[13px] text-hyper-text-secondary"
                                     numberOfLines={1}
                                 >
-                                    {joinedAt} 加入
+                                    {joinedText}
                                 </Text>
                             </View>
                             <View className="ml-2">

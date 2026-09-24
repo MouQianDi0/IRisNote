@@ -409,7 +409,7 @@ export default function HelpFeedbackScreen() {
                             }
                             onPress={() => void sendTestNotification()}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={Timer}
                             label="发送动态通知"
                             value={

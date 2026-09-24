@@ -8,6 +8,8 @@ export type ListRowProps = {
     label: string;
     value?: string;
     description?: string;
+    /** 说明文字最多显示的行数；默认不限制。 */
+    descriptionLines?: number;
     disabled?: boolean;
     last?: boolean;
     onPress?: () => void;
@@ -20,6 +22,7 @@ export function ListRow({
     label,
     value,
     description,
+    descriptionLines,
     disabled = false,
     last = false,
     onPress,
@@ -55,7 +58,10 @@ export function ListRow({
                     ) : null}
                 </View>
                 {description ? (
-                    <Text className="mt-1 text-sm leading-5 text-text-secondary">
+                    <Text
+                        className="mt-1 text-sm leading-5 text-text-secondary"
+                        numberOfLines={descriptionLines}
+                    >
                         {description}
                     </Text>
                 ) : null}
