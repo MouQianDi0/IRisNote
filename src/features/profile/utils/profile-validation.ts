@@ -44,3 +44,10 @@ export function parseCreatedAt(value: string | null | undefined): Date | null {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
 }
+
+/** 保留首字符与域名，其余本地部分用星号代替。 */
+export function maskEmail(email: string): string {
+    const at = email.lastIndexOf("@");
+    if (at <= 0) return email;
+    return `${email[0]}***${email.slice(at)}`;
+}

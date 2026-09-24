@@ -6,11 +6,16 @@ import {
     Image,
     Text,
     View,
+    useWindowDimensions,
     type ImageSourcePropType,
 } from "react-native";
 import type { AvatarPreviewState } from "../hooks/useAvatarUpdate";
 
 const PREVIEW_MAX = 280;
+/** 弹窗遮罩 p-6 + 卡片 p-6 的左右总留白，与 dialog.styles.ts 保持一致。 */
+const DIALOG_HORIZONTAL_INSET = 96;
+/** 卡片 max-w-[440px] 减去卡片左右内边距后的内容区上限。 */
+const DIALOG_CONTENT_MAX = 440 - 48;
 
 type AvatarPreviewDialogProps = {
     preview: AvatarPreviewState | null;
@@ -34,6 +39,17 @@ export function AvatarPreviewDialog({
     const pending = preview?.mode === "pending" ? preview : null;
     const uploading = pending?.uploading ?? false;
     const source = pending ? { uri: pending.avatar } : savedSource;
+    const { width: windowWidth } = useWindowDimensions();
+    // 边长与半径取自同一数值，保证任何屏宽下都是正圆。
+    const size = Math.max(
+        0,
+        Math.min(
+            PREVIEW_MAX,
+            DIALOG_CONTENT_MAX,
+            windowWidth - DIALOG_HORIZONTAL_INSET,
+        ),
+    );
+    const radius = size / 2;
 
     return (
         <DraftDialog
@@ -48,15 +64,15 @@ export function AvatarPreviewDialog({
                     accessibilityLabel={pending ? "待上传的新头像" : "当前头像"}
                     className="items-center justify-center overflow-hidden bg-hyper-card-selected"
                     style={{
-                        width: "100%",
-                        maxWidth: PREVIEW_MAX,
-                        aspectRatio: 1,
-                        borderRadius: PREVIEW_MAX / 2,
+                        width: size,
+                        height: size,
+                        borderRadius: radius,
                     }}
                 >
                     {source ? (
                         <Image
                             className="h-full w-full"
+                            style={{ borderRadius: radius }}
                             source={source}
                             resizeMode="cover"
                         />

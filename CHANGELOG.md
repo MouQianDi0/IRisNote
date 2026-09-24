@@ -1,3 +1,30 @@
+## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
+
+- 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。
+- 修改文件：src/shared/utils/password-policy.ts（新增）、src/features/profile/api/account-security.api.ts（新增）、src/features/profile/utils/password-errors.ts（新增）、src/features/profile/hooks/usePasswordChange.ts（新增）、src/features/profile/components/VerificationCodeField.tsx（新增）、src/features/profile/screens/ChangePasswordScreen.tsx（新增）、src/app/pages/user/profile/password.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/utils/profile-validation.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/profile/password-change.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新密码规则 6–64 个字符、UTF-8 ≤72 字节（手动按码点计字节，不依赖 TextEncoder），放在 `shared/utils` 供注册与资料共用（计划原写 profile/utils，为避免 auth 依赖 profile 调整位置）；注册页提示改为“6–64 个字符”；② 三个接口调用（15 秒超时，保持云授权受控），重设接口附加设备标识；③ 错误分类：云存储未开启且未发出 → 提示开启；已发出或无响应 → “修改结果未确认”；锁定/限流按服务端等待时间提示（分钟/秒，不重复拼接）；④ 成功以 `applyToken` 换新令牌；新令牌未能保存时主动退出并提示用新密码登录；⑤ P06 按预览实现，云存储关闭时 InlineHint 提示并禁用按钮（文案指向「同步与备份」，比预览中的「设置」更准确）；有输入离开弹出「放弃修改？」；离开保护新增 `allowLeave`；⑥ `maskEmail` 从个人资料页移至 `profile-validation.ts` 共用；个人资料“修改密码”行可点击。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 506 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 7 项通过。后端迁移 013 未执行、未部署；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 08:17:18 | 新增功能：登录失效统一处理与会话令牌替换（B3a 客户端）
+
+- 变更概述：用户确认 B3 执行计划（每次请求按主键查令牌版本、安全接口保持云授权受控、分 B3a/B3b/B3c 推进、注册同步新密码规则）并确认 B3a。服务端将在迁移 013 后按令牌版本拒绝已撤销的会话；客户端新增全局 401 处理，并为 B3b 修改密码后原地换新令牌提供 `applyToken`。
+- 修改文件：src/shared/http/session-events.ts（新增）、src/shared/http/client.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、tests/auth/session-rejected.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 响应拦截器在 401 且请求带 Bearer 令牌时发布“会话被拒”事件，携带该请求实际使用的令牌；`/auth/*`（登录、注册等凭据错误）与未带令牌的请求不发布；② AuthProvider 订阅该事件，仅当被拒令牌与本机当前保存的令牌相同时退出登录（旧账号或换令牌前发出的迟到请求不影响当前会话），并发多个 401 只处理一次；退出只清除登录态，不清理本地笔记、草稿与同步队列；随后显示横幅「登录已失效 / 请重新登录，本机数据不受影响」并回到欢迎页；③ 新增 `applyToken(token, user)`：核对本机账号后先落盘令牌、再写资料缓存并更新界面，账号已变化返回 false。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增测试 4/4；`npm run check` 类型检查、Lint、主题检查通过，测试 499 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。后端迁移 013 未执行、未部署；测试环境开启 DEV_AUTH_BYPASS 不会返回 401，未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 07:28:03 | 修复问题：头像预览弹窗中的头像不是正圆
+
+- 变更概述：用户确认问题分析与修复方案。预览容器宽度为 `100%`（上限 280），圆角却固定为 140。手机上内容区只有约 264dp，半径超过半边长，Android 上背景与裁剪路径处理不一致；「百分比宽度 + maxWidth + aspectRatio」组合也可能让容器不是正方形，两者都会导致头像不是正圆。
+- 修改文件：src/features/profile/components/AvatarPreviewDialog.tsx、CHANGELOG.md。
+- 具体内容：用 `useWindowDimensions` 计算数值边长 `size = min(280, 392, 屏宽 − 96)`，容器改为 `width/height = size`、`borderRadius = size / 2`，去掉百分比宽度和 aspectRatio；内部 `Image` 也设置同样的圆角，与页面小头像的双层圆角写法一致。弹窗布局、间距与按钮不变。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 495 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
 ## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
 
 - 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
