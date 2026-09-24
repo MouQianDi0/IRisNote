@@ -19,6 +19,7 @@ import {
     Image as ImageIcon,
     PackageCheck,
     RadioTower,
+    Zap,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
@@ -162,6 +163,10 @@ export default function PermissionSettingsScreen() {
         runtimeNotificationEnabled,
         runtimeNotificationPending,
         setRuntimeNotificationEnabled,
+        liveUpdateCapable,
+        liveTodoRealtimeEnabled,
+        liveTodoRealtimePending,
+        setLiveTodoRealtimeEnabled,
     } = useSystemNotifications();
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
