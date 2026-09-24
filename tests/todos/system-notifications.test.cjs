@@ -64,7 +64,7 @@ function service(
       },
     },
     "react-native": {
-      Platform: { OS: platform },
+      Platform: { OS: platform, Version: platform === "android" ? 36 : 0 },
       Linking: {
         async openURL(url) {
           calls.push(["settings", url]);
@@ -278,6 +278,17 @@ test("测试通知使用 DEFAULT 独立渠道并发送可自动关闭的普通�
   assert.equal(request.content.autoDismiss, true);
   assert.equal(request.content.sticky, undefined);
   assert.deepEqual(request.trigger, { channelId: "irisnote.diagnostics.v1" });
+});
+
+test("待办动态通知测试复用 LOW 渠道，渠道关闭时不视为可展示", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  assert.equal(await s.liveTodoNotificationPermission(), true);
+  assert.equal(s.calls.some(([call, id]) =>
+    call === "channel" && id === "irisnote.live-todo.v1"), true);
+  assert.equal(s.calls.some(([call, id]) =>
+    call === "channel" && id === "irisnote.live-test.v1"), false);
+  s.native.getNotificationChannelAsync = async () => ({ importance: 0 });
+  assert.equal(await s.liveTodoNotificationPermission(), false);
 });
 
 test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {

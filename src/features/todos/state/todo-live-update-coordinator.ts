@@ -5,6 +5,7 @@ import {
 import type { NativeLiveTodoTimelineCard } from "@modules/irisnote-system";
 import type { TodoEntity } from "../todos.types";
 import {
+    desiredTodoLiveDemoUpdate,
     desiredTodoLiveTimelines,
     desiredTodoLiveUpdates,
     type TodoLiveTimelineCard,
@@ -37,7 +38,19 @@ export type TodoLiveUpdateSnapshot = {
     ownerKey: string | null;
     ready: boolean;
     entities: readonly TodoEntity[];
+    /** 临时模拟待办，独立于真实实体和三张真实卡片的额度。 */
+    demoTimeline?: TodoLiveTimelineCard | null;
 };
+
+function desiredTimelines(current: TodoLiveUpdateSnapshot, now: Date) {
+    const real = current.ready && current.ownerKey
+        ? desiredTodoLiveTimelines(current.entities, now)
+        : [];
+    const demo = current.demoTimeline;
+    return demo && demo.endAt !== null && demo.endAt > now.getTime()
+        ? [...real, demo]
+        : real;
+}
 
 function toNativeTimeline(
     card: TodoLiveTimelineCard,
@@ -71,6 +84,7 @@ function toNativeTimeline(
  */
 export class TodoLiveUpdateCoordinator {
     private cards = new Map<number, TodoLiveUpdateCard>();
+    private demoTimeline: TodoLiveTimelineCard | null = null;
     private pending: Promise<void> | null = null;
     private interval: ReturnType<typeof setInterval> | null = null;
     private epoch = 0;
@@ -85,6 +99,22 @@ export class TodoLiveUpdateCoordinator {
         private readonly snapshot: () => TodoLiveUpdateSnapshot,
         private readonly now = () => new Date(),
     ) {}
+
+    /** 诊断入口核实模拟卡片已经由系统通知端口接受。 */
+    hasPosted(notificationId: number, chronoAt?: number): boolean {
+        const card = this.cards.get(notificationId);
+        return !!card && (chronoAt === undefined || card.chronoAt === chronoAt);
+    }
+
+    /** 注入临时模拟待办；调用方随后 refresh 或 handoff，不写真实仓库。 */
+    setDemoTimeline(timeline: TodoLiveTimelineCard | null): void {
+        this.demoTimeline = timeline;
+    }
+
+    private currentSnapshot(): TodoLiveUpdateSnapshot {
+        const current = this.snapshot();
+        return { ...current, demoTimeline: this.demoTimeline ?? current.demoTimeline };
+    }
 
     /** 方案 B 开关：true 且前台有活跃卡片时启动前台服务秒级刷新。 */
     setForegroundServiceEnabled(enabled: boolean): void {
@@ -144,11 +174,8 @@ export class TodoLiveUpdateCoordinator {
         } catch {
             granted = false;
         }
-        const current = this.snapshot();
-        const timelines =
-            granted && current.ready && current.ownerKey
-                ? desiredTodoLiveTimelines(current.entities, this.now())
-                : [];
+        const current = this.currentSnapshot();
+        const timelines = granted ? desiredTimelines(current, this.now()) : [];
         const ids = [...this.cards.keys()];
         this.cards.clear();
         this.lastUpdateDiagnosticAt.clear();
@@ -283,11 +310,15 @@ export class TodoLiveUpdateCoordinator {
             return;
         }
         if (epoch !== this.epoch) return;
-        const current = this.snapshot();
-        const desired =
+        const current = this.currentSnapshot();
+        const real =
             granted && current.ready && current.ownerKey
                 ? desiredTodoLiveUpdates(current.entities, this.now())
                 : [];
+        const demo = granted
+            ? desiredTodoLiveDemoUpdate(current.demoTimeline, this.now())
+            : null;
+        const desired = demo ? [...real, demo] : real;
         const desiredMap = new Map(
             desired.map((card) => [card.notificationId, card]),
         );
@@ -366,11 +397,8 @@ export class TodoLiveUpdateCoordinator {
         if (!active && !wasRunning) return;
         try {
             if (active) {
-                const current = this.snapshot();
-                const timelines =
-                    current.ready && current.ownerKey
-                        ? desiredTodoLiveTimelines(current.entities, this.now())
-                        : [];
+                const current = this.currentSnapshot();
+                const timelines = desiredTimelines(current, this.now());
                 if (timelines.length === 0) return;
                 await this.port.persistTimeline(
                     timelines.map(toNativeTimeline),

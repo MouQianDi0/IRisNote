@@ -33,11 +33,14 @@ const {
   desiredTodoLiveUpdates,
   desiredTodoLiveTimeline,
   desiredTodoLiveTimelines,
+  createTodoLiveDemoTimeline,
+  desiredTodoLiveDemoUpdate,
 } = require("@/features/todos/services/todo-live-update.service.ts");
 const {
   TodoLiveUpdateCoordinator,
 } = require("@/features/todos/state/todo-live-update-coordinator.ts");
 const {
+  LIVE_TEST_NOTIFICATION_ID,
   LIVE_TODO_CHANNEL,
 } = require("@/core/system-notifications/system-notification.types.ts");
 
@@ -85,12 +88,59 @@ function portStub(sinks = {}, overrides = {}) {
   };
 }
 
-test("动态通知整型 ID 稳定、区分账号与待办且大于保留段", () => {
+test("动态通知整型 ID 稳定、区分账号与待办且避开诊断保留段", () => {
   const first = liveUpdateNotificationId("user:one", "todo-1");
   assert.equal(first, liveUpdateNotificationId("user:one", "todo-1"));
-  assert.ok(Number.isInteger(first) && first > 16);
+  assert.ok(Number.isInteger(first) && first >= 10_000);
   assert.notEqual(first, liveUpdateNotificationId("user:one", "todo-2"));
   assert.notEqual(first, liveUpdateNotificationId("user:two", "todo-1"));
+});
+
+test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真实卡片额度", async () => {
+  const start = at(9, 30).getTime();
+  const demo = createTodoLiveDemoTimeline(start);
+  assert.equal(demo.endAt - demo.startAt, 60_000);
+  assert.equal(demo.notificationId, LIVE_TEST_NOTIFICATION_ID);
+  assert.equal(demo.channelId, LIVE_TODO_CHANNEL);
+  assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start - 1)), null);
+  assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start + 60_000)), null);
+
+  const sinks = {};
+  let now = new Date(start + 1_000);
+  let demoTimeline = demo;
+  const entities = [0, 1, 2].map((index) => todo({
+    clientId: `real-${index}`,
+  }));
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks),
+    () => ({ ownerKey: "user:one", ready: true, entities, demoTimeline }),
+    () => now,
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 4);
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID, demo.endAt), true);
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID, demo.endAt + 1), false);
+  assert.equal(sinks.posts.find((card) => card.notificationId === LIVE_TEST_NOTIFICATION_ID).text,
+    "已进行 0 / 1 分钟");
+
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 4);
+  assert.deepEqual(sinks.handoffs.find((card) => card.id === LIVE_TEST_NOTIFICATION_ID), {
+    id: LIVE_TEST_NOTIFICATION_ID,
+    channelId: LIVE_TODO_CHANNEL,
+    title: demo.title,
+    textStarted: null,
+    startAt: start,
+    endAt: start + 60_000,
+    promoted: true,
+  });
+
+  now = new Date(start + 60_001);
+  demoTimeline = null;
+  await coordinator.start();
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID), false);
+  assert.equal(sinks.posts.filter((card) => card.notificationId === LIVE_TEST_NOTIFICATION_ID).length, 1);
+  await coordinator.stop();
 });
 
 test("进行中资格与列表状态口径一致：恰好开始/结束仍在窗口内", () => {

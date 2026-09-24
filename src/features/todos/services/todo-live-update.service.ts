@@ -1,4 +1,7 @@
-import { LIVE_TODO_CHANNEL } from "@/core/system-notifications/system-notification.types";
+import {
+    LIVE_TEST_NOTIFICATION_ID,
+    LIVE_TODO_CHANNEL,
+} from "@/core/system-notifications/system-notification.types";
 import { toDateId } from "@/shared/utils/date-id";
 import { timeOnDate, todoTitle } from "../domain/todo-state";
 import type { TodoEntity } from "../todos.types";
@@ -43,7 +46,8 @@ export type TodoLiveTimelineCard = {
 
 /**
  * FNV-1a 32 位哈希 → 正整型通知 ID。
- * 加 16 偏移避开小号保留段（如设置页演示 ID 7001）；跨账号/待办稳定、不可逆。
+ * 保留 0–9999 给诊断/原生占位通知（模拟待办 ID 7001），
+ * 真实待办只分配 10000 以上的 ID；跨账号/待办稳定、不可逆。
  */
 export function liveUpdateNotificationId(
     ownerKey: string,
@@ -54,7 +58,7 @@ export function liveUpdateNotificationId(
         hash ^= char.codePointAt(0) ?? 0;
         hash = Math.imul(hash, 0x01000193) >>> 0;
     }
-    return (hash % 0x7ffffff0) + 16;
+    return (hash % (0x7fffffff - 10_000)) + 10_000;
 }
 
 /**
@@ -193,4 +197,42 @@ export function desiredTodoLiveTimelines(
             return aFuture - bFuture || a.notificationId - b.notificationId;
         })
         .slice(0, Math.max(0, limit));
+}
+
+/** 诊断用模拟待办：与真实待办共用进度卡片和原生时间线格式，但不进入仓库。 */
+export function createTodoLiveDemoTimeline(startAt: number): TodoLiveTimelineCard {
+    return {
+        notificationId: LIVE_TEST_NOTIFICATION_ID,
+        channelId: LIVE_TODO_CHANNEL,
+        title: "模拟待办：60 秒专注任务",
+        textStarted: null,
+        startAt,
+        endAt: startAt + 60_000,
+        promoted: true,
+    };
+}
+
+/** 前台模拟卡片与原生 LiveTodoNotifier 使用同一时间线和分钟取整口径。 */
+export function desiredTodoLiveDemoUpdate(
+    timeline: TodoLiveTimelineCard | null | undefined,
+    now: Date,
+): TodoLiveUpdateCard | null {
+    if (!timeline || now.getTime() < timeline.startAt ||
+        timeline.endAt === null || now.getTime() >= timeline.endAt) return null;
+    const total = Math.max(1, Math.round((timeline.endAt - timeline.startAt) / 60_000));
+    const elapsed = Math.min(total, Math.max(0,
+        Math.round((now.getTime() - timeline.startAt) / 60_000),
+    ));
+    return {
+        notificationId: timeline.notificationId,
+        channelId: timeline.channelId,
+        title: timeline.title,
+        text: `已进行 ${elapsed} / ${total} 分钟`,
+        progress: elapsed,
+        max: total,
+        indeterminate: false,
+        ongoing: true,
+        chronoAt: timeline.endAt,
+        chronoCountdown: true,
+    };
 }

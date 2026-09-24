@@ -24,6 +24,10 @@ const pendingNotificationState: SystemNotificationContextValue = {
     liveTodoRealtimeEnabled: false,
     liveTodoRealtimePending: false,
     setLiveTodoRealtimeEnabled: async () => false,
+    startTodoLiveDemo: async () => ({
+        cancel: () => {},
+        completion: Promise.resolve("failed"),
+    }),
     afterSave: async () => {},
     openSettings: () => {},
 };
@@ -54,6 +58,10 @@ const expoGoNotificationState: SystemNotificationContextValue = {
         });
         return false;
     },
+    startTodoLiveDemo: async () => ({
+        cancel: () => {},
+        completion: Promise.resolve("failed"),
+    }),
     afterSave: async (todo: TodoEntity, _reason: "confirm" | "dismiss") => {
         if (!todo.reminderEnabled || todo.isCompleted || !todo.startTime)
             return;
