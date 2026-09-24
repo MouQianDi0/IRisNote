@@ -1,3 +1,30 @@
+## 2026-09-24 06:10:57 | 优化代码：建立 Codex 全局与 IRisNote 项目双层协作规则
+
+- 变更概述：按用户明确要求写入当前环境有效的 Codex 全局配置，并将仓库根目录协作文件改为项目专属规则；依据当前仓库核对目录、依赖、数据门控、原生模块、验证入口和日志格式，保留原有未提交工作。
+- 修改文件：`/root/.codex-account-a/AGENTS.md`、`AGENTS.md`、`CHANGELOG.md`。
+- 具体内容：① 全局规则覆盖授权、提问、修改范围、事实与假设、验证、Git 工作区、日志及技能缺失时的处理；② 项目规则记录 Expo/React Native 技术栈、本地优先数据流、云存储授权、通知权限单一来源、两个本地原生模块和实际 Todo 同步目录；③ 沿用仓库现有 CHANGELOG 条目结构，未改动业务代码。
+- 验证：已对照 `package.json`、`app.json`、相关源码和目录做静态核查；`git diff --check` 未发现格式问题；应用类型检查、测试、构建和真机验证未执行（本次仅修改协作指令与日志）。
+
+---
+
+## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
+
+- 变更概述：已获用户确认执行合并全流程（含验证收尾）。合并 origin/master（个人资料页、15 天垃圾桶、导航白屏修复等 16 提交）验证中暴露：① `todo-local.test.cjs` 断言 `CURRENT_DATABASE_VERSION` 期望 12、实际 13——master 新增迁移 0013（笔记垃圾桶清除标记表 `note_trash_purged`，因 v12 已发布故升版本号）后未同步该断言，属 master 固有失败（其 CHANGELOG 18:41:40 已记录同一现象），按项目惯例（22:10:55 先例）同步断言使全量检查恢复全绿；② 合并冲突解决中本分支新增的两个设置页行残留旧组件名 `SettingsRow`（master 已将该组件迁移更名为 `@/shared/ui` 的 `ListRow` 并删除原文件），同步适配为 `ListRow`（外观与接口不变）；③ CHANGELOG 冲突区两侧共 23 条记录按时间戳全局倒序重排交织。
+- 修改文件：tests/todos/todo-local.test.cjs、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、CHANGELOG.md。
+- 具体内容：① 测试断言 12→13，注释补 0013 说明；② 权限设置页「后台实时刷新」行与帮助页「发送动态通知」行组件名 `SettingsRow`→`ListRow`；③ CHANGELOG 合并冲突区（HEAD 6 条 + master 17 条）按时间戳降序交织，保持时间倒序排列约定。
+- 验证：`npx expo start` 重新生成 typed routes（master 新增 /pages/user/* 路由后本机生成物过期导致 typecheck 报 ProfileScreen 路由类型错误，重新生成后消除）；修断言前 `npm run check` typecheck/lint/theme:check 通过、测试 482/483（唯一失败即上述 master 固有断言）；修后复跑 `npm run check` 全绿（483/483）。未做真机验收。
+
+---
+
+## 2026-09-24 02:51:48 | 优化代码：合并 kroos_todo 并更新协作约定
+
+- 变更概述：将远端 kroos_todo 的 5d9053c 合入当前分支，整合动态通知及后台实时刷新功能与现有设置页组件；按用户提供内容更新项目协作约定。
+- 修改文件：AGENTS.md、.vscode/settings.json、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/构建发布/本地测试包构建.md、docs/架构指南/系统通知模块负责说明.md、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoAlarmReceiver.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoForegroundService.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoScheduler.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt、modules/irisnote-system/index.ts、src/core/system-notifications/system-notification-context.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/core/system-notifications/system-notification-provider.tsx、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification.types.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、tests/todos/todo-live-update.test.cjs、CHANGELOG.md。
+- 具体内容：保留帮助页的动态通知演示入口与权限页的后台实时刷新开关，统一使用当前分支的 ListRow；保留双方 CHANGELOG 历史记录并按时间整理；根目录 AGENTS.md 改为本次提供的协作约定。
+- 验证：合并前及冲突整合后 `npm run typecheck` 均通过；`EXPO_NO_TELEMETRY=1 npm run check` 的类型检查、Lint、主题检查通过，483 项测试中 479 通过、2 跳过、2 失败。失败为既有的发布归档测试超长中文文件名 `ENAMETOOLONG`，以及合并前即存在的待办迁移测试期望版本 12 而实际版本 13；新增动态通知测试通过。无本次新增类型错误，Android 原生构建与真机验收未执行（当前工作区无生成的 android 目录）。合并停在未提交状态。
+
+---
+
 ## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
 
 - 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
@@ -41,12 +68,6 @@
 - 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
 - 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
 - 验证：仅文档改动，未运行代码检查；后端未做任何修改。
-## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
-
-- 变更概述：已获用户确认执行合并全流程（含验证收尾）。合并 origin/master（个人资料页、15 天垃圾桶、导航白屏修复等 16 提交）验证中暴露：① `todo-local.test.cjs` 断言 `CURRENT_DATABASE_VERSION` 期望 12、实际 13——master 新增迁移 0013（笔记垃圾桶清除标记表 `note_trash_purged`，因 v12 已发布故升版本号）后未同步该断言，属 master 固有失败（其 CHANGELOG 18:41:40 已记录同一现象），按项目惯例（22:10:55 先例）同步断言使全量检查恢复全绿；② 合并冲突解决中本分支新增的两个设置页行残留旧组件名 `SettingsRow`（master 已将该组件迁移更名为 `@/shared/ui` 的 `ListRow` 并删除原文件），同步适配为 `ListRow`（外观与接口不变）；③ CHANGELOG 冲突区两侧共 23 条记录按时间戳全局倒序重排交织。
-- 修改文件：tests/todos/todo-local.test.cjs、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、CHANGELOG.md。
-- 具体内容：① 测试断言 12→13，注释补 0013 说明；② 权限设置页「后台实时刷新」行与帮助页「发送动态通知」行组件名 `SettingsRow`→`ListRow`；③ CHANGELOG 合并冲突区（HEAD 6 条 + master 17 条）按时间戳降序交织，保持时间倒序排列约定。
-- 验证：`npx expo start` 重新生成 typed routes（master 新增 /pages/user/* 路由后本机生成物过期导致 typecheck 报 ProfileScreen 路由类型错误，重新生成后消除）；修断言前 `npm run check` typecheck/lint/theme:check 通过、测试 482/483（唯一失败即上述 master 固有断言）；修后复跑 `npm run check` 全绿（483/483）。未做真机验收。
 
 ---
 
@@ -268,6 +289,8 @@
 - 界面：沿用 64dp 返回栏、16dp 页面/卡片内边距、12dp 卡片间距和 48dp 操作按钮，补充加载、空态、错误重试及底部安全区。
 - 验证：对应基于 288e266 的未提交工作区。修改前后 npm run typecheck 通过，完整 npm run check 的类型检查和 ESLint 通过，但 theme:check 因既有 global.css 色值大小写与主题生成结果不一致而失败；从 288e266 原文件复核可复现，本次未修改主题文件。单独执行 npm test：443 项中 441 通过、2 失败，分别为既有待办页 className 字符串断言不匹配（基线提交同样不匹配）和 react-native-tab-view 运行依赖 DEAD_ZONE=12、测试要求100；均不涉及本次修改文件。最终类型检查、定向 ESLint、git diff --check 及本次源码冲突标记检查通过。检查日志：系统临时目录 irisnote-profile-pages-check.log、irisnote-profile-pages-tests.log。ADB 无设备，现有预览端口8081的浏览器导航和状态读取均超时，未完成视觉或真机验收；未重启现有服务，未构建、提交或发布。
 
+---
+
 ## 2026-09-22 22:17:17 | 优化代码：按项目现状重写测试包构建指南新电脑从零构建章节
 
 - 变更概述：已获用户确认（从系统环境变量之后写起，环境配置部分不展开；按项目改动后现状重新参考）。项目统一云存储改造（47bedd6）后旧开关 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已从代码移除，且此前写入文档的"新电脑从零搭建"章节已随 330780b 移除。本次按当前代码现状重写该章节：不含软件清单与环境变量小节（引言一句带过前提），从克隆代码到产出 APK 组织为步骤 1–7 流水线。
@@ -356,6 +379,8 @@
 - 修改文件：src/app/_layout.tsx、CHANGELOG.md。
 - 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
 - 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
+
+---
 
 ## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
 
@@ -802,6 +827,8 @@
 - 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
 - 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
 
+---
+
 ## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
 
 - 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
@@ -1006,6 +1033,8 @@
 
 > > > > > > > > > Temporary merge branch 2
 
+---
+
 ## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
 
 - 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
@@ -1194,6 +1223,8 @@
 
 # CHANGELOG
 
+---
+
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
 
 - **变更概述**：待办页将原内容区横向周历移入右侧 75dp 预留栏，改为按周展示的七日竖向日期轨道；日期轨道距栏顶部 30dp，单元格采用与笔记分类图标同级的 50dp 方形基准。今天固定显示主题色，点击其他日期显示淡色选中态；上下翻动切换周，左箭头以公共锚点气泡弹窗打开月历快速跳转。
@@ -1262,6 +1293,8 @@
     - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 将页面改为内容区与右侧工具栏栏位的横向布局。
     - `CHANGELOG.md` - 记录本次剪贴板工具栏预留。
 - **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
 
 ## 2026-09-16 07:52:27 | 优化代码：剪贴板页镜像笔记容器
 
@@ -2286,6 +2319,8 @@
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
 
+---
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**
@@ -2663,6 +2698,8 @@
     - `src/core/providers/AppProviders.tsx`、`src/app/(tabs)/_layout.tsx`、`src/components/FloatingBarComponents/FloatingBar.tsx` - 改为使用新的认证与个人资料入口
     - `src/api/auth.ts`、`src/api/user.ts`、`src/hooks/useAuth.tsx`、`src/hooks/useAvatar.ts`、`src/hooks/useEmailValidation.ts` - 删除已迁移的旧入口
 
+---
+
 ## 2026-07-12 02:16:59 | 优化代码
 
 - **阶段二：迁移共享能力与应用导航基础设施**
@@ -2684,6 +2721,8 @@
     - `src/app/_layout.tsx`、`src/app/(tabs)/_layout.tsx` - 改为使用 AppProviders、核心导航组件和共享主题
     - `src/app/**`、`src/components/**`、`src/hooks/**`、`src/api/**` - 更新为使用新的 shared/core 导入路径与 storage key
     - `src/api/client.ts`、`src/api/errors.ts`、`src/theme/*`、`src/components/ui/*`、`src/data/actions.ts`、`src/data/floatingMenuVisibility.ts`、相关旧导航组件与 Hooks - 删除已迁移源文件
+
+---
 
 ## 2026-07-12 01:57:17 | 优化代码
 
@@ -2707,6 +2746,8 @@
     - `src/components/Note/NoteViewer.tsx`、`src/components/Note/SwipeableNoteItem.tsx` - 移除重复笔记类型声明
     - `src/components/FloatingBarComponents/FloatingBar.tsx`、`src/components/FloatingBarComponents/FloatingBarCategoryButton.tsx`、`src/hooks/FloatingBar/*` - 改为从分类领域类型模块导入类型
     - `src/hooks/notes/useNotePin.ts`、`src/hooks/notes/useNoteStar.ts` - 移除对 UI 组件类型的依赖
+
+---
 
 ## 2026-07-11 20:46:07 | 优化代码
 
@@ -2974,11 +3015,11 @@
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
 
+---
+
 ## 2026-09-20 10:26:11 | 修复问题：解决本地 Git 合并冲突
 
 - 文件：CHANGELOG.md、app.json、src/features/todos/screens/TodosScreen.tsx。
 - 合并 `kroos_todo` 与进入工作区的 0.2.4 配置及文档变更：保留待办整周列表、日历和本地提醒实现；合并应用图标、启动页、EAS 项目配置与 Expo 本地通知插件；合并双方历史日志并移除三个真实冲突文件中的 Git 冲突标记。
 - 验证：`git ls-files -u` 无输出，暂存区 `git diff --cached --check` 通过；`npm run check` 的类型检查、Lint、主题检查通过，Node 并发测试运行器出现一次异步反序列化异常后，串行全量测试 282/282 通过；`npx expo config --type public --json` 通过。
 - 未执行 Git 提交、推送、构建或设备验收。
-
----
