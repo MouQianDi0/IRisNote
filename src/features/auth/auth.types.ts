@@ -58,4 +58,6 @@ export type AuthState = {
     applyAvatar: (userId: number, avatar: string) => Promise<boolean>;
     /** 以服务端返回的完整资料更新当前账号；账号已变化时不写入并返回 false。 */
     applyUser: (user: User) => Promise<boolean>;
+    /** 以服务端签发的新令牌与资料替换当前会话（如修改密码后）；账号已变化时不写入并返回 false。 */
+    applyToken: (token: string, user: User) => Promise<boolean>;
 };
