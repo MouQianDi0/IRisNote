@@ -1,3 +1,12 @@
+## 2026-09-24 07:27:36 | 优化代码：将 Android 16 动态通知测试改为 60 秒模拟待办
+
+- 变更概述：帮助页动态通知测试改为临时模拟待办，复用真实待办的 ProgressStyle 发卡、前后台协调器、原生时间线和到点撤卡；不写入待办数据库或同步队列。
+- 修改文件：`src/core/system-notifications/{system-notification-context.ts,system-notification-provider.tsx,system-notification-native-provider.tsx,system-notification.service.ts,system-notification.types.ts}`、`src/features/todos/{services/todo-live-update.service.ts,state/todo-live-update-coordinator.ts}`、`src/features/settings/screens/HelpFeedbackScreen.tsx`、`tests/todos/{todo-live-update.test.cjs,system-notifications.test.cjs}`、`docs/{UI/通知渠道适配.md,架构指南/系统通知模块负责说明.md}`、`CHANGELOG.md`。
+- 具体内容：模拟卡使用 ID 7001 和真实待办的静默渠道，60 秒时间线由协调器在前台差量更新、退后台交给原生闹钟；可选前台服务沿用原有秒级更新。真实卡继续最多三张且 ID 避开 0–9999 保留段；测试确认原生端口接受发卡后才启动计时，结束或离开页面清理。检查应用与渠道两级通知权限，移除旧 120 秒 JS 倒计时及不再使用的测试渠道创建。
+- 验证：`EXPO_NO_TELEMETRY=1 npm run check` 的类型检查、Lint、主题检查通过；500 项测试中 497 通过、2 跳过、1 失败。唯一失败为既有发布归档测试在本机创建过长中文文件名导致 `ENAMETOOLONG`，通知相关测试通过；`git diff --check` 通过。未执行 Android 真机展示及原生构建（未修改 Kotlin/Manifest）。
+
+---
+
 ## 2026-09-24 06:10:57 | 优化代码：建立 Codex 全局与 IRisNote 项目双层协作规则
 
 - 变更概述：按用户明确要求写入当前环境有效的 Codex 全局配置，并将仓库根目录协作文件改为项目专属规则；依据当前仓库核对目录、依赖、数据门控、原生模块、验证入口和日志格式，保留原有未提交工作。
