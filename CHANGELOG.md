@@ -9,6 +9,176 @@
 
 ---
 
+## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
+
+- 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。
+- 修改文件：src/shared/utils/password-policy.ts（新增）、src/features/profile/api/account-security.api.ts（新增）、src/features/profile/utils/password-errors.ts（新增）、src/features/profile/hooks/usePasswordChange.ts（新增）、src/features/profile/components/VerificationCodeField.tsx（新增）、src/features/profile/screens/ChangePasswordScreen.tsx（新增）、src/app/pages/user/profile/password.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/utils/profile-validation.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/profile/password-change.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新密码规则 6–64 个字符、UTF-8 ≤72 字节（手动按码点计字节，不依赖 TextEncoder），放在 `shared/utils` 供注册与资料共用（计划原写 profile/utils，为避免 auth 依赖 profile 调整位置）；注册页提示改为“6–64 个字符”；② 三个接口调用（15 秒超时，保持云授权受控），重设接口附加设备标识；③ 错误分类：云存储未开启且未发出 → 提示开启；已发出或无响应 → “修改结果未确认”；锁定/限流按服务端等待时间提示（分钟/秒，不重复拼接）；④ 成功以 `applyToken` 换新令牌；新令牌未能保存时主动退出并提示用新密码登录；⑤ P06 按预览实现，云存储关闭时 InlineHint 提示并禁用按钮（文案指向「同步与备份」，比预览中的「设置」更准确）；有输入离开弹出「放弃修改？」；离开保护新增 `allowLeave`；⑥ `maskEmail` 从个人资料页移至 `profile-validation.ts` 共用；个人资料“修改密码”行可点击。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 506 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 7 项通过。后端迁移 013 未执行、未部署；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 08:17:18 | 新增功能：登录失效统一处理与会话令牌替换（B3a 客户端）
+
+- 变更概述：用户确认 B3 执行计划（每次请求按主键查令牌版本、安全接口保持云授权受控、分 B3a/B3b/B3c 推进、注册同步新密码规则）并确认 B3a。服务端将在迁移 013 后按令牌版本拒绝已撤销的会话；客户端新增全局 401 处理，并为 B3b 修改密码后原地换新令牌提供 `applyToken`。
+- 修改文件：src/shared/http/session-events.ts（新增）、src/shared/http/client.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、tests/auth/session-rejected.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 响应拦截器在 401 且请求带 Bearer 令牌时发布“会话被拒”事件，携带该请求实际使用的令牌；`/auth/*`（登录、注册等凭据错误）与未带令牌的请求不发布；② AuthProvider 订阅该事件，仅当被拒令牌与本机当前保存的令牌相同时退出登录（旧账号或换令牌前发出的迟到请求不影响当前会话），并发多个 401 只处理一次；退出只清除登录态，不清理本地笔记、草稿与同步队列；随后显示横幅「登录已失效 / 请重新登录，本机数据不受影响」并回到欢迎页；③ 新增 `applyToken(token, user)`：核对本机账号后先落盘令牌、再写资料缓存并更新界面，账号已变化返回 false。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增测试 4/4；`npm run check` 类型检查、Lint、主题检查通过，测试 499 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。后端迁移 013 未执行、未部署；测试环境开启 DEV_AUTH_BYPASS 不会返回 401，未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 07:28:03 | 修复问题：头像预览弹窗中的头像不是正圆
+
+- 变更概述：用户确认问题分析与修复方案。预览容器宽度为 `100%`（上限 280），圆角却固定为 140。手机上内容区只有约 264dp，半径超过半边长，Android 上背景与裁剪路径处理不一致；「百分比宽度 + maxWidth + aspectRatio」组合也可能让容器不是正方形，两者都会导致头像不是正圆。
+- 修改文件：src/features/profile/components/AvatarPreviewDialog.tsx、CHANGELOG.md。
+- 具体内容：用 `useWindowDimensions` 计算数值边长 `size = min(280, 392, 屏宽 − 96)`，容器改为 `width/height = size`、`borderRadius = size / 2`，去掉百分比宽度和 aspectRatio；内部 `Image` 也设置同样的圆角，与页面小头像的双层圆角写法一致。弹窗布局、间距与按钮不变。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 495 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
+
+- 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
+- 修改文件：scripts/build-region-dictionary.mjs（新增）、src/features/profile/data/{regions.json,region-index.ts,REGIONS-LICENSE.md}（新增）、src/features/profile/utils/region-dictionary.ts（新增）、src/features/profile/hooks/useUnsavedLeaveGuard.ts（新增）、src/features/profile/screens/SelectRegionScreen.tsx（新增）、src/app/pages/user/profile/region.tsx（新增）、src/app/_layout.tsx、src/features/profile/components/ProfileTextEditor.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/profile.types.ts、src/shared/types/user.ts、src/features/settings/screens/AboutScreen.tsx、tests/profile/region-dictionary.test.cjs（新增）、docs/第三方数据许可.md（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 生成脚本固定 dr5hn `v3.2-export.7` 并校验 SHA-256，每国只取无上级条目，剔除军邮区、海外属地与地理单元；台湾、香港、澳门不作为第一级，归入中国省级并显示为中国台湾/中国香港/中国澳门；修正“汉城”“阿穆尔河”、印尼各巴布亚省误译为“巴布亚新几内亚”等错误，并以人工对照区分 18 组同名条目；出现未处理的重名、港澳台规则被破坏或名称超长时生成失败；② 字典 247 国家、3975 省州、约 159KB，首次使用时建立索引，JSON 行格式在运行时校验；③ P04：搜索（中英文名/编码，最多 50 条）、面包屑、分级列表、“不设置”与“选择某国不再细分”、失效编码提示、固定底栏“已选”与保存，保存携带编码、名称快照与字典版本；④ 未保存离开保护抽为 `useUnsavedLeaveGuard`，P02/P03 改用；⑤ 关于页“数据来源”只读行满足 ODbL 署名；⑥ 视觉规范升至 1.18。
+- 协作说明：本阶段期间另一会话完成了取消性别“自定义”及头像缓存 `File.move()` 后误删缓存的修复（见其各自记录），本条不包含这些改动。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试除既有 2 项失败（发布归档本机路径过长、待办迁移版本）外全部通过，新增 6 项地区测试通过；`git diff --check` 通过。未做浏览器或真机验收；后端迁移 011 未执行；未提交 Git。
+
+---
+
+## 2026-09-24 02:29:22 | 优化代码：性别取消「自定义」，只保留不设置/男/女（客户端）
+
+- 变更概述：用户认为“自定义”选项与 `gender_custom` 字段多余，确认取消，并确认修改计划与性别弹窗文字预览。后端迁移 010 未在任何数据库执行，直接修订（见 irisapi CHANGELOG 同时间记录）。
+- 修改文件：src/shared/types/user.ts、src/features/profile/profile.types.ts、src/features/profile/utils/profile-validation.ts、src/features/profile/components/GenderPickerDialog.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、tests/profile/profile-editing.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `UserGender` 改为 `male | female`，删除 `User` 与 `ProfileChanges` 的 `gender_custom`；② 删除 `GENDER_CUSTOM_MAX`、`checkGenderCustom`，`formatGender` 只接收性别，未知取值（旧缓存残留的 custom）显示“不设置”；③ 性别弹窗移除“自定义”行、输入框与计数，保存只提交 `{ gender }`，未改变选择时保存禁用；未知初始值按“不设置”处理；④ 测试删除自定义校验用例，补充旧值显示用例；⑤ 视觉规范升至 1.17；规划文档修订 D04、D12、7.3 节、M03 与测试项。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 465/469 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。工作区另有进行中的 B2 地区改动（未提交），本次只改性别相关行。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:24:11 | 修复问题：头像本地缓存写入后被立即删除
+
+- 变更概述：用户确认问题分析与修复方案。`File.move()` 在 expo-file-system 57 中会把对象自身的 uri 改为目标位置，缓存写入收尾时按原对象清理“临时文件”，实际删掉了刚写好的缓存。导致「我的」页头像远程→空白→远程来回闪烁、离线或云存储关闭时只显示默认图标、每次启动重复下载、上传后闪烁。
+- 修改文件：src/features/profile/services/avatar-cache.ts、CHANGELOG.md。
+- 具体内容：`commit()` 的 finally 改为按临时文件名重新定位后再清理，不再使用已被 `move` 改指向的对象；去掉同步方法 `move` 前多余的 `await`。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 01:37:19 | 新增功能：个人资料编辑与头像本地缓存（B1 客户端）
+
+- 变更概述：用户确认 B1 计划与文字预览。开放用户名、个人简介、性别编辑（单项保存、版本冲突与结果未知处理、未保存离开确认）；头像改为本地缓存优先，加载失败回退默认图标；修正注册时间为空时显示 1970 年的问题。依赖后端 B1（迁移 010 与 `PATCH /api/user/profile`），后端未升级时保存提示“服务器暂不支持修改资料”。
+- 修改文件：src/shared/types/user.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、src/features/profile/profile.types.ts、src/features/profile/api/profile.api.ts、src/features/profile/hooks/{useProfileSave.ts（新增）,useAvatar.ts,useAvatarUpdate.ts}、src/features/profile/utils/{profile-validation.ts（新增）,avatar-cache-key.ts（新增）}、src/features/profile/services/avatar-cache.ts（新增）、src/features/profile/components/{ProfileTextEditor.tsx,GenderPickerDialog.tsx,UnsavedProfileDialog.tsx,UserAvatarImage.tsx}（新增）、src/features/profile/screens/{EditNicknameScreen.tsx,EditBioScreen.tsx}（新增）、src/features/profile/screens/{PersonalInfoScreen.tsx,ProfileScreen.tsx}、src/features/notes/categories/components/CategoryBar.tsx、src/shared/ui/ListRow/ListRow.tsx、src/app/pages/user/profile/{nickname.tsx,bio.tsx}（新增）、src/app/_layout.tsx、tests/profile/{profile-editing.test.cjs,avatar-cache.test.cjs}（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `User` 新增可选资料字段，`created_at` 允许为空；`AuthProvider.applyUser` 核对账号后以服务端完整资料回写状态与缓存；② `useProfileSave` 以 `profile_version` 条件保存，请求 15 秒超时；409 载入最新资料并保留输入；无响应或请求已发出后授权被撤销时重新读取资料并提示结果未确认；未发出即被云存储拦截时提示开启云存储；③ P02/P03 共用 `ProfileTextEditor`（码点计数、清空、失焦后显示错误、`usePreventRemove` 离开确认、保存中阻止离开）；④ M03 性别弹窗暂存选择、保存中锁定；⑤ P01 用户名/性别/简介行开放，简介最多两行预览，`ListRow` 新增 `descriptionLines`；⑥ 头像缓存存于 `Paths.document/avatars/<用户ID>/`，仅缓存属于当前用户且命名合规的文件，下载与写入先落临时文件并校验大小与文件头后改名，每用户保留一个文件；同一文件并发只下载一次；本地文件显示失败即丢弃并在本次运行内不再自动下载；上传成功直接写入缓存；云存储关闭时显示本地缓存；⑦ 三处头像改用 `UserAvatarImage`，保留各自原有默认图标外观；⑧ 视觉规范升至 1.16。
+- 验证：修改前后 `npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过（新增 10 项），2 项失败（发布归档本机路径过长、待办迁移版本）与 `2783a37` 基线相同、与本次无关；`git diff --check` 通过。未做浏览器或真机验收；依赖的后端改动尚未迁移与部署；未提交 Git。
+
+---
+
+## 2026-09-24 01:13:05 | 优化代码：个人资料 B0 后端核实结论与接口约定（仅文档）
+
+- 变更概述：用户提供后端仓库（irisapi `Timmi` / `301d754`）并通过选项确认全部待定决策；冻结 B1/B3 接口约定，B1 范围并入旧头像清理与头像本地缓存。
+- 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
+- 验证：仅文档改动，未运行代码检查；后端未做任何修改。
+
+## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
+
+- 变更概述：已获用户确认执行合并全流程（含验证收尾）。合并 origin/master（个人资料页、15 天垃圾桶、导航白屏修复等 16 提交）验证中暴露：① `todo-local.test.cjs` 断言 `CURRENT_DATABASE_VERSION` 期望 12、实际 13——master 新增迁移 0013（笔记垃圾桶清除标记表 `note_trash_purged`，因 v12 已发布故升版本号）后未同步该断言，属 master 固有失败（其 CHANGELOG 18:41:40 已记录同一现象），按项目惯例（22:10:55 先例）同步断言使全量检查恢复全绿；② 合并冲突解决中本分支新增的两个设置页行残留旧组件名 `SettingsRow`（master 已将该组件迁移更名为 `@/shared/ui` 的 `ListRow` 并删除原文件），同步适配为 `ListRow`（外观与接口不变）；③ CHANGELOG 冲突区两侧共 23 条记录按时间戳全局倒序重排交织。
+- 修改文件：tests/todos/todo-local.test.cjs、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、CHANGELOG.md。
+- 具体内容：① 测试断言 12→13，注释补 0013 说明；② 权限设置页「后台实时刷新」行与帮助页「发送动态通知」行组件名 `SettingsRow`→`ListRow`；③ CHANGELOG 合并冲突区（HEAD 6 条 + master 17 条）按时间戳降序交织，保持时间倒序排列约定。
+- 验证：`npx expo start` 重新生成 typed routes（master 新增 /pages/user/* 路由后本机生成物过期导致 typecheck 报 ProfileScreen 路由类型错误，重新生成后消除）；修断言前 `npm run check` typecheck/lint/theme:check 通过、测试 482/483（唯一失败即上述 master 固有断言）；修后复跑 `npm run check` 全绿（483/483）。未做真机验收。
+
+---
+
+## 2026-09-24 01:04:37 | 修复问题：irisnote-system 模块 manifest 组件层级错误导致 AAPT 资源链接失败
+
+- 变更概述：已获用户确认。`assembleStaging` 在 `:app:processStagingResources` 阶段失败，AAPT 报 `unexpected element <receiver>/<service> found in <manifest>`——根因是上一轮（2026-09-23 23:24:26）新增 Live Updates 后台刷新时，`<receiver>`（LiveTodoAlarmReceiver）与 `<service>`（LiveTodoForegroundService）被直接声明在 `<manifest>` 根节点下，违反 Android 规范（四大组件必须位于 `<application>` 内；根级仅允许 uses-permission/queries 等）。修复：包一层 `<application>` 将两个组件移入，uses-permission 保持根级，组件属性与 PROPERTY_SPECIAL_USE_FGS_SUBTYPE 子元素原样不动；库模块 application 节点由 manifest merger 与宿主 app 自动合并。纯 XML 层级调整，不涉及 TS/Kotlin 代码，未跑 `npm run check`。
+- 修改文件：modules/irisnote-system/android/src/main/AndroidManifest.xml、CHANGELOG.md。
+- 具体内容：`<receiver android:name=".live.LiveTodoAlarmReceiver">` 与 `<service android:name=".live.LiveTodoForegroundService" foregroundServiceType="specialUse">`（含 property 子元素）从 `<manifest>` 直接子级移入新增的 `<application>` 包裹层，缩进同步调整；其余内容（4 个 uses-permission、注释）无变化。
+- 验证：复跑 `npm run gradle -- assembleStaging -PreactNativeArchitectures=arm64-v8a`（arm64，含阿里云 init-script）**BUILD SUCCESSFUL in 2m 20s**（1062 任务：38 执行、1024 up-to-date），`processStagingResources` 通过，产物 `android/app/build/outputs/apk/staging/app-staging.apk`（51.8MB，2026-09-24 01:07:37）已重新生成。仅打包验证通过，真机验收（receiver/FGS 运行时行为）不属于本次修复范围。
+
+---
+
+## 2026-09-24 00:43:10 | 修复问题：收口动态通知后台实时刷新评审缺陷——方案 B 数据流断裂、双驱动竞态、移交失败残留与截断口径
+
+- 变更概述：已获用户确认（按评审优先级 P1→P8 全量执行；P5 截断口径经用户拍板选 A"进行中优先"）。本次修复生产就绪评审发现的 1 Critical + 3 Important + 3 Minor：① **C1 方案 B（后台实时刷新开关）功能性死亡 + 崩溃风险**——FGS 与闹钟共用 LiveTodoTimelineStore，而该 store 仅退后台 handoff 时写入，FGS 只能前台启动 → 启动即见空快照立即 stopSelf（秒级刷新从不发生，开关是安慰剂），且 startForegroundService() 后未调 startForeground() 即 stopSelf() 存在 ForegroundServiceDidNotStartInTimeException 崩溃风险（开关开启且有活跃卡时每 30 秒重复触发）；② I1 handoff 在途 + start（快速后台→前台）双驱动——start 不递增 epoch、handoff 不查 interval，闹钟持旧快照与 JS 同时驱动（完成待办的卡被闹钟复活、标题编辑被回滚）；③ I2 handoff 移交失败（rethrow 被 catch 吞掉）后卡片冻结残留无人清理；④ I3 时间线快照按纯 notificationId 截断，未来卡可挤掉进行中卡（退后台瞬间撤下进行中卡）；⑤ M1 reclaim 吞失败致 start 双驱动接管；⑥ M5 设置页静态 import liveUpdateSupported 破坏 Expo Go/web 隔离模式；⑦ M4 run() post 在途补撤误杀已移交原生的卡。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoScheduler.kt、live/LiveTodoForegroundService.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/core/system-notifications/system-notification-context.ts、src/core/system-notifications/system-notification-provider.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/todos/todo-live-update.test.cjs、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① **C1 修复**——原生 LiveTodoScheduler 新增 `persist`（仅存快照不排闹钟），Module 新增第 5 接口 `updateLiveTodoCards`（与 scheduleLiveTodoCards 共用抽出 parseLiveTodoCards 解析器）；JS 协调器 applyForegroundService(true) 改为**先经 port.persistTimeline 持久化当前时间线快照再启动 FGS**（前台不排闹钟避免与 JS 30 秒驱动双写），run() 每轮刷新快照使编辑/完成 1 秒内反映到 FGS 驱动的卡片；持久化失败跳过本次启动（方案 A 兜底）；FGS 空快照/无进行中卡改为**安全停机**（占位 startForeground → stopForeground(REMOVE) → stopSelf，占位 ID 7003 + ensureLiveTodoChannel 渠道兜底），anchor 不再兜底未来卡；协调器跟踪 fgsRunning，FGS 真实停止后清空已发表强制下一轮原位重发（防锚点卡因 cardEquals 去重永久消失），未运行也无需停止时跳过无谓原生调用；② **I1+M4 修复**——handoff 移交落地后自检 `epoch !== this.epoch || this.interval !== null` 则补一次幂等 cancelTimeline 撤销（两种时序均收敛到"原生不拥有"）；新增 nativeOwns 所有权标记（移交成功置 true，start/stop/失败清场复位），run() post 在途代数过期补撤时若原生已接管则跳过（不误杀）；③ **I2 修复**——handoff 失败分支先 cancelTimeline 撤销半写原生状态，再逐卡 cancel 清场（宁撤勿留冻结错误进度），清场循环遇 JS 驱动被抢先重建（interval 非空）立即让位不误杀新代；④ **I3 修复**——desiredTodoLiveTimelines 排序改"进行中优先、组内按通知 ID"（资格已排除过结束卡，startAt 未到即未来卡），退后台不再因未来卡挤掉进行中卡；⑤ **M1 修复**——reclaimLiveTodoTimelines 改为记诊断后 rethrow；start() 收回失败即放弃本轮接管（降级保持原生分钟级驱动，避免双驱动），stop() 包裹 cancelTimeline 继续清场；⑥ **M5 修复**——context 新增 `liveUpdateCapable` 能力位（三处 fallback 均 false，原生 Provider 计算真值），设置页删除对 system-notification.service 的静态 import 改用 context，恢复 Expo Go/web 隔离模式；⑦ 测试 22→29：新增 start 收回失败放弃接管、开关开启先持久化后启动（顺序断言 persist→fgs-start）、开关关闭停止后强制重发、handoff 失败清场、handoff 在途 + start 补撤销、post 在途 + handoff 不误杀、时间线进行中优先截断（按 ID 构造未来卡占最小 3 个确保区分新旧口径）七组，portStub 扩展 persists sink；⑧ 文档 §6.2 同步：方案 B 数据流（persist→start 两步、编辑 1 秒反映、安全停机、锚点重发）、方案 A 收回失败降级与移交在途撤销、截断口径改为"进行中优先"、liveUpdateCapable 能力位说明。
+- 验证：改前 typecheck 基线 exit 0；改后 `npm run check` 全绿（typecheck、lint、theme:check、**467/467** 测试，含新增 7 项）；Kotlin `:irisnote-system:compileDebugKotlin` 首次失败（漏导入 NotificationManager）补导入后复跑 **BUILD SUCCESSFUL**（22s）。**Android 16 真机验收仍未做**：方案 B 修复后 FGS 全生命周期（前台启动→退后台秒级→编辑 1 秒反映→开关关闭锚点卡重发→全停安全停机无崩溃）、FGS 与 JS 并行前台驱动时进度条秒级/分钟级混排观感、handoff 快速切换撤销链路真机时序。
+
+---
+
+## 2026-09-23 23:59:13 | 新增功能：头像更换迁移至个人资料页（A3）
+
+- 变更概述：用户确认 A3 问题分析与文字预览，确认待确认预览点遮罩不关闭。头像更换从「我的」账户卡迁移到个人资料页：先选图并预览，确认后才上传；以服务端上传回执直接更新共享资料，修复资料同步失败时仍提示“头像已更新”却显示旧头像的问题；「我的」账户卡整卡进入个人资料页。
+- 修改文件：src/features/profile/hooks/useAvatarUpdate.ts（新增）、src/features/profile/components/AvatarActionsMenu.tsx（新增）、src/features/profile/components/AvatarPreviewDialog.tsx（新增）、src/features/profile/utils/avatar-errors.ts（新增）、tests/profile/avatar-update.test.cjs（新增）、src/features/profile/hooks/useAvatar.ts、src/features/profile/services/avatar-picker.service.ts、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 选图与上传拆分：删除一次采集即上传的 `collectAndUpload*`，新增 `useAvatarUpdate` 管理菜单 → 选图 → 待确认 → 上传中 → 结果；选图前先校验云存储授权，上传前后再次核对授权代际；② `AuthProvider` 新增 `applyAvatar(userId, avatar)`，按本地缓存账号核对后写入回执地址并更新共享用户，账号已变化则不写入；成功后后台刷新资料；回执之后的本地写入异常不再显示为上传失败，避免诱导重复上传；③ `useAvatar` 仅负责展示，`avatarKey` 由头像地址生成，调用方接口不变；④ 头像操作菜单（查看头像/从相册选择/拍照，高度随行数、无头像时查看禁用）与预览弹窗（查看模式通栏关闭；待确认模式重新选择/使用此头像，点遮罩不关闭，上传中锁定遮罩与返回，失败就地红字可重试）；弹层切换间隔 300ms；⑤ 个人资料头像卡整卡打开菜单，头像右下相机角标，右侧「更换头像」与箭头；⑥「我的」账户卡整卡进入个人资料页，移除头像菜单与上传遮罩；⑦ 错误提示抽为纯函数并补充测试（云存储、相册/相机权限、超过 2MB、无法读取、服务端原因、未知错误）；⑧ 视觉规范升至 1.15，同步用户中心与个人资料的头像规格。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 中类型检查、Lint、主题检查通过，测试 450/454 通过，2 项失败（发布归档测试因本机 /tmp 中文长路径 ENAMETOOLONG、待办迁移版本期望 7）在 `0a1bd41` 同样存在，与本次无关；`git diff --check` 通过。相机、系统裁剪、权限与上传未在真机验证，未提交 Git。
+
+---
+
+## 2026-09-23 23:50:12 | 修复问题：页面进入动画期间点击返回导致白屏
+
+- 变更概述：用户确认修复方案（含 Android 物理返回键拦截、兜底 600ms）。页面以 fade_from_bottom 抽屉式进入时，动画未结束即可点击返回，原生栈进入/退出转场冲突，偶发卡白屏。现改为进入动画结束前忽略返回操作，并在一次返回后短暂上锁以防连点。
+- 修改文件：src/shared/hooks/useTransitionLock.ts（新增）、src/shared/ui/PageHeader/PageHeader.tsx、src/shared/ui/BackButton/BackButton.tsx、src/features/sync/screens/SyncQueueScreen.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、CHANGELOG.md。
+- 具体内容：① 新增 `useTransitionLock`：挂载即上锁，监听当前页面 `transitionEnd`（非 closing）解锁；兜底 600ms 自动解锁，覆盖非原生栈页面或事件未触发的情况；锁定期间通过 `BackHandler` 吞掉 Android 物理返回键；返回的包装函数在锁定时忽略点击，触发后重新上锁 600ms 防止重复返回；② 公共 PageHeader（11 个页面）与 BackButton（笔记详情、登录/注册、编辑器）接入后自动生效；③ 同步队列页自绘返回按钮、笔记详情状态页返回按钮单独接入。按钮外观、尺寸、配色不变，锁定期间不置灰。未覆盖 iOS 侧滑返回手势。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run lint`、`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）与上一条记录中的既有失败一致，与本次无关，因此 `npm run check` 未全部通过；`git diff --check` 通过，无冲突标记。未进行真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 23:33:22 | 新增功能：平台绑定占位页（A2）
+
+- 变更概述：用户确认 A2 文字预览，确认说明文案不写绑定用途、增加「绑定方式」分组标题。新增平台绑定占位页 P07，个人资料页「平台绑定」行开放进入；页面只做说明，不发起授权、绑定或任何网络请求，不列出具体平台。
+- 修改文件：src/features/profile/screens/LinkedAccountsScreen.tsx（新增）、src/app/pages/user/profile/platforms.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① P07 使用公共 PageHeader（64dp 顶栏、标题「平台绑定」），顶栏下 16dp 为白色说明卡（16dp 圆角与内边距，Link2 22dp 主色图标与 17sp 标题间隔 12dp，下隔 8dp 为 14sp 蓝灰正文“未来支持将第三方平台账户与 IRisNote 账户关联。目前尚未开放，已有账户仍使用邮箱登录。”）；② 说明卡下 20dp 为「绑定方式」分组（标题 13sp 蓝灰，距卡片 8dp），内含公共 ListRow 禁用行「第三方平台绑定 · 敬请期待」，灰色、无箭头、不可点；③ 加载与未登录状态沿用 P01；返回优先回到来源页，无历史时进入个人资料页；底部留白为底部安全区 + 32dp；④ 个人资料页「平台绑定」行改为可点并显示箭头。
+- 验证：`npm run typecheck` 0 错误（用户已补装依赖，此前 44 个环境错误消失）；`npm run lint` 通过；`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档、待办迁移版本）在不含本次改动的 `3d21e03` 上同样存在，与本次无关，因此 `npm run check` 仍未全部通过；`git diff --check` 通过。未进行浏览器或真机验收，未提交 Git。工作区中 package-lock.json 的 `hasInstallScript` 变更来自依赖补装，未纳入本次改动。
+
+---
+
+## 2026-09-23 23:24:26 | 新增功能：动态通知后台实时刷新（A 闹钟续算 + C 系统计时默认开启，B 前台服务开关）
+
+- 变更概述：已获用户确认（方案组合：A+C 一起做、B 给开关放设置权限页）。此前退后台即撤下全部动态卡片（§6.2 旧边界"无前台服务"），本次改为退后台**保留卡片并持续刷新**：方案 A（默认）退后台移交时间线快照，原生 AlarmManager 分钟节拍按墙钟差量刷新；方案 C（默认）通知时间戳区域用系统 chronometer 渲染秒级倒计时/正计时（零唤醒）；方案 B（用户开关，设置→权限设置→「后台实时刷新」，仅 Android 16+ 可用）前台服务每秒重算，进度条秒级平滑。时间线快照含今日稍后开始的待办（退后台后到点自动上岛）；快照与数据库脱钩（他端修改回前台 reconcile 校正）；设备重启不自启；Android 12+ 禁止后台启动 FGS——仅前台启动，FGS 被杀由 A 闹钟兜底降级分钟级。实施中发现并修复一个竞态真 bug：start() 前置收回接管权的 await 窗口内 stop() 插入后 start 恢复会"复活"已停止的协调器（epoch 守卫扩展到 start 路径）；另修复 handoff 无资格路径不撤已发卡片（冻结残留）缺陷。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt（新）、live/LiveTodoNotifier.kt（新）、live/LiveTodoScheduler.kt（新）、live/LiveTodoAlarmReceiver.kt（新）、live/LiveTodoForegroundService.kt（新）、IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、system-notification-native-provider.tsx、system-notification-context.ts、system-notification-provider.tsx、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/todos/todo-live-update.test.cjs、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 原生新增 live 包五个类——LiveTodoTimeline（数据类 + SharedPreferences JSON 持久化，进程被杀后闹钟唤醒续算）、LiveTodoNotifier（通知构建公共层：分钟文案口径与 JS 严格一致、chronometer 锚点 setWhen+setUsesChronometer+setChronometerCountDown、applyDesired 差量 post/cancel、promoted 反射从 Module 迁入）、LiveTodoScheduler（单一闹钟链 setAndAllowWhileIdle 非精确：事件=活跃卡分钟取整变化点/未来卡 startAt/结束时刻，全停自动清快照；reclaim 收回不动通知）、LiveTodoAlarmReceiver（manifest 注册，唤醒重算续排）、LiveTodoForegroundService（specialUse FGS，秒级 Handler 循环，FGS 通知即进度卡，START_STICKY，全停 stopSelf）；② Module 新增 4 接口：scheduleLiveTodoCards/cancelScheduledLiveTodoCards/startLiveTodoForegroundService/stopLiveTodoForegroundService，postProgressNotification 加 chronoAt/chronoCountdown 透传；manifest 加 FOREGROUND_SERVICE(_SPECIAL_USE) 权限 + receiver/service 声明（PROPERTY_SPECIAL_USE_FGS_SUBTYPE=live-todo-progress）；③ JS：service 层新增 TodoLiveTimelineCard 类型与 desiredTodoLiveTimelines（资格拆分 todoTimelineEligibleTodo 前瞻"今日未过结束"）、TodoLiveUpdateCard 加 chronoAt/chronoCountdown；系统服务层封装 handoffLiveTodoTimelines/reclaimLiveTodoTimelines/start|stopLiveTodoForegroundService（失败记诊断不中断）；协调器 stop 拆分——start() 先收回接管权（epoch 守卫防复活）、handoff() 退后台移交（无资格路径撤卡防冻结残留）、stop() 卸载全撤并停 FGS；cardEquals 补 chrono 字段；FGS 偏好 setForegroundServiceEnabled 由 provider 注入，run 后按"开关&&有活跃卡"启停；④ Provider：AppState background → handoff（卡片保留），context 新增 liveTodoRealtimeEnabled/Pending/setLiveTodoRealtimeEnabled，偏好键 live_todo_realtime_enabled；权限设置页新增「后台实时刷新」开关行（Zap 图标，常驻通知之后，复用 SettingsRow+Host/Switch 规格，低版本禁用并显示"需要 Android 16 及以上系统"）；⑤ 测试 15→22：新增时间线资格前瞻、快照字段、汇总截断、chrono 锚点、handoff 移交/无资格撤卡/收回重接管、start 等待期 stop 插入不复活七组；⑥ 文档 §6.2 边界重写为三层组合与新边界（快照脱钩/重启不自启/FGS 前台启动限制/OEM 管控待验收）。
+- 验证：改前 typecheck 基线 exit 0；改后 `npm run check` 全绿（typecheck、lint、theme:check、**460/460** 测试，含新增 7 项）；Kotlin `:irisnote-system:compileDebugKotlin` **BUILD SUCCESSFUL**（1m28s，含 5 个新类实际编译）。**Android 16 真机验收未做**：方案 A 分钟续动/到期自撤/进程被杀续算、方案 C chronometer 在 ProgressStyle 与提升式岛上的实际渲染（36.0 与 36.1 框架差异，最坏退化不显示计时）、方案 B 开关启停与秒级平滑、force-stop 无残留、国产 ROM（小米/OPPO 等）对闹钟广播与前台服务的后台管控差异、Doze 息屏时段节拍粗化幅度。
+
+---
+
+## 2026-09-23 23:01:26 | 新增功能：个人资料页入口与只读总览（A1）
+
+- 变更概述：用户确认 A1 计划与文字预览，并确认「我的」首卡头像在 A3 前保留原来源菜单（过渡方案）。新增个人资料页 P01，可从设置「账户 → 个人资料」及「我的」账户卡文字区进入；页面只读展示已有资料，未接入能力显示「规划中」。
+- 修改文件：src/shared/ui/PageHeader/PageHeader.tsx（由 settings/components/SettingsPageHeader.tsx 移入并更名）、src/shared/ui/PageHeader/index.ts（新增）、src/shared/ui/ListRow/ListRow.tsx（由 settings/components/SettingsRow.tsx 移入并更名）、src/shared/ui/ListRow/index.ts（新增）、src/shared/ui/index.ts、src/features/settings/screens/{SettingsScreen,AboutScreen,CloudStorageSettingsScreen,DataStorageSettingsScreen,HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/notes/screens/{TrashScreen,drafts-screen,note-collection-screen}.tsx、src/features/profile/screens/PersonalInfoScreen.tsx（新增）、src/features/profile/screens/ProfileScreen.tsx、src/app/pages/user/profile/index.tsx（新增）、src/app/_layout.tsx、tests/storage/storage.test.cjs、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 页头与列表行提升为公共 `PageHeader`/`ListRow`，外观与接口不变，9 个页面改为从 `@/shared/ui` 引用，存储测试的模块模拟同步调整；② 新增 `/pages/user/profile` 路由（无原生标题栏）；③ P01：64dp 顶栏、头像卡（64dp 头像、昵称 20sp、脱敏邮箱）、「基本资料」「账户与安全」「账户信息」三组；用户名、邮箱、用户 ID、注册时间只读展示，用户 ID 支持复制并提示横幅，性别/地区/简介/修改密码显示「规划中」，平台绑定显示「敬请期待」并禁用；注册时间无效时显示“暂不可用”；返回优先回到来源页，无历史回到用户中心；底部留白为底部安全区 + 32dp；④ 设置页标题下新增「账户」分组，状态概览下移 20dp；⑤「我的」账户卡文字区与新增 18dp 箭头作为独立按钮进入 P01（与头像按钮并列不嵌套），头像仍打开原来源菜单。
+- 验证：修改前后 `npm run typecheck` 均为 44 个既有错误（本机缺 expo-blur/expo-application/expo-haptics/expo-intent-launcher 等依赖及 typed routes 过期），无新增；`npm test` 修改前后均 431/450 通过，17 项失败完全相同，与本次无关；`npm run lint` 因本机 eslint 依赖损坏（fileEntryCache.create）无法运行，改用 `npx eslint --no-cache` 检查改动文件，仅有 4 个既有模块缺失错误；`theme:check` 通过；`git diff --check` 通过。因此 `npm run check` 未通过（环境原因）。未进行浏览器或真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 22:51:58 | 优化代码：个人资料功能分阶段方案与视觉规范（A0，仅文档）
+
+- 变更概述：用户确认个人资料功能分阶段实施：A 类纯客户端先行（A0 规范、A1 入口与只读总览、A2 平台占位、A3 头像迁移），B 类前后端一并实施（B0 后端核实、B1 普通资料、B2 地区、B3 邮箱与密码），C 集成验收；确认尺寸统一到现有组件、公共页头与列表行先提升到 `shared/ui`。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.14，新增「个人资料」节（入口、页面壳、头像卡、分组与资料行、未开放项「规划中」约定、编辑页、验证码与密码、弹层、头像菜单、状态），落地状态表新增对应行；② 规划文档升至 0.2：输入框/主按钮/弹窗按钮统一 48dp、弹窗按钮间距 10dp、底部留白安全区 + 32dp、头像 64dp，旧数值标注作废；文件清单改为提升 SettingsPageHeader/SettingsRow，后端改由本方在 B 类实施；第 9 节替换为 A/B/C 阶段表、更新任务勾选、执行记录与粗估人日（11–17.5）。
+- 验证：修改前 `npm run typecheck` 为 44 个既有错误（本机 node_modules 缺少 expo-blur、expo-application、expo-haptics、expo-intent-launcher 等包及 typed routes 过期），本次仅改文档，未改代码，错误与本次无关；未运行 `npm run check`、构建或真机验收。
+
+---
+
+## 2026-09-23 21:33:31 | 新增功能：动态通知升级为请求 Live Updates 提升式（上岛）——POST_PROMOTED_NOTIFICATIONS + 反射 setRequestPromotedOngoing
+
+- 变更概述：已获用户确认（用户指令：将 Android 16 动态通知升级为提升式 Live Updates，对齐"上岛"形态）。这是 2026-09-23 内第二次方向反转：进度式（不提升）→ 请求提升式。范围：仅 live-test / live-todo 两类动态卡片请求 promoted（倒计时演示与待办进行中，符合政策准入"用户主动发起、正在进行"）；"普通提醒/即将到来的日历事件"仍禁入（政策禁区不变，此类继续走非提升通道）。关键工程决策：本机 compileSdk 36.0 基础平台包**无** `setRequestPromotedOngoing` / `POST_PROMOTED_NOTIFICATIONS` 符号（javap 实测，均 API 36.1/QPR 引入）——权限按原始字符串声明于模块 manifest（低版本系统自动忽略），提升请求经**反射**调用（36.0 设备无该方法时静默退化为普通进度卡片）。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/AndroidManifest.xml、src/core/system-notifications/system-notification.service.ts、docs/架构指南/系统通知模块负责说明.md、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 原生：`buildProgressNotification` 增 `promoted` 参数——promoted 时强制 `setOngoing(true)`（提升式硬性要求）+ `requestPromotedOngoingCompat()` 反射调用 `setRequestPromotedOngoing(true)`（方法不存在即原样返回）；`AsyncFunction("postProgressNotification")` 改为**单 Map 入参**（Expo Modules Lambda 具名参数上限 8 个，9 参实测触发 Function9→Function0 重载解析失败，收敛签名后后续加字段不再动原生契约）；② 模块 manifest 新增 `POST_PROMOTED_NOTIFICATIONS`（原始字符串安装级权限）；**app.json 保持不动**——权限单一来源约束由 `tests/todos/system-notifications.test.cjs:304` 钉死（本轮曾误把 SCHEDULE_EXACT_ALARM/POST_PROMOTED 加进 app.json 触发该测试失败后回滚，并顺带修正负责说明 §2.5/§5.2 反向文档漂移：原文档声称 app.json 声明精确闹钟权限，与测试及现实相反）；③ JS：`LiveUpdateContent` 增 `promoted?: boolean`（默认 true，注释写明政策边界与 36.0 退化行为），`postLiveUpdate` 单点收口传入；`index.ts` 契约同步为对象参数 `NativeProgressNotification`；④ 文档：负责说明（头注更新、§2.2/§2.3 契约、§3.1 展示方式两列、§八 边界矩阵、快速索引新增"不上岛"排障条目）、渠道适配（版本 1.3、§0 结论先行重写为提升式、§6.2 决策依据/原生层/边界三处）。
+- 验证：`npm run check` 全绿（typecheck、lint、theme:check、**453/453** 测试，含单一来源约束测试）；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL（9 参版本编译失败改 Map 后复跑通过）；完整 `assembleStaging`（arm64）BUILD SUCCESSFUL（3m14s），aapt2 dump badging 实测最终 APK 合并出 `POST_PROMOTED_NOTIFICATIONS`、`SCHEDULE_EXACT_ALARM`、`POST_NOTIFICATIONS` 三权限。**Android 16（36.1+）真机验收未做**：上岛胶囊/锁屏常驻/抽屉置顶形态、用户手动降级后禁止重发的政策边界、系统设置"实时更新"总开关行为、OEM（小米焦点通知/OPPO 流体云私有岛）映射差异；厂商私有接口未接入，走标准 Live Updates 路径由各 OEM 系统自行决定映射。
+
+---
+
+## 2026-09-23 20:45:20 | 修复问题：收口动态通知评审发现的三项边界缺陷与诊断日志放大
+
+- 变更概述：已获用户确认（修复范围 A+B+C+D+测试，Minor 项留待后续）。修复双份独立代码评审一致确认的 Important 问题：① 进程被杀后 ongoing 卡片永久残留且冷启动无对账（JS 无机会撤卡、用户不可滑除、新进程 cards map 为空永不清理）；② stop()/refresh() 双缺口竞态——在途 run() 于 stop 后恢复会重发卡片，且 refresh() 无 active 门导致退后台后仓库订阅仍触发发卡，违反"退后台即撤"边界；③ 无结束时间卡片去重缺 title 比较，编辑正文后标题整段进行期不刷新。另修复诊断日志放大：30 秒节律每轮无条件记 application_permission_read + 每分钟最多 3 条 card_updated，叠加 recordDiagnostic 全文件重写（~60KB/次），前台 1 小时 ≈18MB I/O 且 400 条窗口约 80 分钟被冲掉。
+- 修改文件：src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、tests/todos/todo-live-update.test.cjs、docs/架构指南/系统通知模块负责说明.md、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 协调器竞态守卫：新增 epoch 代数，stop() 递增并解除 pending 引用；run() 在权限读取、逐卡 cancel、逐卡 post 全部 await 恢复点校验代数，过期即中止；post 恢复后发现过期且该卡未被新代认领时补撤；refresh() 增加 active 门（stop 后订阅触发直接跳过）；pending 清理改身份校验防误革新代；② 冷启动清理：原生新增 `cancelProgressNotificationsByChannel`（activeNotifications 按渠道过滤后 cancel，API 23+ 无版本门槛），服务层新增 `clearStaleLiveUpdates()`（进程内一次：live-todo 渠道整清 + 无条件撤演示 ID 7001，失败仅记 stale_clear_failed 诊断），provider mount 时调用；③ 去重比较补 title 与 max（cardEquals，任何用户可见字段变化均原位更新）；④ 诊断降采样：application_permission_read 改进程内翻转记录（仅授权状态变化写一条，低频调用方不受影响），card_updated 按卡 5 分钟采样（card_posted/card_removed 仍全量），采样状态随撤卡清理防泄漏；⑤ 文档同步：负责说明 §4.4 补冷启动清理链路、§2.2/§2.3 契约表新增两行、边界矩阵"退后台/被杀"改为如实表述（退后台 JS 全撤 + epoch 守卫；被杀下次启动清理）、快速索引补"被杀后卡片残留"条目；渠道适配 §6.2 边界同步；⑥ 测试 9→15：新增标题去重、stop 使权限读取中刷新失效、post 在途 stop 补撤、start 幂等、post 失败重试、权限读取失败六项，并修正 190 行格式瑕疵。
+- 验证：改前 typecheck 基线 exit 0（本会话早前实测）；改后 `npm run check` 全绿（typecheck、lint、theme:check、**453/453** 测试含新增 6 项）；Kotlin `:irisnote-system:compileDebugKotlin` 复跑 **BUILD SUCCESSFUL**（含新函数实际编译）。**Android 16 真机验收仍未做**（演示链路、进行中卡片、退后台撤下、冷启动清理、OEM 渲染差异）；评审 Minor 项（ID 注释、能力判定收口、demo in-flight 防护、smallIcon）未处理。
+
+---
+
 ## 2026-09-23 18:41:40 | 修复问题：应用图标支持环境变量指定任意项目内图片
 
 - 变更概述：用户确认修订方案与界面文字预览。首页和关于页继续共用 `EXPO_PUBLIC_IMAGE`；修正此前只支持预登记本地图片文件名的限制，今后更换项目内图片只需修改环境变量并重新打包。
@@ -33,6 +203,15 @@
 - 修改文件：src/features/profile/hooks/useProfileOverview.ts、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/data/note-reading-progress.ts、src/features/notes/hooks/useReadingProgress.ts、CHANGELOG.md。
 - 具体内容：① 概览订阅已有笔记与分类通知，并在阅读进度保存后接收新通知；页面失焦期间累积变更，返回时合并处理，避免并发读取和旧结果覆盖；② 后续笔记与阅读变更只重算本地概览，分类变更才重新获取分类数，初次读取仍沿用现有云同步；③ 后续更新及读取失败时保留已显示数据和图标，不重新展示加载态；④ 概览和继续阅读卡片增加最小高度，切换图标的区域采用固定尺寸占位。
 - 验证：修改前后 `npm run typecheck` 通过；最终代码复跑 `npm run check`，类型检查、Lint、主题检查通过，448 项测试通过 447 项。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），该测试及待办实现不在本次改动范围内；`git diff --check` 通过，修改文件无冲突标记。未构建版本包或进行真机验收。
+
+---
+
+## 2026-09-23 16:58:44 | 新增功能：引入 Android 16 动态通知（ProgressStyle）——设置页 120 秒演示 + 待办进行中进度卡片
+
+- 变更概述：已获用户确认（路径 A：自研 ProgressStyle 进度式动态通知；待办双语义：前台进行中卡片 + 后台到点仍走普通提醒；测试页 120 秒倒计时演示）。本次为 `docs/UI/通知渠道适配.md` §0"动态通知暂不立项"结论的**用户指令反转（2026-09-23）**，范围限定 Android 侧进度式通道：不声明 `POST_PROMOTED_NOTIFICATIONS`、不调用 `setRequestPromotedOngoing`，不进入提升式 Live Updates 政策禁区（政策禁止"普通提醒/即将到来的日历事件"，且完整形态需 API 36.1）；不引入生态 alpha 库 expo-live-updates。
+- 修改文件：modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/todos/services/todo-live-update.service.ts（新）、src/features/todos/state/todo-live-update-coordinator.ts（新）、tests/todos/todo-live-update.test.cjs（新）、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/架构指南/系统通知模块负责说明.md、CHANGELOG.md。
+- 具体内容：① 原生层：IrisNoteSystemModule 新增 `postProgressNotification`（`Notification.ProgressStyle` + `CATEGORY_PROGRESS` + `setOnlyAlertOnce(true)`，同一整型 ID 原位更新；SDK < 36 抛"需要 Android 16"；contentIntent 仅启动主界面）与 `cancelProgressNotification`——**本机 android-36 平台包（36.0 基础 SDK）实测无嵌套 `Progress` 类（javap 核实，36.1 才引入），进度改用 `setProgress(0-100)` + `setProgressIndeterminate`**；② 服务层：新渠道 `irisnote.live-test.v1`（"动态通知测试" DEFAULT 有声）/ `irisnote.live-todo.v1`（"待办进行中" LOW 静默），`liveUpdateSupported()`（Android + API≥36 + 模块可用）、`postLiveUpdate`/`cancelLiveUpdate`（渠道初始化进程内记忆一次、失败写 `live_update` 诊断）、`startDiagnosticLiveUpdateDemo`（120 秒倒计时，同一 ID 每秒原位更新，归零自动消除，可取消句柄）；③ 设置页：帮助与反馈 → 诊断与排障新增"发送动态通知"行（SettingsRow，120 秒演示，禁用条件=非 Android/低版本/演示中，离开页面即终止撤下，卸载 useEffect 兜底）；④ 待办接入：纯函数（资格=当天+reminderEnabled+未完成+有开始+进行中窗口，与列表状态口径一致；分钟级进度，无结束时间用不定进度；标题复用提醒摘要脱敏；FNV-1a 稳定整型通知 ID）+ `TodoLiveUpdateCoordinator`（前台 30 秒差量刷新、仓库变更即刷、退后台/卸载全撤、同屏上限 3 条确定性截断、权限未授不发即撤），挂载于 SystemNotificationProvider（AppState active start / 非 active stop、订阅 refresh）；⑤ 文档三份同步（渠道适配 §0 反转记录 + 新 §6.2 实现现状 + 渠道表；待办设计 §9 红线段落改写；系统通知负责说明五链路对照表、Kotlin 契约、边界矩阵、快速索引）。
+- 验证：改前 `npm run typecheck` 基线 exit 0；改后 typecheck exit 0（中途引入 2 处类型错误已修复：`AppState.currentState` 属性名、`startTime` 局部收窄）；新增测试 `node --test tests/todos/todo-live-update.test.cjs` 9/9 通过（ID 稳定性、资格矩阵含边界时刻、进度计算、脱敏、上限截断、协调器发卡/去重/撤卡/停机/降级）；Kotlin 编译 `:irisnote-system:compileDebugKotlin` 首次失败（嵌套 Progress 类不存在于 API 36.0）后按 javap 实测 API 修正复跑通过。**Android 16 真机验收未做**（演示链路、进行中卡片、退后台撤下、OEM 渲染差异），边界：无前台服务，退后台即撤卡片、后台到点仍为普通提醒形态。
 
 ---
 

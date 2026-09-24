@@ -6,7 +6,7 @@ import {
     useSystemNotifications,
 } from "@/core/system-notifications/system-notification-provider";
 import { ANDROID_PACKAGE } from "@/features/updates/release";
-import { Card, Screen } from "@/shared/ui";
+import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as ImagePicker from "expo-image-picker";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Host, Switch } from "@expo/ui";
@@ -19,6 +19,7 @@ import {
     Image as ImageIcon,
     PackageCheck,
     RadioTower,
+    Zap,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
 import {
@@ -30,8 +31,6 @@ import {
     View,
 } from "react-native";
 import NativeUpdater from "../../../../modules/irisnote-updater";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
-import { SettingsRow } from "../components/SettingsRow";
 
 type PermissionItemState = {
     label: string;
@@ -164,6 +163,10 @@ export default function PermissionSettingsScreen() {
         runtimeNotificationEnabled,
         runtimeNotificationPending,
         setRuntimeNotificationEnabled,
+        liveUpdateCapable,
+        liveTodoRealtimeEnabled,
+        liveTodoRealtimePending,
+        setLiveTodoRealtimeEnabled,
     } = useSystemNotifications();
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
@@ -260,7 +263,7 @@ export default function PermissionSettingsScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="权限设置"
                         backLabel="返回设置"
                         onBack={() => router.back()}
@@ -272,7 +275,7 @@ export default function PermissionSettingsScreen() {
                         className="overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={Bell}
                             label="通知"
                             value={snapshot.notifications.label}
@@ -280,7 +283,7 @@ export default function PermissionSettingsScreen() {
                             disabled={!snapshot.notifications.supported}
                             onPress={handleNotifications}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={AlarmClock}
                             label="准时提醒"
                             value={snapshot.exactAlarm.label}
@@ -288,7 +291,7 @@ export default function PermissionSettingsScreen() {
                             disabled={!snapshot.exactAlarm.supported}
                             onPress={() => void handleExactAlarm()}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={RadioTower}
                             label="常驻通知"
                             value={
@@ -320,7 +323,42 @@ export default function PermissionSettingsScreen() {
                                 </Host>
                             }
                         />
-                        <SettingsRow
+                        <ListRow
+                            icon={Zap}
+                            label="后台实时刷新"
+                            value={
+                                liveTodoRealtimeEnabled ? "已开启" : "已关闭"
+                            }
+                            description={
+                                liveUpdateCapable
+                                    ? "退后台保持待办进度卡实时更新；开启后以前台服务运行，耗电略增"
+                                    : "需要 Android 16 及以上系统"
+                            }
+                            disabled={!liveUpdateCapable}
+                            trailing={
+                                <Host
+                                    matchContents
+                                    accessibilityLabel="后台实时刷新"
+                                >
+                                    <Switch
+                                        value={
+                                            liveTodoRealtimeEnabled &&
+                                            liveUpdateCapable
+                                        }
+                                        disabled={
+                                            liveTodoRealtimePending ||
+                                            !liveUpdateCapable
+                                        }
+                                        onValueChange={(value) => {
+                                            void setLiveTodoRealtimeEnabled(
+                                                value,
+                                            );
+                                        }}
+                                    />
+                                </Host>
+                            }
+                        />
+                        <ListRow
                             icon={Camera}
                             label="相机"
                             value={snapshot.camera.label}
@@ -328,7 +366,7 @@ export default function PermissionSettingsScreen() {
                             disabled={!snapshot.camera.supported}
                             onPress={() => void handleImagePermission("camera")}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={ImageIcon}
                             label="照片访问"
                             value={snapshot.photos.label}
@@ -336,7 +374,7 @@ export default function PermissionSettingsScreen() {
                             disabled={!snapshot.photos.supported}
                             onPress={() => void handleImagePermission("photos")}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={PackageCheck}
                             label="安装应用更新"
                             value={snapshot.updates.label}
@@ -350,7 +388,7 @@ export default function PermissionSettingsScreen() {
                         className="mt-5 overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={Cloud}
                             label="云存储权限"
                             value={cloudStatus}

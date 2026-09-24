@@ -6,7 +6,7 @@ import {
 import { banner } from "@/core/notifications";
 import { systemNotificationsAvailable } from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import NativeSystem from "@modules/irisnote-system";
 import * as Application from "expo-application";
 import * as Clipboard from "expo-clipboard";
@@ -21,8 +21,9 @@ import {
     Mail,
     MessageCircle,
     TestTube2,
+    Timer,
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
     Linking,
     PermissionsAndroid,
@@ -32,13 +33,22 @@ import {
     Text,
     View,
 } from "react-native";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
-import { SettingsRow } from "../components/SettingsRow";
 import { DISCORD_CHANNEL_URL, FEEDBACK_EMAIL } from "../data/support-links";
 
 export default function HelpFeedbackScreen() {
     const [exporting, setExporting] = useState(false);
     const [testing, setTesting] = useState(false);
+    const [liveTesting, setLiveTesting] = useState(false);
+    const [liveRemaining, setLiveRemaining] = useState(0);
+    const liveDemoRef = useRef<{
+        cancel: () => void;
+        completion: Promise<"completed" | "cancelled" | "failed">;
+    } | null>(null);
+    const liveUpdateReady =
+        systemNotificationsAvailable &&
+        Platform.OS === "android" &&
+        Number(Platform.Version) >= 36 &&
+        !!NativeSystem;
     const version =
         Application.nativeApplicationVersion ??
         Constants.expoConfig?.version ??
@@ -228,6 +238,81 @@ export default function HelpFeedbackScreen() {
         }
     };
 
+    const startLiveDemo = async () => {
+        if (liveTesting || !liveUpdateReady) return;
+        setLiveTesting(true);
+        setLiveRemaining(0);
+        void recordDiagnostic("live_update", "demo_button_pressed");
+        try {
+            const {
+                LIVE_DEMO_SECONDS,
+                requestApplicationNotificationPermission,
+                startDiagnosticLiveUpdateDemo,
+            } =
+                await import("@/core/system-notifications/system-notification.service");
+            const permission = await requestApplicationNotificationPermission();
+            if (!permission.granted) {
+                void recordDiagnostic(
+                    "live_update",
+                    "demo_permission_denied",
+                    { canAskAgain: permission.canAskAgain },
+                    "warning",
+                );
+                banner.show({
+                    title: "动态通知未发送",
+                    message: "请先在系统设置中开启 IRisNote 通知",
+                    type: "neutral",
+                });
+                return;
+            }
+            setLiveRemaining(LIVE_DEMO_SECONDS);
+            const demo = startDiagnosticLiveUpdateDemo({
+                onTick: (remaining) => setLiveRemaining(remaining),
+            });
+            liveDemoRef.current = demo;
+            const result = await demo.completion;
+            if (result === "completed") {
+                banner.show({
+                    title: "动态通知演示完成",
+                    message: "本次操作已写入诊断日志",
+                    type: "success",
+                });
+            } else if (result === "failed") {
+                banner.show({
+                    title: "动态通知演示失败",
+                    message: "失败信息已写入诊断日志",
+                    type: "important",
+                });
+            }
+        } catch (cause) {
+            void recordDiagnostic(
+                "live_update",
+                "demo_button_failed",
+                {
+                    error: diagnosticErrorCategory(cause),
+                },
+                "error",
+            );
+            banner.show({
+                title: "动态通知发送失败",
+                message: "失败信息已写入诊断日志",
+                type: "important",
+            });
+        } finally {
+            liveDemoRef.current = null;
+            setLiveTesting(false);
+            setLiveRemaining(0);
+        }
+    };
+
+    // 离开页面即终止演示并撤下通知，不留残留在通知栏
+    useEffect(
+        () => () => {
+            liveDemoRef.current?.cancel();
+        },
+        [],
+    );
+
     return (
         <Screen className="bg-app-background">
             <ScrollView
@@ -236,7 +321,7 @@ export default function HelpFeedbackScreen() {
                 showsVerticalScrollIndicator={false}
             >
                 <View className="w-full max-w-[560px] self-center px-4">
-                    <SettingsPageHeader
+                    <PageHeader
                         title="帮助与反馈"
                         backLabel="返回设置"
                         onBack={() => router.back()}
@@ -281,7 +366,7 @@ export default function HelpFeedbackScreen() {
                             <ChevronRight size={18} color={colors.textMuted} />
                         </View>
                         <View className="mx-4 h-px bg-hyper-divider" />
-                        <SettingsRow
+                        <ListRow
                             icon={MessageCircle}
                             label="Discord 频道"
                             value={DISCORD_CHANNEL_URL ? "打开频道" : "待配置"}
@@ -303,7 +388,7 @@ export default function HelpFeedbackScreen() {
                         className="overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={FileDown}
                             label="导出诊断日志"
                             value={exporting ? "正在导出" : "保存并分享"}
@@ -311,7 +396,7 @@ export default function HelpFeedbackScreen() {
                             disabled={exporting}
                             onPress={() => void exportDiagnostics()}
                         />
-                        <SettingsRow
+                        <ListRow
                             icon={TestTube2}
                             label="发送测试通知"
                             value={testing ? "正在发送" : "立即发送"}
@@ -323,6 +408,20 @@ export default function HelpFeedbackScreen() {
                                     Platform.OS !== "ios")
                             }
                             onPress={() => void sendTestNotification()}
+                        />
+                        <ListRow
+                            icon={Timer}
+                            label="发送动态通知"
+                            value={
+                                liveTesting
+                                    ? `演示中 ${liveRemaining}s`
+                                    : liveUpdateReady
+                                      ? "立即演示"
+                                      : "需 Android 16+"
+                            }
+                            description="120 秒倒计时动态通知演示，进度每秒原位更新；需 Android 16 及以上设备"
+                            disabled={liveTesting || !liveUpdateReady}
+                            onPress={() => void startLiveDemo()}
                             last
                         />
                     </Card>
@@ -334,7 +433,7 @@ export default function HelpFeedbackScreen() {
                         className="overflow-hidden rounded-hyper-card"
                         style={{ borderCurve: "continuous" }}
                     >
-                        <SettingsRow
+                        <ListRow
                             icon={CircleHelp}
                             label="帮助内容"
                             value="整理中"

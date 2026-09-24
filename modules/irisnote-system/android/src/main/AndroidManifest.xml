@@ -1,6 +1,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <!-- API 36.1（QPR）Live Updates 提升式安装级权限；36.0 及以下系统自动忽略未知权限。 -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+  <!-- 方案 B：前台服务（specialUse，Android 14+ 强制类型声明）。 -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission
     android:name="android.permission.WRITE_EXTERNAL_STORAGE"
     android:maxSdkVersion="28" />
+
+  <application>
+    <!-- 方案 A：闹钟节拍接收器（进程死亡也会被系统拉起续算）。 -->
+    <receiver
+      android:name=".live.LiveTodoAlarmReceiver"
+      android:exported="false" />
+
+    <!-- 方案 B：秒级刷新前台服务；FGS 通知即进度卡片本身。 -->
+    <service
+      android:name=".live.LiveTodoForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="live-todo-progress" />
+    </service>
+  </application>
 </manifest>

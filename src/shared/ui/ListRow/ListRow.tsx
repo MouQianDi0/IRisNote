@@ -3,11 +3,13 @@ import { ChevronRight, type LucideIcon } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
-type SettingsRowProps = {
+export type ListRowProps = {
     icon: LucideIcon;
     label: string;
     value?: string;
     description?: string;
+    /** 说明文字最多显示的行数；默认不限制。 */
+    descriptionLines?: number;
     disabled?: boolean;
     last?: boolean;
     onPress?: () => void;
@@ -15,16 +17,17 @@ type SettingsRowProps = {
 };
 
 /** 说明行保持只读；未开放项目禁用，只有可跳转项目显示箭头。 */
-export function SettingsRow({
+export function ListRow({
     icon: Icon,
     label,
     value,
     description,
+    descriptionLines,
     disabled = false,
     last = false,
     onPress,
     trailing,
-}: SettingsRowProps) {
+}: ListRowProps) {
     const content = (
         <>
             <Icon
@@ -55,7 +58,10 @@ export function SettingsRow({
                     ) : null}
                 </View>
                 {description ? (
-                    <Text className="mt-1 text-sm leading-5 text-text-secondary">
+                    <Text
+                        className="mt-1 text-sm leading-5 text-text-secondary"
+                        numberOfLines={descriptionLines}
+                    >
                         {description}
                     </Text>
                 ) : null}

@@ -1,93 +1,66 @@
-import { banner, captureNotificationSession } from "@/core/notifications";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
-import {
-    captureCloudStorageAccess,
-    isCloudStoragePermissionError,
-} from "@/core/cloud-storage/cloud-storage-policy";
-import {
-    collectAndUploadAvatarFromCamera,
-    collectAndUploadAvatarFromLibrary,
-} from "@/features/profile/services/avatar-picker.service";
 import { normalizeAvatarUrl } from "@/shared/utils/avatar";
-import { useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { ImageSourcePropType } from "react-native";
+import {
+    dropCachedAvatar,
+    ensureCachedAvatar,
+    getAvatarCacheVersion,
+    readCachedAvatar,
+    subscribeAvatarCache,
+} from "../services/avatar-cache";
+import {
+    cacheableAvatarName,
+    chooseAvatarSource,
+} from "../utils/avatar-cache-key";
 
+/**
+ * 当前账号头像的展示数据：本地缓存优先（不联网，云存储关闭时也可显示）；
+ * 没有缓存且允许联网时显示远程地址并在后台写入本地缓存。
+ * 更换头像流程见 useAvatarUpdate。
+ */
 export function useAvatar() {
-    const { user, syncProfile } = useAuth();
+    const { user } = useAuth();
     const { enabled: cloudEnabled, ownerUserId } = useCloudStorage();
-    const [avatarUploading, setAvatarUploading] = useState(false);
-    const [avatarKey, setAvatarKey] = useState(0);
+    useSyncExternalStore(
+        subscribeAvatarCache,
+        getAvatarCacheVersion,
+        getAvatarCacheVersion,
+    );
 
-    const normalizedAvatarUri = normalizeAvatarUrl(user?.avatar);
-    const avatarUri =
-        normalizedAvatarUri &&
-        /^https?:\/\//i.test(normalizedAvatarUri) &&
-        (!cloudEnabled || ownerUserId !== user?.id)
-            ? undefined
-            : normalizedAvatarUri;
+    const userId = user?.id;
+    const remoteUri = normalizeAvatarUrl(user?.avatar);
+    const cacheName =
+        userId !== undefined ? cacheableAvatarName(remoteUri, userId) : null;
+    const localUri =
+        userId !== undefined && cacheName
+            ? readCachedAvatar(userId, cacheName)
+            : null;
+    const networkAllowed = cloudEnabled && ownerUserId === userId;
+    const display = chooseAvatarSource({ localUri, remoteUri, networkAllowed });
 
-    const avatarSource: ImageSourcePropType | undefined = avatarUri
-        ? {
-              uri: avatarUri.startsWith("data:")
-                  ? avatarUri
-                  : `${avatarUri}${avatarUri.includes("?") ? "&" : "?"}t=${avatarKey}`,
-          }
+    useEffect(() => {
+        if (userId === undefined || !cacheName || !remoteUri) return;
+        if (localUri || !networkAllowed) return;
+        void ensureCachedAvatar(userId, cacheName, remoteUri);
+    }, [userId, cacheName, remoteUri, localUri, networkAllowed]);
+
+    const avatarSource: ImageSourcePropType | undefined = display
+        ? { uri: display.uri }
         : undefined;
 
-    const updateAvatar = async (source: "library" | "camera") => {
-        if (!user || avatarUploading) return;
-
-        const isCurrentSession = captureNotificationSession();
-        setAvatarUploading(true);
-        try {
-            const checkAccess = captureCloudStorageAccess(user.id);
-            const result =
-                source === "library"
-                    ? await collectAndUploadAvatarFromLibrary()
-                    : await collectAndUploadAvatarFromCamera();
-
-            if (!result) return;
-
-            checkAccess();
-            await syncProfile();
-            checkAccess();
-            setAvatarKey((k) => k + 1);
-            if (isCurrentSession()) {
-                banner.show({
-                    id: "avatar-update",
-                    type: "success",
-                    title: "头像已更新",
-                });
-            }
-        } catch (err: any) {
-            if (isCurrentSession()) {
-                const message =
-                    err.response?.data?.error ||
-                    (err.message === "Media library permission is required."
-                        ? "需要相册权限才能选择头像"
-                        : err.message === "Camera permission is required."
-                          ? "需要相机权限才能拍摄头像"
-                          : err.message || "头像更新失败，请稍后再试");
-                banner.show({
-                    id: "avatar-update",
-                    type: "important",
-                    title: isCloudStoragePermissionError(err)
-                        ? "需要开启云存储"
-                        : "头像更新失败",
-                    message,
-                });
-            }
-        } finally {
-            setAvatarUploading(false);
+    /** 图片无法显示时调用：本地文件损坏则丢弃缓存，由调用方回退默认图标。 */
+    const reportAvatarError = () => {
+        if (display?.from === "local" && userId !== undefined && cacheName) {
+            dropCachedAvatar(userId, cacheName);
         }
     };
 
     return {
-        avatarUri,
+        avatarUri: display?.uri,
         avatarSource,
-        avatarKey,
-        avatarUploading,
-        updateAvatar,
+        avatarKey: display?.uri ?? "none",
+        reportAvatarError,
     };
 }

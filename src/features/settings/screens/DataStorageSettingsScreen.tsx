@@ -15,7 +15,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { readNoteCacheCandidates } from "@/features/notes/data/note-cache.repository";
 import { clearNoteCache } from "@/features/notes/services/note-cache.service";
 import { colors } from "@/shared/theme";
-import { Card, Screen } from "@/shared/ui";
+import { Card, PageHeader, Screen } from "@/shared/ui";
 import { AppModal } from "@/shared/ui/Overlay/app-modal";
 import { useFocusEffect, router } from "expo-router";
 import { Check } from "lucide-react-native";
@@ -28,7 +28,6 @@ import {
     View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { SettingsPageHeader } from "../components/SettingsPageHeader";
 
 const card = { borderRadius: 16, padding: 16 };
 const hint = { color: colors.textSecondary, fontSize: 13, lineHeight: 20 };
@@ -280,7 +279,7 @@ export default function DataStorageSettingsScreen() {
                 }}
                 showsVerticalScrollIndicator={false}
             >
-                <SettingsPageHeader
+                <PageHeader
                     title="数据与存储"
                     backLabel="返回设置"
                     onBack={() =>
