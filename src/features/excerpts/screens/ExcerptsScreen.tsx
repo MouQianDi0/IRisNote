@@ -8,9 +8,14 @@ import { Input } from "@/shared/ui";
 import DeleteConfirmDialog from "@/shared/ui/Dialog/DeleteConfirmDialog";
 import { ExcerptActionDialog } from "../components/ExcerptActionDialog";
 import { ExcerptCard } from "../components/ExcerptCard";
+import { ClipboardDetectConfirmDialog } from "../components/ClipboardDetectConfirmDialog";
+import { ClipboardDetectedCard } from "../components/ClipboardDetectedCard";
+import { ClipboardHintBar } from "../components/ClipboardHintBar";
 import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
 import { ExcerptToolbar } from "../components/ExcerptToolbar";
 import { filterExcerpts } from "../domain/excerpt-validation";
+import { useClipboardDetection } from "../hooks/useClipboardDetection";
+import { useClipboardPreferences } from "../hooks/useClipboardPreferences";
 import { useExcerptScope } from "../hooks/useExcerptScope";
 import { clipboardService } from "../services/clipboard.service";
 import { pasteClipboardAsExcerpt } from "../services/excerpt-service";
@@ -69,6 +74,8 @@ export default function ExcerptsScreen() {
     const [editing, setEditing] = useState<ExcerptEntity | null>(null);
     const [deleting, setDeleting] = useState<ExcerptEntity | null>(null);
     const [now, setNow] = useState(() => new Date());
+    const [confirmingDetect, setConfirmingDetect] = useState(false);
+    const clipboardPreferences = useClipboardPreferences();
 
     // 回到页面时刷新「今天/昨天」的判断基准。
     useFocusEffect(useCallback(() => setNow(new Date()), []));
@@ -78,6 +85,31 @@ export default function ExcerptsScreen() {
         () => filterExcerpts(entities, keyword),
         [entities, keyword],
     );
+    const detection = useClipboardDetection({
+        enabled: clipboardPreferences.autoDetectEnabled,
+        ready,
+        ownerKey,
+        generation,
+        entities,
+    });
+    const showHint =
+        clipboardPreferences.ready &&
+        !clipboardPreferences.autoDetectEnabled &&
+        !clipboardPreferences.hintDismissed;
+
+    const enableDetection = async () => {
+        try {
+            await clipboardPreferences.setAutoDetect(true);
+            setConfirmingDetect(false);
+        } catch (cause) {
+            banner.show({
+                title: "开启失败",
+                message: errorMessage(cause),
+                type: "important",
+            });
+        }
+    };
+
     // 操作弹窗始终展示最新版本，置顶切换后无需重新打开。
     const actionTarget =
         entities.find((excerpt) => excerpt.clientId === actionId) ?? null;
@@ -194,6 +226,30 @@ export default function ExcerptsScreen() {
                             />
                         </View>
                     )}
+                    {detection.offer ? (
+                        <View style={{ marginTop: 12 }}>
+                            <ClipboardDetectedCard
+                                content={detection.offer.content}
+                                saving={detection.saving}
+                                onIgnore={detection.ignore}
+                                onSave={() => void detection.save()}
+                            />
+                        </View>
+                    ) : (
+                        showHint && (
+                            <View style={{ marginTop: 12 }}>
+                                <ClipboardHintBar
+                                    disabled={clipboardPreferences.pending}
+                                    onEnable={() => setConfirmingDetect(true)}
+                                    onDismiss={() =>
+                                        void clipboardPreferences
+                                            .dismissHint()
+                                            .catch(() => undefined)
+                                    }
+                                />
+                            </View>
+                        )
+                    )}
                     {ready ? (
                         <FlatList
                             style={{ marginTop: 12, flex: 1 }}
@@ -253,6 +309,12 @@ export default function ExcerptsScreen() {
                     onClose={() => setEditing(null)}
                 />
             )}
+            <ClipboardDetectConfirmDialog
+                visible={confirmingDetect}
+                pending={clipboardPreferences.pending}
+                onCancel={() => setConfirmingDetect(false)}
+                onConfirm={() => void enableDetection()}
+            />
             <DeleteConfirmDialog
                 visible={!!deleting}
                 description={"删除后无法找回\n该摘录将被永久删除"}

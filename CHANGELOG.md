@@ -1,3 +1,21 @@
+## 2026-09-25 13:53:17 | 修复问题：停留在摘录页时不会自动识别剪贴板
+
+- 变更概述：用户反馈停留在摘录页时（切到其他应用复制后再回来）不会识别新内容，确认问题分析与修复方案后修复。根因（按 Android 机制与现象推断，未经真机日志证实）：Android 10+ 只有拥有窗口焦点的应用才能访问剪贴板，没有焦点时 `hasStringAsync` / `getStringAsync` 静默返回空；原实现在 AppState 变为 `active` 后固定延迟 300ms 检测，而 `active` 早于窗口获得焦点，HyperOS 切回动画期间检测被当作「没有文字」且不重试。另补上设计缺口：不离开应用时（分屏、小窗、通知栏、页面内复制）原本完全不触发检测。
+- 修改文件：src/features/excerpts/domain/clipboard-detection-trigger.ts（新增）、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/services/clipboard.service.ts、tests/excerpts/clipboard-detection.test.cjs、docs/架构指南/业务模块与运行逻辑.md、CHANGELOG.md。
+- 具体内容：① 新增检测时机状态机：页面获得焦点 300ms 后检测；Android 从后台回来先排 1 秒保底检测，等到 AppState `focus`（窗口获得焦点）后改为 100ms 后检测；iOS 回到前台 300ms 后检测；回到后台取消未执行的检测；未进过后台的窗口焦点（如关闭弹窗）不检测，避免反复读取剪贴板触发系统提示；② `clipboard.service` 新增 `onChange`（expo-clipboard `addClipboardListener`），摘录页获得焦点期间监听，前台时剪贴板变化 100ms 后检测，离开页面即注销；③ 新增 6 项触发时机测试。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；摘录测试 19/19；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 528 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。未做真机验收：需确认从其他应用切回、分屏/小窗复制、关闭弹窗不重复读取三种场景。与 1B 一并提交。
+
+---
+
+## 2026-09-25 13:34:38 | 新增功能：剪贴板自动检测开关（摘录 1B）
+
+- 变更概述：按已确认的计划与文字预览实现摘录 1B（1A 已提交为 a0d0b91）。自动检测为设备级开关，默认关闭；只在摘录页获得焦点、或停留在摘录页时回到前台检测；检测结果只提示，由用户选择保存或忽略，从不自动保存；不过滤疑似验证码。关闭时摘录页显示可关掉的提示条，开启需先确认说明。
+- 修改文件：src/features/excerpts/domain/clipboard-detection.ts（新增）、src/features/excerpts/hooks/useClipboardDetection.ts（新增）、src/features/excerpts/hooks/useClipboardPreferences.ts（新增）、src/features/excerpts/state/clipboard-preferences-store.ts（新增）、src/features/excerpts/components/{ClipboardHintBar,ClipboardDetectedCard,ClipboardDetectConfirmDialog}.tsx（新增）、src/features/excerpts/services/clipboard.service.ts、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/excerpts/index.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/excerpts/clipboard-detection.test.cjs（新增）、README.md、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/后续开发指南.md、docs/待办/TODO.md、CHANGELOG.md。
+- 具体内容：① `system_preferences` 新增三个设备级键：自动检测开关、提示条已关闭、最近已处理内容哈希（只存 SHA-256，不存原文）；② 纯判断 `detectClipboard` 依次检查开关 → `hasStringAsync`（Android 只读剪贴板描述，不触发系统读取提示）→ `getStringAsync` → 空白/已处理/超长/本应用刚复制/已存为摘录，任一不满足即停止；超长、本应用复制、已存为摘录的内容记为已处理；③ `useClipboardDetection`：获得焦点或回到前台后延迟 300ms 检测（Android 10+ 需窗口获得焦点才能读取），开关刚开启或摘录加载完成时补检一次；忽略与保存（来源 auto）都记为已处理，离开页面未处理的提示下次仍显示；④ 摘录页按预览接入关闭提示条、检测提示卡与开启确认框；「设置 › 权限」在「后台实时刷新」后新增「剪贴板自动检测」开关行，打开前先确认，关闭立即生效；两处共用同一份开关状态；⑤ 与文字预览的差异：检测提示卡按钮复用公共 `AppButton` compact，高 44dp（预览写 40dp）；确认框说明末句改为「Android 系统可能会提示应用读取了剪贴板」（预览写「Android 系统可能提示『已读取剪贴板』」），避免引用与系统实际文案不一致的提示语；提示条操作行距首行 4dp（预览未标注）。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增检测测试 5/5 通过，摘录测试共 13/13；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 522 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。Android 读取时机（300ms 延迟是否足够）、系统读取提示是否只在读取内容时出现、Switch 取消确认后的回弹，均需真机验收。未做浏览器或真机验收；未提交 Git。
+
+---
+
 ## 2026-09-25 13:28:11 | 优化代码：新增公网隧道预览启动脚本
 
 - 变更概述：用户确认新增 `start:tunnel` 脚本。手机与电脑不在同一局域网时，可通过 Expo 隧道（`@expo/ngrok`，已在 devDependencies 中）加载开发版预览。
