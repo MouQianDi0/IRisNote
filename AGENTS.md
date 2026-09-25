@@ -60,7 +60,7 @@ Todos 的 `is_starred`、`is_pinned`、`reminder_enabled`、`time_zone`、`local
 
 ## 8. 本地原生模块
 
-`modules/irisnote-system` 使用 Expo Modules API，JS 侧通过 `requireOptionalNativeModule` 在 Expo Go 或未链接环境降级。`postProgressNotification` 以单个 `Map<String, Any?>` 入参传字段，避免 Expo Modules `AsyncFunction` Lambda 具名参数数量限制。修改 Kotlin 或模块 API 后，应按影响重新构建原生应用；纯 JS 改动可按现有开发流程验证。
+`modules/irisnote-system` 使用 Expo Modules API，JS 侧通过 `requireOptionalNativeModule` 在 Expo Go 或未链接环境降级。`postProgressNotification` 以单个 `Map<String, Any?>` 入参传字段，避免 Expo Modules `AsyncFunction` Lambda 具名参数数量限制。`scheduleLiveTodoCards` / `updateLiveTodoCards` 的入参为 JSON 字符串：Expo Modules 无法把 JS 嵌套对象数组转换为 Kotlin 的 `List<Map>`/嵌套泛型（真机实测报 "Cannot convert ... to a Kotlin type"），原生侧用 `org.json` 解析并与 `LiveTodoTimelineStore` 共用解析逻辑。修改 Kotlin 或模块 API 后，应按影响重新构建原生应用；纯 JS 改动可按现有开发流程验证。
 
 `modules/irisnote-updater` 是 Android APK 差量合并、校验和安装准备模块；涉及更新流程时先读其 README、`src/features/updates/` 与发布脚本。新增原生依赖时确认 development build、config plugin、prebuild、EAS 和平台支持，不能假设 Expo Go 可用。`android/` 是本地生成物，不入库。
 
@@ -127,6 +127,18 @@ API 修改明确 Method、URL、Params、Body、Response、Error、Auth、Store 
 - 合并、解决冲突或追加修改后，必须确认没有遗留 Git 冲突标记，并对最终代码重新检查，不能沿用修改前或其他分支的结果。
 - 发布前核对预留版本绑定的提交 SHA，确保该提交包含修复。涉及自动生成文件时，验证干净源码环境，不能依赖本机未提交文件。汇报实际检查命令、结果和对应提交；明确区分类型检查通过、打包成功与真机验证通过。
 - 用户要求生成版本包更新说明时，必须先读取 [更新说明编写规范](docs/构建发布/更新说明编写规范.md)，结合 CHANGELOG 与目标版本的实际提交范围核实内容，使用面向普通用户的中文描述；不得直接复制技术日志或把未进入版本包的改动写成已上线。生成说明本身不授权构建、上传、发布或 Git 写操作。
+
+#### 全链路变更日志（docs/logs）
+
+- 凡发生实际代码改动（新增功能、修复问题、重构、合并带入的功能、原生模块改动），除 `CHANGELOG.md` 条目外，必须在 `docs/logs/` 下追加一篇全链路变更日志，文件名 `YYYY-MM-DD-<英文短题>.md`（一天多篇加 `-2`、`-3` 序号）。
+- 日志必须包含且写实，不得凭推断编写：
+  1. **改动清单（按层）**：按 `src/features → src/core → src/shared → modules/ → tests → docs` 分层列出每个改动文件及其具体改动（新增文件写行数与职责，修改文件写改动点）；
+  2. **与原代码对比**：明确基点（合并写 merge-base 提交，修改写改前行为），逐点写"原来是什么、现在是什么"，行为反转的默认值/开关要单独标注；
+  3. **改动原因**：每个实质改动写清楚"为什么改"——原方案的问题、触发的需求或缺陷、设计取舍（如权限独立性、防抖动、冷启动防护）；
+  4. **完整调用链路**：用文字/ASCII 链路描述新代码从触发源到落点的完整路径（UI → Hook/Service → Store → 原生/API → 回写），标注双端镜像逻辑、唯一入口、门控与降级分支；
+  5. **验证情况**：实际执行的检查与结果；未执行的明确写"未执行"。
+- 基点与对比通过 `git diff <基点>..<结果>` 实测得出，禁止只看最终代码臆测"原来"的行为。日志只写与代码一致的现状，随代码同一次提交入库。
+- 纯文档改动、CHANGELOG 记录本身、无行为变化的格式化提交可豁免；是否豁免有疑义时写日志。
 
 ### ZCode 会话模型调度
 
