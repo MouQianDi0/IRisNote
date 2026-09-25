@@ -47,8 +47,10 @@ const api = require("@/shared/http/client.ts").default;
 const { checkNewPassword } = require("@/shared/utils/password-policy.ts");
 const {
   CLOUD_REQUIRED_MESSAGE,
+  cloudRequiredMessage,
   describePasswordError,
   formatWait,
+  isEmailChangeExpired,
 } = require("@/features/profile/utils/password-errors.ts");
 const securityApi = require("@/features/profile/api/account-security.api.ts");
 const { maskEmail } = require("@/features/profile/utils/profile-validation.ts");
@@ -119,9 +121,14 @@ beforeEach(() => {
   calls = [];
   api.defaults.adapter = async (config) => {
     calls.push(config);
-    const data = config.url.endsWith("/send")
+    const user = { id: 41, email: "o@example.com", avatar: "/api/user/avatar/41_1.png" };
+    const data = /\/(send|send-current|send-new)$/.test(config.url)
       ? { message: "验证码已发送" }
-      : { token: "next-token", user: { id: 41, email: "o@example.com", avatar: "/api/user/avatar/41_1.png" } };
+      : /verify-(current|password)$/.test(config.url)
+        ? { ticket: "t".repeat(43), expires_in: 600 }
+        : config.url.endsWith("/email-change/confirm")
+          ? { user }
+          : { token: "next-token", user };
     return { config, data, headers: {}, status: 200, statusText: "OK" };
   };
 });
@@ -157,4 +164,42 @@ test("开启云存储后按约定路径与字段提交，并规范化头像地�
   assert.equal(changed.token, "next-token");
   assert.match(changed.user.avatar, /^https?:\/\/.+41_1\.png$/);
   assert.equal(reset.token, "next-token");
+});
+
+test("修改邮箱：云存储提示按操作命名，凭据过期错误码可识别", () => {
+  assert.equal(cloudRequiredMessage("修改邮箱"), "修改邮箱需要开启云存储，请先在「同步与备份」中开启");
+  const cloud = describePasswordError(new policy.CloudStoragePermissionError(), "失败", undefined, cloudRequiredMessage("修改邮箱"));
+  assert.match(cloud.message, /^修改邮箱/);
+  assert.equal(isEmailChangeExpired(httpError(400, { error: "验证已过期，请重新验证", code: "EMAIL_CHANGE_EXPIRED" })), true);
+  assert.equal(isEmailChangeExpired(httpError(409, { error: "账号邮箱已变化，请重新验证", code: "EMAIL_CHANGE_EXPIRED" })), true);
+  assert.equal(isEmailChangeExpired(httpError(409, { error: "该邮箱已被使用" })), false);
+  assert.equal(isEmailChangeExpired(new Error("x")), false);
+});
+
+test("修改邮箱接口受云授权控制，按约定路径与字段提交并携带设备标识", async () => {
+  policy.setCloudStorageSession(41, true, false);
+  await assert.rejects(securityApi.sendEmailChangeCurrentCode());
+  assert.equal(calls.length, 0);
+
+  policy.setCloudStorageSession(41, true, true);
+  await securityApi.sendEmailChangeCurrentCode();
+  const byCode = await securityApi.verifyEmailChangeByCode("111111");
+  const byPassword = await securityApi.verifyEmailChangeByPassword(" secret ");
+  await securityApi.sendEmailChangeNewCode(byCode.ticket, "next@example.com");
+  const user = await securityApi.confirmEmailChange(byCode.ticket, "222222");
+
+  assert.deepEqual(calls.map((config) => config.url), [
+    "/user/email-change/send-current",
+    "/user/email-change/verify-current",
+    "/user/email-change/verify-password",
+    "/user/email-change/send-new",
+    "/user/email-change/confirm",
+  ]);
+  assert.deepEqual(JSON.parse(calls[1].data), { code: "111111" });
+  assert.deepEqual(JSON.parse(calls[2].data), { password: " secret " });
+  assert.deepEqual(JSON.parse(calls[3].data), { ticket: "t".repeat(43), new_email: "next@example.com" });
+  assert.deepEqual(JSON.parse(calls[4].data), { ticket: "t".repeat(43), code: "222222" });
+  assert.ok(calls.every((config) => config.timeout === 15000 && config.headers.get("X-Device-Id")));
+  assert.equal(byPassword.expires_in, 600);
+  assert.match(user.avatar, /^https?:\/\/.+41_1\.png$/);
 });

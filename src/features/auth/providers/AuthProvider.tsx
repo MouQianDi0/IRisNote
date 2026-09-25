@@ -13,7 +13,10 @@ import {
 import { AuthContext } from "../auth.context";
 import { banner } from "@/core/notifications";
 import { resetConnectionSession } from "@/shared/http/connection-events";
-import { onSessionRejected } from "@/shared/http/session-events";
+import {
+    onSessionRejected,
+    setSessionExiting,
+} from "@/shared/http/session-events";
 import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 
 const welcomeRoute = "/auth/welcome" as Href;
@@ -160,6 +163,8 @@ export function AuthProvider({
                     if (!current || current !== rejected || expiring.current)
                         return;
                     expiring.current = true;
+                    // 同步开启，保证 replace 触发的离开保护回调能读到；重新登录后关闭。
+                    setSessionExiting(true);
                     try {
                         await logout();
                         banner.show({
@@ -175,6 +180,9 @@ export function AuthProvider({
             }),
         [logout],
     );
+    useEffect(() => {
+        if (token) setSessionExiting(false);
+    }, [token]);
 
     return (
         <AuthContext.Provider

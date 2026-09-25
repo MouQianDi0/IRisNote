@@ -46,8 +46,10 @@ Module._load = function (name, ...args) {
 globalThis.__DEV__ = false;
 const api = require("@/shared/http/client.ts").default;
 const {
+  isSessionExiting,
   onSessionRejected,
   rejectedSessionToken,
+  setSessionExiting,
 } = require("@/shared/http/session-events.ts");
 const { AxiosError } = require("axios");
 
@@ -104,4 +106,12 @@ test("只从 Bearer 请求头取令牌，并排除认证接口", () => {
   assert.equal(rejectedSessionToken("/user/profile", undefined), null);
   assert.equal(rejectedSessionToken("/user/profile", "Basic abc"), null);
   assert.equal(rejectedSessionToken("/user/profile", "Bearer "), null);
+});
+
+test("会话失效退出标记默认关闭，可同步开启与关闭", () => {
+  assert.equal(isSessionExiting(), false);
+  setSessionExiting(true);
+  assert.equal(isSessionExiting(), true);
+  setSessionExiting(false);
+  assert.equal(isSessionExiting(), false);
 });
