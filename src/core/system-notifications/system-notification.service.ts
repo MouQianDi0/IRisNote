@@ -410,6 +410,8 @@ export type LiveUpdateContent = {
     /** true = 倒计时（锚点为终点），false = 正向计时（锚点为起点）。 */
     chronoCountdown?: boolean;
     iconResourceName?: string | null;
+    /** true = 不设置任何进度形态（聚合卡纯文本状态卡）。 */
+    hideProgress?: boolean;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -493,6 +495,7 @@ export function postStateCard(card: StateCardPayload): Promise<void> {
         text: card.text, progress: 0, max: 0, indeterminate: true,
         ongoing: true, promoted: true, iconResourceName: card.iconResourceName,
         chronoAt: card.chronoAt, chronoCountdown: card.chronoCountdown,
+        hideProgress: true,
     });
 }
 
@@ -518,6 +521,7 @@ export async function postLiveUpdate(
             iconResourceName: content.iconResourceName ?? null,
             chronoAt: content.chronoAt ?? null,
             chronoCountdown: content.chronoCountdown ?? false,
+            hideProgress: content.hideProgress ?? false,
         });
     } catch (cause) {
         void recordDiagnostic(

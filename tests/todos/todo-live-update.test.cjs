@@ -81,16 +81,28 @@ test("聚合卡四场景、计数、独立渠道及结束窗口", () => {
   const timeline = todoSummaryTimeline(entities, at(9, 0), false);
   const today = desiredTodoSummary(timeline, at(9, 0));
   assert.equal(today.scene, "today");
-  assert.equal(today.title, "待办 2·重要 1");
+  // 胶囊标题只显示进行/临近计数，今日总量放副标题。
+  assert.equal(today.title, "进行中 0");
+  // 重要 = 创建时 priority=high（fixture 默认 normal，isStarred 不再计入）。
+  assert.equal(today.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 0条进行中 | 0条已完成");
   assert.equal(today.notificationId, LIVE_TODO_SUMMARY_NOTIFICATION_ID);
   assert.equal(today.channelId, LIVE_TODO_SUMMARY_CHANNEL);
   assert.equal(desiredTodoSummary(timeline, at(10, 0)).scene, "near");
   assert.equal(desiredTodoSummary(timeline, at(10, 30)).scene, "near");
-  assert.equal(desiredTodoSummary(timeline, at(11, 30)).scene, "active");
-  assert.equal(desiredTodoSummary(timeline, at(11, 30)).secondsEligible, true);
-  const short = todoSummaryTimeline([todo()], at(9, 30), true);
-  assert.match(desiredTodoSummary(short, at(9, 30, 30)).text, /剩余 00:30$/);
-  assert.match(desiredTodoSummary(short, at(9, 30, 30), true).text, /剩余 29:30$/);
+  const activeCard = desiredTodoSummary(timeline, at(11, 30));
+  assert.equal(activeCard.scene, "active");
+  // 胶囊不再展示 chronometer 倒计时；标题只显示进行/临近计数。
+  assert.equal(activeCard.title, "进行中 1");
+  assert.equal(activeCard.secondsEligible, false);
+  assert.equal(activeCard.chronoAt, null);
+  assert.equal(activeCard.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 1条进行中 | 0条已完成");
+  const short = todoSummaryTimeline([
+    todo({ startTime: "09:00", endTime: "10:00" }),
+    todo({ clientId: "soon", startTime: "10:10", endTime: null }),
+  ], at(9, 30), true);
+  const shortCard = desiredTodoSummary(short, at(9, 30, 30), true);
+  assert.equal(shortCard.title, "进行中 1·临近 1");
+  assert.equal(shortCard.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 1条进行中 | 0条已完成");
   assert.equal(desiredTodoSummary(todoSummaryTimeline([], at(9, 0), true), at(9, 0)), null);
   const endedTimeline = todoSummaryTimeline([todo({ endTime: "10:00" })], at(10, 1), true);
   assert.equal(desiredTodoSummary(endedTimeline, at(10, 1)).scene, "ended");
@@ -110,7 +122,9 @@ test("聚合摘要脱敏截断且最早开始项确定性优先", () => {
   const b = desiredTodoSummary(todoSummaryTimeline([first, second], at(9, 30), false), at(9, 30));
   assert.deepEqual(a, b);
   assert.equal(a.scene, "near");
-  assert.equal(a.text, "开会");
+  // 文案改为纯计数后确定性由标题承载：进行/临近数量与输入顺序无关。
+  assert.equal(a.title, "进行中 0·临近 2");
+  assert.equal(a.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 0条进行中 | 0条已完成");
 });
 
 test("协调器聚合卡独立权限、后台快照和提升唯一性", async () => {
@@ -125,6 +139,7 @@ test("协调器聚合卡独立权限、后台快照和提升唯一性", async ()
   assert.equal(sinks.summaries[0].scene, "active");
   await coordinator.handoff();
   assert.equal(sinks.handoffs.find((card) => card.id === LIVE_TODO_SUMMARY_NOTIFICATION_ID).summarySeenActivity, true);
+  // 仅聚合卡与重要（priority=high）事件携带提升式请求；普通事件非提升。
   assert.equal(sinks.handoffs.filter((card) => card.promoted).length, 1);
   await coordinator.stop();
   assert.equal(sinks.cancels.includes(LIVE_TODO_SUMMARY_NOTIFICATION_ID), true);
@@ -187,6 +202,7 @@ test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真�
   assert.equal(demo.endAt - demo.startAt, 60_000);
   assert.equal(demo.notificationId, LIVE_TEST_NOTIFICATION_ID);
   assert.equal(demo.channelId, LIVE_TODO_CHANNEL);
+  assert.equal(demo.promoted, true);
   assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start - 1)), null);
   assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start + 60_000)), null);
 
@@ -217,7 +233,7 @@ test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真�
     textStarted: null,
     startAt: start,
     endAt: start + 60_000,
-    promoted: false,
+    promoted: true,
   });
 
   now = new Date(start + 60_001);
@@ -267,7 +283,11 @@ test("时间线快照携带墙钟重算所需的全部字段", () => {
   assert.equal(card.startAt, at(9, 0).getTime());
   assert.equal(card.endAt, at(10, 0).getTime());
   assert.equal(card.textStarted, null);
+  // 普通事件（非 high）降级为非提升动态通知。
   assert.equal(card.promoted, false);
+  const high = desiredTodoLiveTimeline(todo({ priority: "high" }), at(9, 30));
+  assert.ok(high);
+  assert.equal(high.promoted, true);
   const open = desiredTodoLiveTimeline(todo({ endTime: null }), at(9, 30));
   assert.ok(open);
   assert.equal(open.endAt, null);
@@ -330,6 +350,9 @@ test("有结束时间的进行中卡片计算分钟进度并携带倒计时锚�
   assert.equal(card.max, 60);
   assert.equal(card.text, "已进行 15 / 60 分钟");
   assert.equal(card.ongoing, true);
+  assert.equal(card.promoted, false);
+  const highCard = desiredTodoLiveUpdate(todo({ priority: "high" }), at(9, 15));
+  assert.equal(highCard.promoted, true);
   assert.equal(card.chronoAt, at(10, 0).getTime());
   assert.equal(card.chronoCountdown, true);
   assert.equal(

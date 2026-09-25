@@ -16,7 +16,8 @@ export type TodoSummaryItem = {
     startAt: number | null;
     endAt: number | null;
     completed: boolean;
-    starred: boolean;
+    /** 创建时选择的重要度：high 视为「重要」。 */
+    priority: "low" | "normal" | "high";
     completedAt: number | null;
 };
 export type TodoSummaryTimeline = {
@@ -31,6 +32,7 @@ export type TodoSummaryCard = {
     channelId: string;
     scene: TodoSummaryScene;
     count: number;
+    /** 重要 = 未完成且 priority 为 high（创建时的重要度选择）。 */
     starredCount: number;
     title: string;
     text: string;
@@ -57,7 +59,7 @@ export function todoSummaryTimeline(
             startAt: todo.startTime === null ? null : timeOnDate(today, todo.startTime),
             endAt: todo.endTime === null ? null : timeOnDate(today, todo.endTime),
             completed: todo.isCompleted,
-            starred: todo.isStarred,
+            priority: todo.priority,
             completedAt: todo.completedAt ? Date.parse(todo.completedAt) || null : null,
         })),
     };
@@ -72,47 +74,54 @@ export function desiredTodoSummary(
     const nowMs = now.getTime();
     const pending = timeline.items.filter((item) => !item.completed);
     const count = pending.length;
-    const starredCount = pending.filter((item) => item.starred).length;
+    const importantCount = pending.filter((item) => item.priority === "high").length;
     const timed = pending.filter((item) => item.startAt !== null &&
         (item.endAt === null || item.endAt > nowMs));
     const byStart = (a: TodoSummaryItem, b: TodoSummaryItem) =>
         (a.startAt ?? 0) - (b.startAt ?? 0) || a.title.localeCompare(b.title);
-    const active = timed.filter((item) => (item.startAt ?? Infinity) <= nowMs)
-        .sort(byStart)[0];
-    const near = timed.filter((item) => (item.startAt ?? 0) > nowMs &&
-        (item.startAt ?? Infinity) - nowMs <= TODO_SUMMARY_NEAR_MS)
-        .sort(byStart)[0];
+    const activeItems = timed.filter((item) => (item.startAt ?? Infinity) <= nowMs);
+    const active = activeItems.sort(byStart)[0];
+    const nearItems = timed.filter((item) => (item.startAt ?? 0) > nowMs &&
+        (item.startAt ?? Infinity) - nowMs <= TODO_SUMMARY_NEAR_MS);
+    const near = nearItems.sort(byStart)[0];
+    // 胶囊标题只显示「进行中 N」，有临近时追加「·临近 N」；今日总量放副标题。
+    const activeCount = activeItems.length;
+    const nearCount = nearItems.length;
+    const total = timeline.items.length;
+    const title = nearCount > 0
+        ? `进行中 ${activeCount}·临近 ${nearCount}`
+        : `进行中 ${activeCount}`;
+    const completedCount = timeline.items.length - pending.length;
+    const text = [
+        `今日 ${total} 条待办`,
+        `${importantCount}条重要`,
+        `${count}条待完成`,
+        `${activeCount}条进行中`,
+        `${completedCount}条已完成`,
+    ].join(" | ");
     const base = {
         notificationId: timeline.id,
         channelId: timeline.channelId,
         count,
-        starredCount,
+        starredCount: importantCount,
         chronoCountdown: false,
         secondsEligible: false,
     };
-    if (active) {
-        const remaining = active.endAt === null ? null : Math.max(0, active.endAt - nowMs);
-        const duration = remaining === null ? "" : remaining <= TODO_SUMMARY_NEAR_MS && smoothSeconds
-            ? `${String(Math.floor(remaining / 60_000)).padStart(2, "0")}:${String(Math.floor(remaining % 60_000 / 1000)).padStart(2, "0")}`
-            : `${String(Math.floor(Math.ceil(remaining / 60_000) / 60)).padStart(2, "0")}:${String(Math.ceil(remaining / 60_000) % 60).padStart(2, "0")}`;
+    if (active || near) {
         return {
-            ...base, scene: "active", title: `待办 ${count}·进行中 ${timed.filter((item) => (item.startAt ?? Infinity) <= nowMs).length}`,
-            text: active.title + (duration ? ` · 剩余 ${duration}` : ""),
-            iconResourceName: "ic_live_todo_active", chronoAt: active.endAt,
-            chronoCountdown: active.endAt !== null,
-            secondsEligible: remaining !== null && remaining <= TODO_SUMMARY_NEAR_MS,
+            ...base,
+            scene: active ? "active" : "near",
+            title,
+            text,
+            iconResourceName: active ? "ic_live_todo_active" : "ic_live_todo_near",
+            chronoAt: null,
         };
     }
-    if (near) return {
-        ...base, scene: "near", title: `待办 ${count}·临近 ${timed.filter((item) =>
-            (item.startAt ?? 0) > nowMs && (item.startAt ?? Infinity) - nowMs <= TODO_SUMMARY_NEAR_MS).length}`,
-        text: near.title, iconResourceName: "ic_live_todo_near", chronoAt: null,
-    };
     const futureOrUntimed = pending.some((item) => item.startAt === null ||
         (item.startAt > nowMs && (item.endAt === null || item.endAt > nowMs)));
     if (futureOrUntimed) return {
-        ...base, scene: "today", title: `待办 ${count}·重要 ${starredCount}`,
-        text: `今日有 ${count} 条待办，${starredCount} 条重要`,
+        ...base, scene: "today", title,
+        text,
         iconResourceName: "ic_live_todo_today", chronoAt: null,
     };
     if (!timeline.seenActivity || timeline.items.length === 0) return null;

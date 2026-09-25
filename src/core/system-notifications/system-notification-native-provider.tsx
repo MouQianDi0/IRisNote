@@ -190,7 +190,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                             max: card.max,
                             indeterminate: card.indeterminate,
                             ongoing: card.ongoing,
-                            promoted: false,
+                            promoted: card.promoted,
                             chronoAt: card.chronoAt,
                             chronoCountdown: card.chronoCountdown,
                         }),

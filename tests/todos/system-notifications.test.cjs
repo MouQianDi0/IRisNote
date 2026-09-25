@@ -319,6 +319,8 @@ test("聚合渠道独立关闭且只有状态卡请求提升", async () => {
   });
   const payload = s.calls.find(([kind]) => kind === "native-post")[1];
   assert.equal(payload.promoted, true);
+  // 聚合卡为纯计数文案，不携带进度形态。
+  assert.equal(payload.hideProgress, true);
   assert.equal(payload.ongoing, true);
   assert.equal(payload.iconResourceName, "ic_live_todo_near");
   assert.equal(payload.channelId, "irisnote.live-todo-summary.v1");

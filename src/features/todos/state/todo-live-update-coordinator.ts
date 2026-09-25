@@ -542,6 +542,7 @@ export class TodoLiveUpdateCoordinator {
             previous.progress === card.progress &&
             previous.max === card.max &&
             previous.indeterminate === card.indeterminate &&
+            previous.promoted === card.promoted &&
             previous.chronoAt === card.chronoAt &&
             previous.chronoCountdown === card.chronoCountdown
         );
