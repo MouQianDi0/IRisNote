@@ -159,6 +159,7 @@ function portStub(sinks = {}, overrides = {}) {
   sinks.summaries ??= [];
   return {
     supported: () => true,
+    progressStyleSupported: () => true,
     permissionGranted: async () => true,
     summaryPermissionGranted: async () => false,
     post: async (card) => sinks.posts.push({ ...card }),

@@ -1,6 +1,7 @@
 export {
     createDiagnosticExport,
     diagnosticErrorCategory,
+    sanitizeText,
     opaqueDiagnosticId,
     recordDiagnostic,
     type DiagnosticDetails,

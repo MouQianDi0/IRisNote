@@ -11,6 +11,7 @@ function service(
   platform,
   initial = { granted: false, canAskAgain: true },
   exactAlarm = "denied",
+  version = platform === "android" ? 36 : 0,
 ) {
   let permissions = initial;
   const calls = [];
@@ -64,7 +65,7 @@ function service(
       },
     },
     "react-native": {
-      Platform: { OS: platform, Version: platform === "android" ? 36 : 0 },
+      Platform: { OS: platform, Version: version },
       Linking: {
         async openURL(url) {
           calls.push(["settings", url]);
@@ -82,6 +83,15 @@ function service(
       },
       async postProgressNotification(payload) {
         calls.push(["native-post", payload]);
+      },
+      async scheduleLiveTodoCards(cards) {
+        calls.push(["handoff", cards]);
+      },
+      async startLiveTodoForegroundService() {
+        calls.push(["fgs-start"]);
+      },
+      async stopLiveTodoForegroundService() {
+        calls.push(["fgs-stop"]);
       },
     },
   };
@@ -312,6 +322,45 @@ test("聚合渠道独立关闭且只有状态卡请求提升", async () => {
   assert.equal(payload.ongoing, true);
   assert.equal(payload.iconResourceName, "ic_live_todo_near");
   assert.equal(payload.channelId, "irisnote.live-todo-summary.v1");
+});
+
+test("兼容档位 Android 8.0 可发卡/移交，前台服务仍要求 Android 16", async () => {
+  const compat = service(
+    "android",
+    { granted: true, canAskAgain: true },
+    "denied",
+    26,
+  );
+  assert.equal(await compat.liveTodoNotificationPermission(), true);
+  assert.equal(await compat.liveTodoSummaryNotificationPermission(), true);
+  await compat.postLiveUpdate({
+    id: 7001, channelId: "irisnote.live-todo.v1", title: "t", text: "x",
+    progress: 1, max: 2, indeterminate: false, ongoing: true,
+  });
+  assert.equal(compat.calls.some(([kind]) => kind === "native-post"), true);
+  await compat.handoffLiveTodoTimelines([]);
+  assert.equal(compat.calls.some(([kind, payload]) => {
+    if (kind !== "handoff") return false;
+    try { return JSON.parse(payload).length === 0; } catch { return false; }
+  }), true);
+  assert.equal(await compat.startLiveTodoForegroundService(), false);
+  await compat.stopLiveTodoForegroundService();
+  assert.equal(compat.calls.some(([kind]) => kind === "fgs-start" || kind === "fgs-stop"), false);
+
+  const below = service(
+    "android",
+    { granted: true, canAskAgain: true },
+    "denied",
+    25,
+  );
+  assert.equal(await below.liveTodoNotificationPermission(), false);
+  await assert.rejects(
+    () => below.postLiveUpdate({
+      id: 7001, channelId: "irisnote.live-todo.v1", title: "t", text: "x",
+      progress: 1, max: 2, indeterminate: false, ongoing: true,
+    }),
+    /Android 8\.0/,
+  );
 });
 
 test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {

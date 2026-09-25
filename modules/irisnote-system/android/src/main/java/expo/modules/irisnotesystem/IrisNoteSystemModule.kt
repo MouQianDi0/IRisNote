@@ -16,6 +16,7 @@ import expo.modules.irisnotesystem.live.LiveTodoScheduler
 import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
 import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
 import java.io.File
+import org.json.JSONArray
 
 class IrisNoteSystemModule : Module() {
   private fun context() = requireNotNull(appContext.reactContext) { "应用尚未就绪" }
@@ -90,46 +91,39 @@ class IrisNoteSystemModule : Module() {
     )
   }
 
-  /** ProgressStyle 属于 Android 16（API 36）；低版本设备在 JS 层已禁用，此处兜底拒绝。 */
+  /** ProgressStyle/提升式展示属于 Android 16（API 36）；前台服务秒级刷新仍按此门禁。 */
   private fun requireProgressNotificationSupport() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
       throw IllegalStateException("动态通知需要 Android 16 及以上系统")
     }
   }
 
+  /**
+   * 动态通知卡片基础能力门禁：Android 8.0（API 26，通知渠道时代）即可。
+   * 低版本由 Notifier 内部退化为普通进度条通知（不请求提升式），退后台仍可
+   * 由闹钟链保留卡片；ProgressStyle/提升式与前台服务仅在 36+ 开启。
+   */
+  private fun requireLiveUpdateSupport() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      throw IllegalStateException("动态通知需要 Android 8.0 及以上系统")
+    }
+  }
+
   private fun notificationManager() =
     context().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-  /** 时间线快照入参解析（scheduleLiveTodoCards / updateLiveTodoCards 共用）。 */
-  private fun parseLiveTodoCards(input: List<Map<String, Any?>>): List<LiveTodoTimelineCard> =
-    input.map { card ->
-      val id = (card["id"] as? Number)?.toInt()
-        ?: throw IllegalArgumentException("缺少 id")
-      LiveTodoTimelineCard(
-        id = id,
-        channelId = card["channelId"] as? String
-          ?: throw IllegalArgumentException("缺少 channelId"),
-        title = card["title"] as? String
-          ?: throw IllegalArgumentException("缺少 title"),
-        textStarted = card["textStarted"] as? String,
-        startAt = (card["startAt"] as? Number)?.toLong()
-          ?: throw IllegalArgumentException("缺少 startAt"),
-        endAt = (card["endAt"] as? Number)?.toLong(),
-        promoted = card["promoted"] == true,
-        summaryItems = (card["summaryItems"] as? List<*>)?.map { raw ->
-          val item = raw as? Map<*, *> ?: throw IllegalArgumentException("无效 summaryItems")
-          LiveTodoSummaryItem(
-            title = item["title"] as? String ?: "",
-            startAt = (item["startAt"] as? Number)?.toLong(),
-            endAt = (item["endAt"] as? Number)?.toLong(),
-            completed = item["completed"] == true,
-            starred = item["starred"] == true,
-            completedAt = (item["completedAt"] as? Number)?.toLong(),
-          )
-        },
-        summarySeenActivity = card["summarySeenActivity"] == true,
-      )
+  /** 时间线快照入参解析（scheduleLiveTodoCards / updateLiveTodoCards 共用）。
+   *  Expo Modules 无法可靠转换 JS 嵌套对象数组（真机实测 List<Map> 与单 Map
+   *  包装均报 "Cannot convert ... to a Kotlin type"），因此入参为 JSON 字符串，
+   *  与 LiveTodoTimelineStore 共用 org.json 解析。 */
+  private fun parseLiveTodoCards(payload: String): List<LiveTodoTimelineCard> {
+    val array = JSONArray(payload)
+    return (0 until array.length()).map { index ->
+      val obj = array.optJSONObject(index)
+        ?: throw IllegalArgumentException("无效 cards 元素")
+      LiveTodoTimelineCard.fromJson(obj)
     }
+  }
 
   override fun definition() = ModuleDefinition {
     Name("IrisNoteSystem")
@@ -160,7 +154,7 @@ class IrisNoteSystemModule : Module() {
      * chronoAt/chronoCountdown 为方案 C：系统 chronometer 秒级计时锚点。
      */
     AsyncFunction("postProgressNotification") { input: Map<String, Any?> ->
-      requireProgressNotificationSupport()
+      requireLiveUpdateSupport()
       fun requireInt(key: String): Int {
         val value = input[key] as? Number ?: throw IllegalArgumentException("缺少 $key")
         return value.toInt()
@@ -207,9 +201,9 @@ class IrisNoteSystemModule : Module() {
      * 按墙钟差量刷新，进程被杀后从 SharedPreferences 恢复续算；卡片全部
      * 结束自动停摆。空数组等价于取消原生接管。
      */
-    AsyncFunction("scheduleLiveTodoCards") { input: List<Map<String, Any?>> ->
-      requireProgressNotificationSupport()
-      LiveTodoScheduler.schedule(context(), parseLiveTodoCards(input))
+    AsyncFunction("scheduleLiveTodoCards") { payload: String ->
+      requireLiveUpdateSupport()
+      LiveTodoScheduler.schedule(context(), parseLiveTodoCards(payload))
     }
 
     /**
@@ -217,9 +211,9 @@ class IrisNoteSystemModule : Module() {
      * 前台服务前调用，FGS 每秒从快照重算；JS run() 每轮刷新使编辑/完成
      * 及时反映。退后台的完整移交仍走 scheduleLiveTodoCards。
      */
-    AsyncFunction("updateLiveTodoCards") { input: List<Map<String, Any?>> ->
-      requireProgressNotificationSupport()
-      LiveTodoScheduler.persist(context(), parseLiveTodoCards(input))
+    AsyncFunction("updateLiveTodoCards") { payload: String ->
+      requireLiveUpdateSupport()
+      LiveTodoScheduler.persist(context(), parseLiveTodoCards(payload))
     }
 
     /**
@@ -227,7 +221,7 @@ class IrisNoteSystemModule : Module() {
      * 刷新按同 ID 原位覆盖对账）。
      */
     AsyncFunction("cancelScheduledLiveTodoCards") {
-      requireProgressNotificationSupport()
+      requireLiveUpdateSupport()
       LiveTodoScheduler.reclaim(context())
     }
 

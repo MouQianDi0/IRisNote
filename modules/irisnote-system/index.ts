@@ -68,14 +68,11 @@ declare class IrisNoteSystemModule extends NativeModule {
   cancelProgressNotification(id: number): Promise<void>;
   /** 按渠道清理本应用当前展示的全部通知（冷启动 reconcile 被杀残留的动态卡片）。 */
   cancelProgressNotificationsByChannel(channelId: string): Promise<void>;
-  /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。 */
-  scheduleLiveTodoCards(
-    cards: NativeLiveTodoTimelineCard[],
-  ): Promise<void>;
+  /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。
+   *  入参为 JSON 字符串：Expo Modules 无法把 JS 嵌套对象数组转换为 Kotlin 泛型。 */
+  scheduleLiveTodoCards(payload: string): Promise<void>;
   /** 方案 B 数据供给：仅更新时间线快照（不排闹钟），供前台服务每秒重算。 */
-  updateLiveTodoCards(
-    cards: NativeLiveTodoTimelineCard[],
-  ): Promise<void>;
+  updateLiveTodoCards(payload: string): Promise<void>;
   /** 回前台收回接管权：取消闹钟、清快照，不动已展示通知。 */
   cancelScheduledLiveTodoCards(): Promise<void>;
   /** 方案 B：启动前台服务秒级刷新（仅限应用前台调用）。 */
