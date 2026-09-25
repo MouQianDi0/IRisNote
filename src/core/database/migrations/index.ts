@@ -12,6 +12,7 @@ import { addNoteSyncState } from "./0010-add-note-sync-state";
 import { createSystemPreferences } from "./0011-create-system-preferences";
 import { createNoteTrash } from "./0012-create-note-trash";
 import { addNotePurgeMarkers } from "./0013-add-note-purge-markers";
+import { createLocalExcerpts } from "./0014-create-local-excerpts";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -27,6 +28,7 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     createSystemPreferences,
     createNoteTrash,
     addNotePurgeMarkers,
+    createLocalExcerpts,
 ];
 
 export const CURRENT_DATABASE_VERSION = databaseMigrations.at(-1)?.version ?? 0;

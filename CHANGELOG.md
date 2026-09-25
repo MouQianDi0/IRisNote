@@ -1,3 +1,21 @@
+## 2026-09-25 13:28:11 | 优化代码：新增公网隧道预览启动脚本
+
+- 变更概述：用户确认新增 `start:tunnel` 脚本。手机与电脑不在同一局域网时，可通过 Expo 隧道（`@expo/ngrok`，已在 devDependencies 中）加载开发版预览。
+- 修改文件：package.json、CHANGELOG.md。
+- 具体内容：`scripts` 新增 `"start:tunnel": "expo start --tunnel"`，放在 `start:test` 之后；未指定端口，默认 8081，端口被占用时由 Expo 在终端询问是否改用其他端口。接口地址沿用默认的 `https://tech-mou.top/api`（公网可访问），脚本不改动环境变量。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 517 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）。同一命令 `npx expo start --tunnel --port 8082` 已在本机实际启动，隧道地址 `/status` 返回 `packager-status:running`；未用手机实测加载，未提交 Git。
+
+---
+
+## 2026-09-25 13:14:36 | 新增功能：本地摘录库（摘录 1A）
+
+- 变更概述：用户确认摘录页实施计划与文字预览（Tab「剪贴」改名「摘录」、本轮做 1A + 1B 分两次提交、自动检测只在摘录页、第一版只存纯文本、本轮不过滤疑似验证码）。本条为 1A：摘录页从占位页变为本地摘录库，关闭自动检测时页面仍可浏览、搜索、手动新建与编辑、「粘贴一次」、复制、置顶和删除。自动检测开关（1B）尚未接入，应用不会在用户未点击时读取剪贴板。
+- 修改文件：src/core/database/migrations/0014-create-local-excerpts.ts（新增）、src/core/database/migrations/index.ts、src/features/excerpts/excerpts.types.ts（新增）、src/features/excerpts/domain/excerpt-validation.ts（新增）、src/features/excerpts/domain/excerpt-display.ts（新增）、src/features/excerpts/data/excerpt-local.repository.ts（新增）、src/features/excerpts/state/excerpt-store.ts（新增）、src/features/excerpts/hooks/useExcerptScope.ts（新增）、src/features/excerpts/services/clipboard.service.ts（新增）、src/features/excerpts/services/excerpt-service.ts（新增）、src/features/excerpts/components/{ExcerptToolbar,ExcerptCard,ExcerptFormDialog,ExcerptActionDialog}.tsx（新增）、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/excerpts/screens/CreateExcerptScreen.tsx、src/features/excerpts/index.ts、src/app/_layout.tsx、src/core/navigation/navigation.constants.ts、tests/excerpts/excerpt-local.test.cjs（新增）、tests/todos/todo-local.test.cjs、README.md、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/后续开发指南.md、docs/待办/TODO.md、CHANGELOG.md。
+- 具体内容：① 迁移 0014 新建 `local_excerpts`（按账号隔离，正文 1–20000 字，SHA-256 内容哈希按账号唯一，来源 paste/auto/manual，置顶与乐观版本号），数据库版本升至 14；② 本地仓库沿用待办的串行队列与账号代次校验：相同内容再次保存不新建而是移到最前；改成已有内容拒绝；版本不匹配区分「已被修改 / 已被删除」；只切换置顶不改变更新时间；③ `clipboard.service` 为摘录唯一剪贴板入口，写入时记录内容哈希供 1B 跳过自己复制的内容；④ 页面按已确认预览实现：40dp 工具栏（标题与数量、搜索、粘贴）、12dp 间距卡片列表（正文 3 行、置顶/来源/时间、复制按钮）、空状态、操作弹窗（置顶、编辑 | 复制 | 删除）、新建/编辑弹窗与删除确认；悬浮按钮「新建摘录」改为透明弹窗路由；Tab 文案「剪贴」改为「摘录」；⑤ 与文字预览的差异：新建/编辑弹窗复用公共 `BodyInput`，输入框为固定 144dp 高（预览写最小 160、最大 320dp），字数计数距输入框 6dp、13sp（预览写 8dp、12sp），以保持与待办表单一致；⑥ 待办测试中的数据库版本断言由 13 更新为 14。
+- 验证：修改前 `npm run typecheck` 0 错误，修改后 0 错误；新增摘录测试 8/8 通过；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 517 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG：测试在 tmpfs 的 /tmp 写入 330 字节文件名，超出 255 字节上限，不引用项目源码，既有失败，与本次无关）。未做浏览器或真机验收；未提交 Git。
+
+---
+
 ## 2026-09-24 12:08:17 | 新增功能：修改邮箱，并修复会话失效时编辑页拦截跳转（B3c 客户端）
 
 - 变更概述：用户确认 B3c 计划与 P05 文字预览，并追加“原身份可用当前密码验证”。个人资料“邮箱”行可进入修改邮箱页：第 1 步用原邮箱验证码或当前密码验证身份，第 2 步验证新邮箱并提交；所有设备保持登录。同时修复 B3a 遗漏：会话失效跳转欢迎页时，编辑页的离开保护不再弹出「放弃修改？」。依赖后端 B3c 接口（与 B3a/B3b 同批上线，需先执行迁移 013）。
