@@ -3,7 +3,13 @@ import {
     recordDiagnostic,
 } from "@/core/diagnostics";
 import type { NativeLiveTodoTimelineCard } from "@modules/irisnote-system";
+import { toDateId } from "@/shared/utils/date-id";
 import type { TodoEntity } from "../todos.types";
+import {
+    desiredTodoSummary,
+    todoSummaryTimeline,
+    type TodoSummaryCard,
+} from "../services/todo-aggregate-live.service";
 import {
     desiredTodoLiveDemoUpdate,
     desiredTodoLiveTimelines,
@@ -20,7 +26,9 @@ export type TodoLiveUpdatePort = {
     supported(): boolean;
     /** 系统通知权限是否已授予；读取失败按未授予处理。 */
     permissionGranted(): Promise<boolean>;
+    summaryPermissionGranted(): Promise<boolean>;
     post(card: TodoLiveUpdateCard): Promise<void>;
+    postSummary(card: TodoSummaryCard): Promise<void>;
     cancel(notificationId: number): Promise<void>;
     /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。 */
     handoff(timelines: readonly NativeLiveTodoTimelineCard[]): Promise<void>;
@@ -84,6 +92,11 @@ function toNativeTimeline(
  */
 export class TodoLiveUpdateCoordinator {
     private cards = new Map<number, TodoLiveUpdateCard>();
+    private summaryCard: TodoSummaryCard | null = null;
+    private summarySeenActivity = false;
+    private summaryOwnerKey: string | null = null;
+    private summaryDateId: string | null = null;
+    private handedOffIds = new Set<number>();
     private demoTimeline: TodoLiveTimelineCard | null = null;
     private pending: Promise<void> | null = null;
     private interval: ReturnType<typeof setInterval> | null = null;
@@ -113,7 +126,50 @@ export class TodoLiveUpdateCoordinator {
 
     private currentSnapshot(): TodoLiveUpdateSnapshot {
         const current = this.snapshot();
+        const day = toDateId(this.now());
+        if (current.ownerKey !== this.summaryOwnerKey || day !== this.summaryDateId) {
+            this.summaryOwnerKey = current.ownerKey;
+            this.summaryDateId = day;
+            this.summarySeenActivity = false;
+        }
         return { ...current, demoTimeline: this.demoTimeline ?? current.demoTimeline };
+    }
+
+    private async readPermissions(): Promise<{ details: boolean; summary: boolean }> {
+        const [details, summary] = await Promise.allSettled([
+            this.port.permissionGranted(), this.port.summaryPermissionGranted(),
+        ]);
+        for (const result of [details, summary]) {
+            if (result.status === "rejected") void recordDiagnostic(
+                "live_update", "permission_read_failed",
+                { error: diagnosticErrorCategory(result.reason) }, "error",
+            );
+        }
+        return {
+            details: details.status === "fulfilled" && details.value,
+            summary: summary.status === "fulfilled" && summary.value,
+        };
+    }
+
+    private nativeTimelines(
+        current: TodoLiveUpdateSnapshot,
+        now: Date,
+        detailsEnabled: boolean,
+        summaryEnabled: boolean,
+    ): NativeLiveTodoTimelineCard[] {
+        const details = detailsEnabled ? desiredTimelines(current, now).map(toNativeTimeline) : [];
+        if (!summaryEnabled || !current.ready || !current.ownerKey) return details;
+        const summary = todoSummaryTimeline(current.entities, now, this.summarySeenActivity);
+        const currentCard = desiredTodoSummary(summary, now);
+        if (!currentCard && summary.items.length === 0) return details;
+        const midnight = new Date(now);
+        midnight.setHours(24, 0, 0, 0);
+        return [...details, {
+            id: summary.id, channelId: summary.channelId, title: "",
+            textStarted: null, startAt: 0, endAt: midnight.getTime(), promoted: true,
+            summaryItems: summary.items,
+            summarySeenActivity: summary.seenActivity || currentCard !== null,
+        }];
     }
 
     /** 方案 B 开关：true 且前台有活跃卡片时启动前台服务秒级刷新。 */
@@ -168,23 +224,28 @@ export class TodoLiveUpdateCoordinator {
             clearInterval(this.interval);
             this.interval = null;
         }
-        let granted = false;
-        try {
-            granted = await this.port.permissionGranted();
-        } catch {
-            granted = false;
-        }
+        const { details: granted, summary: summaryGranted } = await this.readPermissions();
         const current = this.currentSnapshot();
-        const timelines = granted ? desiredTimelines(current, this.now()) : [];
-        const ids = [...this.cards.keys()];
+        const timelines = this.nativeTimelines(current, this.now(), granted, summaryGranted);
+        const ids = [...new Set([...this.cards.keys(), ...(this.summaryCard ? [this.summaryCard.notificationId] : []), ...this.handedOffIds])];
         this.cards.clear();
+        this.summaryCard = null;
+        this.handedOffIds.clear();
         this.lastUpdateDiagnosticAt.clear();
         let handedOff = false;
         try {
             if (timelines.length > 0) {
-                await this.port.handoff(timelines.map(toNativeTimeline));
+                await this.port.handoff(timelines);
                 handedOff = true;
                 this.nativeOwns = true;
+                this.handedOffIds = new Set(timelines.map((card) => card.id));
+                const retained = new Set(timelines.map((card) => card.id));
+                for (const id of ids) {
+                    if (retained.has(id)) continue;
+                    try { await this.port.cancel(id); } catch {
+                        // 端口已记录失败；原生下个节拍仍会做渠道差量。
+                    }
+                }
             } else {
                 await this.port.cancelTimeline();
             }
@@ -206,6 +267,7 @@ export class TodoLiveUpdateCoordinator {
                 // 撤销失败已由端口实现记录诊断
             }
             handedOff = false;
+            this.handedOffIds.clear();
         }
         // 未成功移交（无资格或失败）：逐卡撤下（原生侧不接管，冻结/半写
         // 卡片必须由 JS 清场）。JS 驱动被抢先重建时立即让位——新代已重新
@@ -257,9 +319,11 @@ export class TodoLiveUpdateCoordinator {
             // 端口实现已记录诊断
         }
         this.fgsRunning = false;
-        if (this.cards.size === 0) return;
-        const ids = [...this.cards.keys()];
+        if (this.cards.size === 0 && !this.summaryCard && this.handedOffIds.size === 0) return;
+        const ids = [...new Set([...this.cards.keys(), ...(this.summaryCard ? [this.summaryCard.notificationId] : []), ...this.handedOffIds])];
         this.cards.clear();
+        this.summaryCard = null;
+        this.handedOffIds.clear();
         this.lastUpdateDiagnosticAt.clear();
         for (const id of ids) {
             try {
@@ -297,31 +361,34 @@ export class TodoLiveUpdateCoordinator {
 
     private async run(): Promise<void> {
         const epoch = this.epoch;
-        let granted: boolean;
-        try {
-            granted = await this.port.permissionGranted();
-        } catch (cause) {
-            void recordDiagnostic(
-                "live_update",
-                "permission_read_failed",
-                { error: diagnosticErrorCategory(cause) },
-                "error",
-            );
-            return;
-        }
+        const { details: granted, summary: summaryGranted } = await this.readPermissions();
         if (epoch !== this.epoch) return;
         const current = this.currentSnapshot();
+        const now = this.now();
+        const summary = summaryGranted && current.ready && current.ownerKey
+            ? desiredTodoSummary(
+                todoSummaryTimeline(current.entities, now, this.summarySeenActivity), now,
+                this.fgsRunning,
+            ) : null;
         const real =
             granted && current.ready && current.ownerKey
-                ? desiredTodoLiveUpdates(current.entities, this.now())
+                ? desiredTodoLiveUpdates(current.entities, now)
                 : [];
         const demo = granted
-            ? desiredTodoLiveDemoUpdate(current.demoTimeline, this.now())
+            ? desiredTodoLiveDemoUpdate(current.demoTimeline, now)
             : null;
         const desired = demo ? [...real, demo] : real;
         const desiredMap = new Map(
             desired.map((card) => [card.notificationId, card]),
         );
+        for (const id of this.handedOffIds) {
+            if (!desiredMap.has(id) && summary?.notificationId !== id) {
+                try { await this.port.cancel(id); } catch {
+                    // 端口已记录失败；后续刷新可继续对账。
+                }
+            }
+            this.handedOffIds.delete(id);
+        }
         for (const id of [...this.cards.keys()]) {
             if (desiredMap.has(id)) continue;
             this.cards.delete(id);
@@ -377,6 +444,44 @@ export class TodoLiveUpdateCoordinator {
                 );
             }
         }
+        if (epoch !== this.epoch) return;
+        if (this.summaryCard && !summary) {
+            const id = this.summaryCard.notificationId;
+            this.summaryCard = null;
+            try {
+                await this.port.cancel(id);
+                void recordDiagnostic("live_update", "summary_removed", { notification: id });
+            } catch (cause) {
+                void recordDiagnostic("live_update", "summary_cancel_failed", {
+                    notification: id, error: diagnosticErrorCategory(cause),
+                }, "error");
+            }
+        }
+        if (epoch !== this.epoch) return;
+        if (summary && JSON.stringify(this.summaryCard) !== JSON.stringify(summary)) {
+            try {
+                await this.port.postSummary(summary);
+                if (epoch !== this.epoch) {
+                    if (!this.nativeOwns && !this.summaryCard)
+                        await this.port.cancel(summary.notificationId);
+                    return;
+                }
+                this.summaryCard = summary;
+                this.summarySeenActivity = true;
+                void recordDiagnostic("live_update", "summary_updated", {
+                    notification: summary.notificationId,
+                    scene: summary.scene,
+                    count: summary.count,
+                });
+            } catch (cause) {
+                void recordDiagnostic("live_update", "summary_post_failed", {
+                    notification: summary.notificationId,
+                    scene: summary.scene,
+                    count: summary.count,
+                    error: diagnosticErrorCategory(cause),
+                }, "error");
+            }
+        }
         if (epoch === this.epoch) await this.applyForegroundService();
     }
 
@@ -391,26 +496,30 @@ export class TodoLiveUpdateCoordinator {
     private async applyForegroundService(): Promise<void> {
         if (!this.port.supported()) return;
         if (!this.interval) return;
-        const active = this.foregroundServiceEnabled && this.cards.size > 0;
+        const active = this.foregroundServiceEnabled &&
+            (this.cards.size > 0 || this.summaryCard?.secondsEligible === true);
         const wasRunning = this.fgsRunning;
         // 从未运行也无需停止：跳过无谓的原生停用调用（30 秒节律下避免噪音）。
         if (!active && !wasRunning) return;
         try {
             if (active) {
                 const current = this.currentSnapshot();
-                const timelines = desiredTimelines(current, this.now());
+                const { details, summary } = await this.readPermissions();
+                const timelines = this.nativeTimelines(current, this.now(), details, summary);
                 if (timelines.length === 0) return;
                 await this.port.persistTimeline(
-                    timelines.map(toNativeTimeline),
+                    timelines,
                 );
                 await this.port.ensureForegroundService(true);
                 this.fgsRunning = true;
             } else {
                 await this.port.ensureForegroundService(false);
                 this.fgsRunning = false;
-                if (wasRunning && this.cards.size > 0) {
+                if (wasRunning) {
                     this.cards.clear();
+                    this.summaryCard = null;
                     this.lastUpdateDiagnosticAt.clear();
+                    setTimeout(() => void this.refresh(), 0);
                 }
             }
         } catch {

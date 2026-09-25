@@ -42,7 +42,13 @@ const {
 const {
   LIVE_TEST_NOTIFICATION_ID,
   LIVE_TODO_CHANNEL,
+  LIVE_TODO_SUMMARY_CHANNEL,
+  LIVE_TODO_SUMMARY_NOTIFICATION_ID,
 } = require("@/core/system-notifications/system-notification.types.ts");
+const {
+  todoSummaryTimeline,
+  desiredTodoSummary,
+} = require("@/features/todos/services/todo-aggregate-live.service.ts");
 
 const todo = (patch = {}) => ({
   ownerKey: "user:one",
@@ -67,6 +73,81 @@ const todo = (patch = {}) => ({
 const at = (hour, minute, second = 0) =>
   new Date(2030, 8, 20, hour, minute, second);
 
+test("聚合卡四场景、计数、独立渠道及结束窗口", () => {
+  const entities = [
+    todo({ clientId: "one", startTime: "11:00", endTime: "12:00", reminderEnabled: false, isStarred: true }),
+    todo({ clientId: "two", startTime: null, endTime: null, reminderEnabled: false }),
+  ];
+  const timeline = todoSummaryTimeline(entities, at(9, 0), false);
+  const today = desiredTodoSummary(timeline, at(9, 0));
+  assert.equal(today.scene, "today");
+  assert.equal(today.title, "待办 2·重要 1");
+  assert.equal(today.notificationId, LIVE_TODO_SUMMARY_NOTIFICATION_ID);
+  assert.equal(today.channelId, LIVE_TODO_SUMMARY_CHANNEL);
+  assert.equal(desiredTodoSummary(timeline, at(10, 0)).scene, "near");
+  assert.equal(desiredTodoSummary(timeline, at(10, 30)).scene, "near");
+  assert.equal(desiredTodoSummary(timeline, at(11, 30)).scene, "active");
+  assert.equal(desiredTodoSummary(timeline, at(11, 30)).secondsEligible, true);
+  const short = todoSummaryTimeline([todo()], at(9, 30), true);
+  assert.match(desiredTodoSummary(short, at(9, 30, 30)).text, /剩余 00:30$/);
+  assert.match(desiredTodoSummary(short, at(9, 30, 30), true).text, /剩余 29:30$/);
+  assert.equal(desiredTodoSummary(todoSummaryTimeline([], at(9, 0), true), at(9, 0)), null);
+  const endedTimeline = todoSummaryTimeline([todo({ endTime: "10:00" })], at(10, 1), true);
+  assert.equal(desiredTodoSummary(endedTimeline, at(10, 1)).scene, "ended");
+  assert.equal(desiredTodoSummary(endedTimeline, at(10, 10)), null);
+  assert.equal(desiredTodoSummary(todoSummaryTimeline([todo()], at(10, 1), false), at(10, 1)), null);
+  const completedTimeline = todoSummaryTimeline([todo({
+    isCompleted: true, completedAt: at(9, 45).toISOString(),
+  })], at(9, 46), true);
+  assert.equal(desiredTodoSummary(completedTimeline, at(9, 46)).text, "1·已完成");
+  assert.equal(desiredTodoSummary(completedTimeline, at(9, 55)), null);
+});
+
+test("聚合摘要脱敏截断且最早开始项确定性优先", () => {
+  const first = todo({ clientId: "first", body: "  开会\n保密内容", startTime: "10:00" });
+  const second = todo({ clientId: "second", body: "后来", startTime: "10:30" });
+  const a = desiredTodoSummary(todoSummaryTimeline([second, first], at(9, 30), false), at(9, 30));
+  const b = desiredTodoSummary(todoSummaryTimeline([first, second], at(9, 30), false), at(9, 30));
+  assert.deepEqual(a, b);
+  assert.equal(a.scene, "near");
+  assert.equal(a.text, "开会");
+});
+
+test("协调器聚合卡独立权限、后台快照和提升唯一性", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, { summaryPermissionGranted: async () => true }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.summaries.length, 1);
+  assert.equal(sinks.summaries[0].scene, "active");
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.find((card) => card.id === LIVE_TODO_SUMMARY_NOTIFICATION_ID).summarySeenActivity, true);
+  assert.equal(sinks.handoffs.filter((card) => card.promoted).length, 1);
+  await coordinator.stop();
+  assert.equal(sinks.cancels.includes(LIVE_TODO_SUMMARY_NOTIFICATION_ID), true);
+});
+
+test("逐条渠道关闭时聚合卡仍发，且后台只移交聚合快照", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      permissionGranted: async () => false,
+      summaryPermissionGranted: async () => true,
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 0);
+  assert.equal(sinks.summaries.length, 1);
+  await coordinator.handoff();
+  assert.deepEqual(sinks.handoffs.map((card) => card.id), [LIVE_TODO_SUMMARY_NOTIFICATION_ID]);
+  await coordinator.stop();
+});
+
 /** 统一 port 桩：sinks 收集 handoff/persistTimeline/timelineCancels/fgs 调用记录。 */
 function portStub(sinks = {}, overrides = {}) {
   sinks.posts ??= [];
@@ -75,10 +156,13 @@ function portStub(sinks = {}, overrides = {}) {
   sinks.timelineCancels ??= [];
   sinks.persists ??= [];
   sinks.fgs ??= [];
+  sinks.summaries ??= [];
   return {
     supported: () => true,
     permissionGranted: async () => true,
+    summaryPermissionGranted: async () => false,
     post: async (card) => sinks.posts.push({ ...card }),
+    postSummary: async (card) => sinks.summaries.push({ ...card }),
     cancel: async (id) => sinks.cancels.push(id),
     handoff: async (cards) => sinks.handoffs.push(...cards),
     cancelTimeline: async () => sinks.timelineCancels.push(true),
@@ -132,7 +216,7 @@ test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真�
     textStarted: null,
     startAt: start,
     endAt: start + 60_000,
-    promoted: true,
+    promoted: false,
   });
 
   now = new Date(start + 60_001);
@@ -182,7 +266,7 @@ test("时间线快照携带墙钟重算所需的全部字段", () => {
   assert.equal(card.startAt, at(9, 0).getTime());
   assert.equal(card.endAt, at(10, 0).getTime());
   assert.equal(card.textStarted, null);
-  assert.equal(card.promoted, true);
+  assert.equal(card.promoted, false);
   const open = desiredTodoLiveTimeline(todo({ endTime: null }), at(9, 30));
   assert.ok(open);
   assert.equal(open.endAt, null);

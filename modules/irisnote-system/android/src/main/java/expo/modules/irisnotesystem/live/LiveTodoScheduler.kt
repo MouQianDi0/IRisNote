@@ -37,6 +37,10 @@ object LiveTodoScheduler {
       if (candidate > nowMs && (next == null || candidate < next!!)) next = candidate
     }
     for (card in cards) {
+      if (card.summaryItems != null) {
+        LiveTodoSummary.nextEventAt(card, nowMs)?.let { consider(it) }
+        continue
+      }
       if (card.isFutureAt(nowMs)) {
         consider(card.startAt)
         card.endAt?.let { consider(it) }
@@ -61,6 +65,7 @@ object LiveTodoScheduler {
       return
     }
     store.save(cards)
+    LiveTodoNotifier.applyDesired(appContext, cards, System.currentTimeMillis())
     armNext(appContext)
   }
 

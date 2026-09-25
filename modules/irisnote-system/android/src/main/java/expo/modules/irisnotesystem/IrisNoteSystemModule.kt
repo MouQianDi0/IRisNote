@@ -14,6 +14,7 @@ import expo.modules.irisnotesystem.live.LiveTodoForegroundService
 import expo.modules.irisnotesystem.live.LiveTodoNotifier
 import expo.modules.irisnotesystem.live.LiveTodoScheduler
 import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
+import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
 import java.io.File
 
 class IrisNoteSystemModule : Module() {
@@ -115,6 +116,18 @@ class IrisNoteSystemModule : Module() {
           ?: throw IllegalArgumentException("缺少 startAt"),
         endAt = (card["endAt"] as? Number)?.toLong(),
         promoted = card["promoted"] == true,
+        summaryItems = (card["summaryItems"] as? List<*>)?.map { raw ->
+          val item = raw as? Map<*, *> ?: throw IllegalArgumentException("无效 summaryItems")
+          LiveTodoSummaryItem(
+            title = item["title"] as? String ?: "",
+            startAt = (item["startAt"] as? Number)?.toLong(),
+            endAt = (item["endAt"] as? Number)?.toLong(),
+            completed = item["completed"] == true,
+            starred = item["starred"] == true,
+            completedAt = (item["completedAt"] as? Number)?.toLong(),
+          )
+        },
+        summarySeenActivity = card["summarySeenActivity"] == true,
       )
     }
 
@@ -166,6 +179,7 @@ class IrisNoteSystemModule : Module() {
         promoted = input["promoted"] == true,
         chronoAt = (input["chronoAt"] as? Number)?.toLong(),
         chronoCountdown = input["chronoCountdown"] == true,
+        iconResourceName = input["iconResourceName"] as? String,
       )
       notificationManager().notify(requireInt("id"), notification)
     }

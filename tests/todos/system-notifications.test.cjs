@@ -80,6 +80,9 @@ function service(
       async getExactAlarmAccess() {
         return exactAlarm;
       },
+      async postProgressNotification(payload) {
+        calls.push(["native-post", payload]);
+      },
     },
   };
   const cache = new Map();
@@ -289,6 +292,26 @@ test("待办动态通知测试复用 LOW 渠道，渠道关闭时不视为可展
     call === "channel" && id === "irisnote.live-test.v1"), false);
   s.native.getNotificationChannelAsync = async () => ({ importance: 0 });
   assert.equal(await s.liveTodoNotificationPermission(), false);
+});
+
+test("聚合渠道独立关闭且只有状态卡请求提升", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  s.native.getNotificationChannelAsync = async (id) => ({
+    importance: id === "irisnote.live-todo.v1" ? 0 : 2,
+  });
+  assert.equal(await s.liveTodoNotificationPermission(), false);
+  assert.equal(await s.liveTodoSummaryNotificationPermission(), true);
+  const channels = s.calls.filter(([kind]) => kind === "channel");
+  assert.equal(channels.find(([, id]) => id === "irisnote.live-todo-summary.v1")[2].importance, 2);
+  await s.postStateCard({
+    id: 7002, channelId: "irisnote.live-todo-summary.v1", title: "待办 2·临近 1",
+    text: "脱敏标题", iconResourceName: "ic_live_todo_near",
+  });
+  const payload = s.calls.find(([kind]) => kind === "native-post")[1];
+  assert.equal(payload.promoted, true);
+  assert.equal(payload.ongoing, true);
+  assert.equal(payload.iconResourceName, "ic_live_todo_near");
+  assert.equal(payload.channelId, "irisnote.live-todo-summary.v1");
 });
 
 test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {
