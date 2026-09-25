@@ -174,6 +174,7 @@ class IrisNoteSystemModule : Module() {
         chronoAt = (input["chronoAt"] as? Number)?.toLong(),
         chronoCountdown = input["chronoCountdown"] == true,
         iconResourceName = input["iconResourceName"] as? String,
+        hideProgress = input["hideProgress"] == true,
       )
       notificationManager().notify(requireInt("id"), notification)
     }

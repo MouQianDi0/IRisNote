@@ -19,7 +19,8 @@ data class LiveTodoSummaryItem(
   val startAt: Long?,
   val endAt: Long?,
   val completed: Boolean,
-  val starred: Boolean,
+  /** 创建时选择的重要度；high 视为「重要」。 */
+  val priority: String,
   val completedAt: Long?,
 )
 
@@ -67,7 +68,7 @@ data class LiveTodoTimelineCard(
               startAt = if (item.isNull("startAt")) null else item.optLong("startAt"),
               endAt = if (item.isNull("endAt")) null else item.optLong("endAt"),
               completed = item.optBoolean("completed"),
-              starred = item.optBoolean("starred"),
+              priority = item.optString("priority").ifEmpty { "normal" },
               completedAt = if (item.isNull("completedAt")) null else item.optLong("completedAt"),
             )
           }
@@ -132,7 +133,7 @@ class LiveTodoTimelineStore(context: Context) {
             .put("startAt", item.startAt ?: JSONObject.NULL)
             .put("endAt", item.endAt ?: JSONObject.NULL)
             .put("completed", item.completed)
-            .put("starred", item.starred)
+            .put("priority", item.priority)
             .put("completedAt", item.completedAt ?: JSONObject.NULL))
         }
         obj.put(FIELD_SUMMARY_ITEMS, arrayItems)

@@ -47,6 +47,8 @@ object LiveTodoNotifier {
         ongoing = true, promoted = true, chronoAt = scene.chronoAt,
         chronoCountdown = scene.chronoAt != null,
         iconResourceName = scene.iconResourceName,
+        // 聚合卡为纯计数文案，不展示进度条。
+        hideProgress = true,
       )
     }
     val endAt = card.endAt
@@ -98,8 +100,12 @@ object LiveTodoNotifier {
     chronoAt: Long?,
     chronoCountdown: Boolean,
     iconResourceName: String? = null,
+    hideProgress: Boolean = false,
   ): Notification {
-    val style = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+    val style = if (hideProgress) {
+      // 纯文本状态卡（聚合卡）：不设置任何进度形态。
+      null
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
       Notification.ProgressStyle().apply {
         if (indeterminate) {
           setProgressIndeterminate(true)
@@ -135,7 +141,7 @@ object LiveTodoNotifier {
       .setOngoing(ongoing || promoted)
       .setContentIntent(appLaunchPendingIntent(context))
     if (style != null) builder.setStyle(style)
-    else builder.setProgress(progress, max, indeterminate)
+    else if (!hideProgress) builder.setProgress(progress, max, indeterminate)
     if (!text.isNullOrBlank()) builder.setContentText(text)
 
     // 方案 C：系统级秒跳动计时（倒计时锚定 chronoAt）。

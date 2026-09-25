@@ -14,6 +14,7 @@ export type SavedDiagnosticLog = {
  * setRequestPromotedOngoing（API 36.1 框架符号），36.0 设备退化为普通进度卡片；
  * 仅用于进行中任务/计时器，普通提醒类禁入（政策边界见通知渠道适配 §2.4）。
  * chronoAt/chronoCountdown 为系统 chronometer 秒级计时锚点（倒计时/正计时）。
+ * hideProgress=true 时不设置任何进度形态（聚合卡纯文本状态卡）。
  */
 export type NativeProgressNotification = {
   id: number;
@@ -28,6 +29,7 @@ export type NativeProgressNotification = {
   chronoAt?: number | null;
   chronoCountdown?: boolean;
   iconResourceName?: string | null;
+  hideProgress?: boolean;
 };
 
 /**
@@ -52,7 +54,8 @@ export type NativeTodoSummaryItem = {
   startAt: number | null;
   endAt: number | null;
   completed: boolean;
-  starred: boolean;
+  /** 创建时选择的重要度；high 视为「重要」。 */
+  priority: "low" | "normal" | "high";
   completedAt: number | null;
 };
 
