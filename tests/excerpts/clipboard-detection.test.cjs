@@ -211,7 +211,7 @@ test("Android 停留在摘录页从后台回来：先排保底检测，窗口拿
     assert.equal(events.length, 3);
 });
 
-test("Android 未进后台时窗口重新获得焦点（如关闭弹窗）不检测", () => {
+test("Android 未失焦也未进后台时收到焦点事件不检测", () => {
     const { events, instance } = trigger("android");
     instance.windowFocused();
     instance.appStateChanged("active");
@@ -239,4 +239,34 @@ test("停留在前台时剪贴板变化会检测，后台时忽略", () => {
     instance.appStateChanged("background");
     instance.clipboardChanged();
     assert.deepEqual(events, [CLIPBOARD_CHANGE_DELAY_MS, "cancel"]);
+});
+
+test("分屏、小窗等其他窗口抢走焦点后交还焦点时检测", () => {
+    const { events, instance } = trigger("android");
+    instance.windowBlurred(false);
+    instance.windowFocused();
+    assert.deepEqual(events, [WINDOW_FOCUS_DELAY_MS]);
+    instance.windowFocused();
+    assert.equal(events.length, 1);
+});
+
+test("应用内弹窗抢走焦点，关闭后主窗口重新获得焦点不检测", () => {
+    const { events, instance } = trigger("android");
+    instance.windowBlurred(true);
+    instance.windowFocused();
+    assert.deepEqual(events, []);
+});
+
+test("进后台前的失焦与回前台合并，只检测一次", () => {
+    const { events, instance } = trigger("android");
+    instance.windowBlurred(false);
+    instance.appStateChanged("background");
+    instance.appStateChanged("active");
+    instance.windowFocused();
+    instance.windowFocused();
+    assert.deepEqual(events, [
+        "cancel",
+        WINDOW_FOCUS_FALLBACK_MS,
+        WINDOW_FOCUS_DELAY_MS,
+    ]);
 });

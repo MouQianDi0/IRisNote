@@ -14,9 +14,10 @@ type AppStateStatus =
 /**
  * 决定摘录页「什么时候检测」的纯状态机；实际检测由 schedule 防抖执行。
  *
- * Android 10+ 只有拥有窗口焦点的应用才能访问剪贴板，而 AppState 的 active
- * 早于窗口获得焦点，因此从后台回来要等 focus 事件再检测。弹窗关闭也会让主窗口
- * 重新获得焦点，但没进过后台，不应再次读取剪贴板。
+ * Android 10+ 只有拥有窗口焦点的应用才能访问剪贴板，剪贴板变化也只通知有焦点的应用：
+ * - 从后台回来：AppState 的 active 早于窗口获得焦点，要等 focus 事件再检测；
+ * - 分屏、小窗、通知栏等其他窗口抢走焦点（应用仍在前台）：焦点回来时检测；
+ * - 应用内弹窗抢走焦点：关闭后主窗口重新获得焦点，不再读取剪贴板。
  */
 export function createDetectionTrigger({
     platform,
@@ -51,12 +52,17 @@ export function createDetectionTrigger({
                 schedule(RESUME_DELAY_MS);
             }
         },
+        /** inAppModalOpen：失焦时是否有应用内弹窗（AppModal）打开。 */
+        windowBlurred(inAppModalOpen: boolean) {
+            if (appState === "active" && !inAppModalOpen)
+                awaitingWindowFocus = true;
+        },
         windowFocused() {
             if (!awaitingWindowFocus) return;
             awaitingWindowFocus = false;
             schedule(WINDOW_FOCUS_DELAY_MS);
         },
-        /** 停留在前台时复制（分屏、小窗、通知栏、页面内长按复制）。 */
+        /** 停留在前台且拥有焦点时复制（如页面内长按复制）。 */
         clipboardChanged() {
             if (appState === "active") schedule(CLIPBOARD_CHANGE_DELAY_MS);
         },

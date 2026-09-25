@@ -10,6 +10,7 @@ import { useFocusEffect } from "expo-router";
 import { useApplicationDatabase } from "@/core/database";
 import { banner } from "@/core/notifications";
 import { SystemPreferencesRepository } from "@/features/settings/data/system-preferences.repository";
+import { useOverlay } from "@/shared/ui/Overlay/overlay-context";
 import { detectClipboard } from "../domain/clipboard-detection";
 import {
     createDetectionTrigger,
@@ -24,7 +25,8 @@ type ClipboardOffer = { ownerKey: string; content: string; hash: string };
 
 /**
  * 只在摘录页生效：页面获得焦点、停留在摘录页时从后台回来（Android 等窗口焦点）、
- * 或停留期间剪贴板变化时检测。检测时机见 clipboard-detection-trigger。
+ * 分屏/小窗等其他窗口交还焦点、或停留期间剪贴板变化时检测。
+ * 检测时机见 clipboard-detection-trigger。
  * 检测结果只提示，由用户选择保存或忽略；两者都会把该内容记为已处理。
  */
 export function useClipboardDetection({
@@ -47,8 +49,12 @@ export function useClipboardDetection({
     const running = useRef(false);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const latest = useRef({ enabled, ready, ownerKey, generation, entities });
+    // AppModal 打开时会登记到全局弹窗层，top 非空即表示有应用内弹窗。
+    const overlayTop = useOverlay()?.top;
+    const inAppModalOpen = useRef(false);
     useLayoutEffect(() => {
         latest.current = { enabled, ready, ownerKey, generation, entities };
+        inAppModalOpen.current = overlayTop !== undefined;
     });
 
     const markHandled = useCallback(
@@ -123,6 +129,9 @@ export function useClipboardDetection({
             trigger.pageFocused();
             const subscriptions = [
                 AppState.addEventListener("change", trigger.appStateChanged),
+                AppState.addEventListener("blur", () =>
+                    trigger.windowBlurred(inAppModalOpen.current),
+                ),
                 AppState.addEventListener("focus", trigger.windowFocused),
             ];
             const stopClipboard = clipboardService.onChange(
