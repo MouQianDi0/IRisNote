@@ -192,6 +192,7 @@ const shouldAttachDeviceId = (url?: string) => {
     return (
         url.startsWith("/verify/") ||
         url.startsWith("/user/password-reset/") ||
+        url.startsWith("/user/email-change/") ||
         url.startsWith("/auth/register") ||
         url.startsWith("/auth/login")
     );

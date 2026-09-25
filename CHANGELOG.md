@@ -1,3 +1,12 @@
+## 2026-09-24 12:08:17 | 新增功能：修改邮箱，并修复会话失效时编辑页拦截跳转（B3c 客户端）
+
+- 变更概述：用户确认 B3c 计划与 P05 文字预览，并追加“原身份可用当前密码验证”。个人资料“邮箱”行可进入修改邮箱页：第 1 步用原邮箱验证码或当前密码验证身份，第 2 步验证新邮箱并提交；所有设备保持登录。同时修复 B3a 遗漏：会话失效跳转欢迎页时，编辑页的离开保护不再弹出「放弃修改？」。依赖后端 B3c 接口（与 B3a/B3b 同批上线，需先执行迁移 013）。
+- 修改文件：src/features/profile/screens/ChangeEmailScreen.tsx（新增）、src/features/profile/hooks/useEmailChange.ts（新增）、src/app/pages/user/profile/email.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/api/account-security.api.ts、src/features/profile/utils/password-errors.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/providers/AuthProvider.tsx、src/shared/http/session-events.ts、src/shared/http/client.ts、tests/profile/password-change.test.cjs、tests/auth/session-rejected.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 五个修改邮箱接口调用（15 秒超时，保持云授权受控，附设备标识）；② `useEmailChange`：凭据只存于内存引用（不进状态存储、路由参数或日志），本地 10 分钟计时与服务端 `EMAIL_CHANGE_EXPIRED` 均退回第 1 步；提交结果未知时重新读取资料并提示核对；成功以服务端资料 `applyUser`；③ P05 按预览实现：两种验证方式以文字链接切换并清空输入；修改新邮箱后验证码清空、倒计时重置，只有向当前填写的新邮箱发过验证码才可提交；无「上一步」，返回走离开确认；④ 云存储提示改为按操作命名（`cloudRequiredMessage`）；⑤ 会话失效修复：`session-events` 新增同步标记，AuthProvider 退出前开启、重新登录后关闭，`useUnsavedLeaveGuard` 读到标记即放行。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 509 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 3 项通过；`useEmailChange` 与页面交互无渲染测试，需真机验收。未做真机验收，未提交 Git。
+
+---
+
 ## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
 
 - 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。

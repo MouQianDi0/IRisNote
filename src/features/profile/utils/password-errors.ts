@@ -4,8 +4,9 @@ import {
 } from "@/core/cloud-storage/cloud-storage-policy";
 import { getApiErrorData, getApiErrorMessage } from "@/shared/http/errors";
 
-export const CLOUD_REQUIRED_MESSAGE =
-    "修改密码需要开启云存储，请先在「同步与备份」中开启";
+export const cloudRequiredMessage = (action: string) =>
+    `${action}需要开启云存储，请先在「同步与备份」中开启`;
+export const CLOUD_REQUIRED_MESSAGE = cloudRequiredMessage("修改密码");
 
 export type PasswordErrorDescription = {
     /** unknown：请求可能已到达服务端，密码是否已修改无法确认。 */
@@ -20,17 +21,18 @@ export function formatWait(seconds: number): string {
 }
 
 /**
- * 修改/重设密码与发送验证码的错误分类。`unknownMessage` 为空时，
+ * 修改/重设密码、修改邮箱与发送验证码的错误分类。`unknownMessage` 为空时，
  * 未收到响应按普通失败处理（如发送验证码，重试没有副作用）。
  */
 export function describePasswordError(
     error: unknown,
     fallback: string,
     unknownMessage?: string,
+    cloudMessage = CLOUD_REQUIRED_MESSAGE,
 ): PasswordErrorDescription {
     const dispatched = isCloudStorageRequestDispatched(error);
     if (!dispatched && isCloudStoragePermissionError(error)) {
-        return { kind: "cloud", message: CLOUD_REQUIRED_MESSAGE };
+        return { kind: "cloud", message: cloudMessage };
     }
     const data = getApiErrorData(error);
     const hasResponse =
@@ -56,4 +58,14 @@ export function describePasswordError(
         return { kind: "failed", message, retryAfter };
     }
     return { kind: "failed", message: getApiErrorMessage(error, fallback) };
+}
+
+/** 修改邮箱的凭据已过期、已使用，或账号邮箱在此期间发生变化：需要从第 1 步重新验证。 */
+export function isEmailChangeExpired(error: unknown): boolean {
+    const data: unknown = getApiErrorData(error);
+    return (
+        typeof data === "object" &&
+        data !== null &&
+        (data as { code?: unknown }).code === "EMAIL_CHANGE_EXPIRED"
+    );
 }
