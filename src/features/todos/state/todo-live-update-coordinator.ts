@@ -24,6 +24,8 @@ const CARD_UPDATE_DIAGNOSTIC_INTERVAL_MS = 5 * 60_000;
 export type TodoLiveUpdatePort = {
     /** Android 16（API 36）进度式通知是否可用。 */
     supported(): boolean;
+    /** ProgressStyle/提升式与前台服务秒级刷新能力（仅 Android 16+）。 */
+    progressStyleSupported(): boolean;
     /** 系统通知权限是否已授予；读取失败按未授予处理。 */
     permissionGranted(): Promise<boolean>;
     summaryPermissionGranted(): Promise<boolean>;
@@ -494,7 +496,9 @@ export class TodoLiveUpdateCoordinator {
      * cardEquals 去重使该卡永久消失。
      */
     private async applyForegroundService(): Promise<void> {
-        if (!this.port.supported()) return;
+        // 方案 B 前台服务秒级刷新仅 Android 16+（ProgressStyle 档）开放；
+        // 低版本档位退后台只走方案 A 闹钟链分钟级。
+        if (!this.port.progressStyleSupported()) return;
         if (!this.interval) return;
         const active = this.foregroundServiceEnabled &&
             (this.cards.size > 0 || this.summaryCard?.secondsEligible === true);

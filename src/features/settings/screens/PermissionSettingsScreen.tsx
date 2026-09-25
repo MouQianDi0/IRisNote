@@ -164,6 +164,7 @@ export default function PermissionSettingsScreen() {
         runtimeNotificationPending,
         setRuntimeNotificationEnabled,
         liveUpdateCapable,
+        liveUpdateProgressCapable,
         liveTodoRealtimeEnabled,
         liveTodoRealtimePending,
         setLiveTodoRealtimeEnabled,
@@ -329,12 +330,12 @@ export default function PermissionSettingsScreen() {
                             value={
                                 liveTodoRealtimeEnabled ? "已开启" : "已关闭"
                             }
-                            description={
-                                liveUpdateCapable
+                                            description={
+                                liveUpdateProgressCapable
                                     ? "退后台保持待办进度卡实时更新；开启后以前台服务运行，耗电略增"
                                     : "需要 Android 16 及以上系统"
                             }
-                            disabled={!liveUpdateCapable}
+                            disabled={!liveUpdateProgressCapable}
                             trailing={
                                 <Host
                                     matchContents
@@ -343,11 +344,11 @@ export default function PermissionSettingsScreen() {
                                     <Switch
                                         value={
                                             liveTodoRealtimeEnabled &&
-                                            liveUpdateCapable
+                                            liveUpdateProgressCapable
                                         }
                                         disabled={
                                             liveTodoRealtimePending ||
-                                            !liveUpdateCapable
+                                            !liveUpdateProgressCapable
                                         }
                                         onValueChange={(value) => {
                                             void setLiveTodoRealtimeEnabled(

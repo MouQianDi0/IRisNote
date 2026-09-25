@@ -47,6 +47,7 @@ import {
     handoffLiveTodoTimelines,
     initializeSystemNotifications,
     liveTodoNotificationPermission,
+    liveUpdateCompatSupported,
     liveTodoSummaryNotificationPermission,
     postStateCard,
     liveUpdateSupported,
@@ -175,7 +176,8 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         () =>
             new TodoLiveUpdateCoordinator(
                 {
-                    supported: () => liveUpdateSupported(),
+                    supported: () => liveUpdateCompatSupported(),
+                    progressStyleSupported: () => liveUpdateSupported(),
                     permissionGranted: liveTodoNotificationPermission,
                     summaryPermissionGranted: liveTodoSummaryNotificationPermission,
                     post: (card) =>
@@ -489,8 +491,8 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
     }
 
     async function startTodoLiveDemo(onTick?: (remainingSeconds: number) => void) {
-        if (!liveUpdateSupported())
-            throw new Error("动态通知需要 Android 16 及以上设备");
+        if (!liveUpdateCompatSupported())
+            throw new Error("动态通知需要 Android 8.0 及以上设备");
         if (demoStarting.current || demoCancel.current || AppState.currentState !== "active")
             throw new Error("已有模拟待办运行中，或应用不在前台");
         demoStarting.current = true;
@@ -646,7 +648,8 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                 runtimeNotificationEnabled,
                 runtimeNotificationPending,
                 setRuntimeNotificationEnabled,
-                liveUpdateCapable: liveUpdateSupported(),
+                liveUpdateCapable: liveUpdateCompatSupported(),
+                liveUpdateProgressCapable: liveUpdateSupported(),
                 liveTodoRealtimeEnabled,
                 liveTodoRealtimePending,
                 setLiveTodoRealtimeEnabled,

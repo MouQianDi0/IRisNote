@@ -21,6 +21,7 @@ const pendingNotificationState: SystemNotificationContextValue = {
     runtimeNotificationPending: true,
     setRuntimeNotificationEnabled: async () => false,
     liveUpdateCapable: false,
+    liveUpdateProgressCapable: false,
     liveTodoRealtimeEnabled: false,
     liveTodoRealtimePending: false,
     setLiveTodoRealtimeEnabled: async () => false,
@@ -48,6 +49,7 @@ const expoGoNotificationState: SystemNotificationContextValue = {
         return false;
     },
     liveUpdateCapable: false,
+    liveUpdateProgressCapable: false,
     liveTodoRealtimeEnabled: false,
     liveTodoRealtimePending: false,
     setLiveTodoRealtimeEnabled: async () => {
