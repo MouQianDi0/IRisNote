@@ -1,3 +1,30 @@
+## 2026-09-26 04:23:39 | 修复问题：退后台动态卡全撤，handoff/persist 入参改 JSON 字符串
+
+- 变更概述：真机定位到退后台即撤卡的根因——`scheduleLiveTodoCards`/`updateLiveTodoCards` 的 Kotlin 泛型集合签名（`List<Map<String, Any?>>` 及其单 Map 包装）无法接收 Expo Modules 传来的 JS 嵌套对象数组，参数转换在进入函数体前必抛 "Cannot convert ... to a Kotlin type"，移交失败触发协调器失败分支清场撤卡；两入口改为 JSON 字符串入参、原生 `org.json` 解析后真机验证退后台 3 分钟卡片零撤回。
+- 修改文件：`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`live/LiveTodoTimeline.kt`、`modules/irisnote-system/index.ts`、`src/core/system-notifications/system-notification.service.ts`、`src/core/diagnostics/{diagnostic-log.ts,index.ts}`、`tests/todos/system-notifications.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`AGENTS.md`、`docs/logs/2026-09-26-handoff-json-param-fix.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 两入口签名改 `payload: String`，解析抽为 `LiveTodoTimelineCard.fromJson` 与 `LiveTodoTimelineStore.load()` 共用，字段常量提升为文件级，消除双份解析；② JS `handoffLiveTodoTimelines`/`persistLiveTodoTimelines` 改传 `JSON.stringify(timelines)`；③ `handoff_failed`/`timeline_persist_failed` 诊断增加脱敏截断的 `message` 字段（`sanitizeText` 导出），本轮靠它定位根因；④ 测试断言改为解析 JSON payload；⑤ AGENTS §8 与负责说明补充该 Expo Modules 转换限制，防止后续新增接口重蹈。
+- 验证：`npm run typecheck` 通过；受影响测试 49/49 通过；`assembleStaging` 构建成功；真机（Android 16）修复前退后台 8 秒内全撤、修复后退后台 3 分钟 6 次采样卡片零撤回且原生闹钟链接管。`npm run check` 全量、26–35 兼容档真机、退后台跨场景长时观察**未做**。
+
+---
+
+## 2026-09-26 03:20:19 | 优化代码：动态通知能力分档，API 26–35 退后台保卡
+
+- 变更概述：把动态通知能力从绑死 Android 16（API 36）拆为两档——新增 `liveUpdateCompatSupported()`（Android 8.0+）兼容档，低版本设备现在前台可发普通进度条卡片、退后台由原生闹钟链保留并续算（修复"退后台即撤卡"）；ProgressStyle/提升式与前台服务秒级刷新仍仅 36+ 档，方案 B 开关语义不变。
+- 修改文件：`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`live/LiveTodoNotifier.kt`、`src/core/system-notifications/{system-notification.service.ts,system-notification-native-provider.tsx,system-notification-context.ts,system-notification-provider.tsx}`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/features/settings/screens/PermissionSettingsScreen.tsx`、`tests/todos/{system-notifications.test.cjs,todo-live-update.test.cjs}`、`docs/架构指南/系统通知模块负责说明.md`、`docs/UI/通知渠道适配.md`（升 1.5）、`docs/logs/2026-09-26-live-update-compat-tier.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 原生 `postProgressNotification/scheduleLiveTodoCards/updateLiveTodoCards/cancelScheduledLiveTodoCards` 门禁从 36 降为 26，FGS 两入口保持 36；② `LiveTodoNotifier` 按 SDK 分支：36+ 用 ProgressStyle，26–35 用平台普通进度条（`ProgressStyle` 为 API 36 类，不放开会在低版本崩溃）；③ JS service 八个函数门禁切 compat 档、FGS 两函数保持 36 档；④ 端口新增 `progressStyleSupported()`，协调器前台服务判定改用之；context 新增 `liveUpdateProgressCapable`，设置页"后台实时刷新"行按 36 档判定、动态通知入口按 compat 档放开；⑤ 测试桩支持自定义版本并新增兼容档/低于下限断言。全链路日志见 `docs/logs/2026-09-26-live-update-compat-tier.md`。
+- 验证：`npm run typecheck` 通过；`node --test tests/todos/system-notifications.test.cjs tests/todos/todo-live-update.test.cjs` 49/49 通过；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL；`git diff --check` 与冲突标记扫描通过。`npm run check` 全量与 26–35 真机退后台保卡验收**未做**。
+
+---
+
+## 2026-09-26 02:42:46 | 新增功能：建立 docs/logs 全链路变更日志规则与 change-trace-log 技能
+
+- 变更概述：在 AGENTS.md 第 19 节新增「全链路变更日志（docs/logs）」小节，要求实际代码改动后除 CHANGELOG 外必须在 `docs/logs/` 留存按层改动清单、与原代码实测对比、改动原因、完整调用链路与验证情况；配套新增项目技能 `.claude/skills/change-trace-log/SKILL.md` 定义触发条件、文件命名、编写流程与质量红线；以本次合并带入的聚合动态通知分析为首篇日志范例。
+- 修改文件：`AGENTS.md`、`.claude/skills/change-trace-log/SKILL.md`（新增）、`docs/logs/2026-09-26-todo-aggregate-live-update.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 规则明确基点与对比必须来自 `git diff` 实测，禁止凭最终代码臆测旧行为，行为反转的默认值需单独标注；② 纯文档、CHANGELOG 记录本身、无行为变化的格式化提交豁免，有疑义时写日志；③ 日志与代码同一次提交入库，旧日志不回改，新日志引用并说明差异；④ 首篇日志记录聚合动态通知合并（基点 `cac0b44` → 合并提交 `f2e84e8`），作为格式范例。
+- 验证：仅文档与规则文件变更，未运行应用测试；AGENTS.md 与 CHANGELOG 格式经人工核对与既有条目一致。
+
+---
+
 ## 2026-09-26 00:43:15 | 优化代码：通知文档补录待办聚合动态通知待实现接口与设计
 
 - 变更概述：通读通知系统全部文档后，把上一轮确认的聚合卡方案以"待实现（规划）"形式补进两份通知文档，并修正一处现状漂移；仅文档变更。
