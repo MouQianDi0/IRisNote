@@ -386,7 +386,7 @@ export default function PermissionSettingsScreen() {
                                     ? "已开启"
                                     : "已关闭"
                             }
-                            description="进入摘录页时检测剪贴板新内容"
+                            description="在摘录页时检测剪贴板新内容"
                             disabled={!clipboardPreferences.ready}
                             trailing={
                                 <Host
