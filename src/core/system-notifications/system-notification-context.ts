@@ -13,6 +13,11 @@ export type SystemNotificationContextValue = {
     liveTodoRealtimeEnabled: boolean;
     liveTodoRealtimePending: boolean;
     setLiveTodoRealtimeEnabled(enabled: boolean): Promise<boolean>;
+    /** 运行 60 秒模拟待办，复用真实待办的动态通知与后台时间线。 */
+    startTodoLiveDemo(onTick?: (remainingSeconds: number) => void): Promise<{
+        cancel(): void;
+        completion: Promise<"completed" | "cancelled" | "failed">;
+    }>;
     afterSave(todo: TodoEntity, reason: "confirm" | "dismiss"): Promise<void>;
     openSettings(): void;
 };
@@ -26,6 +31,10 @@ const fallback: SystemNotificationContextValue = {
     liveTodoRealtimeEnabled: false,
     liveTodoRealtimePending: false,
     setLiveTodoRealtimeEnabled: async () => false,
+    startTodoLiveDemo: async () => ({
+        cancel: () => {},
+        completion: Promise.resolve("failed"),
+    }),
     afterSave: async () => {},
     openSettings: () => {},
 };

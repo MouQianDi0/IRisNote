@@ -24,12 +24,16 @@ import { TodoReminderRepository } from "@/features/todos/data/todo-reminder.repo
 import { TodoReminderCoordinator } from "@/features/todos/state/todo-reminder-coordinator";
 import { TodoLiveUpdateCoordinator } from "@/features/todos/state/todo-live-update-coordinator";
 import {
+    createTodoLiveDemoTimeline,
+} from "@/features/todos/services/todo-live-update.service";
+import {
     afterSavedTodoReminder,
     resolveReminderTarget,
 } from "@/features/todos/services/todo-reminder.service";
 import type { TodoEntity } from "@/features/todos/todos.types";
 import { SystemPreferencesRepository } from "@/features/settings/data/system-preferences.repository";
 import {
+    LIVE_TEST_NOTIFICATION_ID,
     parseTodoNotificationData,
     type SystemNotificationPermission,
 } from "./system-notification.types";
@@ -42,6 +46,7 @@ import {
     ensureRuntimeNotification,
     handoffLiveTodoTimelines,
     initializeSystemNotifications,
+    liveTodoNotificationPermission,
     liveUpdateSupported,
     openSystemNotificationSettings,
     openExactAlarmSettings,
@@ -142,6 +147,8 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
     const [response, setResponse] =
         useState<Notifications.NotificationResponse | null>(null);
     const handled = useRef(new Set<string>());
+    const demoStarting = useRef(false);
+    const demoCancel = useRef<(() => void) | null>(null);
     const preferences = useMemo(
         () => new SystemPreferencesRepository(database),
         [database],
@@ -167,8 +174,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             new TodoLiveUpdateCoordinator(
                 {
                     supported: () => liveUpdateSupported(),
-                    permissionGranted: async () =>
-                        (await applicationNotificationPermission()).granted,
+                    permissionGranted: liveTodoNotificationPermission,
                     post: (card) =>
                         postLiveUpdate({
                             id: card.notificationId,
@@ -325,6 +331,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             appState.remove();
             listener.remove();
             receivedListener.remove();
+            demoCancel.current?.();
             void liveCoordinator.stop();
         };
     }, [coordinator, preferences, liveCoordinator]);
@@ -468,6 +475,91 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         }
     }
 
+    async function startTodoLiveDemo(onTick?: (remainingSeconds: number) => void) {
+        if (!liveUpdateSupported())
+            throw new Error("动态通知需要 Android 16 及以上设备");
+        if (demoStarting.current || demoCancel.current || AppState.currentState !== "active")
+            throw new Error("已有模拟待办运行中，或应用不在前台");
+        demoStarting.current = true;
+        try {
+            if (!(await liveTodoNotificationPermission()))
+                throw new Error("请开启应用通知及「待办进行中」通知渠道");
+            if (AppState.currentState !== "active")
+                throw new Error("请回到应用前台再启动模拟待办");
+        } catch (cause) {
+            demoStarting.current = false;
+            throw cause;
+        }
+
+        const timeline = createTodoLiveDemoTimeline(Date.now());
+        liveCoordinator.setDemoTimeline(timeline);
+        try {
+            await liveCoordinator.start();
+            await liveCoordinator.refresh();
+            if (!liveCoordinator.hasPosted(
+                LIVE_TEST_NOTIFICATION_ID,
+                timeline.endAt ?? undefined,
+            ))
+                throw new Error("模拟待办动态通知未能展示");
+        } catch (cause) {
+            liveCoordinator.setDemoTimeline(null);
+            demoStarting.current = false;
+            void cancelLiveUpdate(LIVE_TEST_NOTIFICATION_ID).catch(() => {});
+            throw cause;
+        }
+
+        let timer: ReturnType<typeof setInterval> | null = null;
+        let finished = false;
+        let settle: (result: "completed" | "cancelled" | "failed") => void = () => {};
+        const completion = new Promise<"completed" | "cancelled" | "failed">((resolve) => {
+            settle = resolve;
+        });
+        const finish = async (result: "completed" | "cancelled" | "failed") => {
+            if (finished) return;
+            finished = true;
+            if (timer) clearInterval(timer);
+            timer = null;
+            liveCoordinator.setDemoTimeline(null);
+            // 前台由 JS 撤卡；后台重写原生时间线，移除模拟待办并保留真实待办。
+            try {
+                if (AppState.currentState === "background")
+                    await liveCoordinator.handoff();
+                else {
+                    await liveCoordinator.refresh();
+                    await liveCoordinator.refresh();
+                }
+            } catch (cause) {
+                void recordDiagnostic("live_update", "demo_cleanup_failed", {
+                    error: diagnosticErrorCategory(cause),
+                }, "error");
+            }
+            try {
+                await cancelLiveUpdate(LIVE_TEST_NOTIFICATION_ID);
+            } catch {
+                // 取消失败已由通知服务记录；下次启动仍有渠道清理兜底。
+            }
+            demoCancel.current = null;
+            void recordDiagnostic("live_update", "demo_finished", { result });
+            settle(result);
+        };
+        const tick = () => {
+            const remaining = Math.max(0,
+                Math.ceil(((timeline.endAt ?? 0) - Date.now()) / 1000),
+            );
+            onTick?.(remaining);
+            if (remaining === 0) void finish("completed");
+        };
+        timer = setInterval(tick, 1000);
+        demoCancel.current = () => void finish("cancelled");
+        demoStarting.current = false;
+        onTick?.(60);
+        void recordDiagnostic("live_update", "demo_started", {
+            seconds: 60,
+            path: "todo_timeline",
+        });
+        return { cancel: demoCancel.current, completion };
+    }
+
     async function afterSave(todo: TodoEntity, reason: "confirm" | "dismiss") {
         const generation = todoRepository.generation;
         const current = () =>
@@ -545,6 +637,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                 liveTodoRealtimeEnabled,
                 liveTodoRealtimePending,
                 setLiveTodoRealtimeEnabled,
+                startTodoLiveDemo,
                 afterSave,
                 openSettings,
             }}
