@@ -4,6 +4,21 @@
 - 修改文件：`AGENTS.md`。
 - 具体内容：① 主体采用 codex-a 的 18 节精简结构，删除 HEAD 侧已被其完整吸收的旧长文「一~二十」（含过期的 `features/todos/sync` 路径表述）；② 新增「19. 变更管控流程与记录」，保留 HEAD 独有的计划→确认→执行→记录工作流、CHANGELOG 维护义务（交叉引用由「三、」修正为「16.」）、typecheck/check 前后置检查、冲突标记残留核查、发布 SHA 核对与更新说明编写规范；③ ZCode 模型调度与 Codex 模型推荐规则分别收入 19 节两个子节，维持互不覆盖约束。
 - 验证：全文件扫描确认无遗留冲突标记；`node --test tests/todos/system-notifications.test.cjs tests/todos/todo-live-update.test.cjs` 43/43 通过（覆盖合并带入的通知代码）；`npm run check` 全量与 Android 真机未执行。
+## 2026-09-25 18:23:56 | 新增功能：接入 Android 16 待办聚合动态通知
+
+- 变更概述：按待办聚合动态通知设计稿接入四场景聚合卡；聚合卡使用独立渠道与固定 ID 7002 并唯一请求提升式展示，逐条卡和 60 秒模拟卡保留非提升 ProgressStyle。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`（新增）、`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/core/system-notifications/{system-notification.types.ts,system-notification.service.ts,system-notification-native-provider.tsx}`、`modules/irisnote-system/index.ts`、`modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/{IrisNoteSystemModule.kt,live/LiveTodoTimeline.kt,live/LiveTodoNotifier.kt,live/LiveTodoScheduler.kt,live/LiveTodoSummary.kt（新增）}`、`modules/irisnote-system/android/src/main/res/drawable/ic_live_todo_*.xml`（新增四种）、`tests/todos/{todo-live-update.test.cjs,system-notifications.test.cjs}`、`docs/待办/待办聚合动态通知设计（Android 16）.md`、`docs/架构指南/系统通知模块负责说明.md`、`docs/UI/通知渠道适配.md`、`CHANGELOG.md`。
+- 具体内容：聚合统计独立于逐条提醒资格，按进行中、临近、今日待办、结束优先级推导；结束态需曾展示活动卡，保留 10 分钟；摘要复用脱敏截断。协调器复用现有刷新节拍并分别检查两个渠道；退后台把聚合快照交给原生 SharedPreferences 和单一 AlarmManager 链，按场景边界续算，最后一小时前台服务可秒级更新、后台降为分钟文案；冷启动清理两个渠道。诊断只记场景、数量和 ID。
+- 验证：受影响待办测试和通知测试通过；`npm run typecheck`、`EXPO_NO_TELEMETRY=1 npm run lint`、四个 drawable XML 解析、`git diff --check` 通过。`EXPO_NO_TELEMETRY=1 npm run check` 共 516 项测试，513 通过、2 跳过、1 失败；失败为发布归档测试创建超长中文文件名时的既有 `ENAMETOOLONG`。已生成被 Git 忽略的本地 `android/` 工程；`:irisnote-system:compileReleaseKotlin` 因环境无 Java/JDK（`JAVA_HOME` 未设置）未能运行，Android 真机展示与 36.0/36.1 差异未验收。
+
+---
+
+## 2026-09-25 18:00:18 | 新增功能：归档待办聚合动态通知设计稿
+
+- 变更概述：将 Android 16 待办聚合动态通知的已确认决策与实施验收口径归档至待办文档目录，标明尚未实施。
+- 修改文件：`docs/待办/待办聚合动态通知设计（Android 16）.md`（新增）、`CHANGELOG.md`。
+- 具体内容：记录聚合卡与逐条卡的提升策略、四场景状态机、独立渠道与通知 ID、前后台更新节拍、原生图标、架构分层、诊断隐私、降级矩阵及实施顺序；现状说明暂不改写。
+- 验证：已核对文档章节与原始设计内容，`git diff --check` 通过；仅文档变更，未运行应用测试或真机验收。
 
 ---
 

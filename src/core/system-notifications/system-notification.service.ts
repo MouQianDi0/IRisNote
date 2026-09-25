@@ -14,6 +14,8 @@ import {
     DIAGNOSTIC_CHANNEL,
     LIVE_TEST_NOTIFICATION_ID,
     LIVE_TODO_CHANNEL,
+    LIVE_TODO_SUMMARY_CHANNEL,
+    LIVE_TODO_SUMMARY_NOTIFICATION_ID,
     REMINDER_CHANNEL,
     RUNTIME_CHANNEL,
     RUNTIME_NOTIFICATION_ID,
@@ -383,8 +385,7 @@ export type LiveUpdateContent = {
     ongoing: boolean;
     /**
      * 请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶）。
-     * 默认开启：当前仅 live-todo 渠道走本收口，内容为
-     * 正在进行中的真实或模拟待办；
+     * 默认关闭；聚合状态卡通过 postStateCard 明确开启。
      * 普通提醒类不经此函数，政策禁区不受影响。36.0 设备原生侧自动退化。
      */
     promoted?: boolean;
@@ -392,6 +393,7 @@ export type LiveUpdateContent = {
     chronoAt?: number | null;
     /** true = 倒计时（锚点为终点），false = 正向计时（锚点为起点）。 */
     chronoCountdown?: boolean;
+    iconResourceName?: string | null;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -399,6 +401,16 @@ async function initializeLiveUpdateChannels() {
     await Notifications.setNotificationChannelAsync(LIVE_TODO_CHANNEL, {
         name: "待办进行中",
         description: "正在进行中的待办动态进度卡片",
+        importance: Notifications.AndroidImportance.LOW,
+        sound: null,
+        enableVibrate: false,
+        showBadge: false,
+        lockscreenVisibility:
+            Notifications.AndroidNotificationVisibility.PRIVATE,
+    });
+    await Notifications.setNotificationChannelAsync(LIVE_TODO_SUMMARY_CHANNEL, {
+        name: "待办总览",
+        description: "今日待办的聚合动态状态",
         importance: Notifications.AndroidImportance.LOW,
         sound: null,
         enableVibrate: false,
@@ -438,6 +450,36 @@ export async function liveTodoNotificationPermission(): Promise<boolean> {
         channel.importance !== Notifications.AndroidImportance.NONE;
 }
 
+/** 聚合渠道权限独立于逐条卡渠道。 */
+export async function liveTodoSummaryNotificationPermission(): Promise<boolean> {
+    if (!liveUpdateSupported()) return false;
+    if (!(await applicationNotificationPermission()).granted) return false;
+    await ensureLiveUpdateChannels();
+    const channel = await Notifications.getNotificationChannelAsync(LIVE_TODO_SUMMARY_CHANNEL);
+    return channel !== null && channel !== undefined &&
+        channel.importance !== Notifications.AndroidImportance.NONE;
+}
+
+/** 通用状态卡发送协议：调用模块声明渠道、快照文案、图标与通知身份。 */
+export type StateCardPayload = {
+    id: number;
+    channelId: string;
+    title: string;
+    text: string;
+    iconResourceName: string;
+    chronoAt?: number | null;
+    chronoCountdown?: boolean;
+};
+
+export function postStateCard(card: StateCardPayload): Promise<void> {
+    return postLiveUpdate({
+        id: card.id, channelId: card.channelId, title: card.title,
+        text: card.text, progress: 0, max: 0, indeterminate: true,
+        ongoing: true, promoted: true, iconResourceName: card.iconResourceName,
+        chronoAt: card.chronoAt, chronoCountdown: card.chronoCountdown,
+    });
+}
+
 export async function postLiveUpdate(
     content: LiveUpdateContent,
 ): Promise<void> {
@@ -456,7 +498,8 @@ export async function postLiveUpdate(
             max: content.max,
             indeterminate: content.indeterminate,
             ongoing: content.ongoing,
-            promoted: content.promoted ?? true,
+            promoted: content.promoted ?? false,
+            iconResourceName: content.iconResourceName ?? null,
             chronoAt: content.chronoAt ?? null,
             chronoCountdown: content.chronoCountdown ?? false,
         });
@@ -635,6 +678,12 @@ export function clearStaleLiveUpdates(): Promise<void> {
             try {
                 await native.cancelProgressNotificationsByChannel(
                     LIVE_TODO_CHANNEL,
+                );
+                await native.cancelProgressNotificationsByChannel(
+                    LIVE_TODO_SUMMARY_CHANNEL,
+                );
+                await native.cancelProgressNotification(
+                    LIVE_TODO_SUMMARY_NOTIFICATION_ID,
                 );
                 await native.cancelProgressNotification(
                     LIVE_TEST_NOTIFICATION_ID,

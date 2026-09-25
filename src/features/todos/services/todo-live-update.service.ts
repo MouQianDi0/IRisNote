@@ -172,7 +172,7 @@ export function desiredTodoLiveTimeline(
             todo.endTime !== null
                 ? timeOnDate(todo.dateId, todo.endTime)
                 : null,
-        promoted: true,
+        promoted: false,
     };
 }
 
@@ -208,7 +208,7 @@ export function createTodoLiveDemoTimeline(startAt: number): TodoLiveTimelineCar
         textStarted: null,
         startAt,
         endAt: startAt + 60_000,
-        promoted: true,
+        promoted: false,
     };
 }
 

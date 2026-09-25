@@ -27,6 +27,7 @@ export type NativeProgressNotification = {
   promoted: boolean;
   chronoAt?: number | null;
   chronoCountdown?: boolean;
+  iconResourceName?: string | null;
 };
 
 /**
@@ -42,6 +43,17 @@ export type NativeLiveTodoTimelineCard = {
   startAt: number;
   endAt: number | null;
   promoted: boolean;
+  summaryItems?: NativeTodoSummaryItem[];
+  summarySeenActivity?: boolean;
+};
+
+export type NativeTodoSummaryItem = {
+  title: string;
+  startAt: number | null;
+  endAt: number | null;
+  completed: boolean;
+  starred: boolean;
+  completedAt: number | null;
 };
 
 declare class IrisNoteSystemModule extends NativeModule {

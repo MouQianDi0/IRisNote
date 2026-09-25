@@ -47,6 +47,8 @@ import {
     handoffLiveTodoTimelines,
     initializeSystemNotifications,
     liveTodoNotificationPermission,
+    liveTodoSummaryNotificationPermission,
+    postStateCard,
     liveUpdateSupported,
     openSystemNotificationSettings,
     openExactAlarmSettings,
@@ -175,6 +177,7 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                 {
                     supported: () => liveUpdateSupported(),
                     permissionGranted: liveTodoNotificationPermission,
+                    summaryPermissionGranted: liveTodoSummaryNotificationPermission,
                     post: (card) =>
                         postLiveUpdate({
                             id: card.notificationId,
@@ -185,9 +188,19 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                             max: card.max,
                             indeterminate: card.indeterminate,
                             ongoing: card.ongoing,
+                            promoted: false,
                             chronoAt: card.chronoAt,
                             chronoCountdown: card.chronoCountdown,
                         }),
+                    postSummary: (card) => postStateCard({
+                        id: card.notificationId,
+                        channelId: card.channelId,
+                        title: card.title,
+                        text: card.text,
+                        iconResourceName: card.iconResourceName,
+                        chronoAt: card.chronoAt,
+                        chronoCountdown: card.chronoCountdown,
+                    }),
                     cancel: (id) => cancelLiveUpdate(id),
                     handoff: (timelines) =>
                         handoffLiveTodoTimelines(timelines),

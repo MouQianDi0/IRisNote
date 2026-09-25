@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
+import expo.modules.irisnotesystem.R
 
 /**
  * 待办动态卡片通知构建与差量应用（JS 前台驱动、闹钟节拍、前台服务共用）。
@@ -38,6 +39,16 @@ object LiveTodoNotifier {
     nowMs: Long,
     smoothSeconds: Boolean,
   ): Notification {
+    if (card.summaryItems != null) {
+      val scene = requireNotNull(LiveTodoSummary.scene(card, nowMs, smoothSeconds))
+      return buildExplicitNotification(
+        context = context, channelId = card.channelId, title = scene.title,
+        text = scene.text, progress = 0, max = 0, indeterminate = true,
+        ongoing = true, promoted = true, chronoAt = scene.chronoAt,
+        chronoCountdown = scene.chronoAt != null,
+        iconResourceName = scene.iconResourceName,
+      )
+    }
     val endAt = card.endAt
     var progress = 0
     var max = 0
@@ -85,6 +96,7 @@ object LiveTodoNotifier {
     promoted: Boolean,
     chronoAt: Long?,
     chronoCountdown: Boolean,
+    iconResourceName: String? = null,
   ): Notification {
     val style = Notification.ProgressStyle()
     if (indeterminate) {
@@ -96,9 +108,15 @@ object LiveTodoNotifier {
       style.setProgress(percent)
     }
 
-    val smallIcon =
-      context.applicationInfo.icon.takeIf { it != 0 }
+    val smallIcon = when (iconResourceName) {
+      "ic_live_todo_today" -> R.drawable.ic_live_todo_today
+      "ic_live_todo_near" -> R.drawable.ic_live_todo_near
+      "ic_live_todo_active" -> R.drawable.ic_live_todo_active
+      "ic_live_todo_ended" -> R.drawable.ic_live_todo_ended
+      null -> context.applicationInfo.icon.takeIf { it != 0 }
         ?: android.R.drawable.sym_def_app_icon
+      else -> throw IllegalArgumentException("不支持的动态通知图标")
+    }
     val builder = Notification.Builder(context, channelId)
       .setSmallIcon(smallIcon)
       .setContentTitle(title)
@@ -147,6 +165,8 @@ object LiveTodoNotifier {
         continue
       }
       if (!card.isActiveAt(nowMs)) continue
+      val channel = manager.getNotificationChannel(card.channelId)
+      if (channel == null || channel.importance == NotificationManager.IMPORTANCE_NONE) continue
       desiredIds.add(card.id)
       manager.notify(card.id, buildNotification(context, card, nowMs, smoothSeconds))
     }
