@@ -1,3 +1,51 @@
+## 2026-09-26 06:40:00 | 优化代码：逐条待办卡按重要度提升，普通事件降级非提升
+
+- 变更概述：逐条待办卡的提升式（上岛）从「全部提升」改为按创建时重要度（`priority=high`）提升，普通事件降级为非提升动态通知；聚合卡「N条重要」计数同步从加星口径改为 priority 口径；聚合卡自身提升不变；60 秒模拟卡保持提升演示。
+- 修改文件：`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/services/todo-aggregate-live.service.ts`、`modules/irisnote-system/index.ts`、`modules/irisnote-system/android/.../live/LiveTodoTimeline.kt`、`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 9 节）、`CHANGELOG.md`。
+- 具体内容：desiredTodoLiveUpdate 两分支与 desiredTodoLiveTimeline 的 promoted 改为 `todo.priority === "high"`；TodoSummaryItem/NativeTodoSummaryItem/LiveTodoSummaryItem 的 starred 字段统一替换为 priority（JSON 解析缺省回落 "normal"）；聚合副标题重要数 = 未完成且 priority=high；协调器/Provider/原生构建无改动（promoted 已透传，cardEquals 自动对翻转触发原位更新）。
+- 验证：npm run check 全部通过（506 项测试 0 失败）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；真机未验收。
+
+---
+
+
+## 2026-09-26 06:05:00 | 优化代码：聚合卡副标题改为分段统计
+
+- 变更概述：聚合卡副标题由「今日 N 条待办」改为分段统计「今日 N 条待办 | N条重要 | N条待完成 | N条进行中 | N条已完成」，JS 与 Kotlin 镜像同步；标题不变。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`、`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 8 节）、`CHANGELOG.md`。
+- 具体内容：重要 = 未完成且 is_starred；待完成 = 未完成数；进行中 = 已开始且未过结束的有时间待办；已完成 = 今日已完成数。分段以 " | " 连接。
+- 验证：npm run check 全部通过（506 项测试 0 失败）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；真机展示未验收。
+
+---
+
+
+## 2026-09-26 05:40:00 | 优化代码：聚合动态卡移除进度条
+
+- 变更概述：聚合卡为纯计数文案，取消其不定进度条展示——原生构建新增 hideProgress 开关，JS postStateCard 与原生 LiveTodoNotifier 聚合分支均置 true，进度形态（ProgressStyle/setProgress）完全跳过；逐条待办卡进度条不受影响。
+- 修改文件：`modules/irisnote-system/android/.../live/LiveTodoNotifier.kt`、`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`modules/irisnote-system/index.ts`、`src/core/system-notifications/system-notification.service.ts`、`tests/todos/system-notifications.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 7 节）、`CHANGELOG.md`。
+- 具体内容：buildExplicitNotification 新增 hideProgress 参数（默认 false，逐条卡行为不变）；聚合卡后台重建与前台 postProgressNotification 两条路径均透传；无新增权限。
+- 验证：:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；npm run check 全部通过（506 项测试 0 失败）；真机展示未验收。
+
+---
+
+
+## 2026-09-26 05:12:00 | 修复问题：聚合卡后台镜像文案未同步计数口径
+
+- 变更概述：上一轮聚合卡计数化只改了 JS 前台，退后台由 Kotlin LiveTodoSummary 重算的文案仍是旧口径（「待办 N·进行中 M」+ chronometer 剩余 mm:ss），前后台展示不一致；本轮将原生镜像改为同一计数口径。
+- 修改文件：`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（补充第 6 节）、`CHANGELOG.md`。
+- 具体内容：scene() 标题「进行中 N[·临近 N]」、副标题「今日 N 条待办」，不再输出 chronoAt/秒级资格；nextEventAt() 移除分钟级兜底节拍（临近/开始/结束/保留终点节拍保留）；移除 Locale import；smoothSeconds 参数保留兼容调用方。
+- 验证：:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；npm run check 全部通过（506 项测试 0 失败）；后台真机文案未验收。
+
+---
+
+
+## 2026-09-26 04:45:21 | 优化代码：待办动态卡形态调整——聚合卡计数化、逐条卡独立升级动态大卡
+
+- 变更概述：聚合动态卡弃用系统 chronometer 倒计时，改为静态计数（标题「进行中 N[·临近 N]」、副标题「今日 N 条待办」）；有时间的逐条待办卡（含模拟卡）由非提升改为独立请求 promoted，升级为动态大卡。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`、`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/core/system-notifications/system-notification-native-provider.tsx`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 聚合卡 active/near/today 三场景统一标题「进行中 N」，有临近（开始前 1 小时内）待办时追加「·临近 N」，副标题统一「今日 N 条待办」（含已完成），ended 场景不变；`chronoAt` 恒为 null，不再走系统秒级 chronometer，前台服务秒级刷新随 `secondsEligible=false` 自动停止。② `TodoLiveUpdateCard` 新增 `promoted` 字段；前台卡两分支、退后台时间线快照、60 秒模拟卡均 `promoted=true`；协调器 `cardEquals` 纳入 promoted 比较；Provider post 透传 `card.promoted`。低版本/36.0 设备由原生反射静默退化为普通进度卡，无新增权限与原生代码改动。
+- 验证：`npm run check` 全部通过（TypeScript、Lint、theme:check、node --test 506 项 0 失败）；未做真机验收（Android 16.1 提升式大卡与胶囊渲染需真机观察）。
+
+---
 ## 2026-09-26 04:23:39 | 修复问题：退后台动态卡全撤，handoff/persist 入参改 JSON 字符串
 
 - 变更概述：真机定位到退后台即撤卡的根因——`scheduleLiveTodoCards`/`updateLiveTodoCards` 的 Kotlin 泛型集合签名（`List<Map<String, Any?>>` 及其单 Map 包装）无法接收 Expo Modules 传来的 JS 嵌套对象数组，参数转换在进入函数体前必抛 "Cannot convert ... to a Kotlin type"，移交失败触发协调器失败分支清场撤卡；两入口改为 JSON 字符串入参、原生 `org.json` 解析后真机验证退后台 3 分钟卡片零撤回。
