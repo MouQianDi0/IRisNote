@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     create,
     getAdapter,
+    isAxiosError,
     type AxiosRequestConfig,
     type GenericAbortSignal,
 } from "axios";
@@ -18,6 +19,10 @@ import {
     publishConnectionEvent,
     requestConnectionStamp,
 } from "./connection-events";
+import {
+    publishSessionRejected,
+    rejectedSessionToken,
+} from "./session-events";
 
 declare module "axios" {
     interface AxiosRequestConfig {
@@ -186,6 +191,8 @@ const shouldAttachDeviceId = (url?: string) => {
 
     return (
         url.startsWith("/verify/") ||
+        url.startsWith("/user/password-reset/") ||
+        url.startsWith("/user/email-change/") ||
         url.startsWith("/auth/register") ||
         url.startsWith("/auth/login")
     );
@@ -298,6 +305,13 @@ api.interceptors.response.use(
         const permissionFailure = finishCloudRequest(failure.config);
         if (permissionFailure) return Promise.reject(permissionFailure);
         if (isCloudStoragePermissionError(error)) return Promise.reject(error);
+        if (isAxiosError(error) && error.response?.status === 401) {
+            const rejected = rejectedSessionToken(
+                error.config?.url,
+                error.config?.headers?.get("Authorization"),
+            );
+            if (rejected) publishSessionRejected(rejected);
+        }
         const stamp = failure.config && connectionStamps.get(failure.config);
         if (stamp && failure.code !== "ERR_CANCELED") {
             const status = failure.response?.status;

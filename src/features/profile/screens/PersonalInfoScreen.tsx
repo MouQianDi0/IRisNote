@@ -37,7 +37,11 @@ import {
     GenderPickerDialog,
     type GenderSelection,
 } from "../components/GenderPickerDialog";
-import { formatGender, parseCreatedAt } from "../utils/profile-validation";
+import {
+    formatGender,
+    maskEmail,
+    parseCreatedAt,
+} from "../utils/profile-validation";
 
 const cardStyle = { borderCurve: "continuous" as const };
 const welcomeRoute = "/auth/welcome" as Href;
@@ -46,9 +50,10 @@ const linkedAccountsRoute = "/pages/user/profile/platforms" as Href;
 const nicknameRoute = "/pages/user/profile/nickname" as Href;
 const bioRoute = "/pages/user/profile/bio" as Href;
 const regionRoute = "/pages/user/profile/region" as Href;
+const passwordRoute = "/pages/user/profile/password" as Href;
+const emailRoute = "/pages/user/profile/email" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
-const PLANNED = "规划中";
 
 function GroupTitle({ children }: { children: string }) {
     return (
@@ -56,13 +61,6 @@ function GroupTitle({ children }: { children: string }) {
             {children}
         </Text>
     );
-}
-
-/** 保留首字符与域名，其余本地部分用星号代替。 */
-export function maskEmail(email: string): string {
-    const at = email.lastIndexOf("@");
-    if (at <= 0) return email;
-    return `${email[0]}***${email.slice(at)}`;
 }
 
 /** created_at 转为本地 YYYY-MM-DD；为空或无法解析时返回 null。 */
@@ -309,12 +307,12 @@ export default function PersonalInfoScreen() {
                                 icon={Mail}
                                 label="邮箱"
                                 value={maskedEmail}
+                                onPress={() => router.push(emailRoute)}
                             />
                             <ListRow
                                 icon={KeyRound}
                                 label="修改密码"
-                                value={PLANNED}
-                                disabled
+                                onPress={() => router.push(passwordRoute)}
                             />
                             <ListRow
                                 icon={Link2}
