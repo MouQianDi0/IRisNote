@@ -42,7 +42,12 @@ export default function RootLayout() {
                     />
                     <Stack.Screen
                         name="pages/excerpt/create"
-                        options={{ headerShown: false }}
+                        options={{
+                            headerShown: false,
+                            presentation: "transparentModal",
+                            contentStyle: { backgroundColor: "transparent" },
+                            animation: "none",
+                        }}
                     />
                     <Stack.Screen
                         name="pages/note/[id]"
@@ -118,6 +123,10 @@ export default function RootLayout() {
                     />
                     <Stack.Screen
                         name="pages/user/profile/password"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/profile/email"
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen

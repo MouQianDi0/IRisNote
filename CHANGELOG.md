@@ -7,6 +7,156 @@
 - 修改文件：releases/notes-0.4.2.txt（新增）、tests/todos/todo-local.test.cjs（断言修复）、CHANGELOG.md（本记录），以上随提交 f3c0565 进入构建源码。
 - 验证边界：本机与构建环境 `npm run check` 均全量通过（450/450）；真机安装验收未执行（发布期间无连接设备），建议更新推送后在真机核对差量升级、图标显示与"我的"页概览；未推送 Git 远程。遗留事项：package.json 的 eas 脚本（eas-cli@24.4.0）与 eas.json CLI 约束（24.7.0）不一致，EAS 构建路径仍不可用，待后续单独修复。
 
+## 2026-09-25 22:57:08 | 新增功能：数据与存储页显示摘录、拆分头像与诊断、可清理诊断日志（缓存重构第一期 T7、T9）
+
+- 变更概述：用户确认存储页文字预览，并选择诊断日志加入清理选项（默认不勾选）。「本地数据」新增摘录行（条数与大小，标明只存在本机、清理时始终保留）；明细卡片从“其他”中拆出“头像”和“诊断日志”；“缓存清理”新增第 4 项“诊断日志”；更新缓存与分享临时文件的说明注明“每次启动后也会自动清理”；笔记与应用数据的说明补充摘录与“历史版本每篇最多保留 50 个”。版式、间距、配色与预览一致，未新增颜色。
+- 修改文件：src/core/storage/storage-policy.ts、src/core/storage/storage-files.ts、src/core/storage/auto-cleanup.ts、src/core/diagnostics/diagnostic-log.ts、src/features/excerpts/data/excerpt-local.repository.ts、src/features/settings/screens/DataStorageSettingsScreen.tsx、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 具体内容：① 文件扫描新增 `avatars`（文档目录 avatars/）与 `diagnostics`（诊断日志、导出副本、开发环境诊断数据库及其 -wal/-shm）两类；诊断文件名与数据库名分别引用 diagnostic-log 与 database.constants，不重复定义；只有日志与导出副本计入可清理，开发环境诊断数据库只统计；② `clearDiagnosticLog` 排在诊断日志写入队列之后执行，删除日志与缓存目录中此前导出的 `irisnote-diagnostics-<时间>.jsonl` 副本并清空内存事件，清理后新事件照常记录；文件清理流程不直接删除诊断文件；③ `readExcerptStorageStats` 按当前账号统计摘录条数与 UTF-8 字节数，读取失败时显示“暂未统计”并在错误提示中追加“摘录暂未统计”；④ 清理选项新增 `diagnostics`（默认 false），确认弹窗选中诊断日志时追加“清理后无法在帮助与反馈中导出此前的记录”。
+- 与预览的差异：诊断日志的清理范围包含“帮助与反馈”此前导出的诊断副本（实施时发现这些副本存在缓存目录、从不清理，本属诊断记录）。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 569 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）；存储测试 18/18（新增 2 项：头像与诊断分类及可清理范围、页面摘录行与诊断日志默认不勾选且只在勾选后清理）。未做真机或浏览器验收，未提交 Git。
+
+---
+
+## 2026-09-25 20:57:31 | 新增文档：笔记正文按需加载后端接口需求（缓存重构第二期）
+
+- 变更概述：用户确认第二期（混合模式：部分笔记只保留元数据、打开时再下载正文）需要后端配合，先写接口需求交给后端评审。本条只新增文档，不改代码。
+- 修改文件：docs/API后端/笔记正文按需加载接口需求.md（新增）、CHANGELOG.md。
+- 具体内容：① 列出客户端目前依赖的 `snapshot`/`changes` 接口与 `CloudNote` 字段（现有 API.md 未收录）；② 必需：`GET /api/notes/:id` 按 ID 取单篇（含 401/403/404/410 语义）；`snapshot`/`changes` 支持 `fields=meta`，省略 `content`，新增 `content_hash`（原始正文 UTF-8 字节的 SHA-256，不做规范化）与 `content_length`；③ 建议：`content_preview` 摘要字段；可选：批量获取接口；④ 兼容性与发布顺序（参数缺省时行为完全不变，后端不认识参数时应忽略而非报错）、9 条后端验收用例、3 个待确认问题。
+- 验证：文档类改动，无需构建。
+
+---
+
+## 2026-09-25 20:55:41 | 优化代码：剪贴板“已处理”记录改用 HMAC（缓存重构第一期 T11）
+
+- 变更概述：摘录自动检测会把“上次处理过的剪贴板内容”记在数据库里，以前存的是不带密钥的 SHA-256，6 位验证码之类的短内容拿到数据库或备份后可以直接枚举还原。现在只存 HMAC，密钥用系统安全随机数生成、存在 SecureStore（不进系统备份）。用户确认：加盐无效（盐与哈希同在数据库），改用 HMAC；密钥来源新增 expo-crypto。
+- 修改文件：package.json、package-lock.json（新增依赖 expo-crypto ~57.0.3，无需配置插件）、src/shared/storage/secure-store.ts（新增）、src/shared/storage/token-storage.ts、src/features/excerpts/services/clipboard-handled.ts（新增）、src/features/excerpts/domain/clipboard-detection.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/settings/data/system-preferences.repository.ts、tests/excerpts/clipboard-detection.test.cjs、tests/excerpts/clipboard-handled.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 检测判断由“比较已存哈希”改为异步 `isHandled(hash)`，判断顺序不变（空白 → 已处理 → 超长 → 本应用复制 → 已存为摘录）；② `clipboard-handled`：首次使用时生成 32 字节密钥存 SecureStore，标记 = HMAC-SHA256(密钥, 内容哈希)；取不到密钥（Web、密钥库或随机数异常）时只记内存、不落盘，重启后同一内容会再提示一次；密钥损坏时重新生成；③ 偏好改存新键 `clipboard_last_handled_mark`，写入新标记时以及首次创建标记存储时删除旧键 `clipboard_last_handled_hash`；④ SecureStore 的按需加载封装提取到 `shared/storage/secure-store.ts`，令牌存储与本条共用。摘录表的 `content_hash` 与正文同行明文存放，不在本次范围。
+- 用户可见影响：升级后第一次检测时，旧记录不再生效，如果剪贴板里还是上次处理过的内容，会再提示一次。
+- 验证：修改前后 `npm run typecheck` 0 错误；相关文件 ESLint 无问题；摘录与认证测试 41/41 通过（新增 5 项：标记不等于内容哈希、重启后识别、不同密钥标记不同、无 SecureStore 只记内存、随机数异常退回内存与密钥损坏重建）。需要重新构建原生包（与 T1 相同）；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-25 15:03:25 | 优化代码：登录令牌迁入 SecureStore（缓存重构第一期 T1）
+
+- 变更概述：登录令牌以前明文存在 AsyncStorage，会随 Android 自动备份上传到 Google 云端。现在原生端存进 SecureStore（系统密钥库加密，默认不进备份），旧令牌在首次读取时自动迁入，用户无需重新登录；Web 端 SecureStore 不可用，继续用 AsyncStorage。用户资料 `user` 仍存 AsyncStorage。按用户选择，数据库等其他数据继续参与系统备份。
+- 修改文件：package.json、package-lock.json（新增依赖 expo-secure-store ~57.0.4，由 `npx expo install` 选定版本）、app.json（插件列表新增 expo-secure-store）、src/shared/storage/storage.keys.ts、src/shared/storage/token-storage.ts（新增）、src/features/auth/providers/AuthProvider.tsx、src/features/auth/screens/LoginScreen.tsx、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/auth/token-storage.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 新增 `authTokenStorage`，登录、注册、换新令牌、退出、登录失效比对、请求头附带令牌等 10 处读写全部收口到这里，所有操作串行执行；② 迁移：旧令牌写入 SecureStore 后读回一致才删除旧值，失败时继续使用旧存储并记诊断；③ SecureStore 写入失败时退回 AsyncStorage 保证能登录（此时旧存储里的令牌总是较新的一份，SecureStore 恢复后自动迁回）；两处都写不进时抛出，保持 `applyToken` 原有的失败提示；SecureStore 读取失败（如系统恢复后密钥库失效）按未登录处理；④ 原生模块按需动态加载，只在 `navigator.product === "ReactNative"` 时使用（沿用 diagnostic-log 的做法），Web 与 Node 测试环境行为不变；⑤ 启动首次加载时若只有令牌、没有用户资料（如 iOS 卸载重装后钥匙串残留），按未登录处理并清掉遗留令牌；只在启动时清理，避免撞上“已写令牌、未写资料”的登录流程。
+- 已核实：`npx expo config --type introspect` 展开的 Android 清单中 `allowBackup` 为 true（Expo 默认），SecureStore 插件已写入 `secure_store_backup_rules` 与 `secure_store_data_extraction_rules`。
+- 注意：新增了原生模块，**需要重新构建开发客户端和正式包**；旧的开发客户端上动态加载会失败，但会自动退回 AsyncStorage，不会导致无法登录。`package.json` 中未提交的 `start:tunnel` 脚本是此前已有的改动，本次未动。
+- 验证：`npm run typecheck` 0 错误；相关文件 ESLint 无问题；新增令牌存储测试 8/8 通过；依赖 HTTP 客户端的认证、待办接口、修改密码、同步、发布测试 143 通过、1 跳过、0 失败。未做真机验收（需重新构建后验证：老版本升级后免登录迁移、退出登录、登录失效、换新令牌），未提交 Git。
+
+---
+
+## 2026-09-25 14:58:06 | 新增功能：分类列表离线兜底（缓存重构第一期 T5，并入 T6）
+
+- 变更概述：分类列表以前每次都走网络，离线时笔记页分类栏为空、笔记详情显示“未知分类”、个人资料的分类数不更新。现在每次请求成功都保存一份本地副本，请求失败时用副本兜底；笔记页分类栏为空时先显示副本再用网络结果替换。只在云存储已开启时生效，云存储关闭时仍不显示分类，不绕过用户的授权选择。
+- 修改文件：src/features/notes/categories/data/category-cache.ts（新增）、src/features/notes/screens/NotesScreen.tsx、src/features/notes/components/viewer/NoteViewerMeta.tsx、src/features/profile/hooks/useProfileOverview.ts、tests/storage/category-cache.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 副本存在 `system_preferences` 的 `category-cache:user:<账号>` 键，只存服务端原始列表，读取时照常用上传队列叠加未同步的改动；逐项校验字段，无法解析视同没有副本；② `loadCategories`：成功时更新副本（写入失败不影响展示），失败时退回副本并标记 `stale`；云存储权限错误和“没有副本”照常抛出，调用方原有处理不变；③ 三个读取方改用 `loadCategories`，笔记页额外在分类栏为空时先显示副本。
+- 与计划的差异：① 计划为分类新建表（迁移 0016），实施时改存 `system_preferences`：分类列表很小且总是整体读写，不需要单独建表，也少一次不可逆的迁移；② T6（个人资料概览缓存）并入本条：核实后概览的笔记数、星标数、继续阅读本来就读本地数据库，只有分类数依赖网络，已由本条覆盖，不再单独做 AsyncStorage 缓存。
+- 验证：`npm run typecheck` 0 错误；相关文件 ESLint 无问题；新增测试 4/4 通过（成功更新副本、失败兜底、无副本/副本损坏/权限错误照常抛出、按账号隔离）；个人资料与同步测试 109/109 通过。离线场景未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-25 14:55:53 | 优化代码：阅读进度迁入 SQLite，并补摘录迁移回归测试（缓存重构第一期 T3、T12）
+
+- 变更概述：阅读进度以前每篇笔记一个 AsyncStorage 键，只增不减，笔记删除后也不清理。现在存进 SQLite 新表 `note_reading_progress`，笔记永久删除时一并删除；移入回收站、清理笔记缓存时保留（笔记之后还会回来）。旧数据在首次使用时一次性搬迁。同时新增摘录迁移回归测试：摘录只存在本机，0014 之后的任何迁移都不得改动摘录表。
+- 修改文件：src/core/database/migrations/0015-create-note-reading-progress.ts（新增）、src/core/database/migrations/index.ts、src/features/notes/data/note-reading-progress.repository.ts（新增）、src/features/notes/data/note-reading-progress.ts、src/features/notes/hooks/useReadingProgress.ts、src/features/notes/components/viewer/note-operation-info.tsx、src/features/profile/hooks/useProfileOverview.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-trash.repository.ts、tests/reading/reading-storage.test.cjs（新增）、tests/excerpts/excerpt-migration-regression.test.cjs（新增）、tests/excerpts/excerpt-local.test.cjs、tests/todos/todo-local.test.cjs、CHANGELOG.md。
+- 具体内容：① 迁移 0015 只建表（按账号与笔记本地 ID 存放，本地新建笔记的负数 ID 也支持），不读 AsyncStorage；数据库版本升至 15；② `sqliteReadingStorage` 保持 `ReadingProgressStore` 原有键值接口，store 及其格式校验、失败暂存、写入队列都不改；③ `migrateLegacyReadingProgress`：旧键写入 SQLite 时不覆盖已有记录，事务提交后才删除旧键，失败时旧键全部保留、下次启动重试；存储的每次读写先等搬迁结束，保证读到搬迁后的数据；④ 原模块级单例 `readingProgressStore` 改为 `readingProgressStoreFor(database)`（按数据库缓存），3 个调用方从 Context 取数据库传入，避免“数据库未绑定就读”的竞态；`readReadingProgress` 增加数据库参数；⑤ 4 处永久删除笔记的位置（本地删除、服务器删除传播两处、回收站彻底删除）调用 `deleteNoteReadingProgress`；⑥ 摘录回归测试：迁移到 0014 后写入 4 条样本（含多行、表情、2 万字、两个账号），再执行之后的全部迁移，要求摘录表结构与数据完全一致，以后新增迁移自动纳入；⑦ 摘录测试中“0014 是最新迁移”改为“0014 位于第 14 位”，待办测试数据库版本断言由 14 改为 15。
+- 验证：`npm run typecheck` 0 错误；相关文件 ESLint 无问题；新增阅读存储测试 6/6、摘录回归 1/1 通过，并确认在 0015 中临时加入修改摘录的语句后回归测试失败；阅读、摘录、待办本地测试 74/74，编辑、同步、回收站、个人资料测试 209/209 通过。未做真机验收（旧数据搬迁需在真机上用已有阅读进度验证），未提交 Git。
+
+---
+
+## 2026-09-25 14:50:10 | 新增功能：历史版本每篇最多保留 50 个（缓存重构第一期 T2）
+
+- 变更概述：用户确认历史版本按条数设上限、每篇 50 条。以前历史版本只增不减，只有删除笔记时才清理；现在每次写入新版本时顺带裁剪，启动后再处理一次升级前积累的存量。仍被引用的版本无论多旧都保留，不占 50 条名额。
+- 修改文件：src/features/notes/data/note-revision-retention.ts（新增）、src/features/notes/data/note-revision.repository.ts、src/features/notes/services/note-revision-maintenance.ts（新增）、src/core/providers/StartupMaintenance.tsx（新增）、src/core/providers/AppProviders.tsx、tests/editor/revision-retention.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① `pruneNoteRevisions` 保留最新 50 个版本，另外保留仍被引用的版本及其上一版：当前版本、草稿基准、回收站记录里的当前版本与草稿基准、被清理笔记缓存记下的版本、上传队列记下的版本（“回滚到上一版”需要其上一版）；任一引用记录无法解析时放弃这篇笔记的裁剪；② `insertNoteRevision` 插入后调用裁剪，6 个写入点自动生效；刚插入的版本及其父版本显式保留，避免同一毫秒内按 ID 排序不准时误删；③ `pruneAllNoteRevisions` 找出超限笔记逐篇在各自事务里裁剪，由 `scheduleNoteRevisionRetention` 在启动 20 秒后执行一次，结果只记诊断日志；④ 新增 `StartupMaintenance` 组件放在数据库 Provider 内部，统一安排启动维护任务，T4 的临时文件清理也从 `AppProviders` 移到这里。
+- 与计划的差异：计划写“另加一个迁移裁剪存量”。实施时改为启动维护任务：迁移失败会导致数据库打不开、App 无法启动，而裁剪只是数据维护、不改表结构，不值得承担这个风险；改后维护失败只记诊断，下次启动重试。T2 因此不占用迁移编号。
+- 验证：`npm run typecheck` 0 错误；相关文件 ESLint 无问题；新增测试 5/5 通过（保留最新 50 个、各类引用连同上一版保留、回收站恢复场景、引用损坏时不裁剪、存量裁剪只处理超限笔记）；编辑、同步、回收站既有测试 179/179 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-25 14:45:31 | 新增功能：启动时自动清理临时文件（缓存重构第一期 T4）
+
+- 变更概述：以前更新包和分享临时文件只能在「数据与存储」页手动清理。现在每次启动 15 秒后自动清理一次，规则与手动清理完全相同：只删已安装版本及更旧的更新包、结束使用满 24 小时的分享文件；下载/校验/安装中的更新包、正在分享的文件、新版本安装包一律保留。笔记缓存需要联网核实，不参与自动清理。
+- 修改文件：src/core/storage/storage-files.ts、src/core/storage/auto-cleanup.ts（新增）、src/core/providers/AppProviders.tsx、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 具体内容：① `storage-files` 新增 `scanCacheCleanupCandidates`，只扫描缓存目录的更新包和分享目录，不遍历文档与数据库目录；“登记一个文件”的逻辑提取为 `addScannedFile`，完整扫描与新扫描共用，更新包文件名规则提取为常量；② 新增 `auto-cleanup`：`runCacheCleanup` 复用 `clearStorageFiles`，没有可清理项时直接返回；`scheduleStartupCacheCleanup` 每个进程只安排一次，结果只记释放字节、失败数、跳过数到诊断日志，失败不打扰用户；③ `AppProviders` 挂载时安排清理。
+- 验证：`npm run typecheck` 0 错误；相关文件 ESLint 无问题；存储测试 16/16 通过（新增 3 项：只扫描缓存候选且规则一致、使用中文件保留、每进程只执行一次）。已核实启动时的更新检查只会恢复比当前版本新的安装包，与自动清理的范围不重叠。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-25 14:43:03 | 优化代码：退出登录时释放内存缓存（缓存重构第一期 T8）
+
+- 变更概述：用户确认缓存重构第一期计划（分两期，第一期纯客户端）。本条为 T8：退出登录（主动退出或登录失效）后，释放上一个账号留在内存里的笔记对象、字数统计和摘录快照；磁盘上的笔记、草稿、摘录、待办全部保留（按用户选择“退出登录保留全部”）。
+- 修改文件：src/shared/http/session-events.ts、src/features/auth/providers/AuthProvider.tsx、src/features/notes/notes.cache.ts、src/features/notes/hooks/noteTextLength/cache/noteStatisticsCache.ts、src/features/excerpts/data/excerpt-local.repository.ts、src/features/excerpts/state/excerpt-store.ts、tests/storage/session-ended-cache.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① `session-events` 新增 `publishSessionEnded` / `onSessionEnded`，`logout` 清空登录态后发布；各缓存在自己的模块里订阅，认证模块不反向依赖笔记、摘录；② 笔记对象缓存和字数统计缓存收到事件后直接清空；③ 摘录仓库新增 `idle()`，store 等已排队的写入结束后再释放快照，避免登录失效时中断刚提交的保存；释放前重新激活（再次登录）会作废这次释放，不清空新会话的列表。
+- 与计划的差异：计划中 T8 包含待办。实施时发现系统提醒对账和常驻待办卡片订阅待办仓库，仓库被清空会取消上一个账号的全部提醒，属于产品行为变化，本次不动待办，另行向用户确认。
+- 验证：修改前 `npm run typecheck` 0 错误，修改后 0 错误；相关文件 ESLint 无问题；新增测试 4/4 通过，并确认去掉“重新激活作废释放”后第 4 项会失败。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-25 14:19:32 | 修复问题：分屏或小窗中复制后摘录页不识别
+
+- 变更概述：用户真机验证 a5aee7e 后反馈：切 Tab、切到其他应用再回来已能识别，分屏或小窗中复制仍不识别。确认第二次问题分析与方案后修复。根因：Android 10+ 剪贴板变化只通知拥有窗口焦点的应用，分屏/小窗中在另一侧复制时 IRisNote 没有焦点，收不到变化通知；应用也没进后台，「从后台回来」路径不触发；而上次规定「未进过后台的焦点事件不检测」（本意是避免关闭应用内弹窗时读取剪贴板）把焦点交还这条路也挡掉了。更正上次分析：Android 12+ 的剪贴板读取提示对同一段内容只在应用首次读取时出现，重复读取不会反复提示。
+- 修改文件：src/features/excerpts/domain/clipboard-detection-trigger.ts、src/features/excerpts/hooks/useClipboardDetection.ts、tests/excerpts/clipboard-detection.test.cjs、docs/架构指南/业务模块与运行逻辑.md、CHANGELOG.md。
+- 具体内容：① 状态机新增 `windowBlurred(inAppModalOpen)`：应用在前台、失焦时没有应用内弹窗（分屏另一侧、小窗、通知栏、系统对话框抢走焦点），焦点回来 100ms 后检测；失焦时有应用内弹窗则焦点回来不检测；② Hook 监听 AppState `blur`，通过全局弹窗层 `useOverlay().top` 判断失焦时是否有 AppModal 打开，不改公共组件；③ 新增 3 项测试（分屏交还焦点检测、应用内弹窗不检测、进后台前的失焦与回前台只检测一次）。
+- 已知限制：分屏或小窗中，在另一侧复制的当下无法读取剪贴板，需用户点回 IRisNote 一侧后才出现检测卡（Android 系统限制）。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；摘录测试 22/22；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 531 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。用户要求先提交；分屏/小窗场景尚未经真机验证通过。
+
+---
+
+## 2026-09-25 13:55:59 | 优化代码：剪贴板自动检测说明文案与实际行为一致
+
+- 变更概述：修复检测时机后，停留在摘录页期间剪贴板变化也会检测，原开启说明「每次进入摘录页时读取一次剪贴板」不再准确。用户确认采用新文案。
+- 修改文件：src/features/excerpts/components/ClipboardDetectConfirmDialog.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、docs/UI/IRisNote视觉设计规范.md、CHANGELOG.md。
+- 具体内容：开启确认框说明改为「停留在摘录页时检测剪贴板，发现新内容会询问是否保存，不会自动保存或上传。Android 系统可能会提示应用读取了剪贴板。」（末句保留）；「设置 › 权限」开关行说明改为「在摘录页时检测剪贴板新内容」；视觉规范同步。布局与间距不变。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 528 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。未做真机验收。
+
+---
+
+## 2026-09-25 13:53:17 | 修复问题：停留在摘录页时不会自动识别剪贴板
+
+- 变更概述：用户反馈停留在摘录页时（切到其他应用复制后再回来）不会识别新内容，确认问题分析与修复方案后修复。根因（按 Android 机制与现象推断，未经真机日志证实）：Android 10+ 只有拥有窗口焦点的应用才能访问剪贴板，没有焦点时 `hasStringAsync` / `getStringAsync` 静默返回空；原实现在 AppState 变为 `active` 后固定延迟 300ms 检测，而 `active` 早于窗口获得焦点，HyperOS 切回动画期间检测被当作「没有文字」且不重试。另补上设计缺口：不离开应用时（分屏、小窗、通知栏、页面内复制）原本完全不触发检测。
+- 修改文件：src/features/excerpts/domain/clipboard-detection-trigger.ts（新增）、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/services/clipboard.service.ts、tests/excerpts/clipboard-detection.test.cjs、docs/架构指南/业务模块与运行逻辑.md、CHANGELOG.md。
+- 具体内容：① 新增检测时机状态机：页面获得焦点 300ms 后检测；Android 从后台回来先排 1 秒保底检测，等到 AppState `focus`（窗口获得焦点）后改为 100ms 后检测；iOS 回到前台 300ms 后检测；回到后台取消未执行的检测；未进过后台的窗口焦点（如关闭弹窗）不检测，避免反复读取剪贴板触发系统提示；② `clipboard.service` 新增 `onChange`（expo-clipboard `addClipboardListener`），摘录页获得焦点期间监听，前台时剪贴板变化 100ms 后检测，离开页面即注销；③ 新增 6 项触发时机测试。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；摘录测试 19/19；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 528 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。未做真机验收：需确认从其他应用切回、分屏/小窗复制、关闭弹窗不重复读取三种场景。与 1B 一并提交。
+
+---
+
+## 2026-09-25 13:34:38 | 新增功能：剪贴板自动检测开关（摘录 1B）
+
+- 变更概述：按已确认的计划与文字预览实现摘录 1B（1A 已提交为 a0d0b91）。自动检测为设备级开关，默认关闭；只在摘录页获得焦点、或停留在摘录页时回到前台检测；检测结果只提示，由用户选择保存或忽略，从不自动保存；不过滤疑似验证码。关闭时摘录页显示可关掉的提示条，开启需先确认说明。
+- 修改文件：src/features/excerpts/domain/clipboard-detection.ts（新增）、src/features/excerpts/hooks/useClipboardDetection.ts（新增）、src/features/excerpts/hooks/useClipboardPreferences.ts（新增）、src/features/excerpts/state/clipboard-preferences-store.ts（新增）、src/features/excerpts/components/{ClipboardHintBar,ClipboardDetectedCard,ClipboardDetectConfirmDialog}.tsx（新增）、src/features/excerpts/services/clipboard.service.ts、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/excerpts/index.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/excerpts/clipboard-detection.test.cjs（新增）、README.md、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/后续开发指南.md、docs/待办/TODO.md、CHANGELOG.md。
+- 具体内容：① `system_preferences` 新增三个设备级键：自动检测开关、提示条已关闭、最近已处理内容哈希（只存 SHA-256，不存原文）；② 纯判断 `detectClipboard` 依次检查开关 → `hasStringAsync`（Android 只读剪贴板描述，不触发系统读取提示）→ `getStringAsync` → 空白/已处理/超长/本应用刚复制/已存为摘录，任一不满足即停止；超长、本应用复制、已存为摘录的内容记为已处理；③ `useClipboardDetection`：获得焦点或回到前台后延迟 300ms 检测（Android 10+ 需窗口获得焦点才能读取），开关刚开启或摘录加载完成时补检一次；忽略与保存（来源 auto）都记为已处理，离开页面未处理的提示下次仍显示；④ 摘录页按预览接入关闭提示条、检测提示卡与开启确认框；「设置 › 权限」在「后台实时刷新」后新增「剪贴板自动检测」开关行，打开前先确认，关闭立即生效；两处共用同一份开关状态；⑤ 与文字预览的差异：检测提示卡按钮复用公共 `AppButton` compact，高 44dp（预览写 40dp）；确认框说明末句改为「Android 系统可能会提示应用读取了剪贴板」（预览写「Android 系统可能提示『已读取剪贴板』」），避免引用与系统实际文案不一致的提示语；提示条操作行距首行 4dp（预览未标注）。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增检测测试 5/5 通过，摘录测试共 13/13；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 522 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）。Android 读取时机（300ms 延迟是否足够）、系统读取提示是否只在读取内容时出现、Switch 取消确认后的回弹，均需真机验收。未做浏览器或真机验收；未提交 Git。
+
+---
+
+## 2026-09-25 13:28:11 | 优化代码：新增公网隧道预览启动脚本
+
+- 变更概述：用户确认新增 `start:tunnel` 脚本。手机与电脑不在同一局域网时，可通过 Expo 隧道（`@expo/ngrok`，已在 devDependencies 中）加载开发版预览。
+- 修改文件：package.json、CHANGELOG.md。
+- 具体内容：`scripts` 新增 `"start:tunnel": "expo start --tunnel"`，放在 `start:test` 之后；未指定端口，默认 8081，端口被占用时由 Expo 在终端询问是否改用其他端口。接口地址沿用默认的 `https://tech-mou.top/api`（公网可访问），脚本不改动环境变量。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 517 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）。同一命令 `npx expo start --tunnel --port 8082` 已在本机实际启动，隧道地址 `/status` 返回 `packager-status:running`；未用手机实测加载，未提交 Git。
+
+---
+
+## 2026-09-25 13:14:36 | 新增功能：本地摘录库（摘录 1A）
+
+- 变更概述：用户确认摘录页实施计划与文字预览（Tab「剪贴」改名「摘录」、本轮做 1A + 1B 分两次提交、自动检测只在摘录页、第一版只存纯文本、本轮不过滤疑似验证码）。本条为 1A：摘录页从占位页变为本地摘录库，关闭自动检测时页面仍可浏览、搜索、手动新建与编辑、「粘贴一次」、复制、置顶和删除。自动检测开关（1B）尚未接入，应用不会在用户未点击时读取剪贴板。
+- 修改文件：src/core/database/migrations/0014-create-local-excerpts.ts（新增）、src/core/database/migrations/index.ts、src/features/excerpts/excerpts.types.ts（新增）、src/features/excerpts/domain/excerpt-validation.ts（新增）、src/features/excerpts/domain/excerpt-display.ts（新增）、src/features/excerpts/data/excerpt-local.repository.ts（新增）、src/features/excerpts/state/excerpt-store.ts（新增）、src/features/excerpts/hooks/useExcerptScope.ts（新增）、src/features/excerpts/services/clipboard.service.ts（新增）、src/features/excerpts/services/excerpt-service.ts（新增）、src/features/excerpts/components/{ExcerptToolbar,ExcerptCard,ExcerptFormDialog,ExcerptActionDialog}.tsx（新增）、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/excerpts/screens/CreateExcerptScreen.tsx、src/features/excerpts/index.ts、src/app/_layout.tsx、src/core/navigation/navigation.constants.ts、tests/excerpts/excerpt-local.test.cjs（新增）、tests/todos/todo-local.test.cjs、README.md、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/后续开发指南.md、docs/待办/TODO.md、CHANGELOG.md。
+- 具体内容：① 迁移 0014 新建 `local_excerpts`（按账号隔离，正文 1–20000 字，SHA-256 内容哈希按账号唯一，来源 paste/auto/manual，置顶与乐观版本号），数据库版本升至 14；② 本地仓库沿用待办的串行队列与账号代次校验：相同内容再次保存不新建而是移到最前；改成已有内容拒绝；版本不匹配区分「已被修改 / 已被删除」；只切换置顶不改变更新时间；③ `clipboard.service` 为摘录唯一剪贴板入口，写入时记录内容哈希供 1B 跳过自己复制的内容；④ 页面按已确认预览实现：40dp 工具栏（标题与数量、搜索、粘贴）、12dp 间距卡片列表（正文 3 行、置顶/来源/时间、复制按钮）、空状态、操作弹窗（置顶、编辑 | 复制 | 删除）、新建/编辑弹窗与删除确认；悬浮按钮「新建摘录」改为透明弹窗路由；Tab 文案「剪贴」改为「摘录」；⑤ 与文字预览的差异：新建/编辑弹窗复用公共 `BodyInput`，输入框为固定 144dp 高（预览写最小 160、最大 320dp），字数计数距输入框 6dp、13sp（预览写 8dp、12sp），以保持与待办表单一致；⑥ 待办测试中的数据库版本断言由 13 更新为 14。
+- 验证：修改前 `npm run typecheck` 0 错误，修改后 0 错误；新增摘录测试 8/8 通过；`npm run check` 类型检查、Lint（0 问题）、主题检查通过，测试 517 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG：测试在 tmpfs 的 /tmp 写入 330 字节文件名，超出 255 字节上限，不引用项目源码，既有失败，与本次无关）。未做浏览器或真机验收；未提交 Git。
+
+---
+
+## 2026-09-24 12:08:17 | 新增功能：修改邮箱，并修复会话失效时编辑页拦截跳转（B3c 客户端）
+
+- 变更概述：用户确认 B3c 计划与 P05 文字预览，并追加“原身份可用当前密码验证”。个人资料“邮箱”行可进入修改邮箱页：第 1 步用原邮箱验证码或当前密码验证身份，第 2 步验证新邮箱并提交；所有设备保持登录。同时修复 B3a 遗漏：会话失效跳转欢迎页时，编辑页的离开保护不再弹出「放弃修改？」。依赖后端 B3c 接口（与 B3a/B3b 同批上线，需先执行迁移 013）。
+- 修改文件：src/features/profile/screens/ChangeEmailScreen.tsx（新增）、src/features/profile/hooks/useEmailChange.ts（新增）、src/app/pages/user/profile/email.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/api/account-security.api.ts、src/features/profile/utils/password-errors.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/providers/AuthProvider.tsx、src/shared/http/session-events.ts、src/shared/http/client.ts、tests/profile/password-change.test.cjs、tests/auth/session-rejected.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 五个修改邮箱接口调用（15 秒超时，保持云授权受控，附设备标识）；② `useEmailChange`：凭据只存于内存引用（不进状态存储、路由参数或日志），本地 10 分钟计时与服务端 `EMAIL_CHANGE_EXPIRED` 均退回第 1 步；提交结果未知时重新读取资料并提示核对；成功以服务端资料 `applyUser`；③ P05 按预览实现：两种验证方式以文字链接切换并清空输入；修改新邮箱后验证码清空、倒计时重置，只有向当前填写的新邮箱发过验证码才可提交；无「上一步」，返回走离开确认；④ 云存储提示改为按操作命名（`cloudRequiredMessage`）；⑤ 会话失效修复：`session-events` 新增同步标记，AuthProvider 退出前开启、重新登录后关闭，`useUnsavedLeaveGuard` 读到标记即放行。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 509 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 3 项通过；`useEmailChange` 与页面交互无渲染测试，需真机验收。未做真机验收，未提交 Git。
+
 ---
 
 ## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）

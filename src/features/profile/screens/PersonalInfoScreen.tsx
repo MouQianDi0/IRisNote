@@ -51,6 +51,7 @@ const nicknameRoute = "/pages/user/profile/nickname" as Href;
 const bioRoute = "/pages/user/profile/bio" as Href;
 const regionRoute = "/pages/user/profile/region" as Href;
 const passwordRoute = "/pages/user/profile/password" as Href;
+const emailRoute = "/pages/user/profile/email" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
 
@@ -306,6 +307,7 @@ export default function PersonalInfoScreen() {
                                 icon={Mail}
                                 label="邮箱"
                                 value={maskedEmail}
+                                onPress={() => router.push(emailRoute)}
                             />
                             <ListRow
                                 icon={KeyRound}

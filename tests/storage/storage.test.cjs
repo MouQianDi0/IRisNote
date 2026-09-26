@@ -94,6 +94,8 @@ function filesHarness({ databaseDirectory = 'file:///doc/SQLite/', failingDirect
     'expo-application': { nativeBuildVersion: '12' },
     'react-native': { Platform: { OS: 'android' } },
     '@/features/updates/update-store': { useUpdateStore: { getState: () => state }, updateSupported: () => true },
+    '@/core/database/database.constants': load('src/core/database/database.constants.ts'),
+    '@/core/diagnostics/diagnostic-log': load('src/core/diagnostics/diagnostic-log.ts'),
     './storage-policy': policy,
     './share-cache': { ...shareApi, isShareFileActive: uri => active.has(uri) || shareApi.isShareFileActive(uri) },
   };
@@ -156,10 +158,10 @@ test('share panel retains the same URI after closing and records a fresh retenti
 });
 
 function screenHarness() {
-  const slots = [], effects = [], filesCalled = [], notesCalled = [];
+  const slots = [], effects = [], filesCalled = [], notesCalled = [], diagnosticsCleared = [];
   let cursor = 0, focusEffect, focusCleanup, tree;
   const db = {};
-  const scan = { supported:true, totals:{database:200,drafts:10,updates:100,shares:50,other:1}, cleanable:{updates:100,shares:50}, files:[], errors:0 };
+  const scan = { supported:true, totals:{database:200,drafts:10,updates:100,shares:50,avatars:30,diagnostics:40,other:1}, cleanable:{updates:100,shares:50,diagnostics:40}, files:[], errors:0 };
   const element = (type, props) => ({ type, props:props ?? {} });
   const depsEqual = (a,b) => a && b && a.length === b.length && a.every((x,i) => x === b[i]);
   const react = {
@@ -176,6 +178,8 @@ function screenHarness() {
     'expo-router':{router:{},useFocusEffect(effect) { if (focusEffect !== effect) { focusCleanup?.(); focusEffect=effect; effects.push(()=>{focusCleanup=effect();}); } }},
     'lucide-react-native':{Check:'Check'},
     '@/core/database':{useApplicationDatabase:()=>db},
+    '@/core/diagnostics/diagnostic-log':{clearDiagnosticLog:async()=>{diagnosticsCleared.push(true);}},
+    '@/features/excerpts/data/excerpt-local.repository':{readExcerptStorageStats:async(_db,ownerKey)=>{assert.equal(ownerKey,'user:1');return {count:3,bytes:2048};}},
     '@/core/cloud-storage/cloud-storage-provider':{useCloudStorage:()=>({enabled:true})},
     '@/core/cloud-storage/cloud-storage-policy':{getCloudStorageSnapshot:()=>({generation:1,ownerUserId:1})},
     '@/features/auth/hooks/useAuth':{useAuth:()=>({user:{id:1}})},
@@ -192,7 +196,7 @@ function screenHarness() {
   const find = predicate => all(tree).find(predicate);
   const label = text => find(node=>node.props.accessibilityLabel===text);
   const settle = async () => { await new Promise(resolve=>setImmediate(resolve));render(); };
-  return {render,settle,label,find,filesCalled,notesCalled,blur:()=>focusCleanup?.(),focus:()=>{focusCleanup=focusEffect();}};
+  return {render,settle,label,find,all:()=>all(tree),filesCalled,notesCalled,diagnosticsCleared,blur:()=>focusCleanup?.(),focus:()=>{focusCleanup=focusEffect();}};
 }
 
 test('screen defaults notes to unchecked, sends only selected items, and resets notes after leaving and returning', async () => {
@@ -277,4 +281,96 @@ test('invalid SQLite roots and throwing directory URI getters do not prevent rem
   h.add('file:///doc/broken/data',100);h.add('file:///cache/irisnote-release-12.apk',50);
   const scan=await h.scanStorageFiles();
   assert.equal(scan.errors,1);assert.equal(scan.cleanable.updates,50);
+});
+
+function autoCleanupHarness() {
+  const h = filesHarness();
+  const diagnostics = [];
+  const auto = load('src/core/storage/auto-cleanup.ts', {
+    './storage-files': h,
+    '@/core/diagnostics/diagnostic-log': { recordDiagnostic: (scope, event, details, level) => { diagnostics.push({ scope, event, details, level }); return Promise.resolve(); } },
+  });
+  return { ...h, auto, diagnostics };
+}
+
+test('startup cleanup scans only cache candidates and follows the manual cleanup rules', async () => {
+  const h = autoCleanupHarness();
+  h.add('file:///doc/SQLite/irisnote.db', 100);
+  h.add('file:///doc/drafts/1/new.json', 20);
+  h.add('file:///cache/irisnote-release-12.apk', 50);
+  h.add('file:///cache/irisnote-release-13.apk', 60);
+  h.add('file:///cache/unknown.txt', 30);
+  h.add('file:///cache/irisnote-shares/share-old-1/note.pdf', 40);
+  h.add('file:///cache/irisnote-shares/share-new-1/note.txt', 7, Date.now());
+  const scan = h.scanCacheCleanupCandidates();
+  assert.equal(scan.files.map(item => item.kind).sort().join(','), 'shares,shares,updates,updates');
+  assert.equal(scan.totals.database + scan.totals.drafts + scan.totals.other, 0);
+  assert.equal(scan.cleanable.updates, 50);
+  assert.equal(scan.cleanable.shares, 40);
+  const result = await h.auto.runCacheCleanup();
+  assert.equal(result.released, 90);
+  for (const file of ['file:///doc/SQLite/irisnote.db', 'file:///doc/drafts/1/new.json', 'file:///cache/irisnote-release-13.apk', 'file:///cache/unknown.txt', 'file:///cache/irisnote-shares/share-new-1/note.txt']) assert.equal(new h.File(file).exists, true);
+  assert.equal(new h.File('file:///cache/irisnote-release-12.apk').exists, false);
+});
+
+test('startup cleanup skips in-use files and does nothing when no candidate is cleanable', async () => {
+  const h = autoCleanupHarness();
+  const apk = 'file:///cache/irisnote-release-12.apk';
+  const pdf = 'file:///cache/irisnote-shares/share-old-1/note.pdf';
+  h.add(apk, 50); h.add(pdf, 40);
+  h.state.phase = 'installing'; h.active.add(new h.File(pdf).uri);
+  assert.equal(await h.auto.runCacheCleanup(), null);
+  assert.equal(new h.File(apk).exists, true);
+  assert.equal(new h.File(pdf).exists, true);
+});
+
+test('startup cleanup is scheduled once per process and records only the outcome counts', async () => {
+  const h = autoCleanupHarness();
+  h.add('file:///cache/irisnote-release-11.apk', 50);
+  h.auto.scheduleStartupCacheCleanup(0);
+  h.auto.scheduleStartupCacheCleanup(0);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.diagnostics.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.diagnostics[0])), { scope: 'storage', event: 'auto_cleanup', details: { released: 50, failed: 0, skipped: 0 } });
+});
+
+test('scan separates avatars and diagnostics; only the log and exported copies are cleanable', async () => {
+  const h = filesHarness();
+  h.add('file:///doc/avatars/1/me.png', 30);
+  h.add('file:///doc/irisnote-diagnostics.jsonl', 20);
+  h.add('file:///cache/irisnote-diagnostics-2026-09-25T12-00-00-000Z.jsonl', 15);
+  h.add('file:///doc/SQLite/irisnote-diagnostics.db', 100);
+  h.add('file:///doc/SQLite/irisnote-diagnostics.db-wal', 5);
+  h.add('file:///doc/SQLite/irisnote.db', 200);
+  h.add('file:///cache/irisnote-diagnostics.jsonl', 7);
+  const scan = await h.scanStorageFiles();
+  assert.equal(scan.totals.avatars, 30);
+  assert.equal(scan.totals.diagnostics, 140);
+  assert.equal(scan.cleanable.diagnostics, 35);
+  assert.equal(scan.totals.database, 200);
+  assert.equal(scan.totals.other, 7);
+  // 诊断文件交给诊断模块清理，文件清理流程不直接删除。
+  const cleared = await h.clearStorageFiles(scan, { ...policy.defaultCleanupSelection(), diagnostics: true }, () => {});
+  assert.equal(cleared.released, 0);
+  assert.equal(new h.File('file:///doc/irisnote-diagnostics.jsonl').exists, true);
+});
+
+test('screen shows excerpts, keeps diagnostics unchecked by default, and clears the log only when selected', async () => {
+  const h=screenHarness();h.render();await h.settle();
+  const texts = h.all().filter(node=>node.type==='Text').map(node=>[node.props.children].flat().join(''));
+  assert.ok(h.all().some(node=>node.props.label==='摘录' && node.props.value==='3 条 · 约 2.0 KB'));
+  assert.ok(h.all().some(node=>node.props.label==='头像'));
+  assert.ok(texts.some(text=>text.includes('每次启动后也会自动清理')));
+  assert.equal(h.label('诊断日志').props.accessibilityState.checked,false);
+  const confirm = () => h.find(node=>node.type==='Pressable' && node.props.children?.props?.children==='清理');
+  h.label('清理所选项目').props.onPress();h.render();confirm().props.onPress();await h.settle();
+  assert.equal(h.diagnosticsCleared.length,0);
+  h.label('诊断日志').props.onPress();h.render();
+  assert.equal(h.label('诊断日志').props.accessibilityState.checked,true);
+  h.label('清理所选项目').props.onPress();h.render();
+  assert.ok(h.all().some(node=>node.type==='Text' && [node.props.children].flat().join('').includes('无法在帮助与反馈中导出')));
+  confirm().props.onPress();await h.settle();
+  assert.equal(h.diagnosticsCleared.length,1);
+  h.blur();h.focus();await h.settle();
+  assert.equal(h.label('诊断日志').props.accessibilityState.checked,false);
 });
