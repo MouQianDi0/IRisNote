@@ -31,6 +31,7 @@ import {
     isRemovedLocalNote,
     removedServerIds,
 } from "./note-trash.repository";
+import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 
 type LocalNoteRow = {
     local_id: number;
@@ -826,6 +827,11 @@ export async function reconcileNotesInTransaction(
                 continue;
             // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
             await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
+            await deleteNoteReadingProgress(
+                transaction,
+                ownerUserId,
+                row.client_id,
+            );
             await transaction.run(
                 "DELETE FROM local_notes WHERE local_id = $localId",
                 { $localId: row.local_id },
@@ -1077,6 +1083,7 @@ export async function removeLocalNote(
 ) {
     await database.transaction(async (tx) => {
         await deleteNoteRevisions(tx, ownerUserId, clientId);
+        await deleteNoteReadingProgress(tx, ownerUserId, clientId);
         await tx.run(
             `DELETE FROM local_notes
              WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,

@@ -8,6 +8,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { authTokenStorage } from "@/shared/storage/token-storage";
 import { AppButton } from "@/shared/ui";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -141,7 +142,7 @@ export default function LoginScreen() {
             trace("session_save_started");
             // Revoke the previous account before either half of the stored session changes.
             setCloudStorageSession(null, false, false);
-            await AsyncStorage.setItem(storageKeys.authToken, data.token);
+            await authTokenStorage.write(data.token);
             await AsyncStorage.setItem(
                 storageKeys.authUser,
                 JSON.stringify(data.user),

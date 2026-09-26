@@ -38,7 +38,10 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { trashNote } from "../services/note-trash.service";
-import { getCategories } from "../categories/api/categories.api";
+import {
+    loadCategories,
+    readCachedCategories,
+} from "../categories/data/category-cache";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import {
     notifyCategoriesChanged,
@@ -308,7 +311,27 @@ export default function NotesScreen() {
         request = (async () => {
             try {
                 const checkAccess = captureCloudStorageAccess(user.id);
-                const remoteCategories = await getCategories();
+                // 列表为空时先显示本地副本，避免离线或慢网时分类栏空白。
+                const cached = await readCachedCategories(
+                    database,
+                    user.id,
+                ).catch(() => null);
+                checkAccess();
+                if (cached) {
+                    const shown = await applyQueuedCategoryChanges(
+                        database,
+                        user.id,
+                        cached,
+                    );
+                    checkAccess();
+                    setCategories((previous) =>
+                        previous.length ? previous : shown,
+                    );
+                }
+                const { categories: remoteCategories } = await loadCategories(
+                    database,
+                    user.id,
+                );
                 checkAccess();
                 const nextCategories = await applyQueuedCategoryChanges(
                     database,

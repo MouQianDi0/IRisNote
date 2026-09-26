@@ -57,7 +57,9 @@ export async function uploadBoth({
         stage = "差量包生成/上传";
         await patches(draft, apk);
         log(
-            "完整 APK 已上传服务器和 COS，所需差量包已就绪；仍为草稿，请核对后运行 publish。",
+            draft.full_package_required === true
+                ? "完整 APK 已上传服务器和 COS；该版本为完整包屏障，不生成差量包。仍为草稿，请核对后运行 publish。"
+                : "完整 APK 已上传服务器和 COS，所需差量包已就绪；仍为草稿，请核对后运行 publish。",
         );
     } catch (error) {
         throw new Error(

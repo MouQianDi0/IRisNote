@@ -80,6 +80,7 @@
             "expo-sharing",
             "expo-web-browser",
             "expo-sqlite",
+            "expo-secure-store",
             "./plugins/with-release-signing"
         ],
         "experiments": {
