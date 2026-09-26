@@ -101,9 +101,10 @@ async function setup(t) {
     return { sqlite, repo };
 }
 
-test("迁移 0014 为当前最新版本，可重复执行，并按账号约束内容哈希唯一", async (t) => {
-    assert.equal(CURRENT_DATABASE_VERSION, 14);
-    assert.equal(databaseMigrations.at(-1), createLocalExcerpts);
+test("迁移 0014 位于注册表第 14 位，可重复执行，并按账号约束内容哈希唯一", async (t) => {
+    // 后续迁移只会追加在后面；0014 之后的迁移不得改动摘录数据，见 excerpt-migration-regression。
+    assert.ok(CURRENT_DATABASE_VERSION >= 14);
+    assert.equal(databaseMigrations[13], createLocalExcerpts);
     const sqlite = new DatabaseSync(":memory:");
     t.after(() => sqlite.close());
     await createLocalExcerpts.up(migrationPort(sqlite));

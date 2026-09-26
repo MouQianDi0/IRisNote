@@ -17,9 +17,14 @@ let writeQueue = Promise.resolve();
 const isNativeRuntime =
     typeof navigator !== "undefined" && navigator.product === "ReactNative";
 
+/** 与「数据与存储」页的文件分类一致：日志在文档目录，导出副本在缓存目录。 */
+export const DIAGNOSTIC_LOG_FILE = "irisnote-diagnostics.jsonl";
+export const DIAGNOSTIC_EXPORT_PATTERN =
+    /^irisnote-diagnostics-[0-9TZ-]+\.jsonl$/;
+
 async function diagnosticLogFile() {
     const { File, Paths } = await import("expo-file-system");
-    return new File(Paths.document, "irisnote-diagnostics.jsonl");
+    return new File(Paths.document, DIAGNOSTIC_LOG_FILE);
 }
 
 function sanitizeText(value: string) {
@@ -98,6 +103,28 @@ export function opaqueDiagnosticId(value: string) {
         hash = Math.imul(hash, 0x01000193);
     }
     return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * 清空诊断日志以及此前导出的诊断文件（「数据与存储」页手动清理）。
+ * 排在已提交的写入之后执行，清理后新事件照常记录。
+ */
+export function clearDiagnosticLog() {
+    const task = writeQueue.then(async () => {
+        memoryEvents = [];
+        if (!isNativeRuntime) return;
+        const { File, Paths } = await import("expo-file-system");
+        const logFile = new File(Paths.document, DIAGNOSTIC_LOG_FILE);
+        if (logFile.exists) logFile.delete();
+        for (const entry of Paths.cache.list())
+            if (
+                entry instanceof File &&
+                DIAGNOSTIC_EXPORT_PATTERN.test(entry.name)
+            )
+                entry.delete();
+    });
+    writeQueue = task.catch(() => undefined);
+    return task;
 }
 
 export async function createDiagnosticExport(metadata: DiagnosticDetails) {

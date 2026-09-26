@@ -4,6 +4,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { authTokenStorage } from "@/shared/storage/token-storage";
 import {
     checkNewPassword,
     PASSWORD_HINT,
@@ -121,7 +122,7 @@ export default function RegisterScreen() {
 
             // 保存 token 和用户信息
             setCloudStorageSession(null, false, false);
-            await AsyncStorage.setItem(storageKeys.authToken, data.token);
+            await authTokenStorage.write(data.token);
             await AsyncStorage.setItem(
                 storageKeys.authUser,
                 JSON.stringify(data.user),

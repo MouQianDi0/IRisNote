@@ -1,3 +1,4 @@
+import { onSessionEnded } from "@/shared/http/session-events";
 import type { NoteTextStatistics } from "../types";
 
 export const NOTE_STATISTICS_CACHE_MAX_ENTRIES = 100;
@@ -15,6 +16,9 @@ type GetOrCreateCachedStatisticsParams = {
 };
 
 const noteStatisticsCache = new Map<number, NoteStatisticsCacheEntry>();
+
+// 缓存按笔记 ID 存放、不区分账号，退出登录时整体释放。
+onSessionEnded(() => noteStatisticsCache.clear());
 
 /**
  * Map 以插入顺序保存键；删除后重新写入即可把命中项移动到最近访问端。

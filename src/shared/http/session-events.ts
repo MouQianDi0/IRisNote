@@ -21,6 +21,29 @@ export function onSessionRejected(listener: (token: string) => void) {
     };
 }
 
+const endedListeners = new Set<() => void>();
+
+/**
+ * 退出登录（主动退出或登录失效）后发布。各模块据此释放上一个账号留在内存里的数据；
+ * 磁盘上的笔记、摘录、待办等数据不受影响。
+ */
+export function publishSessionEnded() {
+    for (const listener of endedListeners) {
+        try {
+            listener();
+        } catch {
+            console.warn("[Session] 退出登录清理监听器失败，其余清理继续");
+        }
+    }
+}
+
+export function onSessionEnded(listener: () => void) {
+    endedListeners.add(listener);
+    return () => {
+        endedListeners.delete(listener);
+    };
+}
+
 let exiting = false;
 
 /**

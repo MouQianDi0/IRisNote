@@ -9,13 +9,13 @@ import { AppState, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useApplicationDatabase } from "@/core/database";
 import { banner } from "@/core/notifications";
-import { SystemPreferencesRepository } from "@/features/settings/data/system-preferences.repository";
 import { useOverlay } from "@/shared/ui/Overlay/overlay-context";
 import { detectClipboard } from "../domain/clipboard-detection";
 import {
     createDetectionTrigger,
     PAGE_FOCUS_DELAY_MS,
 } from "../domain/clipboard-detection-trigger";
+import { clipboardHandledStoreFor } from "../services/clipboard-handled";
 import { clipboardService } from "../services/clipboard.service";
 import { newExcerptId } from "../services/excerpt-service";
 import { excerptRepository } from "../state/excerpt-store";
@@ -59,8 +59,8 @@ export function useClipboardDetection({
 
     const markHandled = useCallback(
         (hash: string) =>
-            new SystemPreferencesRepository(database)
-                .setClipboardLastHandledHash(hash)
+            clipboardHandledStoreFor(database)
+                .markHandled(hash)
                 .catch(() => undefined),
         [database],
     );
@@ -69,13 +69,15 @@ export function useClipboardDetection({
         const start = latest.current;
         if (running.current || !focused.current || !start.ready) return;
         running.current = true;
-        const preferences = new SystemPreferencesRepository(database);
         try {
             const result = await detectClipboard({
                 enabled: async () => latest.current.enabled,
                 hasText: clipboardService.hasText,
                 readText: clipboardService.readText,
-                lastHandledHash: () => preferences.clipboardLastHandledHash(),
+                isHandled: (hash) =>
+                    clipboardHandledStoreFor(database)
+                        .isHandled(hash)
+                        .catch(() => false),
                 lastWrittenHash: clipboardService.lastWrittenHash,
                 savedHashes: () =>
                     new Set(

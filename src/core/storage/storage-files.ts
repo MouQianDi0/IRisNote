@@ -2,6 +2,14 @@ import {
     updateSupported,
     useUpdateStore,
 } from "@/features/updates/update-store";
+import {
+    DIAGNOSTIC_BACKUP_DATABASE_NAME,
+    DIAGNOSTIC_DATABASE_NAME,
+} from "@/core/database/database.constants";
+import {
+    DIAGNOSTIC_EXPORT_PATTERN,
+    DIAGNOSTIC_LOG_FILE,
+} from "@/core/diagnostics/diagnostic-log";
 import * as Application from "expo-application";
 import { Directory, File, Paths } from "expo-file-system";
 import { defaultDatabaseDirectory } from "expo-sqlite";
@@ -17,7 +25,14 @@ import {
     type CleanupSelection,
 } from "./storage-policy";
 
-type Kind = "database" | "drafts" | "updates" | "shares" | "other";
+type Kind =
+    | "database"
+    | "drafts"
+    | "updates"
+    | "shares"
+    | "avatars"
+    | "diagnostics"
+    | "other";
 export type StorageFile = {
     uri: string;
     bytes: number;
@@ -29,11 +44,27 @@ export type StorageScan = {
     supported: boolean;
     files: StorageFile[];
     totals: Record<Kind, number>;
-    cleanable: { updates: number; shares: number };
+    cleanable: { updates: number; shares: number; diagnostics: number };
     errors: number;
 };
 const inside = (uri: string, directory: string) =>
     uri.startsWith(directory.replace(/\/$/, "") + "/");
+const UPDATE_FILE_PATTERN = /^irisnote-release-[1-9]\d*\.(apk|hdiff)$/;
+const emptyScan = (): StorageScan => ({
+    supported: Platform.OS !== "web",
+    files: [],
+    totals: {
+        database: 0,
+        drafts: 0,
+        updates: 0,
+        shares: 0,
+        avatars: 0,
+        diagnostics: 0,
+        other: 0,
+    },
+    cleanable: { updates: 0, shares: 0, diagnostics: 0 },
+    errors: 0,
+});
 
 /** SQLite returns a native path on Android/iOS; FileSystem expects a URI. */
 export function databaseDirectoryUri(path: string): string {
@@ -54,7 +85,18 @@ const updateInUse = () =>
         "installing",
     ].includes(useUpdateStore.getState().phase);
 
+/** 可清理的诊断文件：日志与导出副本；开发环境的诊断数据库只统计，不清理。 */
+const removableDiagnostic = (file: File) =>
+    file.name === DIAGNOSTIC_LOG_FILE ||
+    DIAGNOSTIC_EXPORT_PATTERN.test(file.name);
+
+const DIAGNOSTIC_DATABASES = [
+    DIAGNOSTIC_DATABASE_NAME,
+    DIAGNOSTIC_BACKUP_DATABASE_NAME,
+];
+
 function canRemove(file: File, kind: Kind) {
+    if (kind === "diagnostics") return removableDiagnostic(file);
     if (kind === "updates")
         return (
             updateSupported() &&
@@ -78,18 +120,72 @@ function canRemove(file: File, kind: Kind) {
     );
 }
 
-export async function scanStorageFiles(): Promise<StorageScan> {
-    const result: StorageScan = {
-        supported: Platform.OS !== "web",
-        files: [],
-        totals: { database: 0, drafts: 0, updates: 0, shares: 0, other: 0 },
-        cleanable: { updates: 0, shares: 0 },
-        errors: 0,
+/** 登记一个已分类的文件；大小或修改时间无法读取时只计入错误数。 */
+function addScannedFile(result: StorageScan, entry: File, kind: Kind) {
+    const bytes = entry.size;
+    const modified = entry.modificationTime;
+    if (modified === null || !Number.isFinite(bytes) || bytes < 0) {
+        result.errors++;
+        return;
+    }
+    const cleanable = canRemove(entry, kind);
+    result.files.push({ uri: entry.uri, bytes, modified, kind, cleanable });
+    result.totals[kind] += bytes;
+    if (
+        cleanable &&
+        (kind === "updates" || kind === "shares" || kind === "diagnostics")
+    )
+        result.cleanable[kind] += bytes;
+}
+
+/**
+ * 只扫描缓存目录里的更新包和分享临时文件，供启动时自动清理；
+ * 不遍历文档和数据库目录，判定规则与完整扫描相同。
+ */
+export function scanCacheCleanupCandidates(): StorageScan {
+    const result = emptyScan();
+    if (!result.supported) return result;
+    const add = (entry: File | Directory, kind: "updates" | "shares") => {
+        if (!(entry instanceof File)) return;
+        try {
+            addScannedFile(result, entry, kind);
+        } catch {
+            result.errors++;
+        }
     };
+    try {
+        for (const entry of Paths.cache.list())
+            if (UPDATE_FILE_PATTERN.test(entry.name)) add(entry, "updates");
+    } catch {
+        result.errors++;
+    }
+    try {
+        const shares = shareCacheDirectory();
+        if (shares.exists)
+            for (const entry of shares.list()) {
+                try {
+                    const files =
+                        entry instanceof Directory ? entry.list() : [entry];
+                    for (const file of files)
+                        if (file instanceof File && shareFileIdentity(file))
+                            add(file, "shares");
+                } catch {
+                    result.errors++;
+                }
+            }
+    } catch {
+        result.errors++;
+    }
+    return result;
+}
+
+export async function scanStorageFiles(): Promise<StorageScan> {
+    const result = emptyScan();
     if (!result.supported) return result;
     const roots: Directory[] = [];
     let databaseUri: string | null = null;
     let draftsUri: string | null = null;
+    let avatarsUri: string | null = null;
     const addRoot = (create: () => Directory) => {
         try {
             const directory = create();
@@ -107,6 +203,7 @@ export async function scanStorageFiles(): Promise<StorageScan> {
     if (documentUri) {
         try {
             draftsUri = new Directory(documentUri, "drafts").uri;
+            avatarsUri = new Directory(documentUri, "avatars").uri;
         } catch {
             result.errors++;
         }
@@ -137,37 +234,31 @@ export async function scanStorageFiles(): Promise<StorageScan> {
                     let kind: Kind = "other";
                     if (draftsUri && inside(entry.uri, draftsUri))
                         kind = "drafts";
+                    else if (
+                        (entry.parentDirectory.uri === Paths.document.uri &&
+                            entry.name === DIAGNOSTIC_LOG_FILE) ||
+                        (entry.parentDirectory.uri === Paths.cache.uri &&
+                            DIAGNOSTIC_EXPORT_PATTERN.test(entry.name)) ||
+                        (databaseUri &&
+                            inside(entry.uri, databaseUri) &&
+                            DIAGNOSTIC_DATABASES.some(
+                                (name) =>
+                                    entry.name === name ||
+                                    entry.name.startsWith(`${name}-`),
+                            ))
+                    )
+                        kind = "diagnostics";
                     else if (databaseUri && inside(entry.uri, databaseUri))
                         kind = "database";
+                    else if (avatarsUri && inside(entry.uri, avatarsUri))
+                        kind = "avatars";
                     else if (
                         entry.parentDirectory.uri === Paths.cache.uri &&
-                        /^irisnote-release-[1-9]\d*\.(apk|hdiff)$/.test(
-                            entry.name,
-                        )
+                        UPDATE_FILE_PATTERN.test(entry.name)
                     )
                         kind = "updates";
                     else if (shareFileIdentity(entry)) kind = "shares";
-                    const bytes = entry.size;
-                    const modified = entry.modificationTime;
-                    if (
-                        modified === null ||
-                        !Number.isFinite(bytes) ||
-                        bytes < 0
-                    ) {
-                        result.errors++;
-                        continue;
-                    }
-                    const cleanable = canRemove(entry, kind);
-                    result.files.push({
-                        uri: entry.uri,
-                        bytes,
-                        modified,
-                        kind,
-                        cleanable,
-                    });
-                    result.totals[kind] += bytes;
-                    if (cleanable && (kind === "updates" || kind === "shares"))
-                        result.cleanable[kind] += bytes;
+                    addScannedFile(result, entry, kind);
                 } catch {
                     result.errors++;
                 }

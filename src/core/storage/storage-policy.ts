@@ -2,11 +2,14 @@ export type CleanupSelection = {
     updates: boolean;
     shares: boolean;
     notes: boolean;
+    /** 诊断日志用于帮助与反馈排查问题，和笔记缓存一样默认不勾选。 */
+    diagnostics: boolean;
 };
 export const defaultCleanupSelection = (): CleanupSelection => ({
     updates: true,
     shares: true,
     notes: false,
+    diagnostics: false,
 });
 export const SHARE_RETENTION_MS = 24 * 60 * 60 * 1000;
 

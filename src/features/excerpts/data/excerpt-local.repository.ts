@@ -115,6 +115,21 @@ async function writeVersion(
     await assertChanged(transaction, result.changes, base);
 }
 
+/** 「数据与存储」页用：某账号的摘录条数与正文字节数（UTF-8）。 */
+export async function readExcerptStorageStats(
+    database: ApplicationDatabaseTransaction,
+    ownerKey: string,
+): Promise<{ count: number; bytes: number }> {
+    const row = await database.getFirst<{
+        count: number;
+        bytes: number | null;
+    }>(
+        "SELECT COUNT(*) AS count, SUM(length(CAST(content AS BLOB))) AS bytes FROM local_excerpts WHERE owner_key = ?",
+        [ownerKey],
+    );
+    return { count: row?.count ?? 0, bytes: row?.bytes ?? 0 };
+}
+
 /** SQLite 为唯一事实来源；同步读取只暴露已提交的界面快照。 */
 export class ExcerptLocalRepository {
     ownerKey: string | null = null;
@@ -134,6 +149,11 @@ export class ExcerptLocalRepository {
         const pending = this.queue.then(task);
         this.queue = pending.catch(() => undefined);
         return pending;
+    }
+
+    /** 等待调用时已排队的写入全部结束（成功或失败都算结束）。 */
+    idle(): Promise<void> {
+        return this.queue.then(() => undefined);
     }
 
     deactivate() {

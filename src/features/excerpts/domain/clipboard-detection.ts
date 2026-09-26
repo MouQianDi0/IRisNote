@@ -18,7 +18,8 @@ export type ClipboardDetectionSources = {
     /** 只判断有无文字，不读取内容；Android 上不会触发系统读取提示。 */
     hasText: () => Promise<boolean>;
     readText: () => Promise<string>;
-    lastHandledHash: () => Promise<string | null>;
+    /** 该内容是否已提示或已处理过；已处理记录只以带密钥的摘要落盘，比较由存储方完成。 */
+    isHandled: (hash: string) => Promise<boolean>;
     lastWrittenHash: () => string | null;
     savedHashes: () => ReadonlySet<string>;
 };
@@ -27,7 +28,7 @@ export type ClipboardDetectionSources = {
 export function evaluateClipboardText(
     text: string,
     context: {
-        lastHandledHash: string | null;
+        handled: boolean;
         lastWrittenHash: string | null;
         savedHashes: ReadonlySet<string>;
     },
@@ -35,8 +36,7 @@ export function evaluateClipboardText(
     const content = normalizeExcerptContent(text);
     if (!content) return { kind: "skip", reason: "empty", hash: null };
     const hash = hashExcerptContent(content);
-    if (hash === context.lastHandledHash)
-        return { kind: "skip", reason: "handled", hash: null };
+    if (context.handled) return { kind: "skip", reason: "handled", hash: null };
     if (excerptLength(content) > EXCERPT_CONTENT_LIMIT)
         return { kind: "skip", reason: "tooLong", hash };
     if (hash === context.lastWrittenHash)
@@ -55,8 +55,11 @@ export async function detectClipboard(
     if (!(await sources.hasText()))
         return { kind: "skip", reason: "noText", hash: null };
     const text = await sources.readText();
+    const content = normalizeExcerptContent(text);
     return evaluateClipboardText(text, {
-        lastHandledHash: await sources.lastHandledHash(),
+        handled: content
+            ? await sources.isHandled(hashExcerptContent(content))
+            : false,
         lastWrittenHash: sources.lastWrittenHash(),
         savedHashes: sources.savedHashes(),
     });

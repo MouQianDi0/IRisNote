@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { AppState, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
+import { useApplicationDatabase } from "@/core/database";
 import { banner, captureNotificationSession } from "@/core/notifications";
 import {
     notifyReadingProgressChanged,
-    readingProgressStore,
+    readingProgressStoreFor,
 } from "../data/note-reading-progress";
 import { ReadingSession } from "../reading/reading-session";
 import type { ReadingPosition } from "../reading/reading-position";
@@ -26,7 +27,9 @@ export function useReadingProgress({
     position: (position: ReadingPosition) => void;
     getOffset: () => number;
 }) {
+    const database = useApplicationDatabase();
     const session = useMemo(() => {
+        const readingProgressStore = readingProgressStoreFor(database);
         const notificationSession = captureNotificationSession();
         const id = `reading-save:${ownerId}:${noteId}`;
         const resolveFailure = () => {
@@ -95,7 +98,7 @@ export function useReadingProgress({
             saved: resolveFailure,
         });
         return instance;
-    }, [ownerId, noteId, serverId, content, restore, position]);
+    }, [database, ownerId, noteId, serverId, content, restore, position]);
 
     useFocusEffect(
         useCallback(() => {
