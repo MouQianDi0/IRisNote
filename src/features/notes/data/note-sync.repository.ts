@@ -9,6 +9,7 @@ import {
     type SnapshotPage,
 } from "../api/notes-sync.types";
 import { reconcileNotesInTransaction } from "./note-local.repository";
+import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 import { deleteNoteRevisions } from "./note-revision.repository";
 import {
     archiveLocalNote,
@@ -250,6 +251,7 @@ export async function projectMirror(
                 continue;
             }
             await deleteNoteRevisions(tx, owner, row.client_id);
+            await deleteNoteReadingProgress(tx, owner, row.client_id);
             await tx.run(
                 "DELETE FROM local_notes WHERE owner_user_id=? AND client_id=?",
                 [owner, row.client_id],

@@ -1,4 +1,5 @@
 import { useApplicationDatabase } from "@/core/database";
+import { clearDiagnosticLog } from "@/core/diagnostics/diagnostic-log";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { getCloudStorageSnapshot } from "@/core/cloud-storage/cloud-storage-policy";
 import {
@@ -12,6 +13,7 @@ import {
     type CleanupSelection,
 } from "@/core/storage/storage-policy";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { readExcerptStorageStats } from "@/features/excerpts/data/excerpt-local.repository";
 import { readNoteCacheCandidates } from "@/features/notes/data/note-cache.repository";
 import { clearNoteCache } from "@/features/notes/services/note-cache.service";
 import { colors } from "@/shared/theme";
@@ -36,8 +38,14 @@ const labels = {
     updates: "更新缓存",
     shares: "分享临时文件",
     notes: "笔记缓存",
+    diagnostics: "诊断日志",
 };
-const keys: (keyof CleanupSelection)[] = ["updates", "shares", "notes"];
+const keys: (keyof CleanupSelection)[] = [
+    "updates",
+    "shares",
+    "notes",
+    "diagnostics",
+];
 const causeMessage = (cause: unknown) =>
     cause instanceof Error ? cause.message : "操作失败，请重试";
 
@@ -75,6 +83,10 @@ export default function DataStorageSettingsScreen() {
     const insets = useSafeAreaInsets();
     const [scan, setScan] = useState<StorageScan | null>(null);
     const [notes, setNotes] = useState({ count: 0, bytes: 0 });
+    const [excerpts, setExcerpts] = useState<{
+        count: number;
+        bytes: number;
+    } | null>(null);
     const [selection, setSelection] = useState(defaultCleanupSelection);
     const [loading, setLoading] = useState(true);
     const [cleaning, setCleaning] = useState(false);
@@ -105,6 +117,16 @@ export default function DataStorageSettingsScreen() {
             } catch {
                 noteError = "笔记缓存暂未统计，请重试";
             }
+            let excerptStats: { count: number; bytes: number } | null = null;
+            try {
+                if (owner !== null)
+                    excerptStats = await readExcerptStorageStats(
+                        db,
+                        `user:${owner}`,
+                    );
+            } catch {
+                excerptStats = null;
+            }
             if (
                 !focused.current ||
                 version !== scanVersion.current ||
@@ -116,14 +138,21 @@ export default function DataStorageSettingsScreen() {
                 count: candidates.length,
                 bytes: candidates.reduce((sum, row) => sum + row.bytes, 0),
             });
+            setExcerpts(excerptStats);
             setError(
-                noteError ||
-                    (files.errors ? "部分占用暂未统计，可重试读取" : ""),
+                [
+                    noteError ||
+                        (files.errors ? "部分占用暂未统计，可重试读取" : ""),
+                    owner !== null && !excerptStats ? "摘录暂未统计" : "",
+                ]
+                    .filter(Boolean)
+                    .join("；"),
             );
         } catch (cause) {
             if (focused.current && version === scanVersion.current) {
                 setScan(null);
                 setNotes({ count: 0, bytes: 0 });
+                setExcerpts(null);
                 setError(causeMessage(cause));
             }
         } finally {
@@ -150,6 +179,7 @@ export default function DataStorageSettingsScreen() {
         updates: (scan?.cleanable.updates ?? 0) > 0,
         shares: (scan?.cleanable.shares ?? 0) > 0,
         notes: !!scan?.supported && cloud.enabled && notes.count > 0,
+        diagnostics: (scan?.cleanable.diagnostics ?? 0) > 0,
     };
     const selected = Object.fromEntries(
         keys.map((key) => [key, selection[key] && available[key]]),
@@ -157,7 +187,8 @@ export default function DataStorageSettingsScreen() {
     const count = keys.filter((key) => selected[key]).length;
     const fileBytes =
         (selected.updates ? (scan?.cleanable.updates ?? 0) : 0) +
-        (selected.shares ? (scan?.cleanable.shares ?? 0) : 0);
+        (selected.shares ? (scan?.cleanable.shares ?? 0) : 0) +
+        (selected.diagnostics ? (scan?.cleanable.diagnostics ?? 0) : 0);
     const disabled =
         loading ||
         cleaning ||
@@ -196,11 +227,13 @@ export default function DataStorageSettingsScreen() {
         },
     ];
     const descriptions = {
-        updates: "已安装版本和更旧的更新文件；正在使用的文件会保留",
-        shares: "已结束使用超过 24 小时的临时导出文件",
+        updates:
+            "已安装版本和更旧的更新文件；正在使用的文件会保留；每次启动后也会自动清理",
+        shares: "已结束使用超过 24 小时的临时导出文件；每次启动后也会自动清理",
         notes: !cloud.enabled
             ? "需开启云存储并联网核实副本后清理"
             : "清理后需联网重新同步；未同步内容、草稿与历史记录保留",
+        diagnostics: "用于帮助与反馈排查问题；清理后无法导出此前的记录",
     };
     const values = {
         updates: amount(scan?.cleanable.updates),
@@ -208,7 +241,13 @@ export default function DataStorageSettingsScreen() {
         notes: loading
             ? "正在计算…"
             : `${notes.count} 条 · 内容约 ${formatBytes(notes.bytes)}`,
+        diagnostics: amount(scan?.cleanable.diagnostics),
     };
+    const excerptValue = loading
+        ? "正在计算…"
+        : excerpts
+          ? `${excerpts.count} 条 · 约 ${formatBytes(excerpts.bytes)}`
+          : "暂未统计";
 
     const clean = async () => {
         if (operation.current || disabled || !scan || owner === null) return;
@@ -249,6 +288,15 @@ export default function DataStorageSettingsScreen() {
             fileResult = await clearStorageFiles(scan, selected, check);
             if (fileResult.interrupted)
                 errors.push("页面、账号或授权已变化，后续文件已跳过");
+            else if (selected.diagnostics) {
+                try {
+                    check();
+                    await clearDiagnosticLog();
+                    fileResult.released += scan.cleanable.diagnostics;
+                } catch (cause) {
+                    errors.push(`诊断日志：${causeMessage(cause)}`);
+                }
+            }
         } catch (cause) {
             errors.push(causeMessage(cause));
         } finally {
@@ -330,7 +378,7 @@ export default function DataStorageSettingsScreen() {
                     <Detail
                         label="笔记与应用数据"
                         value={amount(scan?.totals.database)}
-                        description="包含笔记、待办、历史版本和同步数据"
+                        description="包含笔记、待办、摘录、历史版本和同步数据；历史版本每篇最多保留 50 个"
                     />
                     <View
                         style={{ height: 1, backgroundColor: colors.divider }}
@@ -339,6 +387,14 @@ export default function DataStorageSettingsScreen() {
                         label="草稿与恢复副本"
                         value={amount(scan?.totals.drafts)}
                         description="此处为独立草稿文件；数据库内草稿计入上项，清理时均保留"
+                    />
+                    <View
+                        style={{ height: 1, backgroundColor: colors.divider }}
+                    />
+                    <Detail
+                        label="摘录"
+                        value={excerptValue}
+                        description="只存在本机，没有云端副本；清理缓存时始终保留"
                     />
                 </Card>
                 <Text style={{ ...hint, marginTop: 20, marginBottom: 8 }}>
@@ -492,6 +548,16 @@ export default function DataStorageSettingsScreen() {
                         value={amount(scan?.totals.shares)}
                     />
                     <Detail
+                        label="头像"
+                        value={amount(scan?.totals.avatars)}
+                        description="每个登录过的账号保留一张，不自动清理"
+                    />
+                    <Detail
+                        label="诊断日志"
+                        value={amount(scan?.totals.diagnostics)}
+                        description="最多保留 400 条，用于帮助与反馈排查问题"
+                    />
+                    <Detail
                         label="其他已统计文件"
                         value={amount(scan?.totals.other)}
                         description="来源不明确的文件保留，不自动清理"
@@ -540,6 +606,9 @@ export default function DataStorageSettingsScreen() {
                             {selected.notes
                                 ? "笔记缓存清理后，相关笔记需要联网重新同步。仅本机笔记、未同步修改、草稿及历史记录会保留。"
                                 : "仅清理可安全移除的临时文件，笔记、草稿与待同步内容会保留。"}
+                            {selected.diagnostics
+                                ? "诊断日志清理后，无法在帮助与反馈中导出此前的记录。"
+                                : ""}
                         </Text>
                         <View
                             style={{

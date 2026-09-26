@@ -6,6 +6,7 @@ import {
     type NoteDeletion,
 } from "../api/notes-trash.types";
 import type { NoteDraft } from "./note-draft.repository";
+import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 import { insertNoteRevision } from "./note-revision.repository";
 import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import type { NoteSyncOperation, NoteSyncStatus } from "../notes.types";
@@ -503,6 +504,7 @@ export async function purgeLocalTrash(
         "DELETE FROM note_revisions WHERE owner_user_id=? AND client_id=?",
         [owner, row.client_id],
     );
+    await deleteNoteReadingProgress(tx, owner, row.client_id);
     await tx.run(
         "DELETE FROM note_drafts WHERE owner_user_id=? AND note_id=?",
         [owner, row.client_id],

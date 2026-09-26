@@ -17,6 +17,7 @@ import {
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useApplicationDatabase } from "@/core/database";
 import { readReadingProgress } from "../../data/note-reading-progress";
 import {
     DEFAULT_NOTE_STATISTICS_OPTIONS,
@@ -161,19 +162,22 @@ export function NoteOperationInfo({
     onSync: () => Promise<string>;
 }) {
     const cloud = useCloudStorage();
+    const database = useApplicationDatabase();
     const [progress, setProgress] = useState<number | null>(null);
     const [message, setMessage] = useState("");
     const [uploading, setUploading] = useState(false);
     useEffect(() => {
         let active = true;
         if (note.user_id != null)
-            void readReadingProgress(note.user_id, note.id).then((value) => {
-                if (active) setProgress(value);
-            });
+            void readReadingProgress(database, note.user_id, note.id).then(
+                (value) => {
+                    if (active) setProgress(value);
+                },
+            );
         return () => {
             active = false;
         };
-    }, [note.id, note.user_id]);
+    }, [database, note.id, note.user_id]);
     const statistics = useMemo(
         () =>
             getCachedNoteTextStatistics(
