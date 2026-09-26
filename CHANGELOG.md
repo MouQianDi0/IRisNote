@@ -1,3 +1,47 @@
+## 2026-09-26 00:56:11 | 新增文档：更新说明编写规范补充“完整包”预留规则
+
+- 变更概述：用户确认方案，并选择完整包版本在正文“升级提醒”中提示用户。开发者明确要求发布完整包时，预留命令加 `--full-package`；其余情况按默认规则，不加该参数。
+- 修改文件：docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 具体内容：① 第 6 节新增“预留时是否加 `--full-package`”：默认分发规则、仅开发者明确要求时才加（Agent 可建议但不自行添加）、预留后不可修改且对之后所有版本生效、使用前提指向 android-releases.md“完整包屏障（updatePolicy=3）”；预留时读取说明全文，故写说明时即确定是否完整包，使用时在“升级提醒”中通俗提示需要下载完整安装包，不写技术概念；交付说明写明是否使用及依据。② 第 8 节交付前检查新增对应一项。③ 第 9 节调用示例补充同一规则。
+- 验证：仅文档修改，未运行代码检查；Prettier 对该文档的 3 处提示位于第 9 节原有引用块，修改前已存在，本次新增内容无格式问题。未提交 Git。
+
+---
+
+## 2026-09-26 00:16:40 | 修复问题：摘录与阅读进度审查意见 7 条（退出登录丢写入、输入截断、昨天判断、剪贴板检测、复制结果、旧进度搬迁）
+
+- 变更概述：逐条核实 Codex 审查的 7 条意见均成立，用户确认分析报告与方案（第 2 条按文字预览：不截断、计数按规范化字数、超限变红；第 7 条按“删除标记 + 负数编号存在性检查”）。
+- 修改文件：src/features/excerpts/data/excerpt-local.repository.ts、src/shared/ui/BodyInput/BodyInput.tsx、src/features/excerpts/components/ExcerptFormDialog.tsx、src/features/excerpts/domain/excerpt-validation.ts、src/features/excerpts/domain/excerpt-display.ts、src/features/excerpts/domain/clipboard-detection.ts、src/features/excerpts/domain/clipboard-detection-trigger.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/services/excerpt-service.ts、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/notes/data/note-reading-progress.repository.ts、tests/excerpts/excerpt-local.test.cjs、tests/excerpts/clipboard-detection.test.cjs、tests/reading/reading-storage.test.cjs、tests/ui/body-input.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、CHANGELOG.md。
+- 具体内容：
+  ① P1 退出登录丢写入：摘录页挂载时，登录态变化会立即切到游客并取消“等队列清空再释放”，排队中或提交中的写入在事务里校验会话失败而回滚。改为会话只在受理时校验，已受理的写入固定写入调用时的账号与数据库、照常提交；提交后仅在会话未变时发布到列表。切换后才调用的写入仍被拒绝。
+  ② 输入截断：`BodyInput` 新增可选 `truncate`（默认 true）与 `measure`（默认按码点计数），待办表单行为不变；摘录表单不截断原文，计数按规范化正文（`measureExcerpt`，开头空行、末尾空白不计），超上限时计数变为 destructive 红色，保存沿用“内容超过 20000 字，建议保存为笔记”。
+  ③ 今天/昨天按本地日历日边界（`new Date(年, 月, 日±1)`）判断，不再加减 24 小时。
+  ④ 新增 `createSerialRunner`：检测进行中再次请求时不并发也不丢弃，本轮结束后补查一次（多次合并）。
+  ⑤ `detectClipboard` 在“有无文字”之后、读取正文之前再次确认开关；hook 的开关判断同时要求页面仍有焦点、账号未变。
+  ⑥ 新增 `copyExcerptText`：剪贴板写入返回 false 时按失败提示“复制失败 / 未能写入剪贴板，请重试”。
+  ⑦ 旧阅读进度搬迁跳过已删除笔记：有 `note_trash_purged` 标记，或本地编号（负数）且笔记表、回收站都没有；服务器编号本地查不到时照常搬迁（可能只是清理了缓存）。跳过的旧键同样从 AsyncStorage 删除。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 582 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）；新增回归测试 10 项，第 1、3、7 条的测试已确认在修复前失败。Prettier：本次文件均通过；`clipboard-handled.ts` 的格式警告为修改前既有，未改动。未做真机验证（退出登录时序、剪贴板系统提示、夏令时时区），未提交 Git。
+
+---
+
+## 2026-09-26 00:00:16 | 优化代码：完整包屏障版本上传结束时显示专用提示
+
+- 变更概述：用户确认计划与文案。屏障版本上传流程的最后一句不再显示“所需差量包已就绪”，改为说明该版本为完整包屏障、不生成差量包；普通版本提示不变。
+- 修改文件：scripts/release/upload.mjs、tests/releases/upload.test.cjs、CHANGELOG.md。
+- 具体内容：① `uploadBoth` 依据差量步骤前重新读取的服务端草稿记录 `full_package_required === true`，输出“完整 APK 已上传服务器和 COS；该版本为完整包屏障，不生成差量包。仍为草稿，请核对后运行 publish。”；② 新增测试分别核对普通版本与屏障版本的最后一句提示。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 572 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）；上传测试 7/7（新增 1 项）。未实际执行带 `--full-package` 的构建上传，未提交 Git。
+
+---
+
+## 2026-09-25 23:51:56 | 新增功能：发布系统“完整包屏障”，开发者可强制用户安装完整包（客户端与发布工具，配合 irisapi 策略 3）
+
+- 变更概述：用户确认方案：屏障语义（标记版本 N 后，N 之前安装的用户升级到 N 及之后版本都走完整包，不会因跳版本绕过）、仅在预留时标记且不可修改、不改变强制更新规则、仍用策略 2 的已安装客户端由服务端引导到屏障前的中间版本；弹窗加原因提示（文字预览已确认）。服务端改动见 irisapi 同时间记录。
+- 修改文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 具体内容：① `UpdatePolicy` 同时接受 v2 与 v3；v3 必须带布尔 `fullPackageRequired`，为 true 时同主版本 3 版内也期望完整包，未带标记时 3 版内完整包仍拒绝（不作为故障回退）；新增 `isFullPackageRequired`；② 检查更新请求 `updatePolicy=3`；③ 弹窗在屏障强制完整包时显示“完整更新（需完整安装包）· xx MB”，其余状态、布局与间距不变；④ `reserve` 新增 `--full-package`，预留后核对返回记录的 `full_package_required`，旧服务端忽略参数时报错停止并提示迁移 014；`patches` 对屏障版本提示无需差量包；⑤ 文档新增“完整包屏障”一节（规则、v2 客户端过渡、上线顺序）。
+- 上线顺序：irisapi 执行迁移 014 → 部署版本服务 → 正常发布一个包含本客户端的版本 → 之后才使用 `reserve --full-package`。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 571 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，修改前同样失败，既有环境问题，与本次无关）；发布测试 35 通过、1 跳过（新增 2 项：v3 屏障解析规则、屏障下同主版本完整包下载与校验）。未做真机验证，未部署、未提交 Git。
+
+---
+
 ## 2026-09-24 03:35:07 | 新增功能：IRisNote 0.4.2 正式发布（优化版本）
 
 - 变更概述：已获用户确认（含 publish 授权）。完成 0.4.2 优化版本全流程发布：更新说明 → 检查修复 → 预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。

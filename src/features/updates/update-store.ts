@@ -194,7 +194,7 @@ export async function checkForUpdate(manual = false) {
             buildCode: String(installed.buildCode),
             sha256: installed.sha256,
             deltaSupported: String(installed.deltaSupported),
-            updatePolicy: "2",
+            updatePolicy: "3",
         });
         const response = await fetch(
             `${endpoint.replace(/\/$/, "")}/latest?${query}`,

@@ -68,3 +68,29 @@ export function createDetectionTrigger({
         },
     };
 }
+
+/**
+ * 串行执行检测：进行中再次请求时不并发，也不丢弃——本轮结束后用最近一次请求的任务补查一次
+ * （期间多次请求合并为一次）。避免本轮已读到旧剪贴板、随后的变化却一直没有检测。
+ */
+export function createSerialRunner() {
+    let running = false;
+    let pending: (() => Promise<void>) | null = null;
+    return async function run(task: () => Promise<void>) {
+        if (running) {
+            pending = task;
+            return;
+        }
+        running = true;
+        try {
+            let next: (() => Promise<void>) | null = task;
+            while (next) {
+                pending = null;
+                await next();
+                next = pending;
+            }
+        } finally {
+            running = false;
+        }
+    };
+}

@@ -229,22 +229,18 @@ export class ExcerptLocalRepository {
         }
         if (!database || !this.ready)
             return Promise.reject(new Error("摘录尚未加载完成，请稍后重试"));
+        // 会话只在受理时校验。已受理的写入固定写入调用时的账号与数据库：排队或提交期间
+        // 切换账号（如退出登录）也照常完成，不回滚；新账号的读取排在它之后，不会交错。
         return this.enqueue(async () => {
-            this.assertSession(ownerKey, generation);
             const committed = await database.transaction(
-                async (transaction) => {
-                    this.assertSession(ownerKey, generation);
-                    const result = await task(transaction);
-                    this.assertSession(ownerKey, generation);
-                    return {
-                        result,
-                        entities: await readOwner(transaction, ownerKey),
-                    };
-                },
+                async (transaction) => ({
+                    result: await task(transaction),
+                    entities: await readOwner(transaction, ownerKey),
+                }),
             );
-            // 提交期间切换账号时，旧账号的写入仍有效，但不得发布到新账号的界面。
-            this.assertSession(ownerKey, generation);
-            this.publish(committed.entities);
+            // 切换账号后，旧账号的写入结果不得发布到新账号的界面。
+            if (this.ownerKey === ownerKey && this.generation === generation)
+                this.publish(committed.entities);
             return committed.result;
         });
     }

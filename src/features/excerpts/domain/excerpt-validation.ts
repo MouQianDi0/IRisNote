@@ -17,6 +17,11 @@ export function excerptLength(content: string): number {
     return Array.from(content).length;
 }
 
+/** 输入框计数：按保存时的规范化正文计，与上限校验口径一致。 */
+export function measureExcerpt(text: string): number {
+    return excerptLength(normalizeExcerptContent(text));
+}
+
 /** 返回可落库的规范化正文；空白或超长时抛出可展示的错误。 */
 export function prepareExcerptContent(text: string): string {
     const content = normalizeExcerptContent(text);

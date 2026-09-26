@@ -18,7 +18,10 @@ import { useClipboardDetection } from "../hooks/useClipboardDetection";
 import { useClipboardPreferences } from "../hooks/useClipboardPreferences";
 import { useExcerptScope } from "../hooks/useExcerptScope";
 import { clipboardService } from "../services/clipboard.service";
-import { pasteClipboardAsExcerpt } from "../services/excerpt-service";
+import {
+    copyExcerptText,
+    pasteClipboardAsExcerpt,
+} from "../services/excerpt-service";
 import { excerptRepository } from "../state/excerpt-store";
 import { ExcerptError, type ExcerptEntity } from "../excerpts.types";
 
@@ -154,7 +157,7 @@ export default function ExcerptsScreen() {
 
     const copy = useCallback(async (excerpt: ExcerptEntity) => {
         try {
-            await clipboardService.writeText(excerpt.content);
+            await copyExcerptText(clipboardService.writeText, excerpt.content);
             banner.show({ title: "已复制", type: "success" });
         } catch (cause) {
             banner.show({

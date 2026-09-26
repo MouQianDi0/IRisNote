@@ -13,17 +13,16 @@ export function excerptTimeLabel(iso: string, now = new Date()): string {
     const date = new Date(iso);
     if (!Number.isFinite(date.getTime())) return "";
     const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    const startOfToday = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate(),
-    ).getTime();
-    const day = 24 * 60 * 60 * 1000;
+    // 按本地日历日取零点，不加减固定毫秒：夏令时切换当天只有 23 或 25 小时。
+    const midnight = (offset: number) =>
+        new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() + offset,
+        ).getTime();
     const stamp = date.getTime();
-    if (stamp >= startOfToday && stamp < startOfToday + day)
-        return `今天 ${time}`;
-    if (stamp >= startOfToday - day && stamp < startOfToday)
-        return `昨天 ${time}`;
+    if (stamp >= midnight(0) && stamp < midnight(1)) return `今天 ${time}`;
+    if (stamp >= midnight(-1) && stamp < midnight(0)) return `昨天 ${time}`;
     if (date.getFullYear() === now.getFullYear())
         return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;

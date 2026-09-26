@@ -36,6 +36,7 @@ const {
 const {
     EXCERPT_CONTENT_LIMIT,
     filterExcerpts,
+    measureExcerpt,
     normalizeExcerptContent,
     prepareExcerptContent,
 } = require("@/features/excerpts/domain/excerpt-validation.ts");
@@ -43,6 +44,7 @@ const {
     excerptTimeLabel,
 } = require("@/features/excerpts/domain/excerpt-display.ts");
 const {
+    copyExcerptText,
     newExcerptId,
     pasteClipboardAsExcerpt,
 } = require("@/features/excerpts/services/excerpt-service.ts");
@@ -213,6 +215,39 @@ test("按账号隔离；切换账号后旧会话的写入被拒绝", async (t) =
     );
 });
 
+test("输入计数按规范化正文：开头空行不占上限，满额正文完整保存", async (t) => {
+    const { repo } = await setup(t);
+    const body = "字".repeat(EXCERPT_CONTENT_LIMIT - 1) + "尾";
+    const raw = "\n".repeat(100) + body + "\n  ";
+    assert.equal(measureExcerpt(raw), EXCERPT_CONTENT_LIMIT);
+    const receipt = await repo.save(owner, id(1), raw, "manual", t0);
+    assert.equal(receipt.entity.content, body);
+    assert.equal(measureExcerpt(`\n\n${body}多`), EXCERPT_CONTENT_LIMIT + 1);
+    await expectCode(repo.save(owner, id(2), `${body}多`, "manual", t0), "tooLong");
+});
+
+test("切换账号前已受理的写入照常提交，不发布到新账号的列表", async (t) => {
+    const { repo } = await setup(t);
+    await repo.save(owner, id(1), "账号一", "manual", t0);
+    const base = repo.get(owner, id(1));
+    // 不等待：写入仍在队列中时立即切换到游客（模拟退出登录）。
+    const saving = repo.save(owner, id(2), "退出前最后一条", "manual", t1);
+    const editing = repo.update(owner, base, { content: "退出前改过" }, t1);
+    const switching = repo.activate("guest:local");
+    assert.equal((await saving).entity.content, "退出前最后一条");
+    assert.equal((await editing).content, "退出前改过");
+    await switching;
+    assert.deepEqual(repo.list("guest:local"), []);
+    await repo.activate(owner);
+    assert.deepEqual(
+        repo
+            .list(owner)
+            .map((item) => item.content)
+            .sort(),
+        ["退出前最后一条", "退出前改过"].sort(),
+    );
+});
+
 test("粘贴一次：剪贴板为空时提示没有文字，否则以 paste 来源保存", async (t) => {
     const { repo } = await setup(t);
     await expectCode(
@@ -234,6 +269,19 @@ test("粘贴一次：剪贴板为空时提示没有文字，否则以 paste 来�
     assert.equal(receipt.entity.source, "paste");
     assert.equal(receipt.entity.content, "https://example.com");
     assert.match(newExcerptId(), /^[0-9a-f-]{36}$/);
+});
+
+test("复制：剪贴板写入返回 false 时按失败处理", async () => {
+    const written = [];
+    await copyExcerptText(async (text) => {
+        written.push(text);
+        return true;
+    }, "正文");
+    assert.deepEqual(written, ["正文"]);
+    await assert.rejects(
+        copyExcerptText(async () => false, "正文"),
+        /未能写入剪贴板/,
+    );
 });
 
 test("搜索忽略大小写；时间标签区分今天、昨天、今年和往年", async (t) => {
@@ -264,4 +312,34 @@ test("搜索忽略大小写；时间标签区分今天、昨天、今年和往�
         excerptTimeLabel(new Date(2025, 11, 31, 8, 0).toISOString(), now),
         "2025年12月31日",
     );
+});
+
+test("夏令时切换后的“昨天”按日历日判断", () => {
+    const previous = process.env.TZ;
+    process.env.TZ = "America/New_York";
+    try {
+        // 2026-03-08 只有 23 小时：前天 23:30 不是昨天。
+        const spring = new Date(2026, 2, 9, 12, 0);
+        assert.equal(
+            excerptTimeLabel(new Date(2026, 2, 7, 23, 30).toISOString(), spring),
+            "3月7日 23:30",
+        );
+        assert.equal(
+            excerptTimeLabel(new Date(2026, 2, 8, 0, 30).toISOString(), spring),
+            "昨天 00:30",
+        );
+        // 2026-11-01 有 25 小时：昨天 00:30 仍是昨天。
+        const autumn = new Date(2026, 10, 2, 12, 0);
+        assert.equal(
+            excerptTimeLabel(new Date(2026, 10, 1, 0, 30).toISOString(), autumn),
+            "昨天 00:30",
+        );
+        assert.equal(
+            excerptTimeLabel(new Date(2026, 10, 2, 23, 59).toISOString(), autumn),
+            "今天 23:59",
+        );
+    } finally {
+        if (previous === undefined) delete process.env.TZ;
+        else process.env.TZ = previous;
+    }
 });

@@ -128,6 +128,13 @@ test("旧数据搬迁：已有的 SQLite 记录不被覆盖，只删除已搬迁
             "INSERT INTO note_reading_progress (owner_user_id, note_id, record_json, updated_at) VALUES (1, 2, '88', 'x')",
         )
         .run();
+    // 本地编号（负数）的笔记仍存在时才搬迁。
+    sqlite
+        .prepare(
+            `INSERT INTO local_notes (owner_user_id, client_id, title, created_at, local_updated_at)
+             VALUES (1, -5, 't', 'x', 'x')`,
+        )
+        .run();
     const legacy = legacyStorage([
         ["irisnote:reading:1:2", "10"],
         ["irisnote:reading:1:-5", "25"],
@@ -144,6 +151,33 @@ test("旧数据搬迁：已有的 SQLite 记录不被覆盖，只删除已搬迁
     assert.deepEqual(await store.read(1, -5), { percent: 25 });
     assert.deepEqual(await store.read(2, 9), { percent: 70 });
     assert.equal(await migrateLegacyReadingProgress(database, legacy), 0);
+});
+
+test("旧数据搬迁跳过已删除笔记的进度，旧键一并清理", async (t) => {
+    const { sqlite, database } = await setup(t);
+    const run = (sql) => sqlite.prepare(sql).run();
+    // 服务器编号 4 已彻底删除（有标记）；本地编号 -8 在回收站；-9 已不存在（编号可能被复用）。
+    run("INSERT INTO note_trash_purged (owner_user_id, client_id, server_id) VALUES (1, 4, 4)");
+    run("INSERT INTO note_trash (owner_user_id, client_id, state) VALUES (1, -8, 'local')");
+    const legacy = legacyStorage([
+        ["irisnote:reading:1:4", "10"],
+        ["irisnote:reading:1:-8", "20"],
+        ["irisnote:reading:1:-9", "30"],
+        // 服务器编号笔记本地查不到（可能只是清理了缓存），照常搬迁。
+        ["irisnote:reading:1:6", "40"],
+        // 删除标记按账号区分。
+        ["irisnote:reading:2:4", "50"],
+    ]);
+    assert.equal(await migrateLegacyReadingProgress(database, legacy), 5);
+    assert.equal(legacy.map.size, 0);
+    const store = new ReadingProgressStore(
+        sqliteReadingStorage(database, Promise.resolve()),
+    );
+    assert.equal(await store.read(1, 4), null);
+    assert.deepEqual(await store.read(1, -8), { percent: 20 });
+    assert.equal(await store.read(1, -9), null);
+    assert.deepEqual(await store.read(1, 6), { percent: 40 });
+    assert.deepEqual(await store.read(2, 4), { percent: 50 });
 });
 
 test("搬迁失败时旧键全部保留，存储仍可正常读写", async (t) => {

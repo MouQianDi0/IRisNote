@@ -59,6 +59,26 @@ test('policy v2 accepts only the declared three-release window and validates the
     assert.throws(() => policy.parseRelease({ ...release, updatePolicy }, release.packageName, current), /无效更新策略/);
   assert.throws(() => policy.parseRelease({ ...release, updatePolicy: { version: 2, releasesBehind: 4, mandatory: true }, delivery: { ...release.delivery, sha256: 'c'.repeat(64) } }, release.packageName, current), /完整包信息不匹配/);
 });
+
+test('policy v3 full-package barrier requires the full APK inside the delta window without changing mandatory', () => {
+  const current = { ...installed, version: '1.0.0' };
+  for (const behind of [1, 2, 3, 4]) {
+    const updatePolicy = { version: 3, releasesBehind: behind, mandatory: behind >= 3, fullPackageRequired: true };
+    const parsed = policy.parseRelease({ ...release, updatePolicy }, release.packageName, current);
+    assert.equal(parsed.delivery.mode, 'full');
+    assert.equal(policy.isFullPackageRequired(parsed), true);
+    assert.equal(policy.isRequiredUpdate(parsed), behind >= 3);
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy, delivery: deltaDelivery }, release.packageName, current), /不符合版本规则/);
+    // Without the flag, a full APK inside the window is still refused rather than trusted.
+    const plain = { ...updatePolicy, fullPackageRequired: false };
+    assert.equal(policy.isFullPackageRequired(policy.parseRelease({ ...release, updatePolicy: plain, delivery: behind > 3 ? release.delivery : deltaDelivery }, release.packageName, current)), false);
+    if (behind <= 3) assert.throws(() => policy.parseRelease({ ...release, updatePolicy: plain }, release.packageName, current), /不符合版本规则/);
+  }
+  for (const fullPackageRequired of [undefined, 'true', 1, null])
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy: { version: 3, releasesBehind: 1, mandatory: false, fullPackageRequired } }, release.packageName, current), /无效更新策略/);
+  assert.equal(policy.isFullPackageRequired(null), false);
+  assert.equal(policy.isFullPackageRequired({ ...release, updatePolicy: { version: 2, releasesBehind: 4, mandatory: true } }), false);
+});
 test('tool verifies APK identity and sole certificate', async () => {
   const lib = await import('../../scripts/release/lib.mjs');
   const info = lib.parseApkInfo("package: name='com.mouqiandi.irisNote' versionCode='28' versionName='1.1.0'");
@@ -100,7 +120,10 @@ async function sandbox(options = {}) {
   const storage = options.storage ?? new Map();
   const queries = [];
   const servedRelease = { ...release, delivery: options.delta ? { ...deltaDelivery } : { ...release.delivery } };
-  if (options.behind) servedRelease.updatePolicy = { version: 2, releasesBehind: options.behind, mandatory: options.behind >= 3 };
+  if (options.behind) servedRelease.updatePolicy = options.fullPackage
+    ? { version: 3, releasesBehind: options.behind, mandatory: options.behind >= 3, fullPackageRequired: true }
+    : { version: 2, releasesBehind: options.behind, mandatory: options.behind >= 3 };
+  const installedVersion = options.delta || options.sameMajor ? '1.0.0' : '0.9.0';
   if (options.unavailable) servedRelease.delivery = { mode: 'unavailable', reason: '缺少匹配的差量包' };
   const downloaded = options.delta ? patchBytes : payload;
   const dependencies = {
@@ -109,9 +132,9 @@ async function sandbox(options = {}) {
       setItem: async (key, value) => { storage.set(key, value); },
       removeItem: async key => { storage.delete(key); },
     },
-    'expo-application': { applicationId: release.packageName, nativeBuildVersion: options.buildVersion ?? '27', nativeApplicationVersion: options.delta ? '1.0.0' : '0.9.0' },
+    'expo-application': { applicationId: release.packageName, nativeBuildVersion: options.buildVersion ?? '27', nativeApplicationVersion: installedVersion },
     '../../../modules/irisnote-updater': options.missingNative ? null : {
-      getInstalledApk: async () => ({ ...installed, version: options.delta ? '1.0.0' : '0.9.0' }),
+      getInstalledApk: async () => ({ ...installed, version: installedVersion }),
       applyPatch: async (args) => {
         if (options.mergeFailure) throw Error('差量合并失败');
         scans.push('base', 'patch');
@@ -223,11 +246,11 @@ test('cleanup failures preserve startup, continue other files and retry after re
   }
 });
 
-test('startup queries policy v2 despite a recent check in an earlier session', async () => {
+test('startup queries policy v3 despite a recent check in an earlier session', async () => {
   const storage = new Map([['irisnote.release.last-check', String(Date.now())]]);
   const s = await sandbox({ storage, behind: 4 });
   await s.store.checkForUpdate();
-  assert.equal(new URL(s.queries[0]).searchParams.get('updatePolicy'), '2');
+  assert.equal(new URL(s.queries[0]).searchParams.get('updatePolicy'), '3');
   assert.equal(s.store.useUpdateStore.getState().visible, true);
   await s.store.checkForUpdate();
   assert.equal(s.queries.length, 1);
@@ -396,6 +419,19 @@ test('delta preparation and installation scan target only twice and remove patch
   assert.equal([...files.keys()].some((key) => key.endsWith('.hdiff')), false);
   assert.equal(calls.length, 1);
   assert.deepEqual(scans, ['base', 'patch', 'target', 'install']);
+});
+
+test('full-package barrier downloads and verifies the full APK inside the delta window', async () => {
+  const { store, calls, scans } = await sandbox({ behind: 1, sameMajor: true, fullPackage: true });
+  await store.checkForUpdate(true);
+  const served = store.useUpdateStore.getState().release;
+  assert.equal(policy.isFullPackageRequired(served), true);
+  assert.equal(policy.isRequiredUpdate(served), false);
+  await store.downloadUpdate();
+  assert.equal(store.useUpdateStore.getState().phase, 'ready');
+  assert.deepEqual(scans, ['target', 'install']);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'android.intent.action.VIEW');
 });
 
 test('failed merge and missing patch never fall back to full APK', async () => {

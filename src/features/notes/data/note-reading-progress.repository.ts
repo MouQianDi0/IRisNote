@@ -29,8 +29,33 @@ function parseKey(key: string) {
 const keyFor = (owner: number, note: number) => `${KEY_PREFIX}${owner}:${note}`;
 
 /**
+ * 旧版从不清理已删除笔记的进度键，搬迁前先排除确定已删除的笔记：
+ * 有彻底删除标记；或是本地编号（负数，取自 rowid，删除后可能复用给新建笔记）
+ * 且笔记表、回收站都没有——否则新笔记会继承旧进度。服务器编号不会复用，
+ * 笔记可能只是被清理了本地缓存，照常搬迁。
+ */
+async function isDeletedNote(tx: Tx, owner: number, note: number) {
+    if (
+        await tx.getFirst(
+            "SELECT 1 FROM note_trash_purged WHERE owner_user_id=? AND client_id=?",
+            [owner, note],
+        )
+    )
+        return true;
+    return (
+        note < 0 &&
+        !(await tx.getFirst(
+            `SELECT 1 FROM local_notes WHERE owner_user_id=? AND client_id=?
+             UNION ALL SELECT 1 FROM note_trash WHERE owner_user_id=? AND client_id=? LIMIT 1`,
+            [owner, note, owner, note],
+        ))
+    );
+}
+
+/**
  * 把旧版存在 AsyncStorage 的阅读进度搬进 SQLite。SQLite 已有的记录较新，不被覆盖；
- * 写入事务提交后才删除旧键，中途失败时旧键保留，下次启动重试。返回搬迁的键数。
+ * 已删除笔记的旧键不搬、随其他旧键一起删除。写入事务提交后才删除旧键，
+ * 中途失败时旧键保留，下次启动重试。返回处理（并已删除）的旧键数。
  */
 export async function migrateLegacyReadingProgress(
     database: ApplicationDatabase,
@@ -44,6 +69,7 @@ export async function migrateLegacyReadingProgress(
         for (const [key, value] of entries) {
             const id = parseKey(key);
             if (!id || value === null) continue;
+            if (await isDeletedNote(tx, id.owner, id.note)) continue;
             await tx.run(
                 `INSERT OR IGNORE INTO note_reading_progress
                  (owner_user_id, note_id, record_json, updated_at) VALUES (?, ?, ?, ?)`,
