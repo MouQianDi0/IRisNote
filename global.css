@@ -61,6 +61,16 @@
     --color-selected-surface: #EAF2FF;
     --color-destructive: #E94634;
     --color-on-destructive: #FFFFFF;
+    --color-todo-low-surface: #C5DFFC;
+    --color-todo-low-accent: #64A9F7;
+    --color-todo-normal-surface: #FDEBC4;
+    --color-todo-normal-accent: #F9C962;
+    --color-todo-high-surface: #FCCADB;
+    --color-todo-high-accent: #F76998;
+    --color-todo-done-surface: #CDF9DB;
+    --color-todo-done-accent: #71EF9B;
+    --color-todo-ended-surface: #E6E8EA;
+    --color-todo-ended-accent: #ACB2B9;
 
     --radius-indicator: 6px;
     --radius-control: 12px;

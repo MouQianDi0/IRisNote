@@ -22,7 +22,7 @@ export function SettingsOverviewItem({
         >
             <Icon size={22} color={colors.primary} />
             <Text
-                className="mt-2 text-center text-sm text-text-primary"
+                className="text-text-primary mt-2 text-center text-sm"
                 numberOfLines={1}
             >
                 {label}

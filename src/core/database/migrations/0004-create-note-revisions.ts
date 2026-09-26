@@ -47,7 +47,11 @@ export const createNoteRevisions: DatabaseMigration = {
         const localColumns = await database.getAllAsync<{ name: string }>(
             "PRAGMA table_info(local_notes)",
         );
-        if (!localColumns.some((column) => column.name === "current_revision_id")) {
+        if (
+            !localColumns.some(
+                (column) => column.name === "current_revision_id",
+            )
+        ) {
             await database.execAsync(
                 "ALTER TABLE local_notes ADD COLUMN current_revision_id TEXT",
             );
@@ -55,7 +59,9 @@ export const createNoteRevisions: DatabaseMigration = {
         const draftColumns = await database.getAllAsync<{ name: string }>(
             "PRAGMA table_info(note_drafts)",
         );
-        if (!draftColumns.some((column) => column.name === "base_revision_id")) {
+        if (
+            !draftColumns.some((column) => column.name === "base_revision_id")
+        ) {
             await database.execAsync(
                 "ALTER TABLE note_drafts ADD COLUMN base_revision_id TEXT",
             );

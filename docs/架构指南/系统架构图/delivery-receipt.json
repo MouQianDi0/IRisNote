@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\Note project\\IRisNote\\docs\\架构指南\\系统架构图\\irisnote.architecture.json",
+  "output": "D:\\Note project\\IRisNote\\docs\\架构指南\\系统架构图\\irisnote-architecture.html",
+  "specification": {
+    "sha256": "4c9d13fe01f74167dc3c822ac99fdc388e46b37514eda0510222791ff2e9a1b0",
+    "bytes": 7680
+  },
+  "artifact": {
+    "sha256": "b7dc6b0b3f22f701cf48469d328e2ae7f720b81247ff73de968f431e6f5e2421",
+    "bytes": 819748
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "evidence": {
+    "verified": true,
+    "repository": "https://github.com/MouQianDi0/IRisNote",
+    "revision": "73b664cf543b9bc72c8ff36dd806d36c78dbd310",
+    "references": 14
+  }
+}

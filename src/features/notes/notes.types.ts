@@ -1,9 +1,5 @@
 export type NoteSyncStatus =
-    | "pending"
-    | "syncing"
-    | "synced"
-    | "rejected"
-    | "unknown";
+    "pending" | "syncing" | "synced" | "rejected" | "unknown";
 
 export type NoteSyncOperation = "create" | "update";
 
@@ -29,6 +25,10 @@ export type Note = {
     sync_operation?: NoteSyncOperation | null;
     last_sync_error?: string | null;
     local_updated_at?: string;
+    /** 当前内容的实际修改时间；历史记录可能未知。 */
+    updated_at?: string | null;
+    /** 最近已知的云端内容修改时间。 */
+    server_updated_at?: string | null;
     /** 本地当前稳定版本指针；服务器来源的笔记在合并入库前为空。 */
     current_revision_id?: string | null;
 };
@@ -41,14 +41,16 @@ export type ServerNote = Omit<
     | "sync_operation"
     | "last_sync_error"
     | "local_updated_at"
+    | "server_updated_at"
 >;
 
 export type CreateNotePayload = {
     title: string;
     content: string;
     category_id?: number;
+    updated_at?: string;
 };
 
 export type UpdateNotePayload = Partial<
     Pick<Note, "title" | "content" | "category_id" | "is_pinned" | "is_starred">
->;
+> & { updated_at?: string | null };

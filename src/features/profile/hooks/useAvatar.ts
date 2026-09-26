@@ -1,69 +1,66 @@
-import {
-    collectAndUploadAvatarFromCamera,
-    collectAndUploadAvatarFromLibrary,
-} from "@/features/profile/services/avatar-picker.service";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { normalizeAvatarUrl } from "@/shared/utils/avatar";
-import { useState } from "react";
-import { Alert, type ImageSourcePropType } from "react-native";
+import { useEffect, useSyncExternalStore } from "react";
+import type { ImageSourcePropType } from "react-native";
+import {
+    dropCachedAvatar,
+    ensureCachedAvatar,
+    getAvatarCacheVersion,
+    readCachedAvatar,
+    subscribeAvatarCache,
+} from "../services/avatar-cache";
+import {
+    cacheableAvatarName,
+    chooseAvatarSource,
+} from "../utils/avatar-cache-key";
 
+/**
+ * 当前账号头像的展示数据：本地缓存优先（不联网，云存储关闭时也可显示）；
+ * 没有缓存且允许联网时显示远程地址并在后台写入本地缓存。
+ * 更换头像流程见 useAvatarUpdate。
+ */
 export function useAvatar() {
-    const { user, syncProfile } = useAuth();
-    const [avatarUploading, setAvatarUploading] = useState(false);
-    const [avatarKey, setAvatarKey] = useState(0);
+    const { user } = useAuth();
+    const { enabled: cloudEnabled, ownerUserId } = useCloudStorage();
+    useSyncExternalStore(
+        subscribeAvatarCache,
+        getAvatarCacheVersion,
+        getAvatarCacheVersion,
+    );
 
-    const avatarUri = normalizeAvatarUrl(user?.avatar);
+    const userId = user?.id;
+    const remoteUri = normalizeAvatarUrl(user?.avatar);
+    const cacheName =
+        userId !== undefined ? cacheableAvatarName(remoteUri, userId) : null;
+    const localUri =
+        userId !== undefined && cacheName
+            ? readCachedAvatar(userId, cacheName)
+            : null;
+    const networkAllowed = cloudEnabled && ownerUserId === userId;
+    const display = chooseAvatarSource({ localUri, remoteUri, networkAllowed });
 
-    const avatarSource: ImageSourcePropType | undefined = avatarUri
-        ? {
-              uri: avatarUri.startsWith("data:")
-                  ? avatarUri
-                  : `${avatarUri}${avatarUri.includes("?") ? "&" : "?"}t=${avatarKey}`,
-          }
+    useEffect(() => {
+        if (userId === undefined || !cacheName || !remoteUri) return;
+        if (localUri || !networkAllowed) return;
+        void ensureCachedAvatar(userId, cacheName, remoteUri);
+    }, [userId, cacheName, remoteUri, localUri, networkAllowed]);
+
+    const avatarSource: ImageSourcePropType | undefined = display
+        ? { uri: display.uri }
         : undefined;
 
-    const updateAvatar = async (source: "library" | "camera") => {
-        if (!user || avatarUploading) return;
-
-        setAvatarUploading(true);
-        try {
-            const result =
-                source === "library"
-                    ? await collectAndUploadAvatarFromLibrary()
-                    : await collectAndUploadAvatarFromCamera();
-
-            if (!result) return;
-
-            setAvatarKey((k) => k + 1);
-            await syncProfile();
-            Alert.alert("成功", "头像已更新");
-        } catch (err: any) {
-            const message =
-                err.response?.data?.error ||
-                (err.message === "Media library permission is required."
-                    ? "需要相册权限才能选择头像"
-                    : err.message === "Camera permission is required."
-                      ? "需要相机权限才能拍摄头像"
-                      : err.message || "头像更新失败，请稍后再试");
-            Alert.alert("提示", message);
-        } finally {
-            setAvatarUploading(false);
+    /** 图片无法显示时调用：本地文件损坏则丢弃缓存，由调用方回退默认图标。 */
+    const reportAvatarError = () => {
+        if (display?.from === "local" && userId !== undefined && cacheName) {
+            dropCachedAvatar(userId, cacheName);
         }
     };
 
-    const showAvatarOptions = () => {
-        Alert.alert("更换头像", "请选择头像来源", [
-            { text: "从相册选择", onPress: () => updateAvatar("library") },
-            { text: "拍照", onPress: () => updateAvatar("camera") },
-            { text: "取消", style: "cancel" },
-        ]);
-    };
-
     return {
-        avatarUri,
+        avatarUri: display?.uri,
         avatarSource,
-        avatarKey,
-        avatarUploading,
-        showAvatarOptions,
+        avatarKey: display?.uri ?? "none",
+        reportAvatarError,
     };
 }

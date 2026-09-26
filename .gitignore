@@ -63,6 +63,14 @@ example
 # Gradle 构建缓存（含 modules/* 子项目）
 .gradle/
 
+# Gradle 构建产物（含 modules/* 子项目）
+modules/*/android/build/
+
 # 运行日志与进程文件
 *.log
 *.pid
+
+.codegraph/
+# DSH 运行时插件与远程任务脚本（本机工具，不入库）
+dsh-webhook-remote/
+scripts/Send-DshTask.ps1

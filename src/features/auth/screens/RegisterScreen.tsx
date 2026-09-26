@@ -4,7 +4,12 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import {
+    checkNewPassword,
+    PASSWORD_HINT,
+} from "@/shared/utils/password-policy";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
@@ -18,6 +23,7 @@ export default function RegisterScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const passwordError = checkNewPassword(password);
     const [loading, setLoading] = useState(false);
     const [nickname, setNickname] = useState("");
     const [code, setCode] = useState("");
@@ -93,8 +99,8 @@ export default function RegisterScreen() {
             setFormError("两次密码不一致");
             return;
         }
-        if (password.length < 6) {
-            setFormError("密码至少6位");
+        if (passwordError) {
+            setFormError(passwordError);
             return;
         }
         if (!code.trim()) {
@@ -114,6 +120,7 @@ export default function RegisterScreen() {
             });
 
             // 保存 token 和用户信息
+            setCloudStorageSession(null, false, false);
             await AsyncStorage.setItem(storageKeys.authToken, data.token);
             await AsyncStorage.setItem(
                 storageKeys.authUser,
@@ -204,7 +211,7 @@ export default function RegisterScreen() {
                 />
                 <AuthField
                     label="密码"
-                    placeholder="至少6位"
+                    placeholder={PASSWORD_HINT}
                     password
                     value={password}
                     editable={!loading}
@@ -213,11 +220,7 @@ export default function RegisterScreen() {
                         setFormError("");
                     }}
                     autoComplete="new-password"
-                    error={
-                        password && password.length < 6
-                            ? "密码至少6位"
-                            : undefined
-                    }
+                    error={password ? (passwordError ?? undefined) : undefined}
                 />
                 <AuthField
                     label="确认密码"
@@ -255,7 +258,7 @@ export default function RegisterScreen() {
                         !code.trim() ||
                         sendingCode ||
                         !nickname.trim() ||
-                        password.length < 6 ||
+                        !!passwordError ||
                         password !== confirmPassword
                     }
                     onPress={handleRegister}

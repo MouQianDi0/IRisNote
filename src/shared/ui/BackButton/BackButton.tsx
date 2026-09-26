@@ -1,13 +1,9 @@
-import {
-    componentRecipes,
-    defaultThemePreset,
-    radii,
-} from "@/shared/theme";
+import { useTransitionLock } from "@/shared/hooks/useTransitionLock";
+import { componentRecipes, defaultThemePreset, radii } from "@/shared/theme";
 import { ArrowLeft } from "lucide-react-native";
 import {
     ActivityIndicator,
     Pressable,
-    type PressableProps,
     type ViewStyle,
 } from "react-native";
 import { AppText } from "../AppText";
@@ -43,6 +39,9 @@ export function BackButton({
     onPress,
     ...props
 }: BackButtonProps) {
+    const guardBack = useTransitionLock();
+    const handlePress = guardBack(onPress);
+
     if (!label) {
         return (
             <IconButton
@@ -56,7 +55,7 @@ export function BackButton({
                 className={className}
                 loading={loading}
                 disabled={disabled}
-                onPress={onPress}
+                onPress={handlePress}
             />
         );
     }
@@ -78,7 +77,7 @@ export function BackButton({
             disabled={unavailable}
             hitSlop={size === "compact" ? 2 : undefined}
             className={className}
-            onPress={onPress as PressableProps["onPress"]}
+            onPress={handlePress}
             style={({ pressed }) => [
                 labelStyle,
                 {
@@ -96,10 +95,7 @@ export function BackButton({
             ) : (
                 <ArrowLeft size={24} color={recipe.content} />
             )}
-            <AppText
-                variant="control"
-                tone={disabled ? "disabled" : "primary"}
-            >
+            <AppText variant="control" tone={disabled ? "disabled" : "primary"}>
                 {label}
             </AppText>
         </Pressable>

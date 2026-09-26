@@ -1,6 +1,7 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useAvatar } from "@/features/profile/hooks/useAvatar";
+import { UserAvatarImage } from "@/features/profile/components/UserAvatarImage";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
+import { parseCreatedAt } from "@/features/profile/utils/profile-validation";
 import { colors } from "@/shared/theme";
 import { Card, Screen } from "@/shared/ui";
 import { router, type Href } from "expo-router";
@@ -11,12 +12,13 @@ import {
     FileText,
     Folder,
     Star,
+    Trash2,
     User as UserIcon,
     type LucideIcon,
 } from "lucide-react-native";
+import { useEffect } from "react";
 import {
     ActivityIndicator,
-    Image,
     Pressable,
     ScrollView,
     Text,
@@ -24,6 +26,8 @@ import {
 } from "react-native";
 
 const cardStyle = { borderCurve: "continuous" as const };
+
+const personalInfoRoute = "/pages/user/profile" as Href;
 
 function SectionTitle({ children }: { children: string }) {
     return (
@@ -50,12 +54,14 @@ function OverviewMetric({
             accessibilityLabel={`${label}，${value ?? "暂不可用"}`}
             className="min-w-0 flex-1 items-center px-1 py-1"
         >
-            <Icon size={22} color={colors.primary} />
+            <View className="h-6 w-6 items-center justify-center">
+                <Icon size={22} color={colors.primary} />
+            </View>
             <View className="mt-2 h-6 items-center justify-center">
                 {loading ? (
                     <ActivityIndicator color={colors.primary} size="small" />
                 ) : (
-                    <Text className="text-[17px] text-text-primary">
+                    <Text className="text-text-primary text-[17px]">
                         {value ?? "—"}
                     </Text>
                 )}
@@ -88,8 +94,10 @@ function ContentRow({
                 className="min-h-14 flex-row items-center gap-3 px-4 py-3 active:bg-surface-muted active:opacity-[0.85]"
                 onPress={onPress}
             >
-                <Icon size={22} color={colors.primary} />
-                <Text className="min-w-0 flex-1 text-[17px] text-text-primary">
+                <View className="h-6 w-6 items-center justify-center">
+                    <Icon size={22} color={colors.primary} />
+                </View>
+                <Text className="text-text-primary min-w-0 flex-1 text-[17px]">
                     {label}
                 </Text>
                 {value ? (
@@ -106,9 +114,30 @@ function ContentRow({
 
 export default function ProfileScreen() {
     const { user, isLoggedIn, loading: authLoading } = useAuth();
-    const { avatarSource, avatarKey, avatarUploading, showAvatarOptions } =
-        useAvatar();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
+
+    useEffect(() => {
+        const mountedAt = Date.now();
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "profile",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
+        return () => {
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "profile",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
+        };
+    }, []);
 
     if (authLoading) {
         return (
@@ -130,7 +159,7 @@ export default function ProfileScreen() {
                         style={cardStyle}
                     >
                         <UserIcon size={32} color={colors.primary} />
-                        <Text className="mt-4 text-[17px] text-text-primary">
+                        <Text className="text-text-primary mt-4 text-[17px]">
                             尚未登录
                         </Text>
                         <Text className="mt-2 text-center text-sm leading-5 text-hyper-text-secondary">
@@ -153,18 +182,17 @@ export default function ProfileScreen() {
     }
 
     const displayName = user.nickname?.trim() || user.email.split("@")[0];
-    const joinedAt = new Date(user.created_at).toLocaleDateString("zh-CN");
+    const createdAt = parseCreatedAt(user.created_at);
+    const joinedText = createdAt
+        ? `${createdAt.toLocaleDateString("zh-CN")} 加入`
+        : "加入时间暂不可用";
     const openNotes = (view?: "starred", drafts?: boolean) => {
-        router.replace(
-            view || drafts
-                ? ({
-                      pathname: "/(tabs)/note",
-                      params: {
-                          ...(view ? { view } : {}),
-                          ...(drafts ? { drafts: "1" } : {}),
-                      },
-                  } as Href)
-                : "/(tabs)/note",
+        router.push(
+            drafts
+                ? "/pages/user/drafts"
+                : view === "starred"
+                  ? "/pages/user/starred"
+                  : "/pages/user/notes",
         );
     };
 
@@ -180,44 +208,27 @@ export default function ProfileScreen() {
                     style={{ flexGrow: 1 }}
                 >
                     <View>
-                        <Card
-                            className="flex-row items-center rounded-hyper-card p-4"
+                        <Pressable
+                            accessibilityLabel={`${displayName}，${user.email}，查看个人资料`}
+                            accessibilityRole="button"
+                            className="min-h-24 flex-row items-center rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                            onPress={() => router.push(personalInfoRoute)}
                             style={cardStyle}
                         >
-                            <Pressable
-                                accessibilityLabel={`更换${displayName}的头像`}
-                                accessibilityRole="button"
-                                accessibilityState={{
-                                    disabled: avatarUploading,
-                                }}
-                                className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected active:opacity-[0.85]"
-                                disabled={avatarUploading}
-                                onPress={showAvatarOptions}
-                            >
-                                {avatarSource ? (
-                                    <Image
-                                        key={avatarKey}
-                                        className="h-full w-full rounded-full"
-                                        source={avatarSource}
-                                    />
-                                ) : (
-                                    <UserIcon
-                                        size={30}
-                                        color={colors.primary}
-                                    />
-                                )}
-                                {avatarUploading ? (
-                                    <View className="absolute inset-0 items-center justify-center bg-overlay">
-                                        <ActivityIndicator
-                                            accessibilityLabel="正在上传头像"
-                                            color={colors.surfaceFull}
+                            <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
+                                <UserAvatarImage
+                                    className="h-full w-full rounded-full"
+                                    fallback={
+                                        <UserIcon
+                                            size={30}
+                                            color={colors.primary}
                                         />
-                                    </View>
-                                ) : null}
-                            </Pressable>
+                                    }
+                                />
+                            </View>
                             <View className="ml-[14px] min-w-0 flex-1">
                                 <Text
-                                    className="text-xl text-text-primary"
+                                    className="text-text-primary text-xl"
                                     numberOfLines={1}
                                 >
                                     {displayName}
@@ -232,15 +243,21 @@ export default function ProfileScreen() {
                                     className="mt-1 text-[13px] text-hyper-text-secondary"
                                     numberOfLines={1}
                                 >
-                                    {joinedAt} 加入
+                                    {joinedText}
                                 </Text>
                             </View>
-                        </Card>
+                            <View className="ml-2">
+                                <ChevronRight
+                                    size={18}
+                                    color={colors.textMuted}
+                                />
+                            </View>
+                        </Pressable>
 
                         <Card
                             accessible
                             accessibilityLabel="个人内容概览"
-                            className="mt-4 flex-row rounded-hyper-card px-2 py-3"
+                            className="mt-4 min-h-28 flex-row rounded-hyper-card px-2 py-3"
                             style={cardStyle}
                         >
                             <OverviewMetric
@@ -272,7 +289,7 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel={`继续阅读${overview.continueReading.title}，已读${overview.continueReading.percent}%`}
                                 accessibilityRole="button"
-                                className="rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
+                                className="min-h-[120px] rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
                                 onPress={() =>
                                     router.push({
                                         pathname: "/pages/note/[id]",
@@ -287,12 +304,14 @@ export default function ProfileScreen() {
                                 style={cardStyle}
                             >
                                 <View className="flex-row items-center">
-                                    <BookOpenText
-                                        size={22}
-                                        color={colors.primary}
-                                    />
+                                    <View className="h-[26px] w-[26px] items-center justify-center">
+                                        <BookOpenText
+                                            size={22}
+                                            color={colors.primary}
+                                        />
+                                    </View>
                                     <Text
-                                        className="ml-3 min-w-0 flex-1 text-[17px] text-text-primary"
+                                        className="text-text-primary ml-3 min-w-0 flex-1 text-[17px]"
                                         numberOfLines={1}
                                     >
                                         {overview.continueReading.title}
@@ -318,22 +337,24 @@ export default function ProfileScreen() {
                             <Pressable
                                 accessibilityLabel="还没有阅读记录，去看看笔记"
                                 accessibilityRole="button"
-                                className="items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
+                                className="min-h-[120px] items-center rounded-hyper-card bg-white px-4 py-5 active:opacity-[0.85]"
                                 onPress={() => openNotes()}
                                 style={cardStyle}
                             >
-                                {overviewLoading ? (
-                                    <ActivityIndicator
-                                        accessibilityLabel="正在加载阅读记录"
-                                        color={colors.primary}
-                                    />
-                                ) : (
-                                    <BookOpenText
-                                        size={26}
-                                        color={colors.hyperTextSecondary}
-                                    />
-                                )}
-                                <Text className="mt-3 text-sm text-text-primary">
+                                <View className="h-[26px] w-[26px] items-center justify-center">
+                                    {overviewLoading ? (
+                                        <ActivityIndicator
+                                            accessibilityLabel="正在加载阅读记录"
+                                            color={colors.primary}
+                                        />
+                                    ) : (
+                                        <BookOpenText
+                                            size={26}
+                                            color={colors.hyperTextSecondary}
+                                        />
+                                    )}
+                                </View>
+                                <Text className="text-text-primary mt-3 text-sm">
                                     {overviewLoading
                                         ? "正在读取阅读记录…"
                                         : "还没有可继续的阅读记录"}
@@ -376,8 +397,13 @@ export default function ProfileScreen() {
                             <ContentRow
                                 icon={Archive}
                                 label="草稿箱"
-                                last
                                 onPress={() => openNotes(undefined, true)}
+                            />
+                            <ContentRow
+                                icon={Trash2}
+                                label="垃圾桶"
+                                last
+                                onPress={() => router.push("/pages/user/trash")}
                             />
                         </Card>
                     </View>

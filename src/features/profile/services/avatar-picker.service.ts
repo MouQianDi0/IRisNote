@@ -1,7 +1,6 @@
 import type * as ImagePicker from "expo-image-picker";
 import * as ImagePickerModule from "expo-image-picker";
-import type { CollectedAvatar, UploadAvatarResponse } from "../profile.types";
-import { uploadUserAvatar } from "../api/profile.api";
+import type { CollectedAvatar } from "../profile.types";
 import { createAvatarDataUri } from "../utils/avatar";
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -43,22 +42,6 @@ export async function collectAvatarFromCamera(
         ...options,
     });
     return collectAvatarFromResult(result);
-}
-
-export async function collectAndUploadAvatarFromLibrary(
-    options?: ImagePicker.ImagePickerOptions,
-): Promise<UploadAvatarResponse | null> {
-    const collectedAvatar = await collectAvatarFromLibrary(options);
-    if (!collectedAvatar) return null;
-    return uploadUserAvatar(collectedAvatar.avatar);
-}
-
-export async function collectAndUploadAvatarFromCamera(
-    options?: ImagePicker.ImagePickerOptions,
-): Promise<UploadAvatarResponse | null> {
-    const collectedAvatar = await collectAvatarFromCamera(options);
-    if (!collectedAvatar) return null;
-    return uploadUserAvatar(collectedAvatar.avatar);
 }
 
 function collectAvatarFromResult(

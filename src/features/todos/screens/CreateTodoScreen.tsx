@@ -1,10 +1,26 @@
-import { Screen } from "@/shared/ui";
-import { Text } from "react-native";
+import { router } from "expo-router";
+import { toDateId } from "@/shared/utils/date-id";
+import { TodoFormDialog } from "../components/TodoFormDialog";
+import { useTodoScope } from "../hooks/useTodoScope";
+import { isValidDateId } from "../domain/todo-validation";
 
 export default function CreateTodoScreen() {
-    return (
-        <Screen variant="centeredMuted">
-            <Text className="text-2xl font-bold">新建待办</Text>
-        </Screen>
-    );
+    const scope = useTodoScope();
+    const close = () => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)/todo");
+    };
+    const dateId =
+        scope.selectedDateId && isValidDateId(scope.selectedDateId)
+            ? scope.selectedDateId
+            : toDateId(new Date());
+    return scope.ready ? (
+        <TodoFormDialog
+            key={`${scope.ownerKey}:${scope.generation}`}
+            ownerKey={scope.ownerKey}
+            generation={scope.generation}
+            dateId={dateId}
+            onClose={close}
+        />
+    ) : null;
 }

@@ -1,5 +1,10 @@
 import type { ApplicationDatabase } from "@/core/database";
 import {
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
+import { banner } from "@/core/notifications";
+import {
     cancelUploadTaskByDedupeKey,
     enqueueUploadTask,
     estimateJsonBytes,
@@ -11,11 +16,39 @@ import type {
     UpdateCategoryPayload,
 } from "@/features/notes/categories/categories.types";
 
-export function enqueueCategoryCreate(
+function captureCategoryAccess(ownerUserId: number) {
+    const report = (error: unknown): never => {
+        if (isCloudStoragePermissionError(error)) {
+            banner.show({
+                id: "category-cloud-permission",
+                type: "neutral",
+                title: "需要开启云存储",
+                message: error.message,
+            });
+        }
+        throw error;
+    };
+    let check: () => void;
+    try {
+        check = captureCloudStorageAccess(ownerUserId);
+    } catch (error) {
+        return report(error);
+    }
+    return () => {
+        try {
+            check();
+        } catch (error) {
+            report(error);
+        }
+    };
+}
+
+export async function enqueueCategoryCreate(
     database: ApplicationDatabase,
     ownerUserId: number,
     payload: CreateCategoryPayload,
 ) {
+    captureCategoryAccess(ownerUserId)();
     return enqueueUploadTask(database, {
         ownerUserId,
         kind: "category-create",
@@ -33,11 +66,13 @@ export async function enqueueCategoryUpdate(
     category: Category,
     changes: UpdateCategoryPayload,
 ) {
+    const checkPermission = captureCategoryAccess(ownerUserId);
     const dedupeKey = `category:${category.id}:update`;
     const existing = (await listUploadTasks(database, ownerUserId)).find(
         (task) => task.dedupeKey === dedupeKey,
     );
     const previous = existing?.payload.changes;
+    checkPermission();
     const mergedChanges = {
         ...(previous && typeof previous === "object" ? previous : {}),
         ...changes,
@@ -58,11 +93,13 @@ export async function enqueueCategoryDelete(
     ownerUserId: number,
     category: Category,
 ) {
+    const checkPermission = captureCategoryAccess(ownerUserId);
     await cancelUploadTaskByDedupeKey(
         database,
         ownerUserId,
         `category:${category.id}:update`,
     );
+    checkPermission();
     return enqueueUploadTask(database, {
         ownerUserId,
         kind: "category-delete",
@@ -85,11 +122,17 @@ export async function applyQueuedCategoryChanges(
         if (task.kind === "category-update") {
             const categoryId = task.payload.categoryId;
             const changes = task.payload.changes;
-            if (typeof categoryId !== "number" || !changes || typeof changes !== "object") continue;
+            if (
+                typeof categoryId !== "number" ||
+                !changes ||
+                typeof changes !== "object"
+            )
+                continue;
             const category = next.get(categoryId);
             if (category) next.set(categoryId, { ...category, ...changes });
         } else if (task.kind === "category-delete") {
-            if (typeof task.payload.categoryId === "number") next.delete(task.payload.categoryId);
+            if (typeof task.payload.categoryId === "number")
+                next.delete(task.payload.categoryId);
         }
     }
     return [...next.values()];

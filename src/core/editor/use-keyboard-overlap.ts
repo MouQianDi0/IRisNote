@@ -18,7 +18,9 @@ import { remainingKeyboardOverlap } from "./keyboard-layout";
 export function useKeyboardOverlap() {
     const [keyboardOverlap, setKeyboardOverlap] = useState(0);
     const keyboardOpen = useRef(Keyboard.isVisible());
-    const keyboardTop = useRef<number | null>(Keyboard.metrics?.()?.screenY ?? null);
+    const keyboardTop = useRef<number | null>(
+        Keyboard.metrics?.()?.screenY ?? null,
+    );
     const keyboardHeight = useRef(Keyboard.metrics?.()?.height ?? 0);
     const restingBottom = useRef<number | null>(null);
     const insets = useSafeAreaInsets();
@@ -42,18 +44,33 @@ export function useKeyboardOverlap() {
             }
             if (Platform.OS === "android" && keyboardHeight.current > 0) {
                 // 首次进入时键盘可能已打开。全面屏的窗口测量原点扣除了状态栏。
-                const baseline = restingBottom.current ?? Dimensions.get("screen").height
-                    - (StatusBar.currentHeight ?? 0) - bottomInset.current;
-                setKeyboardOverlap(remainingKeyboardOverlap(keyboardHeight.current, baseline, bottom, height));
+                const baseline =
+                    restingBottom.current ??
+                    Dimensions.get("screen").height -
+                        (StatusBar.currentHeight ?? 0) -
+                        bottomInset.current;
+                setKeyboardOverlap(
+                    remainingKeyboardOverlap(
+                        keyboardHeight.current,
+                        baseline,
+                        bottom,
+                        height,
+                    ),
+                );
             } else {
-                setKeyboardOverlap(top === null ? 0 : Math.max(0, Math.min(height, bottom - top)));
+                setKeyboardOverlap(
+                    top === null
+                        ? 0
+                        : Math.max(0, Math.min(height, bottom - top)),
+                );
             }
         });
     }, []);
 
     const scheduleKeyboardMeasurement = useCallback(() => {
         measureKeyboardOverlap();
-        if (layoutFrame.current !== null) cancelAnimationFrame(layoutFrame.current);
+        if (layoutFrame.current !== null)
+            cancelAnimationFrame(layoutFrame.current);
         layoutFrame.current = requestAnimationFrame(() => {
             layoutFrame.current = null;
             measureKeyboardOverlap();
@@ -62,11 +79,15 @@ export function useKeyboardOverlap() {
 
     useEffect(() => {
         alive.current = true;
-        const dimensions = Dimensions.addEventListener("change", scheduleKeyboardMeasurement);
+        const dimensions = Dimensions.addEventListener(
+            "change",
+            scheduleKeyboardMeasurement,
+        );
         return () => {
             alive.current = false;
             dimensions.remove();
-            if (layoutFrame.current !== null) cancelAnimationFrame(layoutFrame.current);
+            if (layoutFrame.current !== null)
+                cancelAnimationFrame(layoutFrame.current);
         };
     }, [scheduleKeyboardMeasurement]);
 
@@ -76,12 +97,23 @@ export function useKeyboardOverlap() {
     }, [insets.bottom, scheduleKeyboardMeasurement]);
 
     /** 由页面的 keyboardDidShow/Hide 监听转发事件；页面自身的 keyboardVisible 状态由页面维护。 */
-    const handleKeyboardEvent = useCallback((visible: boolean, event?: KeyboardEvent) => {
-        keyboardOpen.current = visible;
-        keyboardTop.current = visible ? event?.endCoordinates.screenY ?? Keyboard.metrics?.()?.screenY ?? null : null;
-        keyboardHeight.current = visible ? event?.endCoordinates.height ?? Keyboard.metrics?.()?.height ?? 0 : 0;
-        scheduleKeyboardMeasurement();
-    }, [scheduleKeyboardMeasurement]);
+    const handleKeyboardEvent = useCallback(
+        (visible: boolean, event?: KeyboardEvent) => {
+            keyboardOpen.current = visible;
+            keyboardTop.current = visible
+                ? (event?.endCoordinates.screenY ??
+                  Keyboard.metrics?.()?.screenY ??
+                  null)
+                : null;
+            keyboardHeight.current = visible
+                ? (event?.endCoordinates.height ??
+                  Keyboard.metrics?.()?.height ??
+                  0)
+                : 0;
+            scheduleKeyboardMeasurement();
+        },
+        [scheduleKeyboardMeasurement],
+    );
 
     return {
         keyboardOverlap,

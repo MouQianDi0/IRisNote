@@ -1,29 +1,45 @@
 import type { ApplicationDatabase } from "@/core/database";
-import { deleteNoteDraft, type DraftCommit } from "../data/note-draft.repository";
+import {
+    captureCloudStorageAccess,
+    getCloudStorageSnapshot,
+    isCloudStoragePermissionError,
+    isCloudStorageRequestDispatched,
+} from "@/core/cloud-storage/cloud-storage-policy";
+import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { isAxiosError, type AxiosProgressEvent } from "axios";
-import { createNote, updateNote } from "../api/notes.api";
+import {
+    createNote,
+    normalizeConflictNote,
+    updateNote,
+} from "../api/notes.api";
+import {
+    deleteNoteDraft,
+    type DraftCommit,
+} from "../data/note-draft.repository";
 import {
     acceptServerNote,
-    getLocalNoteByClientId,
     createPendingLocalNote,
+    getLocalNoteByClientId,
     markLocalNoteSynced,
     markLocalNoteSyncFailed,
     markLocalNoteSyncing,
+    reconcileServerNotes,
     updatePendingLocalNote,
 } from "../data/note-local.repository";
 import { setCachedNote } from "../notes.cache";
-import { notifyNotesChanged } from "../notes.events";
+import { beginNoteCloudWrite, notifyNotesChanged } from "../notes.events";
 import type {
     CreateNotePayload,
     Note,
     UpdateNotePayload,
 } from "../notes.types";
-import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 
 export type NoteCloudSaveState = "accepted" | "queued" | "rejected" | "unknown";
 
 export type NoteSaveResult = {
+    /** 本地保存有效；云存储尚未授权或当前会话不可用。 */
+    localOnly?: boolean;
     draftCleanupPending?: boolean;
     note: Note;
     cloudState: NoteCloudSaveState;
@@ -51,7 +67,16 @@ function publishNote(note: Note) {
 }
 
 function notifyLocalSaved(note: Note, callback?: (note: Note) => void) {
-    try { callback?.(note); } catch { console.warn("[Note save] 状态提示失败，本地保存与同步继续"); }
+    try {
+        callback?.(note);
+    } catch {
+        console.warn("[Note save] 状态提示失败，本地保存与同步继续");
+    }
+}
+
+function isLocalOnly(owner: number) {
+    const cloud = getCloudStorageSnapshot();
+    return !cloud.enabled || cloud.ownerUserId !== owner;
 }
 
 function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
@@ -69,10 +94,9 @@ function logUploadProgress(clientId: number, event: AxiosProgressEvent) {
     });
 }
 
-function classifyCloudFailure(error: unknown): Exclude<
-    NoteCloudSaveState,
-    "accepted" | "queued"
-> {
+function classifyCloudFailure(
+    error: unknown,
+): Exclude<NoteCloudSaveState, "accepted" | "queued"> {
     return isAxiosError(error) && error.response ? "rejected" : "unknown";
 }
 
@@ -82,12 +106,46 @@ async function syncPendingNote(
     note: Note,
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ): Promise<NoteSaveResult> {
+    const finish = beginNoteCloudWrite();
+    try {
+        return await syncPendingNoteWithReceipt(
+            database,
+            ownerUserId,
+            note,
+            onUploadProgress,
+        );
+    } finally {
+        finish();
+    }
+}
+
+async function syncPendingNoteWithReceipt(
+    database: ApplicationDatabase,
+    ownerUserId: number,
+    note: Note,
+    onUploadProgress?: (event: AxiosProgressEvent) => void,
+): Promise<NoteSaveResult> {
+    const checkAccess = captureCloudStorageAccess(ownerUserId);
+    if (
+        note.server_id != null &&
+        note.last_sync_error?.startsWith("云端笔记已删除")
+    ) {
+        return {
+            note,
+            cloudState: "rejected",
+            message: note.last_sync_error,
+            httpStatus: 404,
+            retryable: false,
+        };
+    }
     const syncingNote = await markLocalNoteSyncing(
         database,
         ownerUserId,
         note.id,
     );
+    if (!syncingNote) throw new Error("笔记已移入垃圾桶或不存在，已停止上传");
     if (syncingNote) publishNote(syncingNote);
+    let receivedResponse = false;
 
     console.log("[Note sync] 开始上传云端", {
         clientId: note.id,
@@ -96,13 +154,13 @@ async function syncPendingNote(
     });
 
     try {
+        checkAccess();
         let responseStatus: number | undefined;
         const uploadOptions = {
-            onUploadProgress: (event: AxiosProgressEvent) =>
-                {
-                    logUploadProgress(note.id, event);
-                    onUploadProgress?.(event);
-                },
+            onUploadProgress: (event: AxiosProgressEvent) => {
+                logUploadProgress(note.id, event);
+                onUploadProgress?.(event);
+            },
             onResponse: (status: number) => {
                 responseStatus = status;
                 console.log("[Note sync] 已收到云端响应", {
@@ -117,6 +175,9 @@ async function syncPendingNote(
                       {
                           title: note.title,
                           content: note.content ?? "",
+                          ...(note.updated_at
+                              ? { updated_at: note.updated_at }
+                              : {}),
                           ...(note.category_id == null
                               ? {}
                               : { category_id: note.category_id }),
@@ -129,9 +190,12 @@ async function syncPendingNote(
                           title: note.title,
                           content: note.content,
                           category_id: note.category_id,
+                          updated_at: note.updated_at ?? null,
                       },
                       uploadOptions,
                   );
+        receivedResponse = true;
+        checkAccess();
         const acceptedNote = await acceptServerNote(
             database,
             ownerUserId,
@@ -150,16 +214,107 @@ async function syncPendingNote(
             httpStatus: responseStatus ?? null,
             status: acceptedNote.sync_status,
         });
-        return { note: acceptedNote, cloudState: "accepted" };
+        return {
+            note: acceptedNote,
+            cloudState:
+                acceptedNote.sync_status === "synced" ? "accepted" : "queued",
+            retryable: acceptedNote.sync_status !== "synced",
+        };
     } catch (error: unknown) {
+        if (
+            isCloudStoragePermissionError(error) &&
+            !isCloudStorageRequestDispatched(error) &&
+            !receivedResponse
+        ) {
+            // A request rejected before dispatch has no uncertain server receipt.
+            await database.run(
+                `UPDATE local_notes SET sync_status = 'pending', last_sync_error = NULL
+                 WHERE owner_user_id = $owner AND client_id = $clientId
+                   AND sync_status = 'syncing' AND current_revision_id IS $revisionId`,
+                {
+                    $owner: ownerUserId,
+                    $clientId: note.id,
+                    $revisionId: note.current_revision_id ?? null,
+                },
+            );
+            const pendingNote = await getLocalNoteByClientId(
+                database,
+                ownerUserId,
+                note.id,
+            );
+            if (!pendingNote) throw error;
+            publishNote(pendingNote);
+            return {
+                note: pendingNote,
+                cloudState: "queued",
+                localOnly: true,
+                retryable: true,
+                message: "已保存在本机，开启云存储后可同步",
+            };
+        }
+        if (
+            isAxiosError<{ code?: string; note?: unknown }>(error) &&
+            error.response?.status === 409 &&
+            error.response.data?.code === "NOTE_EDIT_CONFLICT" &&
+            note.server_id != null
+        ) {
+            try {
+                checkAccess();
+                const remote = normalizeConflictNote(
+                    error.response.data.note,
+                    note.server_id,
+                );
+                await reconcileServerNotes(
+                    database,
+                    ownerUserId,
+                    [remote],
+                    undefined,
+                    {
+                        clientId: note.id,
+                        revisionId: note.current_revision_id ?? null,
+                    },
+                );
+                checkAccess();
+                const current = await getLocalNoteByClientId(
+                    database,
+                    ownerUserId,
+                    note.id,
+                );
+                if (current?.sync_status === "synced") {
+                    publishNote(current);
+                    return {
+                        note: current,
+                        cloudState: "accepted",
+                        message: "已同步云端较新的内容，本地历史版本已保留。",
+                    };
+                }
+                if (
+                    current &&
+                    current.current_revision_id !== note.current_revision_id
+                ) {
+                    publishNote(current);
+                    return {
+                        note: current,
+                        cloudState: "queued",
+                        retryable: true,
+                    };
+                }
+            } catch {
+                // 无效冲突快照/本地合并失败走普通失败处理，不能把未落库的内容标为成功。
+            }
+        }
         const cloudState = classifyCloudFailure(error);
-        const httpStatus = isAxiosError(error) ? error.response?.status : undefined;
+        const httpStatus = isAxiosError(error)
+            ? error.response?.status
+            : undefined;
         const retryable =
             httpStatus == null ||
             httpStatus === 408 ||
             httpStatus === 429 ||
             httpStatus >= 500;
-        const message = getApiErrorMessage(error, "云端同步失败");
+        const message = isCloudStoragePermissionError(error)
+            ? "云存储权限已关闭，已发出的请求结果尚未确认，保留本机内容"
+            : getApiErrorMessage(error, "云端同步失败");
         const failedNote = await markLocalNoteSyncFailed(
             database,
             ownerUserId,
@@ -226,6 +381,7 @@ export async function saveEditedNoteLocalFirst(
     if (!staged.shouldUpload) {
         return {
             note: staged.note,
+            localOnly: isLocalOnly(ownerUserId),
             cloudState: staged.cloudState ?? "accepted",
             unchanged: staged.unchanged,
             draftCleanupPending: staged.draftCleanupPending,
@@ -267,6 +423,29 @@ export async function stageEditedNoteForSync(
         revisionCreated,
     });
 
+    if (
+        localNote.server_id != null &&
+        localNote.last_sync_error?.startsWith("云端笔记已删除")
+    ) {
+        const retained = await markLocalNoteSyncFailed(
+            database,
+            ownerUserId,
+            localNote.id,
+            "rejected",
+            localNote.last_sync_error,
+        );
+        if (!retained) throw new Error("无法读取已保留的本地笔记");
+        publishNote(retained);
+        return {
+            note: retained,
+            shouldUpload: false,
+            cloudState: "rejected",
+            unchanged: !revisionCreated,
+            message: retained.last_sync_error ?? undefined,
+            httpStatus: 404,
+            retryable: false,
+        };
+    }
     if (note.server_id == null && note.sync_status === "unknown") {
         const message =
             "此前创建请求结果未知；为避免重复创建，本次仅保存本地改动。";
@@ -304,15 +483,20 @@ export async function stageEditedNoteForSync(
             localNote.id,
         );
         if (!syncedNote) {
-            throw new Error("[Note save] Unchanged note could not be reloaded.");
+            throw new Error(
+                "[Note save] Unchanged note could not be reloaded.",
+            );
         }
         publishNote(syncedNote);
         let draftCleanupPending = false;
         if (draft) {
-            try { await deleteNoteDraft(database, ownerUserId, draft); }
-            catch {
+            try {
+                await deleteNoteDraft(database, ownerUserId, draft);
+            } catch {
                 draftCleanupPending = true;
-                console.warn("[Note draft] 保存已完成，草稿清理未完成", { clientId: syncedNote.id });
+                console.warn("[Note draft] 保存已完成，草稿清理未完成", {
+                    clientId: syncedNote.id,
+                });
             }
         }
         console.info("[Note save] 内容未变化，未创建新版本", {
@@ -335,15 +519,22 @@ export async function stageEditedNoteForSync(
 }
 
 async function finishDraftSave(
-    database: ApplicationDatabase, owner: number, note: Note, draft?: DraftCommit,
+    database: ApplicationDatabase,
+    owner: number,
+    note: Note,
+    draft?: DraftCommit,
     unchanged = false,
 ): Promise<NoteSaveResult> {
     await enqueueNoteUpload(database, owner, note, draft);
+    const localOnly = isLocalOnly(owner);
     return {
         note,
+        localOnly,
         cloudState: "queued",
         unchanged,
-        message: "已加入本地暂存队列，服务器可用时将自动同步",
+        message: localOnly
+            ? "已保存在本机，开启云存储后可同步"
+            : "已加入本地暂存队列，服务器可用时将自动同步",
     } satisfies NoteSaveResult;
 }
 
@@ -352,13 +543,18 @@ export async function queueNoteUploadNow(
     database: ApplicationDatabase,
     owner: number,
     id: number,
-) {
+): Promise<NoteSaveResult> {
+    const checkAccess = captureCloudStorageAccess(owner);
     const note = await getLocalNoteByClientId(database, owner, id);
+    checkAccess();
     if (!note) throw new Error("笔记已不存在");
     if (note.server_id == null && note.sync_status === "unknown") {
-        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+        throw new Error(
+            "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
+        );
     }
     await enqueueNoteUpload(database, owner, note);
+    checkAccess();
     return {
         note,
         cloudState: "queued",
@@ -373,11 +569,16 @@ export async function uploadNoteNow(
     id: number,
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ) {
+    const checkAccess = captureCloudStorageAccess(owner);
     const note = await getLocalNoteByClientId(database, owner, id);
+    checkAccess();
     if (!note) throw new Error("笔记已不存在");
-    if (note.sync_status === "syncing") throw new Error("笔记正在同步，请稍后重试。");
+    if (note.sync_status === "syncing")
+        throw new Error("笔记正在同步，请稍后重试。");
     if (note.server_id == null && note.sync_status === "unknown") {
-        throw new Error("此前创建请求结果未知，为避免重复笔记，暂不能再次上传。");
+        throw new Error(
+            "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
+        );
     }
     return syncPendingNote(database, owner, note, onUploadProgress);
 }

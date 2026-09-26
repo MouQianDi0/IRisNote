@@ -1,0 +1,359 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "IRisNote 系统架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "animation": "none",
+    "viewBox": [
+      1340,
+      650
+    ],
+    "repository": {
+      "url": "https://github.com/MouQianDi0/IRisNote",
+      "revision": "73b664cf543b9bc72c8ff36dd806d36c78dbd310"
+    }
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "页面与笔记业务",
+      "sublabel": "Expo Router · React Native",
+      "tag": "会话 / 编辑器 / 主题",
+      "pos": [
+        50,
+        235
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/core/providers/AppProviders.tsx"
+        },
+        {
+          "path": "src/features/notes/services/note-save.service.ts"
+        }
+      ]
+    },
+    {
+      "id": "local",
+      "type": "database",
+      "label": "本地持久化",
+      "sublabel": "SQLite · AsyncStorage",
+      "tag": "笔记 / 草稿 / 版本 / 会话",
+      "pos": [
+        50,
+        60
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/core/database/migrations/index.ts"
+        },
+        {
+          "path": "src/features/auth/providers/AuthProvider.tsx"
+        }
+      ]
+    },
+    {
+      "id": "sync",
+      "type": "messagebus",
+      "label": "上传队列与 API 客户端",
+      "sublabel": "持久化任务 · Axios",
+      "tag": "重连 / 重试 / Token",
+      "pos": [
+        380,
+        235
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/core/sync/upload-queue-coordinator.ts"
+        },
+        {
+          "path": "src/shared/http/client.ts"
+        },
+        {
+          "path": "src/core/notifications/notification-provider.tsx"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "irisapi 服务",
+      "sublabel": "Express · JWT",
+      "tag": "笔记 / 分类 / 用户 / 发布",
+      "pos": [
+        710,
+        235
+      ],
+      "size": [
+        240,
+        90
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "用户 · 笔记 · 分类 · 版本",
+      "pos": [
+        1040,
+        235
+      ],
+      "size": [
+        240,
+        90
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "验证码 · 冷却 · 限流",
+      "pos": [
+        710,
+        60
+      ],
+      "size": [
+        240,
+        90
+      ]
+    },
+    {
+      "id": "email",
+      "type": "external",
+      "label": "Resend 邮件",
+      "sublabel": "注册 / 登录验证码",
+      "pos": [
+        1040,
+        60
+      ],
+      "size": [
+        240,
+        90
+      ]
+    },
+    {
+      "id": "avatars",
+      "type": "cloud",
+      "label": "MinIO 头像存储",
+      "sublabel": "API 代理上传与读取",
+      "pos": [
+        1040,
+        470
+      ],
+      "size": [
+        240,
+        90
+      ]
+    },
+    {
+      "id": "build",
+      "type": "backend",
+      "label": "构建与发布工具",
+      "sublabel": "本地 Gradle / EAS",
+      "tag": "预留版本绑定提交 SHA",
+      "pos": [
+        50,
+        470
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "scripts/release/cli.mjs"
+        },
+        {
+          "path": "eas.json"
+        }
+      ]
+    },
+    {
+      "id": "packages",
+      "type": "cloud",
+      "label": "安装包分发",
+      "sublabel": "源站 · 腾讯 COS / CDN",
+      "tag": "完整 APK / 差量补丁",
+      "pos": [
+        380,
+        470
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "scripts/release/upload.mjs"
+        },
+        {
+          "path": "scripts/release/cos.mjs"
+        }
+      ]
+    },
+    {
+      "id": "updater",
+      "type": "frontend",
+      "label": "Android 更新器",
+      "sublabel": "HDiffPatch · 原生安装",
+      "tag": "下载 / 合并 / 哈希与签名校验",
+      "pos": [
+        710,
+        470
+      ],
+      "size": [
+        240,
+        90
+      ],
+      "sources": [
+        {
+          "path": "src/features/updates/release.ts"
+        },
+        {
+          "path": "src/features/updates/update-store.ts"
+        },
+        {
+          "path": "modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "IRisNote 客户端 · 本地保存与联网同步",
+      "wraps": [
+        "client",
+        "local",
+        "sync"
+      ],
+      "pad": 26
+    }
+  ],
+  "connections": [
+    {
+      "id": "edit-local",
+      "from": "client",
+      "to": "local",
+      "label": "读写",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "client-network",
+      "from": "client",
+      "to": "sync",
+      "label": "保存 / 查询",
+      "variant": "emphasis"
+    },
+    {
+      "id": "queue-durable",
+      "from": "sync",
+      "to": "local",
+      "label": "任务落盘",
+      "fromSide": "top",
+      "toSide": "right"
+    },
+    {
+      "id": "api-call",
+      "from": "sync",
+      "to": "api",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "sql-call",
+      "from": "api",
+      "to": "postgres",
+      "label": "SQL",
+      "variant": "emphasis"
+    },
+    {
+      "id": "verification-state",
+      "from": "api",
+      "to": "redis",
+      "label": "校验 / 限流",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -40
+    },
+    {
+      "id": "send-code",
+      "from": "api",
+      "to": "email",
+      "label": "发送验证码",
+      "fromSide": "top",
+      "toSide": "left"
+    },
+    {
+      "id": "avatar-objects",
+      "from": "api",
+      "to": "avatars",
+      "label": "头像对象",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "publish-binaries",
+      "from": "build",
+      "to": "packages",
+      "label": "上传",
+      "variant": "emphasis"
+    },
+    {
+      "id": "download-binary",
+      "from": "updater",
+      "to": "packages",
+      "label": "下载",
+      "variant": "emphasis"
+    },
+    {
+      "id": "query-release",
+      "from": "updater",
+      "to": "api",
+      "label": "检查版本",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "本地保存与同步",
+      "items": [
+        "草稿、保存版本和上传任务分别持久化",
+        "账号与 Token 使用 AsyncStorage；上传失败保留任务"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Android 更新策略",
+      "items": [
+        "跨主版本或落后超过 3 版：完整包",
+        "同主版本近 3 版：差量；落后至少 3 版：强制更新"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "源码边界 · 2026-09-19",
+      "items": [
+        "待办、摘录：界面骨架，业务待接入",
+        "客户端 73b664c / 服务端 898440c；线上部署未核验"
+      ]
+    }
+  ]
+}

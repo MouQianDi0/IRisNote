@@ -12,10 +12,7 @@ import {
 import { calculateReadingTimeMinutes } from "./rules/readingTime";
 import { removeRanges } from "./rules/ranges";
 import { NOTE_STATISTICS_RULE_VERSION } from "./rules/version";
-import type {
-    NoteStatisticsOptions,
-    NoteTextStatistics,
-} from "./types";
+import type { NoteStatisticsOptions, NoteTextStatistics } from "./types";
 
 export { NOTE_STATISTICS_RULE_VERSION };
 export type {

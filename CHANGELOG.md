@@ -1,9 +1,1127 @@
+## 2026-09-24 12:08:17 | 新增功能：修改邮箱，并修复会话失效时编辑页拦截跳转（B3c 客户端）
+
+- 变更概述：用户确认 B3c 计划与 P05 文字预览，并追加“原身份可用当前密码验证”。个人资料“邮箱”行可进入修改邮箱页：第 1 步用原邮箱验证码或当前密码验证身份，第 2 步验证新邮箱并提交；所有设备保持登录。同时修复 B3a 遗漏：会话失效跳转欢迎页时，编辑页的离开保护不再弹出「放弃修改？」。依赖后端 B3c 接口（与 B3a/B3b 同批上线，需先执行迁移 013）。
+- 修改文件：src/features/profile/screens/ChangeEmailScreen.tsx（新增）、src/features/profile/hooks/useEmailChange.ts（新增）、src/app/pages/user/profile/email.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/api/account-security.api.ts、src/features/profile/utils/password-errors.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/providers/AuthProvider.tsx、src/shared/http/session-events.ts、src/shared/http/client.ts、tests/profile/password-change.test.cjs、tests/auth/session-rejected.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 五个修改邮箱接口调用（15 秒超时，保持云授权受控，附设备标识）；② `useEmailChange`：凭据只存于内存引用（不进状态存储、路由参数或日志），本地 10 分钟计时与服务端 `EMAIL_CHANGE_EXPIRED` 均退回第 1 步；提交结果未知时重新读取资料并提示核对；成功以服务端资料 `applyUser`；③ P05 按预览实现：两种验证方式以文字链接切换并清空输入；修改新邮箱后验证码清空、倒计时重置，只有向当前填写的新邮箱发过验证码才可提交；无「上一步」，返回走离开确认；④ 云存储提示改为按操作命名（`cloudRequiredMessage`）；⑤ 会话失效修复：`session-events` 新增同步标记，AuthProvider 退出前开启、重新登录后关闭，`useUnsavedLeaveGuard` 读到标记即放行。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 509 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 3 项通过；`useEmailChange` 与页面交互无渲染测试，需真机验收。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
+
+- 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。
+- 修改文件：src/shared/utils/password-policy.ts（新增）、src/features/profile/api/account-security.api.ts（新增）、src/features/profile/utils/password-errors.ts（新增）、src/features/profile/hooks/usePasswordChange.ts（新增）、src/features/profile/components/VerificationCodeField.tsx（新增）、src/features/profile/screens/ChangePasswordScreen.tsx（新增）、src/app/pages/user/profile/password.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/utils/profile-validation.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/profile/password-change.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新密码规则 6–64 个字符、UTF-8 ≤72 字节（手动按码点计字节，不依赖 TextEncoder），放在 `shared/utils` 供注册与资料共用（计划原写 profile/utils，为避免 auth 依赖 profile 调整位置）；注册页提示改为“6–64 个字符”；② 三个接口调用（15 秒超时，保持云授权受控），重设接口附加设备标识；③ 错误分类：云存储未开启且未发出 → 提示开启；已发出或无响应 → “修改结果未确认”；锁定/限流按服务端等待时间提示（分钟/秒，不重复拼接）；④ 成功以 `applyToken` 换新令牌；新令牌未能保存时主动退出并提示用新密码登录；⑤ P06 按预览实现，云存储关闭时 InlineHint 提示并禁用按钮（文案指向「同步与备份」，比预览中的「设置」更准确）；有输入离开弹出「放弃修改？」；离开保护新增 `allowLeave`；⑥ `maskEmail` 从个人资料页移至 `profile-validation.ts` 共用；个人资料“修改密码”行可点击。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 506 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 7 项通过。后端迁移 013 未执行、未部署；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 08:17:18 | 新增功能：登录失效统一处理与会话令牌替换（B3a 客户端）
+
+- 变更概述：用户确认 B3 执行计划（每次请求按主键查令牌版本、安全接口保持云授权受控、分 B3a/B3b/B3c 推进、注册同步新密码规则）并确认 B3a。服务端将在迁移 013 后按令牌版本拒绝已撤销的会话；客户端新增全局 401 处理，并为 B3b 修改密码后原地换新令牌提供 `applyToken`。
+- 修改文件：src/shared/http/session-events.ts（新增）、src/shared/http/client.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、tests/auth/session-rejected.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 响应拦截器在 401 且请求带 Bearer 令牌时发布“会话被拒”事件，携带该请求实际使用的令牌；`/auth/*`（登录、注册等凭据错误）与未带令牌的请求不发布；② AuthProvider 订阅该事件，仅当被拒令牌与本机当前保存的令牌相同时退出登录（旧账号或换令牌前发出的迟到请求不影响当前会话），并发多个 401 只处理一次；退出只清除登录态，不清理本地笔记、草稿与同步队列；随后显示横幅「登录已失效 / 请重新登录，本机数据不受影响」并回到欢迎页；③ 新增 `applyToken(token, user)`：核对本机账号后先落盘令牌、再写资料缓存并更新界面，账号已变化返回 false。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增测试 4/4；`npm run check` 类型检查、Lint、主题检查通过，测试 499 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。后端迁移 013 未执行、未部署；测试环境开启 DEV_AUTH_BYPASS 不会返回 401，未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 07:28:03 | 修复问题：头像预览弹窗中的头像不是正圆
+
+- 变更概述：用户确认问题分析与修复方案。预览容器宽度为 `100%`（上限 280），圆角却固定为 140。手机上内容区只有约 264dp，半径超过半边长，Android 上背景与裁剪路径处理不一致；「百分比宽度 + maxWidth + aspectRatio」组合也可能让容器不是正方形，两者都会导致头像不是正圆。
+- 修改文件：src/features/profile/components/AvatarPreviewDialog.tsx、CHANGELOG.md。
+- 具体内容：用 `useWindowDimensions` 计算数值边长 `size = min(280, 392, 屏宽 − 96)`，容器改为 `width/height = size`、`borderRadius = size / 2`，去掉百分比宽度和 aspectRatio；内部 `Image` 也设置同样的圆角，与页面小头像的双层圆角写法一致。弹窗布局、间距与按钮不变。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 495 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
+
+- 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
+- 修改文件：scripts/build-region-dictionary.mjs（新增）、src/features/profile/data/{regions.json,region-index.ts,REGIONS-LICENSE.md}（新增）、src/features/profile/utils/region-dictionary.ts（新增）、src/features/profile/hooks/useUnsavedLeaveGuard.ts（新增）、src/features/profile/screens/SelectRegionScreen.tsx（新增）、src/app/pages/user/profile/region.tsx（新增）、src/app/_layout.tsx、src/features/profile/components/ProfileTextEditor.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/profile.types.ts、src/shared/types/user.ts、src/features/settings/screens/AboutScreen.tsx、tests/profile/region-dictionary.test.cjs（新增）、docs/第三方数据许可.md（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 生成脚本固定 dr5hn `v3.2-export.7` 并校验 SHA-256，每国只取无上级条目，剔除军邮区、海外属地与地理单元；台湾、香港、澳门不作为第一级，归入中国省级并显示为中国台湾/中国香港/中国澳门；修正“汉城”“阿穆尔河”、印尼各巴布亚省误译为“巴布亚新几内亚”等错误，并以人工对照区分 18 组同名条目；出现未处理的重名、港澳台规则被破坏或名称超长时生成失败；② 字典 247 国家、3975 省州、约 159KB，首次使用时建立索引，JSON 行格式在运行时校验；③ P04：搜索（中英文名/编码，最多 50 条）、面包屑、分级列表、“不设置”与“选择某国不再细分”、失效编码提示、固定底栏“已选”与保存，保存携带编码、名称快照与字典版本；④ 未保存离开保护抽为 `useUnsavedLeaveGuard`，P02/P03 改用；⑤ 关于页“数据来源”只读行满足 ODbL 署名；⑥ 视觉规范升至 1.18。
+- 协作说明：本阶段期间另一会话完成了取消性别“自定义”及头像缓存 `File.move()` 后误删缓存的修复（见其各自记录），本条不包含这些改动。
+- 验证：`npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试除既有 2 项失败（发布归档本机路径过长、待办迁移版本）外全部通过，新增 6 项地区测试通过；`git diff --check` 通过。未做浏览器或真机验收；后端迁移 011 未执行；未提交 Git。
+
+---
+
+## 2026-09-24 02:29:22 | 优化代码：性别取消「自定义」，只保留不设置/男/女（客户端）
+
+- 变更概述：用户认为“自定义”选项与 `gender_custom` 字段多余，确认取消，并确认修改计划与性别弹窗文字预览。后端迁移 010 未在任何数据库执行，直接修订（见 irisapi CHANGELOG 同时间记录）。
+- 修改文件：src/shared/types/user.ts、src/features/profile/profile.types.ts、src/features/profile/utils/profile-validation.ts、src/features/profile/components/GenderPickerDialog.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、tests/profile/profile-editing.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `UserGender` 改为 `male | female`，删除 `User` 与 `ProfileChanges` 的 `gender_custom`；② 删除 `GENDER_CUSTOM_MAX`、`checkGenderCustom`，`formatGender` 只接收性别，未知取值（旧缓存残留的 custom）显示“不设置”；③ 性别弹窗移除“自定义”行、输入框与计数，保存只提交 `{ gender }`，未改变选择时保存禁用；未知初始值按“不设置”处理；④ 测试删除自定义校验用例，补充旧值显示用例；⑤ 视觉规范升至 1.17；规划文档修订 D04、D12、7.3 节、M03 与测试项。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 465/469 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。工作区另有进行中的 B2 地区改动（未提交），本次只改性别相关行。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 02:24:11 | 修复问题：头像本地缓存写入后被立即删除
+
+- 变更概述：用户确认问题分析与修复方案。`File.move()` 在 expo-file-system 57 中会把对象自身的 uri 改为目标位置，缓存写入收尾时按原对象清理“临时文件”，实际删掉了刚写好的缓存。导致「我的」页头像远程→空白→远程来回闪烁、离线或云存储关闭时只显示默认图标、每次启动重复下载、上传后闪烁。
+- 修改文件：src/features/profile/services/avatar-cache.ts、CHANGELOG.md。
+- 具体内容：`commit()` 的 finally 改为按临时文件名重新定位后再清理，不再使用已被 `move` 改指向的对象；去掉同步方法 `move` 前多余的 `await`。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）为既有失败、与本次无关；`git diff --check` 通过。未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 01:37:19 | 新增功能：个人资料编辑与头像本地缓存（B1 客户端）
+
+- 变更概述：用户确认 B1 计划与文字预览。开放用户名、个人简介、性别编辑（单项保存、版本冲突与结果未知处理、未保存离开确认）；头像改为本地缓存优先，加载失败回退默认图标；修正注册时间为空时显示 1970 年的问题。依赖后端 B1（迁移 010 与 `PATCH /api/user/profile`），后端未升级时保存提示“服务器暂不支持修改资料”。
+- 修改文件：src/shared/types/user.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、src/features/profile/profile.types.ts、src/features/profile/api/profile.api.ts、src/features/profile/hooks/{useProfileSave.ts（新增）,useAvatar.ts,useAvatarUpdate.ts}、src/features/profile/utils/{profile-validation.ts（新增）,avatar-cache-key.ts（新增）}、src/features/profile/services/avatar-cache.ts（新增）、src/features/profile/components/{ProfileTextEditor.tsx,GenderPickerDialog.tsx,UnsavedProfileDialog.tsx,UserAvatarImage.tsx}（新增）、src/features/profile/screens/{EditNicknameScreen.tsx,EditBioScreen.tsx}（新增）、src/features/profile/screens/{PersonalInfoScreen.tsx,ProfileScreen.tsx}、src/features/notes/categories/components/CategoryBar.tsx、src/shared/ui/ListRow/ListRow.tsx、src/app/pages/user/profile/{nickname.tsx,bio.tsx}（新增）、src/app/_layout.tsx、tests/profile/{profile-editing.test.cjs,avatar-cache.test.cjs}（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① `User` 新增可选资料字段，`created_at` 允许为空；`AuthProvider.applyUser` 核对账号后以服务端完整资料回写状态与缓存；② `useProfileSave` 以 `profile_version` 条件保存，请求 15 秒超时；409 载入最新资料并保留输入；无响应或请求已发出后授权被撤销时重新读取资料并提示结果未确认；未发出即被云存储拦截时提示开启云存储；③ P02/P03 共用 `ProfileTextEditor`（码点计数、清空、失焦后显示错误、`usePreventRemove` 离开确认、保存中阻止离开）；④ M03 性别弹窗暂存选择、保存中锁定；⑤ P01 用户名/性别/简介行开放，简介最多两行预览，`ListRow` 新增 `descriptionLines`；⑥ 头像缓存存于 `Paths.document/avatars/<用户ID>/`，仅缓存属于当前用户且命名合规的文件，下载与写入先落临时文件并校验大小与文件头后改名，每用户保留一个文件；同一文件并发只下载一次；本地文件显示失败即丢弃并在本次运行内不再自动下载；上传成功直接写入缓存；云存储关闭时显示本地缓存；⑦ 三处头像改用 `UserAvatarImage`，保留各自原有默认图标外观；⑧ 视觉规范升至 1.16。
+- 验证：修改前后 `npm run typecheck` 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 460/464 通过（新增 10 项），2 项失败（发布归档本机路径过长、待办迁移版本）与 `2783a37` 基线相同、与本次无关；`git diff --check` 通过。未做浏览器或真机验收；依赖的后端改动尚未迁移与部署；未提交 Git。
+
+---
+
+## 2026-09-24 01:13:05 | 优化代码：个人资料 B0 后端核实结论与接口约定（仅文档）
+
+- 变更概述：用户提供后端仓库（irisapi `Timmi` / `301d754`）并通过选项确认全部待定决策；冻结 B1/B3 接口约定，B1 范围并入旧头像清理与头像本地缓存。
+- 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
+- 验证：仅文档改动，未运行代码检查；后端未做任何修改。
+## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
+
+- 变更概述：已获用户确认执行合并全流程（含验证收尾）。合并 origin/master（个人资料页、15 天垃圾桶、导航白屏修复等 16 提交）验证中暴露：① `todo-local.test.cjs` 断言 `CURRENT_DATABASE_VERSION` 期望 12、实际 13——master 新增迁移 0013（笔记垃圾桶清除标记表 `note_trash_purged`，因 v12 已发布故升版本号）后未同步该断言，属 master 固有失败（其 CHANGELOG 18:41:40 已记录同一现象），按项目惯例（22:10:55 先例）同步断言使全量检查恢复全绿；② 合并冲突解决中本分支新增的两个设置页行残留旧组件名 `SettingsRow`（master 已将该组件迁移更名为 `@/shared/ui` 的 `ListRow` 并删除原文件），同步适配为 `ListRow`（外观与接口不变）；③ CHANGELOG 冲突区两侧共 23 条记录按时间戳全局倒序重排交织。
+- 修改文件：tests/todos/todo-local.test.cjs、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、CHANGELOG.md。
+- 具体内容：① 测试断言 12→13，注释补 0013 说明；② 权限设置页「后台实时刷新」行与帮助页「发送动态通知」行组件名 `SettingsRow`→`ListRow`；③ CHANGELOG 合并冲突区（HEAD 6 条 + master 17 条）按时间戳降序交织，保持时间倒序排列约定。
+- 验证：`npx expo start` 重新生成 typed routes（master 新增 /pages/user/* 路由后本机生成物过期导致 typecheck 报 ProfileScreen 路由类型错误，重新生成后消除）；修断言前 `npm run check` typecheck/lint/theme:check 通过、测试 482/483（唯一失败即上述 master 固有断言）；修后复跑 `npm run check` 全绿（483/483）。未做真机验收。
+
+---
+
+## 2026-09-24 01:04:37 | 修复问题：irisnote-system 模块 manifest 组件层级错误导致 AAPT 资源链接失败
+
+- 变更概述：已获用户确认。`assembleStaging` 在 `:app:processStagingResources` 阶段失败，AAPT 报 `unexpected element <receiver>/<service> found in <manifest>`——根因是上一轮（2026-09-23 23:24:26）新增 Live Updates 后台刷新时，`<receiver>`（LiveTodoAlarmReceiver）与 `<service>`（LiveTodoForegroundService）被直接声明在 `<manifest>` 根节点下，违反 Android 规范（四大组件必须位于 `<application>` 内；根级仅允许 uses-permission/queries 等）。修复：包一层 `<application>` 将两个组件移入，uses-permission 保持根级，组件属性与 PROPERTY_SPECIAL_USE_FGS_SUBTYPE 子元素原样不动；库模块 application 节点由 manifest merger 与宿主 app 自动合并。纯 XML 层级调整，不涉及 TS/Kotlin 代码，未跑 `npm run check`。
+- 修改文件：modules/irisnote-system/android/src/main/AndroidManifest.xml、CHANGELOG.md。
+- 具体内容：`<receiver android:name=".live.LiveTodoAlarmReceiver">` 与 `<service android:name=".live.LiveTodoForegroundService" foregroundServiceType="specialUse">`（含 property 子元素）从 `<manifest>` 直接子级移入新增的 `<application>` 包裹层，缩进同步调整；其余内容（4 个 uses-permission、注释）无变化。
+- 验证：复跑 `npm run gradle -- assembleStaging -PreactNativeArchitectures=arm64-v8a`（arm64，含阿里云 init-script）**BUILD SUCCESSFUL in 2m 20s**（1062 任务：38 执行、1024 up-to-date），`processStagingResources` 通过，产物 `android/app/build/outputs/apk/staging/app-staging.apk`（51.8MB，2026-09-24 01:07:37）已重新生成。仅打包验证通过，真机验收（receiver/FGS 运行时行为）不属于本次修复范围。
+
+---
+
+## 2026-09-24 00:43:10 | 修复问题：收口动态通知后台实时刷新评审缺陷——方案 B 数据流断裂、双驱动竞态、移交失败残留与截断口径
+
+- 变更概述：已获用户确认（按评审优先级 P1→P8 全量执行；P5 截断口径经用户拍板选 A"进行中优先"）。本次修复生产就绪评审发现的 1 Critical + 3 Important + 3 Minor：① **C1 方案 B（后台实时刷新开关）功能性死亡 + 崩溃风险**——FGS 与闹钟共用 LiveTodoTimelineStore，而该 store 仅退后台 handoff 时写入，FGS 只能前台启动 → 启动即见空快照立即 stopSelf（秒级刷新从不发生，开关是安慰剂），且 startForegroundService() 后未调 startForeground() 即 stopSelf() 存在 ForegroundServiceDidNotStartInTimeException 崩溃风险（开关开启且有活跃卡时每 30 秒重复触发）；② I1 handoff 在途 + start（快速后台→前台）双驱动——start 不递增 epoch、handoff 不查 interval，闹钟持旧快照与 JS 同时驱动（完成待办的卡被闹钟复活、标题编辑被回滚）；③ I2 handoff 移交失败（rethrow 被 catch 吞掉）后卡片冻结残留无人清理；④ I3 时间线快照按纯 notificationId 截断，未来卡可挤掉进行中卡（退后台瞬间撤下进行中卡）；⑤ M1 reclaim 吞失败致 start 双驱动接管；⑥ M5 设置页静态 import liveUpdateSupported 破坏 Expo Go/web 隔离模式；⑦ M4 run() post 在途补撤误杀已移交原生的卡。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoScheduler.kt、live/LiveTodoForegroundService.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/core/system-notifications/system-notification-context.ts、src/core/system-notifications/system-notification-provider.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/todos/todo-live-update.test.cjs、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① **C1 修复**——原生 LiveTodoScheduler 新增 `persist`（仅存快照不排闹钟），Module 新增第 5 接口 `updateLiveTodoCards`（与 scheduleLiveTodoCards 共用抽出 parseLiveTodoCards 解析器）；JS 协调器 applyForegroundService(true) 改为**先经 port.persistTimeline 持久化当前时间线快照再启动 FGS**（前台不排闹钟避免与 JS 30 秒驱动双写），run() 每轮刷新快照使编辑/完成 1 秒内反映到 FGS 驱动的卡片；持久化失败跳过本次启动（方案 A 兜底）；FGS 空快照/无进行中卡改为**安全停机**（占位 startForeground → stopForeground(REMOVE) → stopSelf，占位 ID 7003 + ensureLiveTodoChannel 渠道兜底），anchor 不再兜底未来卡；协调器跟踪 fgsRunning，FGS 真实停止后清空已发表强制下一轮原位重发（防锚点卡因 cardEquals 去重永久消失），未运行也无需停止时跳过无谓原生调用；② **I1+M4 修复**——handoff 移交落地后自检 `epoch !== this.epoch || this.interval !== null` 则补一次幂等 cancelTimeline 撤销（两种时序均收敛到"原生不拥有"）；新增 nativeOwns 所有权标记（移交成功置 true，start/stop/失败清场复位），run() post 在途代数过期补撤时若原生已接管则跳过（不误杀）；③ **I2 修复**——handoff 失败分支先 cancelTimeline 撤销半写原生状态，再逐卡 cancel 清场（宁撤勿留冻结错误进度），清场循环遇 JS 驱动被抢先重建（interval 非空）立即让位不误杀新代；④ **I3 修复**——desiredTodoLiveTimelines 排序改"进行中优先、组内按通知 ID"（资格已排除过结束卡，startAt 未到即未来卡），退后台不再因未来卡挤掉进行中卡；⑤ **M1 修复**——reclaimLiveTodoTimelines 改为记诊断后 rethrow；start() 收回失败即放弃本轮接管（降级保持原生分钟级驱动，避免双驱动），stop() 包裹 cancelTimeline 继续清场；⑥ **M5 修复**——context 新增 `liveUpdateCapable` 能力位（三处 fallback 均 false，原生 Provider 计算真值），设置页删除对 system-notification.service 的静态 import 改用 context，恢复 Expo Go/web 隔离模式；⑦ 测试 22→29：新增 start 收回失败放弃接管、开关开启先持久化后启动（顺序断言 persist→fgs-start）、开关关闭停止后强制重发、handoff 失败清场、handoff 在途 + start 补撤销、post 在途 + handoff 不误杀、时间线进行中优先截断（按 ID 构造未来卡占最小 3 个确保区分新旧口径）七组，portStub 扩展 persists sink；⑧ 文档 §6.2 同步：方案 B 数据流（persist→start 两步、编辑 1 秒反映、安全停机、锚点重发）、方案 A 收回失败降级与移交在途撤销、截断口径改为"进行中优先"、liveUpdateCapable 能力位说明。
+- 验证：改前 typecheck 基线 exit 0；改后 `npm run check` 全绿（typecheck、lint、theme:check、**467/467** 测试，含新增 7 项）；Kotlin `:irisnote-system:compileDebugKotlin` 首次失败（漏导入 NotificationManager）补导入后复跑 **BUILD SUCCESSFUL**（22s）。**Android 16 真机验收仍未做**：方案 B 修复后 FGS 全生命周期（前台启动→退后台秒级→编辑 1 秒反映→开关关闭锚点卡重发→全停安全停机无崩溃）、FGS 与 JS 并行前台驱动时进度条秒级/分钟级混排观感、handoff 快速切换撤销链路真机时序。
+
+---
+
+## 2026-09-23 23:59:13 | 新增功能：头像更换迁移至个人资料页（A3）
+
+- 变更概述：用户确认 A3 问题分析与文字预览，确认待确认预览点遮罩不关闭。头像更换从「我的」账户卡迁移到个人资料页：先选图并预览，确认后才上传；以服务端上传回执直接更新共享资料，修复资料同步失败时仍提示“头像已更新”却显示旧头像的问题；「我的」账户卡整卡进入个人资料页。
+- 修改文件：src/features/profile/hooks/useAvatarUpdate.ts（新增）、src/features/profile/components/AvatarActionsMenu.tsx（新增）、src/features/profile/components/AvatarPreviewDialog.tsx（新增）、src/features/profile/utils/avatar-errors.ts（新增）、tests/profile/avatar-update.test.cjs（新增）、src/features/profile/hooks/useAvatar.ts、src/features/profile/services/avatar-picker.service.ts、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 选图与上传拆分：删除一次采集即上传的 `collectAndUpload*`，新增 `useAvatarUpdate` 管理菜单 → 选图 → 待确认 → 上传中 → 结果；选图前先校验云存储授权，上传前后再次核对授权代际；② `AuthProvider` 新增 `applyAvatar(userId, avatar)`，按本地缓存账号核对后写入回执地址并更新共享用户，账号已变化则不写入；成功后后台刷新资料；回执之后的本地写入异常不再显示为上传失败，避免诱导重复上传；③ `useAvatar` 仅负责展示，`avatarKey` 由头像地址生成，调用方接口不变；④ 头像操作菜单（查看头像/从相册选择/拍照，高度随行数、无头像时查看禁用）与预览弹窗（查看模式通栏关闭；待确认模式重新选择/使用此头像，点遮罩不关闭，上传中锁定遮罩与返回，失败就地红字可重试）；弹层切换间隔 300ms；⑤ 个人资料头像卡整卡打开菜单，头像右下相机角标，右侧「更换头像」与箭头；⑥「我的」账户卡整卡进入个人资料页，移除头像菜单与上传遮罩；⑦ 错误提示抽为纯函数并补充测试（云存储、相册/相机权限、超过 2MB、无法读取、服务端原因、未知错误）；⑧ 视觉规范升至 1.15，同步用户中心与个人资料的头像规格。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 中类型检查、Lint、主题检查通过，测试 450/454 通过，2 项失败（发布归档测试因本机 /tmp 中文长路径 ENAMETOOLONG、待办迁移版本期望 7）在 `0a1bd41` 同样存在，与本次无关；`git diff --check` 通过。相机、系统裁剪、权限与上传未在真机验证，未提交 Git。
+
+---
+
+## 2026-09-23 23:50:12 | 修复问题：页面进入动画期间点击返回导致白屏
+
+- 变更概述：用户确认修复方案（含 Android 物理返回键拦截、兜底 600ms）。页面以 fade_from_bottom 抽屉式进入时，动画未结束即可点击返回，原生栈进入/退出转场冲突，偶发卡白屏。现改为进入动画结束前忽略返回操作，并在一次返回后短暂上锁以防连点。
+- 修改文件：src/shared/hooks/useTransitionLock.ts（新增）、src/shared/ui/PageHeader/PageHeader.tsx、src/shared/ui/BackButton/BackButton.tsx、src/features/sync/screens/SyncQueueScreen.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、CHANGELOG.md。
+- 具体内容：① 新增 `useTransitionLock`：挂载即上锁，监听当前页面 `transitionEnd`（非 closing）解锁；兜底 600ms 自动解锁，覆盖非原生栈页面或事件未触发的情况；锁定期间通过 `BackHandler` 吞掉 Android 物理返回键；返回的包装函数在锁定时忽略点击，触发后重新上锁 600ms 防止重复返回；② 公共 PageHeader（11 个页面）与 BackButton（笔记详情、登录/注册、编辑器）接入后自动生效；③ 同步队列页自绘返回按钮、笔记详情状态页返回按钮单独接入。按钮外观、尺寸、配色不变，锁定期间不置灰。未覆盖 iOS 侧滑返回手势。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run lint`、`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档 ENAMETOOLONG、待办迁移版本）与上一条记录中的既有失败一致，与本次无关，因此 `npm run check` 未全部通过；`git diff --check` 通过，无冲突标记。未进行真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 23:33:22 | 新增功能：平台绑定占位页（A2）
+
+- 变更概述：用户确认 A2 文字预览，确认说明文案不写绑定用途、增加「绑定方式」分组标题。新增平台绑定占位页 P07，个人资料页「平台绑定」行开放进入；页面只做说明，不发起授权、绑定或任何网络请求，不列出具体平台。
+- 修改文件：src/features/profile/screens/LinkedAccountsScreen.tsx（新增）、src/app/pages/user/profile/platforms.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① P07 使用公共 PageHeader（64dp 顶栏、标题「平台绑定」），顶栏下 16dp 为白色说明卡（16dp 圆角与内边距，Link2 22dp 主色图标与 17sp 标题间隔 12dp，下隔 8dp 为 14sp 蓝灰正文“未来支持将第三方平台账户与 IRisNote 账户关联。目前尚未开放，已有账户仍使用邮箱登录。”）；② 说明卡下 20dp 为「绑定方式」分组（标题 13sp 蓝灰，距卡片 8dp），内含公共 ListRow 禁用行「第三方平台绑定 · 敬请期待」，灰色、无箭头、不可点；③ 加载与未登录状态沿用 P01；返回优先回到来源页，无历史时进入个人资料页；底部留白为底部安全区 + 32dp；④ 个人资料页「平台绑定」行改为可点并显示箭头。
+- 验证：`npm run typecheck` 0 错误（用户已补装依赖，此前 44 个环境错误消失）；`npm run lint` 通过；`theme:check` 通过；`npm test` 446/450 通过，2 项失败（发布归档、待办迁移版本）在不含本次改动的 `3d21e03` 上同样存在，与本次无关，因此 `npm run check` 仍未全部通过；`git diff --check` 通过。未进行浏览器或真机验收，未提交 Git。工作区中 package-lock.json 的 `hasInstallScript` 变更来自依赖补装，未纳入本次改动。
+
+---
+
+## 2026-09-23 23:24:26 | 新增功能：动态通知后台实时刷新（A 闹钟续算 + C 系统计时默认开启，B 前台服务开关）
+
+- 变更概述：已获用户确认（方案组合：A+C 一起做、B 给开关放设置权限页）。此前退后台即撤下全部动态卡片（§6.2 旧边界"无前台服务"），本次改为退后台**保留卡片并持续刷新**：方案 A（默认）退后台移交时间线快照，原生 AlarmManager 分钟节拍按墙钟差量刷新；方案 C（默认）通知时间戳区域用系统 chronometer 渲染秒级倒计时/正计时（零唤醒）；方案 B（用户开关，设置→权限设置→「后台实时刷新」，仅 Android 16+ 可用）前台服务每秒重算，进度条秒级平滑。时间线快照含今日稍后开始的待办（退后台后到点自动上岛）；快照与数据库脱钩（他端修改回前台 reconcile 校正）；设备重启不自启；Android 12+ 禁止后台启动 FGS——仅前台启动，FGS 被杀由 A 闹钟兜底降级分钟级。实施中发现并修复一个竞态真 bug：start() 前置收回接管权的 await 窗口内 stop() 插入后 start 恢复会"复活"已停止的协调器（epoch 守卫扩展到 start 路径）；另修复 handoff 无资格路径不撤已发卡片（冻结残留）缺陷。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt（新）、live/LiveTodoNotifier.kt（新）、live/LiveTodoScheduler.kt（新）、live/LiveTodoAlarmReceiver.kt（新）、live/LiveTodoForegroundService.kt（新）、IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、system-notification-native-provider.tsx、system-notification-context.ts、system-notification-provider.tsx、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、tests/todos/todo-live-update.test.cjs、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 原生新增 live 包五个类——LiveTodoTimeline（数据类 + SharedPreferences JSON 持久化，进程被杀后闹钟唤醒续算）、LiveTodoNotifier（通知构建公共层：分钟文案口径与 JS 严格一致、chronometer 锚点 setWhen+setUsesChronometer+setChronometerCountDown、applyDesired 差量 post/cancel、promoted 反射从 Module 迁入）、LiveTodoScheduler（单一闹钟链 setAndAllowWhileIdle 非精确：事件=活跃卡分钟取整变化点/未来卡 startAt/结束时刻，全停自动清快照；reclaim 收回不动通知）、LiveTodoAlarmReceiver（manifest 注册，唤醒重算续排）、LiveTodoForegroundService（specialUse FGS，秒级 Handler 循环，FGS 通知即进度卡，START_STICKY，全停 stopSelf）；② Module 新增 4 接口：scheduleLiveTodoCards/cancelScheduledLiveTodoCards/startLiveTodoForegroundService/stopLiveTodoForegroundService，postProgressNotification 加 chronoAt/chronoCountdown 透传；manifest 加 FOREGROUND_SERVICE(_SPECIAL_USE) 权限 + receiver/service 声明（PROPERTY_SPECIAL_USE_FGS_SUBTYPE=live-todo-progress）；③ JS：service 层新增 TodoLiveTimelineCard 类型与 desiredTodoLiveTimelines（资格拆分 todoTimelineEligibleTodo 前瞻"今日未过结束"）、TodoLiveUpdateCard 加 chronoAt/chronoCountdown；系统服务层封装 handoffLiveTodoTimelines/reclaimLiveTodoTimelines/start|stopLiveTodoForegroundService（失败记诊断不中断）；协调器 stop 拆分——start() 先收回接管权（epoch 守卫防复活）、handoff() 退后台移交（无资格路径撤卡防冻结残留）、stop() 卸载全撤并停 FGS；cardEquals 补 chrono 字段；FGS 偏好 setForegroundServiceEnabled 由 provider 注入，run 后按"开关&&有活跃卡"启停；④ Provider：AppState background → handoff（卡片保留），context 新增 liveTodoRealtimeEnabled/Pending/setLiveTodoRealtimeEnabled，偏好键 live_todo_realtime_enabled；权限设置页新增「后台实时刷新」开关行（Zap 图标，常驻通知之后，复用 SettingsRow+Host/Switch 规格，低版本禁用并显示"需要 Android 16 及以上系统"）；⑤ 测试 15→22：新增时间线资格前瞻、快照字段、汇总截断、chrono 锚点、handoff 移交/无资格撤卡/收回重接管、start 等待期 stop 插入不复活七组；⑥ 文档 §6.2 边界重写为三层组合与新边界（快照脱钩/重启不自启/FGS 前台启动限制/OEM 管控待验收）。
+- 验证：改前 typecheck 基线 exit 0；改后 `npm run check` 全绿（typecheck、lint、theme:check、**460/460** 测试，含新增 7 项）；Kotlin `:irisnote-system:compileDebugKotlin` **BUILD SUCCESSFUL**（1m28s，含 5 个新类实际编译）。**Android 16 真机验收未做**：方案 A 分钟续动/到期自撤/进程被杀续算、方案 C chronometer 在 ProgressStyle 与提升式岛上的实际渲染（36.0 与 36.1 框架差异，最坏退化不显示计时）、方案 B 开关启停与秒级平滑、force-stop 无残留、国产 ROM（小米/OPPO 等）对闹钟广播与前台服务的后台管控差异、Doze 息屏时段节拍粗化幅度。
+
+---
+
+## 2026-09-23 23:01:26 | 新增功能：个人资料页入口与只读总览（A1）
+
+- 变更概述：用户确认 A1 计划与文字预览，并确认「我的」首卡头像在 A3 前保留原来源菜单（过渡方案）。新增个人资料页 P01，可从设置「账户 → 个人资料」及「我的」账户卡文字区进入；页面只读展示已有资料，未接入能力显示「规划中」。
+- 修改文件：src/shared/ui/PageHeader/PageHeader.tsx（由 settings/components/SettingsPageHeader.tsx 移入并更名）、src/shared/ui/PageHeader/index.ts（新增）、src/shared/ui/ListRow/ListRow.tsx（由 settings/components/SettingsRow.tsx 移入并更名）、src/shared/ui/ListRow/index.ts（新增）、src/shared/ui/index.ts、src/features/settings/screens/{SettingsScreen,AboutScreen,CloudStorageSettingsScreen,DataStorageSettingsScreen,HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/notes/screens/{TrashScreen,drafts-screen,note-collection-screen}.tsx、src/features/profile/screens/PersonalInfoScreen.tsx（新增）、src/features/profile/screens/ProfileScreen.tsx、src/app/pages/user/profile/index.tsx（新增）、src/app/_layout.tsx、tests/storage/storage.test.cjs、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 页头与列表行提升为公共 `PageHeader`/`ListRow`，外观与接口不变，9 个页面改为从 `@/shared/ui` 引用，存储测试的模块模拟同步调整；② 新增 `/pages/user/profile` 路由（无原生标题栏）；③ P01：64dp 顶栏、头像卡（64dp 头像、昵称 20sp、脱敏邮箱）、「基本资料」「账户与安全」「账户信息」三组；用户名、邮箱、用户 ID、注册时间只读展示，用户 ID 支持复制并提示横幅，性别/地区/简介/修改密码显示「规划中」，平台绑定显示「敬请期待」并禁用；注册时间无效时显示“暂不可用”；返回优先回到来源页，无历史回到用户中心；底部留白为底部安全区 + 32dp；④ 设置页标题下新增「账户」分组，状态概览下移 20dp；⑤「我的」账户卡文字区与新增 18dp 箭头作为独立按钮进入 P01（与头像按钮并列不嵌套），头像仍打开原来源菜单。
+- 验证：修改前后 `npm run typecheck` 均为 44 个既有错误（本机缺 expo-blur/expo-application/expo-haptics/expo-intent-launcher 等依赖及 typed routes 过期），无新增；`npm test` 修改前后均 431/450 通过，17 项失败完全相同，与本次无关；`npm run lint` 因本机 eslint 依赖损坏（fileEntryCache.create）无法运行，改用 `npx eslint --no-cache` 检查改动文件，仅有 4 个既有模块缺失错误；`theme:check` 通过；`git diff --check` 通过。因此 `npm run check` 未通过（环境原因）。未进行浏览器或真机验收，未提交 Git。
+
+---
+
+## 2026-09-23 22:51:58 | 优化代码：个人资料功能分阶段方案与视觉规范（A0，仅文档）
+
+- 变更概述：用户确认个人资料功能分阶段实施：A 类纯客户端先行（A0 规范、A1 入口与只读总览、A2 平台占位、A3 头像迁移），B 类前后端一并实施（B0 后端核实、B1 普通资料、B2 地区、B3 邮箱与密码），C 集成验收；确认尺寸统一到现有组件、公共页头与列表行先提升到 `shared/ui`。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.14，新增「个人资料」节（入口、页面壳、头像卡、分组与资料行、未开放项「规划中」约定、编辑页、验证码与密码、弹层、头像菜单、状态），落地状态表新增对应行；② 规划文档升至 0.2：输入框/主按钮/弹窗按钮统一 48dp、弹窗按钮间距 10dp、底部留白安全区 + 32dp、头像 64dp，旧数值标注作废；文件清单改为提升 SettingsPageHeader/SettingsRow，后端改由本方在 B 类实施；第 9 节替换为 A/B/C 阶段表、更新任务勾选、执行记录与粗估人日（11–17.5）。
+- 验证：修改前 `npm run typecheck` 为 44 个既有错误（本机 node_modules 缺少 expo-blur、expo-application、expo-haptics、expo-intent-launcher 等包及 typed routes 过期），本次仅改文档，未改代码，错误与本次无关；未运行 `npm run check`、构建或真机验收。
+
+---
+
+## 2026-09-23 21:33:31 | 新增功能：动态通知升级为请求 Live Updates 提升式（上岛）——POST_PROMOTED_NOTIFICATIONS + 反射 setRequestPromotedOngoing
+
+- 变更概述：已获用户确认（用户指令：将 Android 16 动态通知升级为提升式 Live Updates，对齐"上岛"形态）。这是 2026-09-23 内第二次方向反转：进度式（不提升）→ 请求提升式。范围：仅 live-test / live-todo 两类动态卡片请求 promoted（倒计时演示与待办进行中，符合政策准入"用户主动发起、正在进行"）；"普通提醒/即将到来的日历事件"仍禁入（政策禁区不变，此类继续走非提升通道）。关键工程决策：本机 compileSdk 36.0 基础平台包**无** `setRequestPromotedOngoing` / `POST_PROMOTED_NOTIFICATIONS` 符号（javap 实测，均 API 36.1/QPR 引入）——权限按原始字符串声明于模块 manifest（低版本系统自动忽略），提升请求经**反射**调用（36.0 设备无该方法时静默退化为普通进度卡片）。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/AndroidManifest.xml、src/core/system-notifications/system-notification.service.ts、docs/架构指南/系统通知模块负责说明.md、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 原生：`buildProgressNotification` 增 `promoted` 参数——promoted 时强制 `setOngoing(true)`（提升式硬性要求）+ `requestPromotedOngoingCompat()` 反射调用 `setRequestPromotedOngoing(true)`（方法不存在即原样返回）；`AsyncFunction("postProgressNotification")` 改为**单 Map 入参**（Expo Modules Lambda 具名参数上限 8 个，9 参实测触发 Function9→Function0 重载解析失败，收敛签名后后续加字段不再动原生契约）；② 模块 manifest 新增 `POST_PROMOTED_NOTIFICATIONS`（原始字符串安装级权限）；**app.json 保持不动**——权限单一来源约束由 `tests/todos/system-notifications.test.cjs:304` 钉死（本轮曾误把 SCHEDULE_EXACT_ALARM/POST_PROMOTED 加进 app.json 触发该测试失败后回滚，并顺带修正负责说明 §2.5/§5.2 反向文档漂移：原文档声称 app.json 声明精确闹钟权限，与测试及现实相反）；③ JS：`LiveUpdateContent` 增 `promoted?: boolean`（默认 true，注释写明政策边界与 36.0 退化行为），`postLiveUpdate` 单点收口传入；`index.ts` 契约同步为对象参数 `NativeProgressNotification`；④ 文档：负责说明（头注更新、§2.2/§2.3 契约、§3.1 展示方式两列、§八 边界矩阵、快速索引新增"不上岛"排障条目）、渠道适配（版本 1.3、§0 结论先行重写为提升式、§6.2 决策依据/原生层/边界三处）。
+- 验证：`npm run check` 全绿（typecheck、lint、theme:check、**453/453** 测试，含单一来源约束测试）；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL（9 参版本编译失败改 Map 后复跑通过）；完整 `assembleStaging`（arm64）BUILD SUCCESSFUL（3m14s），aapt2 dump badging 实测最终 APK 合并出 `POST_PROMOTED_NOTIFICATIONS`、`SCHEDULE_EXACT_ALARM`、`POST_NOTIFICATIONS` 三权限。**Android 16（36.1+）真机验收未做**：上岛胶囊/锁屏常驻/抽屉置顶形态、用户手动降级后禁止重发的政策边界、系统设置"实时更新"总开关行为、OEM（小米焦点通知/OPPO 流体云私有岛）映射差异；厂商私有接口未接入，走标准 Live Updates 路径由各 OEM 系统自行决定映射。
+
+---
+
+## 2026-09-23 20:45:20 | 修复问题：收口动态通知评审发现的三项边界缺陷与诊断日志放大
+
+- 变更概述：已获用户确认（修复范围 A+B+C+D+测试，Minor 项留待后续）。修复双份独立代码评审一致确认的 Important 问题：① 进程被杀后 ongoing 卡片永久残留且冷启动无对账（JS 无机会撤卡、用户不可滑除、新进程 cards map 为空永不清理）；② stop()/refresh() 双缺口竞态——在途 run() 于 stop 后恢复会重发卡片，且 refresh() 无 active 门导致退后台后仓库订阅仍触发发卡，违反"退后台即撤"边界；③ 无结束时间卡片去重缺 title 比较，编辑正文后标题整段进行期不刷新。另修复诊断日志放大：30 秒节律每轮无条件记 application_permission_read + 每分钟最多 3 条 card_updated，叠加 recordDiagnostic 全文件重写（~60KB/次），前台 1 小时 ≈18MB I/O 且 400 条窗口约 80 分钟被冲掉。
+- 修改文件：src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、tests/todos/todo-live-update.test.cjs、docs/架构指南/系统通知模块负责说明.md、docs/UI/通知渠道适配.md、CHANGELOG.md。
+- 具体内容：① 协调器竞态守卫：新增 epoch 代数，stop() 递增并解除 pending 引用；run() 在权限读取、逐卡 cancel、逐卡 post 全部 await 恢复点校验代数，过期即中止；post 恢复后发现过期且该卡未被新代认领时补撤；refresh() 增加 active 门（stop 后订阅触发直接跳过）；pending 清理改身份校验防误革新代；② 冷启动清理：原生新增 `cancelProgressNotificationsByChannel`（activeNotifications 按渠道过滤后 cancel，API 23+ 无版本门槛），服务层新增 `clearStaleLiveUpdates()`（进程内一次：live-todo 渠道整清 + 无条件撤演示 ID 7001，失败仅记 stale_clear_failed 诊断），provider mount 时调用；③ 去重比较补 title 与 max（cardEquals，任何用户可见字段变化均原位更新）；④ 诊断降采样：application_permission_read 改进程内翻转记录（仅授权状态变化写一条，低频调用方不受影响），card_updated 按卡 5 分钟采样（card_posted/card_removed 仍全量），采样状态随撤卡清理防泄漏；⑤ 文档同步：负责说明 §4.4 补冷启动清理链路、§2.2/§2.3 契约表新增两行、边界矩阵"退后台/被杀"改为如实表述（退后台 JS 全撤 + epoch 守卫；被杀下次启动清理）、快速索引补"被杀后卡片残留"条目；渠道适配 §6.2 边界同步；⑥ 测试 9→15：新增标题去重、stop 使权限读取中刷新失效、post 在途 stop 补撤、start 幂等、post 失败重试、权限读取失败六项，并修正 190 行格式瑕疵。
+- 验证：改前 typecheck 基线 exit 0（本会话早前实测）；改后 `npm run check` 全绿（typecheck、lint、theme:check、**453/453** 测试含新增 6 项）；Kotlin `:irisnote-system:compileDebugKotlin` 复跑 **BUILD SUCCESSFUL**（含新函数实际编译）。**Android 16 真机验收仍未做**（演示链路、进行中卡片、退后台撤下、冷启动清理、OEM 渲染差异）；评审 Minor 项（ID 注释、能力判定收口、demo in-flight 防护、smallIcon）未处理。
+
+---
+
+## 2026-09-23 18:41:40 | 修复问题：应用图标支持环境变量指定任意项目内图片
+
+- 变更概述：用户确认修订方案与界面文字预览。首页和关于页继续共用 `EXPO_PUBLIC_IMAGE`；修正此前只支持预登记本地图片文件名的限制，今后更换项目内图片只需修改环境变量并重新打包。
+- 修改文件：scripts/brand-image.cjs（新增）、metro.config.js、src/shared/ui/AppBrandIcon/AppBrandIcon.tsx、src/shared/ui/AppBrandIcon/brand-image.ts（新增）、scripts/release/cli.mjs、release.env.example、tests/ui/brand-image.test.cjs（新增）、tests/releases/release-env.test.cjs、CHANGELOG.md。
+- 具体内容：Metro 按环境变量解析并打包项目内图片，兼容原有相对路径，拒绝缺失、项目外及不受支持的资源；共享图标组件移除文件名白名单，并通过可解析的默认图片模块保留类型与 Lint 检查；EAS 发布流程传递图标变量，示例配置注明项目根目录相对路径；补充路径与发布变量检查。
+- 验证：修改前后 `npm run typecheck` 通过；`npm run check` 的类型检查、Lint、主题检查通过，测试 449/450 通过。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），与本次图标修改无关；使用旧白名单外的 `notification-icon.png` 实际完成 Android 资源导出，产物清单包含该图片。未构建 APK，未进行真机显示验收。
+
+---
+
+## 2026-09-23 17:35:31 | 修复问题：首页与关于页应用图标显示异常
+
+- 变更概述：已获用户对修复方案及界面文字预览的确认。首页和“关于 IRisNote”页继续统一使用 `EXPO_PUBLIC_IMAGE` 配置应用图标，修复发布环境中本地相对路径被当作网络地址加载的问题。
+- 修改文件：src/shared/ui/AppBrandIcon/AppBrandIcon.tsx（新增）、src/shared/ui/AppBrandIcon/index.ts（新增）、src/shared/ui/index.ts、src/features/auth/screens/WelcomeScreen.tsx、src/features/settings/screens/AboutScreen.tsx、CHANGELOG.md。
+- 具体内容：新增共享图标组件，将已登记的本地图标路径映射为静态打包资源；远程 HTTP(S) 图标加载时显示内置占位图，加载失败后回退内置图标；两页改用共享组件，保留原有尺寸与布局。
+- 验证：修改前后 `npm run typecheck` 均通过；`npm run check` 中类型检查、Lint、主题检查通过，测试 447/448 通过。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），不涉及本次图标文件；无连接真机，本次未进行真机显示验收。
+
+---
+
+## 2026-09-23 17:34:44 | 修复问题：我的页面按内容变更更新并稳定卡片尺寸
+
+- 变更概述：已获用户对计划、问题分析和界面文字预览的明确确认。我的页面首次进入或账号、云存储状态变化时读取概览；笔记、分类及阅读进度变更时更新，不再因每次获得焦点重启加载。
+- 修改文件：src/features/profile/hooks/useProfileOverview.ts、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/data/note-reading-progress.ts、src/features/notes/hooks/useReadingProgress.ts、CHANGELOG.md。
+- 具体内容：① 概览订阅已有笔记与分类通知，并在阅读进度保存后接收新通知；页面失焦期间累积变更，返回时合并处理，避免并发读取和旧结果覆盖；② 后续笔记与阅读变更只重算本地概览，分类变更才重新获取分类数，初次读取仍沿用现有云同步；③ 后续更新及读取失败时保留已显示数据和图标，不重新展示加载态；④ 概览和继续阅读卡片增加最小高度，切换图标的区域采用固定尺寸占位。
+- 验证：修改前后 `npm run typecheck` 通过；最终代码复跑 `npm run check`，类型检查、Lint、主题检查通过，448 项测试通过 447 项。唯一失败为既有待办迁移测试（期望版本 12，实际为 13），该测试及待办实现不在本次改动范围内；`git diff --check` 通过，修改文件无冲突标记。未构建版本包或进行真机验收。
+
+---
+
+## 2026-09-23 16:58:44 | 新增功能：引入 Android 16 动态通知（ProgressStyle）——设置页 120 秒演示 + 待办进行中进度卡片
+
+- 变更概述：已获用户确认（路径 A：自研 ProgressStyle 进度式动态通知；待办双语义：前台进行中卡片 + 后台到点仍走普通提醒；测试页 120 秒倒计时演示）。本次为 `docs/UI/通知渠道适配.md` §0"动态通知暂不立项"结论的**用户指令反转（2026-09-23）**，范围限定 Android 侧进度式通道：不声明 `POST_PROMOTED_NOTIFICATIONS`、不调用 `setRequestPromotedOngoing`，不进入提升式 Live Updates 政策禁区（政策禁止"普通提醒/即将到来的日历事件"，且完整形态需 API 36.1）；不引入生态 alpha 库 expo-live-updates。
+- 修改文件：modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/todos/services/todo-live-update.service.ts（新）、src/features/todos/state/todo-live-update-coordinator.ts（新）、tests/todos/todo-live-update.test.cjs（新）、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/架构指南/系统通知模块负责说明.md、CHANGELOG.md。
+- 具体内容：① 原生层：IrisNoteSystemModule 新增 `postProgressNotification`（`Notification.ProgressStyle` + `CATEGORY_PROGRESS` + `setOnlyAlertOnce(true)`，同一整型 ID 原位更新；SDK < 36 抛"需要 Android 16"；contentIntent 仅启动主界面）与 `cancelProgressNotification`——**本机 android-36 平台包（36.0 基础 SDK）实测无嵌套 `Progress` 类（javap 核实，36.1 才引入），进度改用 `setProgress(0-100)` + `setProgressIndeterminate`**；② 服务层：新渠道 `irisnote.live-test.v1`（"动态通知测试" DEFAULT 有声）/ `irisnote.live-todo.v1`（"待办进行中" LOW 静默），`liveUpdateSupported()`（Android + API≥36 + 模块可用）、`postLiveUpdate`/`cancelLiveUpdate`（渠道初始化进程内记忆一次、失败写 `live_update` 诊断）、`startDiagnosticLiveUpdateDemo`（120 秒倒计时，同一 ID 每秒原位更新，归零自动消除，可取消句柄）；③ 设置页：帮助与反馈 → 诊断与排障新增"发送动态通知"行（SettingsRow，120 秒演示，禁用条件=非 Android/低版本/演示中，离开页面即终止撤下，卸载 useEffect 兜底）；④ 待办接入：纯函数（资格=当天+reminderEnabled+未完成+有开始+进行中窗口，与列表状态口径一致；分钟级进度，无结束时间用不定进度；标题复用提醒摘要脱敏；FNV-1a 稳定整型通知 ID）+ `TodoLiveUpdateCoordinator`（前台 30 秒差量刷新、仓库变更即刷、退后台/卸载全撤、同屏上限 3 条确定性截断、权限未授不发即撤），挂载于 SystemNotificationProvider（AppState active start / 非 active stop、订阅 refresh）；⑤ 文档三份同步（渠道适配 §0 反转记录 + 新 §6.2 实现现状 + 渠道表；待办设计 §9 红线段落改写；系统通知负责说明五链路对照表、Kotlin 契约、边界矩阵、快速索引）。
+- 验证：改前 `npm run typecheck` 基线 exit 0；改后 typecheck exit 0（中途引入 2 处类型错误已修复：`AppState.currentState` 属性名、`startTime` 局部收窄）；新增测试 `node --test tests/todos/todo-live-update.test.cjs` 9/9 通过（ID 稳定性、资格矩阵含边界时刻、进度计算、脱敏、上限截断、协调器发卡/去重/撤卡/停机/降级）；Kotlin 编译 `:irisnote-system:compileDebugKotlin` 首次失败（嵌套 Progress 类不存在于 API 36.0）后按 javap 实测 API 修正复跑通过。**Android 16 真机验收未做**（演示链路、进行中卡片、退后台撤下、OEM 渲染差异），边界：无前台服务，退后台即撤卡片、后台到点仍为普通提醒形态。
+
+---
+
+## 2026-09-23 16:26:01 | 新增功能：IRisNote 0.4.1 正式发布
+
+- 变更概述：已获用户确认（含连续执行 publish 授权）。完成 0.4.1 版本全流程发布：doctor → 预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。
+- 发布信息：构建号 17，绑定提交 030b8ac（0.4.1 更新说明提交；功能代码 60bbc6f 已包含）；APK SHA-256 7167044ca243ee544d65c3378cca610b46195cd0be66732ac41d00e19d7964f7，大小 126917994 字节，签名证书与 0.4.0 相同（7319b25...）；CDN 地址 https://download.tech-mou.top/IRisNote-0.4.1-17.apk。
+- 流程记录：① reserve 首次被"工作区未提交"阻断，经用户授权提交 030b8ac（CHANGELOG.md 与 releases/notes-0.4.1.txt，均在构建排除清单内）后重新预留成功；② build 复用 reuse-53ef3389ab44 工作区，构建环境内 npm run check（typecheck/lint/theme:check/测试）全部通过，Gradle 12m56s 增量构建成功；③ 服务器与 COS 上传并通过 SHA-256 双端校验；④ 差量包 16→17（4.3%）、15→17（5.3%）、13→17（18.5%）均本机实际合并还原校验通过后上传，服务端复核通过；⑤ inspect/status 核对包名、版本、签名、摘要一致；⑥ publish 成功，服务端状态 published。
+- 发布内容：0.4.1 说明所列——"关于"页版本记录改为服务端拉取（依赖 irisapi /api/releases/history，用户确认后端已部署）。
+- 修改文件：CHANGELOG.md（本记录）、此前提交 030b8ac。本次发布无新增源码修改。
+- 验证边界：构建环境类型检查、lint、主题检查与单元测试全部通过；真机安装验收未执行（发布期间无连接设备），建议更新推送后在真机核对差量升级与"关于"页版本记录拉取；未推送 Git 远程。
+
+---
+
+## 2026-09-23 13:17:39 | 新增功能：0.4.1 版本更新说明
+
+- 变更概述：已获用户确认。按更新说明编写规范对比 0.4.0（构建 16，提交 cda98eb）到 HEAD（c8027a0）的实际差异，范围内仅"关于页版本记录改为服务端拉取"（60bbc6f）一项用户可见改动，c8027a0 为纯测试格式化不计入；判定为补丁更新，建议并确认版本号 0.4.1；生成面向普通用户的中文更新说明并保存。
+- 修改文件：releases/notes-0.4.1.txt（新增）、CHANGELOG.md。
+- 具体内容：正文含体验优化 1 条（版本记录联网获取、离线降级显示）、问题修复 1 条（新版本"关于"页显示"该版本暂无更新说明"）。0.4.0 基线以 dist/releases/0.4.0/IRisNote-0.4.0-16.apk.json 的 commit 字段为准（cda98eb），工作区干净无未提交改动。
+- 发布依赖：该功能依赖 irisapi 后端 GET /api/releases/history 接口，后端须先部署，否则"关于"页进入错误态（可重试、有缓存时降级显示）。纯文档任务未运行 npm run check；未执行 reserve/build/upload/publish 及 Git 提交或推送。
+
+---
+
+## 2026-09-23 04:09:23 | 修复问题：关于页版本记录改为服务端数据源，根治硬编码
+
+- 变更概述：已获用户确认（方案 C）。0.4.0 发布后发现"关于"页版本记录仍读取硬编码数组，本机新版本不在其中时显示"该版本暂无更新说明"。现将版本记录改为从服务端拉取已发布历史，发布流程不再需要同步维护前端硬编码。
+- 修改文件：src/features/settings/data/release-history.ts、src/features/settings/screens/AboutScreen.tsx、src/features/settings/hooks/use-release-history.ts（新增）、tests/settings/release-history.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 删除 RELEASE_HISTORY 硬编码数组及 intro/footer 专属渲染；② release-history.ts 保留类型与 compareVersions，新增 parseReleaseNotes（纯文本说明按标题行 + “- ”列表项解析为分组结构，跳过“IRisNote x.y.z 更新说明”占位标题，散落条目归入“更新内容”）和 parseReleaseHistory（校验服务端列表：条数 1～100、版本号格式、构建号范围、notes 长度 ≤12000、版本去重，提取发布日期；任何非法字段返回 null 走降级）；③ 新增 use-release-history hook：进入页面时拉取 GET /api/releases/history（地址复用 EXPO_PUBLIC_RELEASE_API_URL，去掉尾部 /latest 后拼 /history，未配置时回落 API_BASE_URL），12 秒超时；成功后写入 AsyncStorage 缓存（仅成功数据入库）；失败回退缓存并标记"未能刷新，显示上次内容"；无缓存进入错误态显示重试按钮；使用 useFocusEffect 触发，每次进入页面刷新；④ 本机版本尚未出现在服务端历史时（刚发布的新版本）保留占位条目，行为与旧版一致。
+- 验证：npm run typecheck 通过；npm run check 全量通过——typecheck、lint、theme:check 与 448/448 测试（新增 4 项：解析分组/占位标题跳过/散落条目归组、字段校验与去重/日期提取/条数上限、版本比较、断言不再引用 RELEASE_HISTORY）。后端 irisapi 同步新增 /history 接口与测试（见 irisapi 仓库变更）。
+- 部署依赖：前端此改动需后端先部署 /api/releases/history 才能正常拉取，否则进入错误态（可重试、有缓存时降级显示）；随下个版本发布生效。未执行构建、发布或推送。
+
+---
+
+## 2026-09-23 03:47:01 | 新增功能：IRisNote 0.4.0 正式发布
+
+- 变更概述：已获用户确认（含 publish 授权）。完成 0.4.0 版本全流程发布：预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。
+- 发布信息：构建号 16，绑定提交 cda98eb（含构建阻断修复）；APK SHA-256 cbd9472605a53aa4fa8fbd8a7a4cdb69e581969638d6e13773f6cc0c8a430b12，大小 126913174 字节，签名证书与 0.3.0 相同（7319b25...）；CDN 地址 https://download.tech-mou.top/IRisNote-0.4.0-16.apk。
+- 修改文件：CHANGELOG.md（本记录）。本次发布无新的源码修改，发布内容为 0.4.0 说明所列功能（垃圾桶、我的页面内容管理、数据与存储、同步与备份、权限设置等）。
+- 具体内容：① doctor 环境检查通过；② 本机 npm run check 全量通过（444/444）后提交修复 0c68247、cda98eb；③ reserve 分配构建 16 并保存更新说明；④ build 构建成功（Gradle 16m47s），构建环境内检查再次通过、patch-package 自动应用；⑤ 服务器与 COS 上传并通过 SHA-256 双端校验；⑥ 为基础版本 15/13/12 生成并上传差量包（15→16 为 5.3%，13→16 为 18.5%，12→16 为 18.7%），本机实际合并还原校验全部通过；⑦ inspect/status 核对包名、版本、签名、摘要一致；⑧ publish 发布成功，服务端状态 published。
+- 验证边界：构建环境类型检查、lint、主题检查与单元测试全部通过；真机安装验收仍未执行（发布期间无连接设备），建议更新推送后在真机核对差量升级与垃圾桶等功能；未推送 Git 远程。
+
+---
+
+## 2026-09-23 03:03:46 | 修复问题：0.4.0 发布前构建阻断项修复
+
+- 变更概述：已获用户确认（含 publish 授权）。发布前 `npm run check` 失败的三个阻断项全部修复，全量检查恢复通过，为 0.4.0 发布扫清构建阻断。
+- 修改文件：global.css、tests/navigation/page-seam.test.cjs、CHANGELOG.md（另：本机 node_modules 应用既有补丁，无仓库文件变化）。
+- 具体内容：① theme:check 失败：提交 282122d 代码风格重排将 global.css 管理块色值改为小写，与主题预设 default-light.json 大写不一致；逐行比对确认 58 处差异全部为十六进制大小写、语义差异为 0，按项目标准方式 `npm run theme:sync` 重新同步为大写；② page-seam.test.cjs 失败：该测试以固定 className 顺序断言待办页分层结构，同一格式化提交把 border-t/border-r/border-b 排序改变导致断言过时；分层绘制逻辑本身未变，将正则放宽为顺序无关匹配，保留结构锁定能力；③ swipe-tabs.test.cjs 失败：仓库既有补丁 patches/react-native-tab-view+4.3.2.patch（DEAD_ZONE 12→100）未应用到本机 node_modules，执行 `npx patch-package` 应用，无仓库文件修改。
+- 验证：修复后 `npm run check` 全量通过——typecheck、lint、theme:check 通过，444/444 测试通过（此前失败的三项均恢复）。global.css 与 page-seam.test.cjs 的修复需进入构建源码，随本次提交进入安装包；补丁项仅本机环境，构建环境 npm ci 自动应用。
+
+---
+
+## 2026-09-23 02:49:08 | 新增功能：0.4.0 版本更新说明
+
+- 变更概述：已获用户确认。按更新说明编写规范对比 0.3.0（构建 15，提交 dd5ae04）到目标提交 40b6215 的实际差异，判定为功能更新，建议并确认版本号 0.4.0；生成面向普通用户的中文更新说明并保存。
+- 修改文件：releases/notes-0.4.0.txt（新增）、CHANGELOG.md。
+- 具体内容：正文含新增功能 5 条（笔记垃圾桶、我的页面内容管理、数据与存储、同步与备份、权限设置与诊断导出）、体验优化 4 条、问题修复 2 条、升级提醒 1 条（云同步升级后默认关闭需重新授权）。0.3.0 构建基线以 dist/releases/0.3.0/IRisNote-0.3.0-15.apk.json 的 commit 字段为准（dd5ae04），tag v0.3,0_IRisNote 指向 a256b3c 仅为线索；界面名称均按 HEAD 源码核对。
+- 范围边界：仅生成说明文件，未执行 reserve/build/upload/publish 等发布命令，未修改 app.json（仍为 0.2.4，发布时需单独传 --version 0.4.0），未执行 Git 提交或推送。
+
+---
+
+## 2026-09-22 21:17:21 | 新增功能：个人资料页面规划与实施计划（仅文档）
+
+- 变更概述：按用户“目前先做规划，写成一个 md 文件”的要求，新增个人资料页面规划与持续更新的实施进度表；具体产品方案、UI 文字预览和业务实施仍待确认。
+- 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md（新增）、CHANGELOG.md。
+- 具体内容：核实现有「我的」首卡、设置页、用户模型、头像上传、认证刷新与云存储授权；规划两个入口、7 个页面与4类弹层，覆盖头像、用户名、邮箱、密码、平台占位、简介、地区和性别，补充用户 ID/注册时间、未保存返回、单项保存、身份验证与会话处理；提供 dp 文字预览、候选接口、文件清单、分阶段依赖与粗估人日、任务勾选、验收与待确认决策。
+- 证据与边界：基于 Timmi / 40b6215e863f2086035988fdbda2a64593b10eeb 的当前源码，明确区分已有客户端链路与待核实后端能力。仅修改文档，未改动业务代码、接口、依赖或数据库，未发送验证码、构建、部署或发布。
+- 验证：修改前后 npm run typecheck 均通过；核对7个页面、4类弹层、8个阶段及全部需求，Markdown围栏完整，无冲突标记与尾随空格，git diff --check 通过。工作区仅上述两份文档变化；纯文档任务未运行 npm run check、打包或真机验收，不表示个人资料功能已经实现。
+
+---
+
+## 2026-09-22 18:02:12 | 新增功能：15 天笔记垃圾桶（代码完成，未部署）
+
+- 变更概述：已按用户确认的规则与文字预览实现“我的 → 垃圾桶”、15×24 小时保留、恢复与到期清理。云端按服务器时间，App 启动/回前台/联网恢复与前台周期检查处理持久任务；离线或云存储关闭会延迟云端清理。纯本地笔记独立处理到期。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/trash.tsx、src/core/database/migrations/index.ts、src/core/database/migrations/0012-create-note-trash.ts、src/core/notifications/notification-provider.tsx、src/core/sync/upload-queue.repository.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-draft.repository.ts、src/features/notes/data/new-note-draft.repository.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、src/features/notes/screens/TrashScreen.tsx、src/features/notes/categories/components/CategoryDeleteConfirmModal.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/sync/note-upload-queue.ts、src/features/sync/upload-task-adapters.ts、tests/trash/notes-trash.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-local.test.cjs、src/core/database/migrations/0013-add-note-purge-markers.ts、CHANGELOG.md。
+- 数据与同步：归档笔记、排序、历史指针及草稿，撤销未运行上传任务；在途上传及结果未知的新建笔记拒绝删除。恢复保留较新本地编辑与冲突草稿，并重新排队需要上传的版本。分类删除覆盖本地未上传笔记，分类消失时恢复到未分类。明确保存的关联文件草稿在垃圾桶期间隐藏，到期一并清理。
+- 并发保护：删除与清理绑定身份、版本、删除时间；超时后重试同一批次。恢复未确认的删除时先取得删除回执再恢复，阻止迟到删除回写。无正文清理标识阻止旧编辑页、草稿和同步快照重新创建已清理内容；账号代际与 SQLite 事务保护跨账号和失败回滚。
+- 迁移：0012 创建垃圾桶；期间外部操作已提交首版实现，因此保持已提交迁移不变，追加 0013 创建无正文清理标识，兼容已经升级到 0012 的本地库。客户端自动顺序迁移，不清空本地数据。
+- 界面：保留我的页面其他区块，新增垃圾桶入口；卡片含标题、两行摘要、剩余天/小时/分钟及恢复操作。覆盖加载、空列表、恢复中、失败重试、待联网确认和到期待清理状态；笔记与分类删除提示改为保留 15 天。
+- 最终检查：npm run check 中 typecheck、lint 通过；theme:check 因当前 global.css 生成块格式差异失败，逐项比较颜色/圆角语义差异为 0。独立 npm test：444 项中 442 通过、2 失败、0 跳过；垃圾桶专项 16/16 通过，包含真实 SQLite 文件关闭/重开、迁移保留、恢复与清理、过期边界、账号隔离、错误身份拒绝及队列/草稿保护。
+- 范围外失败：page-seam.test.cjs 固定 className 顺序断言与同期格式化后的 border-t/border-r/border-b 顺序不符；swipe-tabs.test.cjs 期望已安装依赖 DEAD_ZONE=100，实际仍为 12，仓库补丁要求 100。未修改这些导航文件、依赖或测试来掩盖失败。
+- 验收版本：288e266 加本轮工作区增量；最终检查前后本功能 27 个源码/测试文件 SHA256 无变化，范围内 git diff --check 与冲突标记扫描通过。最初方案阶段类型检查基线为 47bedd6，确认后实施起点为 a2af26c；期间 282122d/288e266 来自外部 Git 操作，本任务未执行提交或推送。
+- 验证记录：系统临时目录 irisnote-trash-final-check.log、irisnote-trash-final-tests.log；后端笔记单元 11 项与独立 PostgreSQL 18.4 集成 20 项通过，临时实例已核验并停止。当前 adb devices -l 无已连接设备，真机与 APK 打包未验收。
+- 上线边界：后端须另行执行 migrations/008_notes_trash.sql 并部署；未执行生产迁移、部署或真实数据清理，不能据上述检查宣称可发布。
+
+---
+
+## 2026-09-22 17:59:12 | 新增功能：我的页面独立笔记与草稿列表
+
+- 变更概述：将全部笔记、星标笔记和草稿箱接入独立二级页面，保留返回我的页面的导航历史。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/notes.tsx、src/app/pages/user/starred.tsx、src/app/pages/user/drafts.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/note-collection-screen.tsx、src/features/notes/screens/drafts-screen.tsx、src/features/notes/hooks/use-draft-manager.ts、src/features/notes/components/draft-manager-dialog.tsx、CHANGELOG.md。
+- 具体内容：全部与星标笔记共用本机优先列表，在云存储授权下复用同步服务；页面返回时刷新，按账号和会话隔离异步结果。草稿列表展示本机主动草稿与自动恢复内容，复用现有草稿仓储，并将单选续写、批量删除和 2 秒倒计时抽取为页面/弹窗共享 hook；离开页面或应用退到后台取消未执行的倒计时。
+- 界面：沿用 64dp 返回栏、16dp 页面/卡片内边距、12dp 卡片间距和 48dp 操作按钮，补充加载、空态、错误重试及底部安全区。
+- 验证：对应基于 288e266 的未提交工作区。修改前后 npm run typecheck 通过，完整 npm run check 的类型检查和 ESLint 通过，但 theme:check 因既有 global.css 色值大小写与主题生成结果不一致而失败；从 288e266 原文件复核可复现，本次未修改主题文件。单独执行 npm test：443 项中 441 通过、2 失败，分别为既有待办页 className 字符串断言不匹配（基线提交同样不匹配）和 react-native-tab-view 运行依赖 DEAD_ZONE=12、测试要求100；均不涉及本次修改文件。最终类型检查、定向 ESLint、git diff --check 及本次源码冲突标记检查通过。检查日志：系统临时目录 irisnote-profile-pages-check.log、irisnote-profile-pages-tests.log。ADB 无设备，现有预览端口8081的浏览器导航和状态读取均超时，未完成视觉或真机验收；未重启现有服务，未构建、提交或发布。
+
+## 2026-09-22 22:17:17 | 优化代码：按项目现状重写测试包构建指南新电脑从零构建章节
+
+- 变更概述：已获用户确认（从系统环境变量之后写起，环境配置部分不展开；按项目改动后现状重新参考）。项目统一云存储改造（47bedd6）后旧开关 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已从代码移除，且此前写入文档的"新电脑从零搭建"章节已随 330780b 移除。本次按当前代码现状重写该章节：不含软件清单与环境变量小节（引言一句带过前提），从克隆代码到产出 APK 组织为步骤 1–7 流水线。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零构建」——步骤 1 克隆与 npm install（含 npmmirror、postinstall patch-package 横滑补丁说明）；步骤 2 `.env.local` 改为**可选**（按新代码事实：`EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 未配置/空/`1` 时云存储开放、API 默认 `https://tech-mou.top/api`，仅显式覆盖时才建文件，并注明旧 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已废弃）；步骤 3 `npx expo prebuild -p android --no-install`；步骤 4 就地给出完整 staging 构建块及漏加症状（`Task 'assembleStaging' not found`）；步骤 5 debug.keystore 公开证书说明与 keytool 指纹核对命令（SHA256 FA:C6:17:45:…:9C）；步骤 6 镜像脚本 PowerShell 重建命令（英文注释避免编码问题）；步骤 7 构建命令（`"$PWD\.expo\..."` 绝对路径展开、Gradle 9.3.1 发行版腾讯镜像、冷构建约 19 分钟、产物路径）+ 尾注"日常只重复步骤 7"；② 原二~~六节顺延为三~~七节，「构建命令」改为速查定位并保留既有 `EXPO_PUBLIC_CLOUD_STORAGE_ENABLED` 语义说明；③ Git 忽略表补 `.env*.local`、`*.keystore`/`*.jks`；④ 常见问题补 Gradle 发行版卡住、npm install 慢、跨机器签名一致性三条；⑤ 第一节"登录同一账号云端数据不隔离"的举例由"Todo 云同步"更新为"云存储同步"。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档事实按当前 HEAD（0f42f65）实测核实：staging 块仍在 android/app/build.gradle L125、Gradle 9.3.1、JDK 17/Node 24.18.0 环境变量不变、镜像脚本与 debug.keystore 在位、`parseCloudStorageEnabled` 默认开放语义、`DEFAULT_API_BASE_URL` 仍为 https://tech-mou.top/api、patches/react-native-tab-view+4.3.2.patch 在位。新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
+---
+
+## 2026-09-22 22:10:55 | 修复问题：同步 master 固有的两处过期测试断言
+
+- 变更概述：已获用户确认（更新测试断言以匹配 master 新事实，不修改任何源码）。修复合并验证中暴露的 2 项 master 固有测试失败，使全量检查恢复全绿。
+- 修改文件：tests/navigation/page-seam.test.cjs、tests/todos/todo-local.test.cjs、CHANGELOG.md。
+- 具体内容：① page-seam 测试对 TodosScreen.tsx 的正则断言中 border 类顺序由 `border-b border-r border-t` 更新为 `border-t border-r border-b`——master 提交 282122d 统一代码风格时 prettier 重排了 tailwind 类顺序，类集合与"填充层/圆角边框层分离"结构意图均未变；② todo-local 测试 `CURRENT_DATABASE_VERSION` 断言由 11 更新为 12——master 新增迁移 0012-create-note-trash 后版本常量由迁移数组末项自动推导为 12，注释同步补充 0012 说明。
+- 验证：定向 node --test 两文件 14/14 通过；全量 npm run check 通过（typecheck、lint、theme:check、438/438 测试，exit code 0）。未修改任何 src/ 源码，无需真机验收。
+
+---
+
+## 2026-09-22 21:54:23 | 优化代码：合并 master 主分支并解决冲突
+
+- 变更概述：已获用户确认（先提交暂存改动→合并→检查通过即推送）。将 origin/master 领先的 9 个提交（15 天笔记垃圾桶、数据存储页面、云存储授权统一、全项目代码风格统一、PR #117 等）合入 kroos_todo，解决 CHANGELOG.md 冲突。合并前先将暂存区未提交改动（删除「新电脑从零搭建」章节）提交为独立提交 330780b。
+- 修改文件：CHANGELOG.md、global.css、docs/构建发布/本地测试包构建.md（master 侧自动合并）。
+- 具体内容：① 提交 330780b：移除本地测试包构建指南中「新电脑从零搭建」整章（-208 行）并保留表格对齐格式化；② git merge origin/master，唯一冲突 CHANGELOG.md 按"双侧条目全保留、时间倒序"解决；③ npm run theme:sync 刷新 global.css 主题块（50 行，仅 hex 颜色小写→大写规范化，修复 master 固有的 json/css 不同步）；④ 重新生成 .expo/types/router.d.ts（本地生成产物过期，不含 master 新增的 trash/cloud-storage/data-storage 路由导致 TS2345，短暂启动 expo start 触发类型生成）。
+- 验证：npm run typecheck 通过（路由类型再生成为 0 错误）；npm run lint 通过；npm run theme:check 通过。npm test 438 项中 436 通过、2 项失败——失败为 master 固有（src/ 与 tests/ 相对 origin/master 零差异）：① tests 断言 TodosScreen.tsx 旧 JSX 结构（master 重构后已不存在）；② tests/todos/todo-local.test.cjs 断言迁移数 11（master 新增 0012 后实际 12）。git status 无未解决冲突；全仓冲突标记仅命中 GitHub 教程既有演示内容与二进制字体误报。未做真机验收。
+
+---
+
+## 2026-09-22 21:05:24 | 优化代码：本地测试包构建指南补全新电脑从零搭建章节
+
+- 变更概述：已获用户确认。`docs/构建发布/本地测试包构建.md` 原先只覆盖"本机已有环境"的构建命令，缺少在另一台电脑从零构建所需的前置信息。新增完整「新电脑从零搭建」章节，把环境变量、软件版本、脚本内容、Git 忽略文件重建步骤全部写清，使任何新 Windows 电脑可仅凭该文档从零打出 staging 测试包。
+- 修改文件：docs/构建发布/本地测试包构建.md、CHANGELOG.md。
+- 具体内容：① 新增「二、新电脑从零搭建」8 个子节——软件清单（Expo SDK 57 要求 Node ≥22.13.x，本机实测 24.18.0；新电脑建议 JDK 17，本机 JDK 21 已通过编译；Android SDK Platform 36 + Build-Tools 36.0.0 + Platform-Tools、Gradle 9.3.1 wrapper 自动下载）、必设系统环境变量（JAVA_HOME/ANDROID_HOME 含 setx 与验证命令）及项目自动注入变量说明（JAVA_TOOL_OPTIONS 回环修复、IRIS_GRADLE_SOCKET_DIR）、克隆与 npm ci（npmmirror 切换、postinstall patch-package）、创建 .env.local（完整内容与 EXPO_PUBLIC_TODO_CLOUD_SYNC / BASE_URL / RELEASE_API_URL 变量作用表）、`npx expo prebuild -p android --no-install` 生成工程并指引加回 staging 块、debug.keystore 公开调试证书说明（SHA256 指纹与 keytool 核对命令）、.expo/gradle-aliyun-init.gradle 的 PowerShell 重建命令（英文注释避免跨机器编码问题）、Gradle 发行版腾讯镜像替换方案；② 原二~~六节顺延为三~~七节，交叉引用同步更新；③ 构建命令节去掉 D:\IRisNote 硬编码，--init-script 改用 PowerShell "$PWD\.expo\..." 自动展开写法；④ Git 忽略说明表补 .env*.local 与 _.keystore/_.jks 两行；⑤ 常见问题补 Gradle 发行版下载卡住、npm install 慢两条排查项，签名注意补跨机器证书一致性指引。
+- 验证：纯文档改动，未触及 TS 源码，无需 typecheck/测试。文档中全部事实（环境变量值、工具版本、SDK 版本 36/24、Gradle 9.3.1、debug.keystore SHA256 指纹、.env.local 内容、镜像脚本内容、仓库地址）均在本机实测核实；新电脑全流程未实测，文档已附指纹核对等自助验证命令。
+
+---
+
+## 2026-09-22 17:20:13 | 新增功能：15 天笔记垃圾桶（实施中）
+
+- 用户已确认方案和界面预览，新增本地垃圾桶迁移、严格响应校验、删除/恢复/清理服务。
+- 文件：src/core/database/migrations/0012-create-note-trash.ts、src/core/database/migrations/index.ts、src/features/notes/api/notes-trash.types.ts、src/features/notes/api/notes-trash.api.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-trash.service.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 删除时在本地事务中归档笔记/草稿、保留历史并撤销未运行上传任务；同步处理合法的更高版本恢复，到期清理依赖服务器确认；仍在上传或结果未知的新笔记拒绝删除。
+- 尚待界面接入、回归检查和最终记录；未执行线上迁移、部署或真实数据清理。
+
+---
+
+## 2026-09-22 17:03:13 | 修复问题：存储统计兼容 SQLite 原生目录路径
+
+- 变更概述：修复已确认的数据与存储功能在 Android 扫描 SQLite 目录时出现 Exception in HostFunction / URI is not absolute 的问题。
+- 修改文件：src/core/storage/storage-files.ts、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 问题根因：项目已安装的 expo-sqlite Android/iOS 实现返回不带协议的绝对本地路径；原实现直接交给 Expo FileSystem Directory，并在 try/catch 之外访问原生 uri getter。原测试替身自动为所有路径补 file:///，掩盖了真实模块边界。
+- 具体内容：① 仅在文件系统统计入口把 SQLite 绝对本地路径转换为 file URI，按路径段编码中文、空格、百分号、#、? 等字符，保留已有 file:/// URI，不改变 SQLite 打开数据库时的路径；② 目录初始化及遍历时的 uri getter 均纳入异常处理，单个目录失败计入部分统计并继续其他目录；③ 缓存规范化后的 SQLite 与草稿目录用于分类和去重；④ 测试替身不再凭空补协议，模拟裸路径 uri getter 抛错；增加裸路径、已有 URI、特殊字符、无效路径及目录 getter 异常回归。清理白名单、数据库数据、界面布局与默认选择保持原方案。
+- 验证：对应基于 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；node --test tests/storage/storage.test.cjs 为 13/13 通过。npm run check 的 typecheck、lint、theme:check 通过，428 项测试中 427 通过、1 失败，唯一失败仍为既有横滑依赖补丁未生效（运行依赖 DEAD_ZONE=12、原测试要求100），与本次路径修复无关。git diff --check 与本次文件冲突标记检查通过。完整日志位于系统临时目录 irisnote-storage-uri-check.log。ADB 未列出设备；原生根因已核对已安装 Kotlin/Swift 源码，但修复尚未通过真机复验，未构建、安装或发布。
+
+---
+
+## 2026-09-22 16:50:39 | 新增功能：数据与存储及可选缓存清理
+
+- 修改文件：src/app/_layout.tsx、src/features/notes/components/NoteShare/NoteShareManager.tsx、src/features/notes/components/NoteShare/NoteShareToImage.tsx、src/features/notes/components/NoteShare/NoteShareToMarkdown.tsx、src/features/notes/components/NoteShare/NoteShareToPdf.tsx、src/features/notes/components/NoteShare/NoteShareToTxt.tsx、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/settings/screens/SettingsScreen.tsx、src/features/updates/update-store.ts、tests/releases/releases.test.cjs、tests/sync/notes-sync.test.cjs、src/app/pages/user/data-storage.tsx、src/core/storage/share-cache.ts、src/core/storage/storage-files.ts、src/core/storage/storage-policy.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-cache.service.ts、src/features/settings/screens/DataStorageSettingsScreen.tsx、tests/storage/storage.test.cjs、CHANGELOG.md。
+- 变更概述：已获用户确认页面文字预览与清理边界，接通设置中的“数据与存储”。用户可以勾选更新缓存、分享临时文件与笔记缓存；笔记缓存默认不勾选，每次重新进入页面恢复默认选择。
+- 具体内容：① 读取应用文档、缓存与 SQLite 实际目录，重叠路径去重，展示已统计占用、分类明细、可清理文件容量；读取失败明确标为部分统计，不包含应用安装体积，不把 SQL 内容字节数当成系统已释放空间；② 更新文件复用已安装构建号白名单，保留较新安装包及使用中的文件，清理前复核大小、修改时间与更新状态；③ 分享文件归入专用目录，TXT/Markdown 保留笔记标题文件名；记录正在使用及结束时间，保护并发分享和跨进程中断标记，仅清理超过 24 小时的已结束文件，保留未能确认来源的历史文件；④ 笔记缓存清理仅处理当前账号，要求已有云存储授权并联网读取完整快照验证身份、版本与正文，在事务内再次核实同步状态、草稿和上传队列；保留仅本机、未同步、恢复副本、历史版本及其他账号内容，不发送云端删除请求；⑤ 暂停并等待现有笔记同步，清理本地副本与对应镜像，重置下载游标；使用现有 system_preferences 保留稳定客户端 ID、排序和历史指针，完整同步重新下载时恢复，数据库空间留供复用，不执行 VACUUM 或删除数据库；⑥ 页面提供加载、禁用、确认、清理结果、跳过与部分失败反馈，支持重新统计，账号/授权/页面变化中止后续清理；⑦ 补充 18 项默认选择、文件白名单、使用中保护、并发分享、SQL 回滚、草稿队列保护、离线失败、账号切换及身份恢复测试。无依赖、数据库结构、后端或发布配置变更。
+- 验证：基于提交 47bedd6 的未提交工作区。修改前 npm run typecheck 通过；最终 npm run check 的 typecheck、lint、theme:check 通过，425 项测试中 424 通过、1 失败，新增 18 项全部通过。唯一失败为既有 tests/navigation/swipe-tabs.test.cjs：本机 node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 仍为 DEAD_ZONE=12，仓库原有补丁与测试要求100；本次未修改相关依赖、补丁和测试。git diff --check 通过，本次变更文件无 Git 冲突标记。完整检查日志：系统临时目录 irisnote-storage-final-check.log。ADB 未列出已连接设备；尚未进行真机容量/视觉/离线重新下载验收，未构建、安装、部署或发布。
+
+---
+
+## 2026-09-22 15:58:51 | 新增功能：统一云存储授权与构建环境开关
+
+- 修改文件：docs/待办/Todo前后端交接与验收.md、docs/待办/待办后端API预留契约.md、docs/待办/待办逻辑层设计.md、docs/构建发布/本地测试包构建.md、release.env.example、scripts/release/cli.mjs、src/app/_layout.tsx、src/core/notifications/notification-provider.tsx、src/core/providers/AppProviders.tsx、src/core/sync/upload-queue-coordinator.ts、src/features/auth/providers/AuthProvider.tsx、src/features/auth/screens/LoginScreen.tsx、src/features/auth/screens/RegisterScreen.tsx、src/features/notes/categories/components/CategoryBar.tsx、src/features/notes/components/editor/new-note-editor.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、src/features/notes/components/viewer/NoteViewerMeta.tsx、src/features/notes/components/viewer/note-operation-info.tsx、src/features/notes/hooks/useNotePin.ts、src/features/notes/hooks/useNoteStar.ts、src/features/notes/screens/NoteDetailScreen.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/profile/hooks/useAvatar.ts、src/features/profile/hooks/useProfileOverview.ts、src/features/profile/services/avatar-picker.service.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/sync/category-upload-queue.ts、src/features/sync/screens/SyncQueueScreen.tsx、src/features/sync/upload-task-adapters.ts、src/features/todos/components/TodoSyncQueueRow.tsx、src/features/todos/state/todo-sync-provider.tsx、src/shared/http/client.ts、src/shared/http/errors.ts、tests/editor/drafts.test.cjs、tests/editor/revisions.test.cjs、tests/releases/release-env.test.cjs、tests/sync/notes-sync.test.cjs、tests/todos/todo-api.test.cjs、src/app/pages/user/cloud-storage.tsx、src/core/cloud-storage/cloud-storage-consent-controller.ts、src/core/cloud-storage/cloud-storage-policy.ts、src/core/cloud-storage/cloud-storage-provider.tsx、src/features/settings/screens/CloudStorageSettingsScreen.tsx、tests/sync/cloud-storage.test.cjs、tests/sync/upload-consent.test.cjs、.env.release.local（仅云存储变量，Git忽略）、CHANGELOG.md。
+- 变更概述：已获用户确认，笔记、待办、分类、头像及后续业务云存储共用当前账号在本机的主动授权；构建变量只开放功能，不代表用户同意。未授权仍可保存本地笔记/待办，保留待同步任务。
+- 具体内容：① 统一变量 EXPO_PUBLIC_CLOUD_STORAGE_ENABLED，未配置/空值/1 开放功能，0及非法值关闭，移除原待办独立开关及其EAS透传，迁移样例和本机发布变量；② 复用 system_preferences 按账号持久化授权，首次/旧用户升级无授权记录时关闭，读取失败关闭，启用须先持久化，撤销立即生效并串行保存最后一次选择；③ 公共HTTP调用时同步捕获账号与授权代际，实际发送前复核，默认保护未来API，基础认证端点例外；中止在途传输、阻止迟到响应和跨账号发包，区分发送前拒绝与发送后未知回执；④ 笔记/待办/上传协调器、手动同步、重试及分类任务统一门控，同账号重新授权等待旧执行确认结束，保留未知创建保护，避免重复创建；⑤ 新增同步与备份页面，权限设置及首页概览使用同一状态，关闭时队列仍可见、按钮准确禁用，本地状态及云依赖功能提示与实际能力一致，远程头像读取和上传也受控；⑥ 登录/注册替换Token前和退出登录前立即撤销旧会话，快速关闭再开启按授权代际重建读取；⑦ 保留当前本地能力，未新增完整离线分类/元数据/删除体系或独立历史备份，未更改依赖版本、数据库结构或后端。
+- 验证：修改前 e4929d8 的 npm run typecheck 通过；实现中修复授权保存/读取/退出、同tick账号切换和队列重启竞态。最终 npm run check 的 typecheck、lint、theme:check 通过；407 项测试中 406 通过、1 项失败，授权/HTTP/Provider 专项 39/39、队列专项 5/5 均通过。git diff --check 通过，本次修改文件无冲突标记；全仓扫描仅命中既有 GitHub 教程中的冲突演示代码。验收对应基于 e4929d8 的未提交工作区；检查日志在系统临时目录 irisnote-cloud-final-check.log。唯一失败是本机既有横滑测试：node_modules/react-native-tab-view/lib/module/PanResponderAdapter.js 为 DEAD_ZONE=12，而仓库已有补丁与测试要求100；该测试、补丁及依赖清单本次均未改动。未启动或重启开发服务器，未构建APK、安装、发布或进行真机验收。
+
+---
+
+## 2026-09-22 01:01:08 | 修复问题：启动时清理已安装及更旧的更新包
+
+- 变更概述：已获用户确认。修复成功更新后完整 APK 长期留在缓存目录、跨版本累积的问题；每次进程首次检查更新时，在联网之前尝试清理一次，离线启动同样生效。
+- 修改文件：src/features/updates/update-store.ts、tests/releases/releases.test.cjs、CHANGELOG.md。
+- 具体内容：① 从当前运行的原生安装包读取并严格校验构建号；② 只处理缓存根目录中严格匹配 irisnote-release-正整数.apk / .hdiff 且构建号不高于当前安装版本的文件，跳过目录、异常名称与其他数据；③ 保留更高版本的待安装文件，不在启动系统安装器后立即删除；④ 单文件或目录读取失败记录警告，不阻断更新检查，下次进程启动重试；⑤ 增加离线清理、删除边界、无效构建号、并发和重复调用、错误隔离及重启重试测试。
+- 验证：修改前 npm run typecheck 通过；最终代码 npm run check 的 typecheck、lint、theme:check 与 347/347 项测试全部通过，git diff --check 与冲突标记检查通过。首轮定向测试的事件记录混入原有退出顺序断言，已拆分测试记录并通过回归。验收对应基于 7956b5f 的未提交工作区改动；尚未构建、安装或执行真机缓存回收验收。
+
+---
+
+## 2026-09-21 22:58:35 | 优化代码：顶部安全区背景色随页面动态切换
+
+- 变更概述：已获用户确认（方案 A：根布局路由映射）。根布局 SafeAreaView 原先固定使用灰色 appBackground 填充顶部安全区，导致白色页面（auth 登录/注册/欢迎、笔记新建/编辑/详情）顶部出现灰白分界。现改为按当前路由动态取色：命中 `/auth/`、`/pages/note/` 前缀时使用白色（colors.surface，即 #FFFFFF），其余页面维持灰色默认值。
+- 修改文件：src/app/_layout.tsx、CHANGELOG.md。
+- 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
+- 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
+
+## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
+
+- 变更概述：应用户"全修正"要求，落实代码审查报告的全部建议项（建议 1–4）与提示项（3/5）：app.json 恢复 HEAD 消除全文件格式重排 diff；`SCHEDULE_EXACT_ALARM` 权限收敛为模块 Manifest 单一来源；同名类型改名消歧；偏好写库增加值未变短路；统一模块导入别名；清理 Kotlin 文件名正则冗余字符。
+- 修改文件：app.json（git checkout 恢复）、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、tsconfig.json、tests/todos/system-notifications.test.cjs、CHANGELOG.md。
+- 具体内容：① app.json 整体恢复 HEAD（撤销缩进重排与 permissions 中的权限声明，diff 归零）；② 权限唯一来源改为 modules/irisnote-system 的 AndroidManifest（经 gradle manifest merger 合并进 APK），模块 AndroidManifest 保持不动；③ 模块侧 `ExactAlarmAccess` 改名 `NativeExactAlarmAccess`（3 值原生态），`system-notification.types.ts` 改为 `NativeExactAlarmAccess | "unavailable"` 组合表达继承关系（import type，无运行时导入）；④ Provider 中 `setExactAlarmAccess` 仅在值变化时写库（含 null→值的首次落盘），消除每次前台切换的冗余写入与 iOS 写 "not-required"；⑤ tsconfig paths 新增 `@modules/*`，service 与 HelpFeedbackScreen 的多级相对导入统一为 `@modules/irisnote-system`；⑥ Kotlin 文件名白名单正则 `[A-Za-z0-9T-]`→`[A-Za-z0-9-]`（T 冗余，行为不变）；⑦ 同步测试：introspect 断言反转为"app 原生配置不含 SCHEDULE_EXACT_ALARM"以锁定单一来源不回退，模块断言测试更名，测试 stub key 改为别名。
+- 验证：`npm run typecheck` 通过（0 错误，中途发现并修复改名遗漏的方法签名引用）；定向测试 30/30 通过；`npm run check` 全量通过（typecheck、lint、theme:check、354/354 测试）；`gradlew :app:processDebugMainManifest` BUILD SUCCESSFUL，合并后 Debug Manifest 含 `SCHEDULE_EXACT_ALARM` 且 app 源 manifest（prebuild 产物）不含——node_modules 全量搜索确认无第三方库声明该权限，合并来源 100% 为本模块。未做真机验收（Android 14+ REQUEST_SCHEDULE_EXACT_ALARM 弃用行为仍建议真机验证）。
+
+---
+
+## 2026-09-22 02:56:31 | 新增功能：系统通知模块负责说明文档
+
+- 变更概述：应代码审查与模块梳理需求，新增通知模块架构文档，覆盖文件职责、UI 到系统通知的全链路时序、通知分级、精确闹钟权限专节与五个端到端示范案例，供团队开发与排障参考。
+- 修改文件：docs/架构指南/系统通知模块负责说明.md（新增）、CHANGELOG.md。
+- 具体内容：① 模块总览分层图与逐文件职责清单（core/system-notifications 5 文件、modules/irisnote-system 本地模块含 Kotlin 行为契约、features 消费方、diagnostics 支撑）；② 待办提醒/常驻通知/测试通知 × Android 渠道对照表与 importance 档位语义；③ 四条全链路时序（待办保存→排程→到点→点击、常驻开关、测试通知、冷启动 refresh 对账）；④ 精确闹钟权限专节（SCHEDULE_EXACT_ALARM 背景、双处声明、四态语义、forceReschedule 强制重排机制、用户触点与平台差异）；⑤ 五个示范案例与边界降级矩阵（Expo Go/Web/iOS/权限拒绝/模块缺失）。文档基于当前工作区现状（含未提交的精确闹钟改动）并在文首标注。
+- 验证：纯文档新增，无代码改动；无需 typecheck/测试。
+
+---
+
+## 2026-09-22 02:48:43 | 修复问题：Android 待办精确提醒权限与诊断日志下载导出
+
+- 变更概述：已获用户确认，为 Android 待办提醒接入“闹钟和提醒”特殊权限与授权后的全量重排，避免 Expo 在无精确权限时使用的非精确闹钟被系统/OPlus 长时间调整；同时将诊断日志直接保存到公共 `Download/irisnoteLog` 后显示全局横幅并自动打开系统分享面板。
+- 修改文件：app.json、modules/irisnote-system/**（新增）、src/core/diagnostics/diagnostic-log.ts、src/core/system-notifications/{system-notification-native-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 声明 `SCHEDULE_EXACT_ALARM`，新增本地 Expo Android 模块读取 `AlarmManager.canScheduleExactAlarms()`，权限设置页新增“准时提醒”状态与系统设置入口；② 明确保存未来提醒且缺少权限时显示“去开启”横幅，授权返回后持久化状态并强制取消、重建已有未来提醒，使 Expo SDK 57 重新按精确闹钟调度；③ 日志导出改为返回缓存文件及文件名，Android 10+ 通过 `MediaStore.Downloads` 写入 `Download/irisnoteLog`，Android 9 及以下按需申请旧版存储权限，保存成功后显示实际路径并继续调用系统分享面板；④ 补充权限读取、设置跳转、重排、下载保存和分享结果的脱敏日志及回归测试。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；通知/提醒定向测试 30/30 通过；`npm run check` 的 typecheck、lint、theme:check 与 354/354 项测试全部通过；Expo 本地模块自动链接识别 `irisnote-system` 且无重复；`:irisnote-system:compileDebugKotlin` 与 `:app:processDebugMainManifest` 均 `BUILD SUCCESSFUL`，合并后的 Debug Manifest 含 `SCHEDULE_EXACT_ALARM`；未构建 APK、未安装或执行真机权限/到点通知/下载分享验收，安装包构建由用户完成。
+
+---
+
+## 2026-09-22 01:53:02 | 新增功能：staging 测试包独立包名共存与构建指南文档
+
+- 变更概述：已获用户确认，为本地 staging 测试包启用独立包名 `com.mouqiandi.irisNote.staging`（applicationIdSuffix），实现与正式包双应用共存、数据隔离，桌面显示名改为"IRisNote 测试"以作区分；并新增测试包构建指南文档，固化阿里云镜像用法、命令与注意事项。
+- 修改文件：android/app/build.gradle（Git 忽略目录，仅本机生效）、docs/构建发布/本地测试包构建.md（新增）、CHANGELOG.md。
+- 具体内容：① staging 构建块新增 `applicationIdSuffix ".staging"` 与 `resValue "string", "app_name", "IRisNote 测试"`，包名独立后应用内更新器经 `updateSupported()`（校验 applicationId === com.mouqiandi.irisNote）自动禁用，测试包无更新误装风险；② 文档覆盖：staging 与正式包差异对照表、构建命令（含 arm64 瘦身参数与镜像绝对路径要求）、阿里云镜像脚本位置与原理（规避 dl.google.com TLS 握手中断）、.expo/ 与 android/ 的 Git 忽略说明、staging 块参考代码（供 prebuild 重新生成后找回）、限制与常见问题（http 明文不可用、Debug 签名、依赖下载失败排查、残留进程清理）。
+- 验证：`npm run gradle -- help --init-script D:\IRisNote\.expo\gradle-aliyun-init.gradle` 配置阶段通过（验证 Groovy 语法与 resValue 合并有效，结果见后续汇报）；未触及 TS 源码，typecheck/lint 不受影响；正式发布链路使用重新生成的 Android 工程，不含 staging 配置。APK 构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:49:00 | 新增功能：本地构建阿里云镜像脚本固定至 .expo
+
+- 变更概述：已获用户确认，将原先临时存放于系统 Temp 的 Gradle 阿里云镜像 init 脚本固定到项目 `.expo/`（整目录已被 Git 忽略），避免系统清理临时文件后脚本丢失。当日 staging 测试包构建曾因直连 dl.google.com 下载 androidx 依赖 TLS 握手中断而失败，需本脚本镜像兜底。
+- 修改文件：.expo/gradle-aliyun-init.gradle（新增，位于 Git 忽略目录，不入版本库）、CHANGELOG.md。
+- 具体内容：脚本内容沿用原 Temp 版本——在 google()/mavenCentral() 之前追加阿里云 google/public 镜像仓库（allprojects 的 buildscript 与项目仓库均追加）；头部注释由"仅为本次临时"改为固定用途说明，并补充用法示例（--init-script 需用绝对路径，npm run gradle 的工作目录在 android/ 下，相对路径不生效）。
+- 验证：文件已写入 `D:\IRisNote\.expo\gradle-aliyun-init.gradle`；`git check-ignore` 确认 .expo/ 整目录被忽略（.gitignore 第 8 行）；镜像仓库地址与原 Temp 脚本一致。本记录仅为构建辅助文件落位，不触及应用源码，未运行 typecheck/check（无代码变更），构建由用户自行执行。
+
+---
+
+## 2026-09-22 01:23:32 | 新增功能：通知全链路诊断、常驻通知与测试通知
+
+- 变更概述：已获用户确认，为 Android 系统通知补齐应用内可导出的诊断链路，在权限设置中增加可持久化的常驻通知开关，并在帮助与反馈中增加诊断日志导出和普通测试通知入口。
+- 修改文件：src/core/diagnostics/{diagnostic-log,index}.ts、src/core/database/migrations/{0011-create-system-preferences,index}.ts、src/core/system-notifications/{system-notification-context,system-notification-native-provider,system-notification-provider,system-notification.service,system-notification.types}.ts(x)、src/features/settings/components/SettingsRow.tsx、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/{HelpFeedbackScreen,PermissionSettingsScreen}.tsx、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts、tests/todos/{system-notifications,todo-local,todo-reminders}.test.cjs、CHANGELOG.md。
+- 具体内容：① 记录通知权限、渠道、待办保存与资格判断、对账、排程、取消、前后台切换、接收和点击等事件，日志仅保留计数、布尔值、时间与不可逆短标识，不记录待办正文、账号标识或令牌；② 诊断日志以最多 400 条 JSONL 持久化，并可从“帮助与反馈 → 诊断与排障”调起系统分享；③ 新增 `irisnote.runtime.v1` LOW 渠道和“IRisNote正在运行”不可侧滑通知，开关通过共享 SQLite 的 `system_preferences` 表持久化；④ 新增 `irisnote.diagnostics.v1` DEFAULT 渠道，点击“发送测试通知”会发送一条可关闭的普通通知并自动写入诊断日志；⑤ 前台通知处理器分别处理待办、常驻状态和测试通知，保持待办点击跳转与账号隔离逻辑。
+- 验证：修改前、修改后 `npm run typecheck` 均通过；定向通知/提醒/迁移测试 39/39 通过；`npm run check` 的 typecheck、lint、theme:check 与 350/350 项测试全部通过；`git diff --check` 通过。按用户要求中止本地 Debug 构建，未生成、安装或真机验收新的安装包。
+
+---
+
+## 2026-09-21 23:55:23 | 修复问题：合并 master 设置模块与测试串行化的两处冲突
+
+- 变更概述：已获用户确认，将 master（PR #115 设置模块、测试串行化等 8 个提交）合入 kroos_todo，解决 2 个文件的内容冲突，17 个文件（设置新页面、_layout、release.env.example 移根目录等）自动合并成功。
+- 修改文件：package.json、CHANGELOG.md（冲突解决）；合并带入 src/features/settings/**、src/app/pages/user/{about,help-feedback,permissions}.tsx、releases/notes-0.3.0.txt、release.env.example（rename）等。
+- 具体内容：① package.json 取双方并集——保留本侧 patch-package 依赖与 postinstall 脚本（横滑手势补丁依赖），采纳 master 的 test 脚本 --test-concurrency=1 串行参数，统一 2 空格缩进；② CHANGELOG.md 双方 11 条日志按时间倒序交叉合并（22:17→…→18:03），一条不丢；③ 清理合并过程残留的 >>>>>>> 标记并补齐条目分隔线。
+- 验证：全仓冲突标记扫描清零；package.json JSON 解析有效；合并后 npm run typecheck 通过；npm test（已固化串行）348/348 全部通过。
+
+---
+
+## 2026-09-21 22:17:04 | 修复问题：待办分页横滑时的内容区细线
+
+- 变更概述：将待办页面的白色填充与圆角边框分层绘制，消除 Android 横滑分页过程中可能露出的灰色或黑色竖线。
+- 修改文件：docs/UI/IRisNote视觉设计规范.md、src/features/todos/screens/TodosScreen.tsx、tests/navigation/page-seam.test.cjs、CHANGELOG.md。
+- 具体内容：① 视觉规范升至 1.13，明确分页表面、15dp 顶部留白、75dp 右侧栏、30dp 单侧圆角、1dp 边框及填充/边框层 0dp 间隙约束；② 待办页外层仅绘制白色填充和右上圆角，内层仅绘制上/右/下边框与内容内边距，移除 `height: 100%` 与底部 margin 留缝；③ 新增静态回归测试，锁定分页白色表面和待办页的分层结构。
+- 验证：修改前后 `npm run typecheck` 通过；定向 `node --test --test-concurrency=1 tests/navigation/page-seam.test.cjs` 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅复现既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 348/348 通过；`git diff --check` 通过。未连接 adb 设备，未做真机滑动显示验收。
+
+---
+
+## 2026-09-21 22:00:51 | 优化代码：权限项目统一直达系统设置
+
+- 变更概述：已获用户确认，权限设置页中的通知、相机、照片访问和更新安装项目统一改为点击后直接进入手机系统设置，不再优先触发应用内授权弹窗。
+- 修改文件：src/features/settings/screens/PermissionSettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：① 通知项目直接进入 IRisNote 系统通知设置；② 相机与照片访问直接进入 IRisNote 系统应用设置页，由系统提供权限开关；③ Android 更新安装继续进入“允许来自此来源的应用”专用设置；④ 保留只读权限状态和从系统设置返回后的自动刷新；⑤ 页面说明文字同步改为“直接打开系统设置”。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；git diff --check 与相关文件冲突标记扫描通过。未执行 Android/iOS 真机系统设置跳转与返回刷新验收。
+
+---
+
+## 2026-09-21 21:27:07 | 优化代码：移除设置首页重复的通知设置入口
+
+- 变更概述：已获用户确认，通知授权已统一并入“权限设置”，因此从设置首页“偏好设置”分组移除重复的“通知设置”栏。
+- 修改文件：src/features/settings/screens/SettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：删除“通知设置”设置行及其权限状态依赖；“编辑与阅读”调整为偏好设置卡片末行，避免保留多余分割线；顶部“通知 / 站内”概览和“数据与隐私 → 权限设置”入口保持不变。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；git diff --check 与相关文件冲突标记扫描通过。未执行真机页面目视验收。
+
+---
+
+## 2026-09-21 20:52:51 | 新增功能：设置页手机权限、版本记录与反馈入口
+
+- 变更概述：已获用户确认，完善设置页的手机权限管理、关于 IRisNote 版本时间线、帮助与反馈联系方式，并将 ICP 备案号作为设置首页独立可点击栏。
+- 修改文件：src/app/_layout.tsx、src/app/pages/user/about.tsx、src/app/pages/user/help-feedback.tsx、src/app/pages/user/permissions.tsx、src/features/settings/components/SettingsPageHeader.tsx、src/features/settings/data/release-history.ts、src/features/settings/data/support-links.ts、src/features/settings/screens/AboutScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、CHANGELOG.md。
+- 具体内容：① 新增“权限设置”二级页，集中读取和管理通知、相机、照片访问及 Android 更新安装授权，返回应用时自动刷新状态，并区分 Expo Go、非移动平台和缺少原生更新模块等不可用状态；② 新增“关于 IRisNote”二级页，显示本机版本与构建号，按本机版本过滤更新历史，以左侧竖向时间线展示当前版本及旧版本，旧版本支持展开和收起；③ 新增“帮助与反馈”二级页，接入已核实的反馈邮箱、复制邮箱和预填版本信息的邮件入口，帮助内容保持“整理中”，未找到真实 Discord 地址时明确显示“待配置”且禁用；④ 设置首页接通三个二级页，并新增独立“ICP备案号”栏，点击“湘ICP备2026022882号-2A”跳转 https://beian.miit.gov.cn，失败时显示横幅；⑤ 抽取设置子页共用顶栏，三个新页面保持 16dp 页面边距、560dp 最大宽度、64dp 顶栏与可滚动窄屏布局。
+- 验证：修改前 npm run typecheck 通过；最终 npm run check 的 typecheck、lint、theme:check 与 343/343 项测试全部通过；Expo Web 静态导出成功并生成 /pages/user/settings、/pages/user/permissions、/pages/user/about、/pages/user/help-feedback 路由；git diff --check 与源码冲突标记扫描通过。未执行 Android/iOS 真机权限、系统设置返回、邮件应用、Discord 或工信部外部跳转验收。
+
+---
+
+## 2026-09-21 20:33:24 | 优化代码：主页面横滑开始跟手门槛提高至 100dp
+
+- 变更概述：进一步降低主页面横滑误触；水平位移不足 100dp 时不再由页面切换控件接管。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① `react-native-tab-view@4.3.2` Pager 的 `DEAD_ZONE` 从 50dp 提高至 100dp；② 保留松手仅按 `layout.width / 1.75` 位移切页的规则，快速短甩仍不切页；③ 静态回归测试同步更新为 100dp。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为完整原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 20:12:26 | 修复问题：主页面横滑切换不再由甩动速度触发
+
+- 变更概述：移除主页面横滑松手后的速度捷径，避免短距离快速甩动直接切换页面。
+- 修改文件：patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 删除 `react-native-tab-view@4.3.2` Pager 的 `swipeVelocityThreshold`；② 松手切页仅在横向位移超过既有 `layout.width / 1.75` 阈值时触发；③ 保留 50dp 起滑门槛以及横纵向手势意图识别；④ 回归测试覆盖运行时速度阈值不存在且距离判定保留。
+- 验证：修改前后 `npm run typecheck` 通过；将依赖临时还原为原始状态后执行 `npx patch-package --error-on-fail` 成功重放；定向手势测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 19:24:30 | 优化代码：主页面横滑切换的最小位移提高至 50dp
+
+- 变更概述：降低主页面左右滑动切换 Tab 的误触概率；手势累计水平位移未达到 50dp 时，不再由页面切换控件接管。
+- 修改文件：package.json、package-lock.json、patches/react-native-tab-view+4.3.2.patch、tests/navigation/swipe-tabs.test.cjs、CHANGELOG.md。
+- 具体内容：① 使用 `patch-package` 固化 `react-native-tab-view@4.3.2` 运行时 Pager 的 `DEAD_ZONE`，由 12dp 调整为 50dp；② `postinstall` 自动重新应用补丁，避免重装依赖后阈值回退；③ 新增静态回归测试，校验补丁内容、安装脚本及运行时模块均为 50dp。原有页面切换方向判断、长距离阈值和释放速度阈值不变。
+- 验证：修改前后 `npm run typecheck` 通过；补丁还原后执行 `npx patch-package --error-on-fail` 成功重新应用；定向手势阈值测试通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 反序列化错误，随后全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 347/347 通过。
+
+---
+
+## 2026-09-21 18:47:04 | 新增功能：待办列表下拉云同步与实际变更统计
+
+- 变更概述：待办列表接入与笔记列表一致的顶部下拉云同步；同步完成准确展示本轮实际变更项数，全程复用现有 Todo 同步协议与后端接口。
+- 修改文件：src/features/notes/components/NotesSyncHeader.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/{data/todo-sync-history.ts,data/todo-sync.repository.ts,services/todo-sync.service.ts,state/todo-sync-coordinator.ts,state/todo-sync-provider.tsx,screens/TodosScreen.tsx}、tests/todos/todo-sync.test.cjs、CHANGELOG.md。
+- 具体内容：① 笔记下拉同步头泛化为可传入实体名称和成功文案的复用组件，笔记文案保持不变；② 待办 `SectionList` 仅在滚动到顶部时可下拉，展示待办数量、同步状态、上次成功同步时间与“同步 N 项待办/暂无待办变更”；③ 同步服务统计成功上传与真正写入、更新或删除本地待办的远端变更，陈旧回包、同版本回显和未覆盖本地的冲突不重复计数；④ 手动同步加入既有单一协调器，等待当前轮结果且不另发并发或后继请求；⑤ 上次同步时间仅存为可失败的本地展示元数据，不影响同步事实。
+- 验证：修改前后 `npm run typecheck` 通过；`node --test --test-concurrency=1 "tests/todos/todo-sync.test.cjs"` 27/27、全仓串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 346/346 通过；`npm run check` 的 typecheck、lint、theme:check 通过，并行测试仅触发既有 Node IPC 克隆错误，随后串行验证通过；`git diff --check` 和源码/测试目录冲突标记扫描通过。
+
+---
+
+## 2026-09-21 18:22:57 | 优化代码：补充发布环境变量模板维护约定
+
+- 变更概述：明确发布相关环境变量的文档同步责任，避免发布脚本或构建配置变更后模板缺项或误放密钥。
+- 修改文件：docs/构建发布/android-releases.md、CHANGELOG.md。
+- 具体内容：在 `.env.release.local` 配置步骤中规定：新增、删除或调整发布构建/发布工具读取的环境变量时，必须同步更新 `docs/构建发布/release.env.example`；密钥示例仅保留空值和用途注释。
+- 验证：复核 Markdown 内容、模板现有变量和 Git 差异；纯文档改动，未运行类型检查、测试、构建或设备验收。
+
+---
+
+## 2026-09-21 18:21:30 | 修复问题：测试脚本固化串行参数规避 Windows 并行 IPC 错误
+
+- 变更概述：已获用户确认执行。0.3.0 发布构建两次在"完整代码检查"阶段因 Node 测试运行器并行 IPC 错误中断（tests/releases/workspace.test.cjs 报 Unable to deserialize cloned data，其余 343 项测试全部通过，该文件单独串行运行 9/9 通过），系 Node v24 Windows 并行子进程结果回传的管道字节流错位缺陷，非应用代码问题。按方案将 npm test 默认改为串行执行（--test-concurrency=1），该参数为项目多次使用的稳定回退方案，彻底消除此类偶发阻断。
+- 修改文件：package.json、release.env.example（由 docs/构建发布/release.env.example 移动至项目根目录，内容 100% 一致）、CHANGELOG.md。
+- 具体内容：① test 脚本由 `node --test "tests/**/*.test.cjs"` 改为 `node --test --test-concurrency=1 "tests/**/*.test.cjs"`；② 发布配置模板文件移动到根目录（用户工作区已有移动，按确认提交为 rename）；③ 实测对比：并行约 17.2 秒、串行约 19.6-21.0 秒，代价约 2-4 秒，测试覆盖与断言完全不变。
+- 验证：修改后 npm test 343/343 通过（exit 0）；npm run typecheck 通过。影响后续所有 npm run check（本地与发布构建内检查均串行）。
+- 发布上下文：受此提交影响，0.3.0 原 build 14（reserved，绑定 8e60ebd）作废不再使用，将重新预留构建号；用户已在 .env.release.local 配置 EXPO_PUBLIC_TODO_CLOUD_SYNC=1，发布工具自动加载并透传进构建。
+
+---
+
+## 2026-09-21 18:03:59 | 优化代码：release 环境变量模板补充待办云同步开关
+
+- 变更概述：已获用户确认，在发布环境变量模板中新增 EXPO_PUBLIC_TODO_CLOUD_SYNC=1 示例，与上一条待办云同步功能配套；同时修正 HPatchz 注释笔误（"路径s"→"路径"）。
+- 修改文件：docs/构建发布/release.env.example、CHANGELOG.md。
+- 具体内容：① 模板新增 EXPO_PUBLIC_TODO_CLOUD_SYNC=1 # Expo 代办云同步 一行，使发布构建可参照开启该开关；② 修复 IRIS_HPATCHZ_PATH 行尾注释的误加字符 "s"；③ 以 docs(release): 补充待办云同步环境变量示例 提交至 kroos_todo 分支（e8e928f）。
+- 验证：git diff --cached 复核改动内容；纯文档模板变更，不涉及代码逻辑，未运行 typecheck/测试。
+
+---
+
+## 2026-09-21 14:55:42 | 新增功能：待办云同步回包追踪与全局成功横幅
+
+- 变更概述：已获用户确认，为登录账号启用本机待办云同步，补齐服务端请求 ID 回包关联、上传数量汇总和全局成功横幅；保留现有离线队列、冲突处理与失败横幅。
+- 修改文件：.env.local（忽略，不入 Git）、scripts/release/cli.mjs、src/features/todos/api/todos.api.ts、src/features/todos/services/todo-sync.service.ts、src/features/todos/state/todo-sync-banner.ts、src/features/todos/state/todo-sync-coordinator.ts、src/features/todos/state/todo-sync-provider.tsx、src/features/todos/sync.types.ts、tests/releases/release-env.test.cjs、tests/todos/todo-api.test.cjs、tests/todos/todo-sync.test.cjs、CHANGELOG.md；配套服务端修改位于 D:\irisapi-1。
+- 具体内容：① 本机 Expo 会话设置 EXPO_PUBLIC_TODO_CLOUD_SYNC=1，发布脚本把该显式开关传入 EAS preview/production 构建；② Todo HTTP 传输层读取并校验 X-Request-Id，成功写入与批量回包携带关联元数据，开发日志仅记录请求/操作标识和结果摘要；③ 同步服务汇总本轮服务端已接收的修改数，全部完成时显示 4 秒“待办已同步”成功横幅，无上传不打扰，仍有待处理项时继续显示可跳转同步队列的持久重要横幅；④ 错误继续保留本地事实与冻结操作，不记录正文、令牌或游标。
+- 验证：修改前后 npm run typecheck 均通过；待办 API/同步定向测试 32/32、发布环境测试 4/4、串行全量测试 343/343 通过；npm run check 的 typecheck、lint、theme:check 均通过，并行测试 336/337，唯一失败为 tests/releases/workspace.test.cjs 触发 Node 测试运行器 Unable to deserialize cloned data 的已知 IPC 偶发错误，随后使用项目稳定参数 --test-concurrency=1 全量复跑通过。客户端与服务端 git diff --check、冲突标记扫描均通过，服务端 npm run build 通过。
+- 验收边界：未部署或重启后端，未执行生产数据库迁移，未构建 APK，也未做真机网络、横幅显示或多设备同步验收；修改环境变量后需重启 Metro 才能进入新配置。
+
+---
+
+## 2026-09-21 13:30:55 | 修复问题：合并 PR #113 笔记同步的迁移号冲突
+
+- 变更概述：将远端 561acc6（PR #113，Timmi 的笔记快照/增量同步）合入 kroos_todo，解决 2 个文件的合并冲突。核心冲突为双方同时占用数据库迁移号 7（本地 0007-0009 为 Todo 链，远端 0007 为笔记同步）；已获用户确认采用"远端让位重编号"方案。
+- 修改文件：src/core/database/migrations/index.ts、src/core/database/migrations/0010-add-note-sync-state.ts（由 0007 重命名，version 7→10）、CHANGELOG.md、tests/sync/notes-sync.test.cjs、tests/todos/todo-local.test.cjs、tests/todos/todo-reminders.test.cjs。
+- 具体内容：① 迁移链合并为 0001-0006 → 0007 create_local_todos → 0008 提醒绑定 → 0009 todo 同步 → 0010 add_note_sync_state，本地链保持连续使本机设备无缝续跑 0010；② 笔记迁移文件重命名为 0010 并置 version: 10（附注释），测试引用路径同步修正；③ todo-local 测试的 CURRENT_DATABASE_VERSION 断言 9→10（合并后终版号）；④ todo-reminders 测试"链尾可重入"由 `.at(-1)` 改为显式重放 0009 createTodoSync——合并后链尾是 0010（PR #113 设计为非可重入，不越权改变）；⑤ CHANGELOG 双方条目按时间倒序合并，远端 9 条插入 09-20 07:57 与 09-19 16:10 之间。
+- 验证：npm run typecheck 通过；针对性测试（notes-sync、todo-local、todo-sync、todos、system-notifications、todo-reminders、todo-api）117/117 通过；git diff --check 通过；全仓冲突标记扫描干净（docs/架构指南/GitHub团队开发指南.md 中的标记为文档教学示例，非真实冲突）。
+- 已知边界：曾以 PR #113 构建做过真机验证的设备（Timmi 的 Xiaomi，Expo Go 会话）账本记录为 version=7 add_note_sync_state，与合并后期望的 7=create_local_todos 不符，该设备下次启动会触发账本校验错误，需清除应用/Expo Go 数据重建后从正式后端重新拉取笔记（云端有镜像，无云端数据丢失）；本机 kroos_todo 设备不受影响。
+
+---
+
+## 2026-09-21 12:30:07 | 优化代码：数据库事务回滚失败升级为可识别错误并增强账本校验诊断
+
+- 变更概述：修复审查发现的路径 3 隐患——迁移/事务失败后 ROLLBACK 自身失败时原先仅打日志并抛原始错误，可能留下账本与 user_version 分裂的不确定状态。现已升级为可识别的 `DatabaseTransactionRollbackError` 并导出供上层复用；同时账本不匹配错误的文案附带实际/期望账本详情，命中时无需拉库即可定位差异。已获用户确认执行。
+- 修改文件：src/core/database/transaction.ts、src/core/database/run-migrations.ts、src/core/database/index.ts、CHANGELOG.md。
+- 具体内容：① `transaction.ts` 新增导出 `DatabaseTransactionRollbackError`（携带 `originalError` 与 `rollbackError` 双层原因，消息明示数据库状态不确定、可能需重建），`runPlatformTransaction` 回滚失败分支由"仅 console.error 后抛原始错误"改为抛出该错误类型；② `run-migrations.ts` 的 `assertLedgerMatchesVersion` 抛错消息附上 `user_version`、`actual=[version:name,...]`、`expected=[...]`；③ `index.ts` 导出该错误类型，供后续版本升级/恢复流程按类型捕获并决策。
+- 验证：修改前 `npm run typecheck` 通过（基线 exit 0）；修改后 `npm run check`：typecheck、lint、theme:check 通过，测试 305/306，唯一失败 `tests/releases/workspace.test.cjs` 为 Node 测试运行器 IPC 反序列化偶发错误（与本次数据库修改无关），单独复跑 `node --test --test-concurrency=1 tests/releases/workspace.test.cjs` 9/9 全过。未做真机验证（属错误类型与诊断增强，不改变正常路径行为）。
+
+---
+
+## 2026-09-20 22:26:37 | 新增功能：dsh-webhook-remote 远程下发任务插件
+
+- 变更概述：新增 DSH Cordis 插件 `dsh-webhook-remote`，支持从脚本/手机快捷指令通过签名或静态令牌保护的 HTTP 接口远程下发任务，由 DSH webhook 运行时自动创建根会话并执行。已获用户确认按详细设计执行。
+- 修改文件：dsh-webhook-remote/{package.json,lib/index.js,README.zh.md}（新增）、scripts/Send-DshTask.ps1（新增）、C:\Users\31268\.dsh\profiles\web\cordis.patch.yml、C:\Users\31268\.dsh\.credentials.yaml、CHANGELOG.md。
+- 具体内容：插件在 DSH Web 服务器注册精确路由 `POST /webhook/remote`（body 上限 128KiB），鉴权双通道：`X-DSH-Signature: sha256=<HMAC-SHA256(body,secret)>` 计时安全比较，或 `X-DSH-Token` 静态令牌；payload `{"prompt":"…","title":"…"}`；dispatch 到 `@deepseek-ai/dsh-webhook` 运行时（该运行时经用户 patch 首次启用），规则 `remote-task` 将投递转为 `WebhookSessionRequest`（workspace=D:\IRisNote、agentPreset=standard、permissionPreset=workspace-write、标题前缀 `[Remote]`、60 字节截断）。另注册 `GET /webhook/remote/status`（令牌保护）暴露规则诊断。密钥 `DSH_REMOTE_WEBHOOK_SECRET`/`DSH_REMOTE_WEBHOOK_TOKEN` 已生成并写入 `.credentials.yaml` refs。插件经 `dsh plugin --profile web add D:\IRisNote\dsh-webhook-remote` 以 link 方式装入 profile，并在插件目录内建 junction（指向 npx 缓存 dsh 安装目录的 @deepseek-ai 各包）解决 link 直连导致的 peer 解析失败。
+- 验证：`node --check` 语法通过；profile 上下文 `import('dsh-webhook-remote')` 加载成功（exports/inject 正确）；`dsh --profile web --dump-config` 确认 webhook-runtime 与 webhook-remote 两行进入合并配置树；热加载后实测路由：无鉴权 401、错误令牌 401、GET 405、有效令牌 POST 202。⚠️ 遗留：202 后未观察到新会话目录，会话创建在 webhook 运行时内部失败且 warn 仅输出到宿主控制台不可读；已加 status 诊断路由但模块级代码热重载（HMR）无法在运行中生效，需重启 `dsh web` 后复测。
+
+---
+
+## 2026-09-20 21:58:21 | 新增功能：本地独立测试包 staging 构建类型
+
+- 变更概述：新增 Android `staging` 构建类型，产出免 Metro 开发服务器、免电脑、可分发的本地独立测试 APK：release 式打包（内嵌 JS bundle + Hermes 字节码 + 符号裁剪），使用 Debug 证书签名。已获用户确认按方案 B2 执行。
+- 修改文件：android/app/build.gradle、CHANGELOG.md。
+- 具体内容：`buildTypes` 内新增 `staging { initWith release; matchingFallbacks = ['release']; signingConfig signingConfigs.debug }`（含注释说明用途与边界）。staging 继承 release 的全部打包配置（本项目未启用 R8 压缩，无混淆差异），但显式改用 Debug 签名；库模块变体经 `matchingFallbacks` 匹配 release 产物。日常 Debug/Metro 开发流程与正式发布管控（assembleRelease 生产证书守卫）均不受影响——`assembleStaging` 不进入发布工具流程。
+- 构建方式：`npm run gradle -- assembleStaging --init-script <阿里云镜像>`；产物 `android/app/build/outputs/apk/staging/app-staging.apk`。如需瘦身可追加 `-PreactNativeArchitectures=arm64-v8a`。
+- 验证：`assembleStaging` BUILD SUCCESSFUL（19m14s，1061 任务）；APK 118.2MB，确认内嵌 `assets/index.android.bundle`（6.59MB Hermes 字节码）；apksigner 验签为 Debug 证书（SHA-256 fac61745…33b9c）；修改后 `npm run typecheck` 通过（本次未触及 TS 源码）。真机独立启动验证未执行（当时无 adb 设备连接），expo-dev-client 在非 debuggable 构建中的运行时行为待装机确认；staging 使用 main manifest，不含 Debug 变体的 cleartext 等配置，连接 http 明文地址不可用。
+
+---
+
+## 2026-09-20 21:54:14 | 修复问题：代码审查发现的同步契约与通知加载缺陷
+
+- 变更概述：按 5 个本地提交（e374f4b…123dd29）的代码审查结论修复 2 项严重缺陷与 3 项建议缺陷。
+- 修改文件：src/core/system-notifications/system-notification-provider.tsx、src/features/todos/api/todos.api.ts、src/features/todos/data/todo-sync.repository.ts、src/core/database/migrations/0009-create-todo-sync.ts、src/shared/http/client.ts。
+- 具体内容：① Suspense `fallback={children}` 改为 `fallback={null}`，避免原生通知模块加载期间整棵应用树卸载重挂导致屏幕 state 丢失与 effect 双跑；② 批量回执与错误回执中 `current_version` 校验改为仅在字段存在时校验相等，服务端错误路径缺失该字段不再误判 `INVALID_RESPONSE` 触发全量重建；③ `prepareOperations` 移除 completed_at 仅随 is_completed 成对变化才入 patch 的过滤器，完成时间差异始终交服务端裁决，消除对 repo 层校验的隐式依赖；④ 迁移 0009 的 `INSERT…SELECT *` 改为 16 列显式清单，消除两表列序一致的隐式依赖；⑤ HTTP 拦截器判断已有 Authorization 改用 AxiosHeaders 大小写不敏感读取（带普通对象降级），避免未来小写注入产生重复认证头。
+- 验证：修改前后 `npm run typecheck` 均通过；`node --test --test-concurrency=1 "tests/**/*.test.cjs"` 314/314 通过、0 失败。未进行设备验收。
+
+---
+
+## 2026-09-20 21:19:42 | 修复问题：Expo Go 安全降级系统待办提醒
+
+- 变更概述：Android Expo Go 运行时不再加载 `expo-notifications` 原生模块，避免 SDK 57 通知包初始化触发远程推送限制并中断 Expo Router 路由加载；开发构建和正式包保留原有待办系统提醒。
+- 修改文件：src/core/system-notifications/{system-notification-provider.tsx,system-notification-native-provider.tsx,system-notification-context.ts}、src/features/settings/screens/SettingsScreen.tsx、tests/todos/system-notifications.test.cjs、CHANGELOG.md。
+- 具体内容：安全入口使用 `isRunningInExpoGo()` 选择实现。Expo Go 直接透传页面、不创建渠道、不申请权限、不监听点击、不对账或调度；保存带提醒的待办仍会保存并显示开发构建提示。通知原生 Provider 被移至按需加载文件。设置页通知行保持既有 56dp 最小行高、16dp 内边距与 12dp 图文间隔，在 Expo Go 显示“Expo Go 中不可用”、禁用点击且不展示跳转箭头。
+- 验证：修改前、后 `npm run typecheck` 均通过；`expo lint`、主题检查与通知定向测试 8/8 通过。`npm run check` 的类型、Lint、主题均通过，但默认并行 Node 运行器在 `tests/releases/workspace.test.cjs` 复现既有反序列化错误；串行 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 最终 314/314 通过。未启动 Expo Go、未构建或进行真机验收。
+
+---
+
+## 2026-09-20 19:35:19 | 新增功能：Todo 前后端交接与客户端云同步
+
+- 变更概述：按用户确认的云同步及冲突界面方案，将既有本地 Todo 接入后端正式契约；基线 `8ea6cca1c1e7fa7d0b367762c04dd312a945b34c`，本条对应未提交工作区。默认关闭网络同步，构建环境 `EXPO_PUBLIC_TODO_CLOUD_SYNC=1` 才启用登录账号同步。
+- 数据文件：src/core/database/migrations/{0009-create-todo-sync.ts,index.ts}、src/features/todos/{sync.types.ts,data/todo-local.repository.ts,data/todo-sync.repository.ts,state/todo-store.ts}。新增独立同步镜像、outbox、游标与快照暂存表；本地修改与待提交意图同事务；已冻结操作保持原键和请求，后续编辑保存独立序号；迁移保留原 Todo 数据并对齐后端通用 UUID 契约，设备提醒绑定独立保留。
+- 接口与生命周期文件：src/features/todos/api/{todo-wire.ts,todos.api.ts}、src/features/todos/services/todo-sync.service.ts、src/features/todos/state/{todo-sync-coordinator.ts,todo-sync-provider.tsx,todo-sync-events.ts,todo-sync-runtime.ts}、src/core/providers/AppProviders.tsx、src/shared/http/client.ts。校验资源身份、版本、分页和批量回执；复用共享 HTTP 客户端并保留显式捕获的账号 token；全量完整后原子对账，增量事件和游标同事务；账号切换取消、前台/联网/本地变化唤醒、退避重试、401 暂停；仅拉取成功不能宣称上传已完成。
+- 界面文件：src/features/todos/components/{TodoConflictDialog.tsx,TodoSyncQueueRow.tsx}、src/features/sync/screens/SyncQueueScreen.tsx。同步队列显示待办及重试/冲突入口；保留本机、基础、云端版本，提供采用云端、保留本地重试、另存新身份；删除冲突禁止原身份复活。沿用 24dp 内边距/圆角、440dp 最大宽度、85% 最大高度、16dp 区块间隔、10dp 按钮间隔；Todo 任务不提供直接删除队列功能。
+- 测试与文档：tests/todos/{todo-local.test.cjs,todo-sync.test.cjs,todo-api.test.cjs}、docs/待办/{待办逻辑层设计.md,待办后端API预留契约.md,Todo前后端交接与验收.md,TODO.md}、CHANGELOG.md。覆盖真实隔离 SQLite、本机 HTTP、请求冻结、旧回执、增量回滚、部分批量成功、账号切换和删除冲突。
+- 当前验证：修改前类型检查通过；新增 23 项同步与 8 项本机 HTTP 测试通过。最终 `npm run check` 的类型检查、Lint 与主题检查通过；其默认并行 Node 测试在 `tests/releases/workspace.test.cjs` 复现运行器反序列化错误（非断言失败），故命令退出 1。按项目稳定回退 `node --test --test-concurrency=1 "tests/**/*.test.cjs"` 复跑，313/313 通过、0 失败。早期 SQLite 文件测试清理钩子先删目录后关连接导致 Windows EPERM，已修正关闭顺序并复测通过。
+- 边界：未连接生产数据库、迁移 006/007、部署后端、构建/发布 App 或开展浏览器/设备验收；正式环境启用和真实 APK 双端联调仍待完成。云端通知副作用复用本地提醒协调器，不上传通知 ID，不请求新的系统权限；游客/预览数据不上传、不自动迁入账号。
+
+---
+
+## 2026-09-20 10:08:19 | 新增功能：Android/iOS 本地系统通知与待办开始提醒
+
+- 已获用户确认附件中的实现方案、48dp 提醒行预览及 iOS Bundle ID `com.mouqiandi.irisNote`；基线为 `e6ca2d5`，本记录对应未提交工作区。
+- 依赖与原生配置：package.json、package-lock.json、app.json、plugins/with-local-notification-entitlements.js、assets/images/notification-icon.svg、assets/images/notification-icon.png、scripts/generate-notification-icon.cjs。使用 Expo 安装 expo-notifications ~57.0.20，其依赖令 expo-constants 锁定至 57.0.19；白色透明 96px 图标可由脚本重建。Android 为 Git 忽略的预构建目录，无强制加入生成文件；iOS 本地通知插件移除官方插件默认 APNs entitlement，不接入远程推送或后台推送模式。
+- 通知核心：src/core/system-notifications/{system-notification.types.ts,system-notification.service.ts,system-notification-provider.tsx,index.ts}、src/core/providers/AppProviders.tsx。建立 irisnote.reminders.v1 HIGH 渠道，默认声音/振动、PRIVATE、无角标；sync 只保留语义。启动不请求权限；前台系统展示、不重复横幅；冷启动/运行中点击等待归属与导航就绪，进入对应日期，失效通知仅显示通用提示。
+- 持久化与恢复：src/core/database/migrations/{0008-create-todo-reminder-bindings.ts,index.ts}、src/features/todos/data/todo-reminder.repository.ts、src/features/todos/services/todo-reminder.service.ts、src/features/todos/state/todo-reminder-coordinator.ts。独立设备绑定表保存 owner/todo、系统 ID、实体版本、触发时刻、状态和错误，不污染实体/后端契约；调度前写意图、串行对账、取消失败阻止重建、删除保留清理记录、系统孤儿清理、账号切换保护。按设备民用时刻解析，DST 缺失报错，重复小时采用较早时刻；失败不回滚保存。
+- 交互：src/features/todos/hooks/useTodoForm.ts、src/features/todos/components/TodoFormDialog.tsx、src/features/todos/screens/TodosScreen.tsx、src/features/settings/screens/SettingsScreen.tsx。明确确认未来提醒后才申请权限，自动保存仅提供“开启”横幅操作；增加 @expo/ui 原生 Switch，无开始时间禁用；设置入口显示权限状态并进入系统设置；通知导航重置列表筛选并滚动对应日期，不打开编辑。
+- 测试与文档：tests/todos/{todo-local.test.cjs,todo-reminders.test.cjs,system-notifications.test.cjs}、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/待办/待办逻辑层设计.md、CHANGELOG.md。覆盖时间/DST、调度幂等、修改/完成/删除、取消失败、权限、会话竞态、重启恢复、SQLite 文件重开、原生配置及图标。
+- 验证：修改前 npm run typecheck 通过；最终检查与 Android 本地编译结果在完成后补充。iOS 配置 introspect 已证明无 aps-environment / remote-notification；Windows 未编译 iOS，未进行真机/浏览器验收、EAS 构建、上传、发布、暂存或提交。
+- 已知偏差：当前 expo-notifications 的本地调度输入及 iOS 原生构造不支持 threadIdentifier，只有结果读取字段；iOS 使用 active，自定义分组尚未实现。未宣称支持 timeSensitive/critical、精确闹钟或准点必达。前台恢复前的时区变动、系统容量限制、专注模式与 OEM 行为仍需设备验收。
+
+---
+
+## 2026-09-20 08:31:35 | 修复问题：整周分组列表滚动时序、跨午夜跟随与重试生命周期
+
+- 依据用户提交的外部代码审查意见（P0×2、P1×2、P2×2）修复，已获用户确认修复范围（P0+P1+P2 全部）。仅审查方未改文件，本次修复均落在上一条新增的整周分组功能改动内。
+- 跨周选日滚动时序（P0-1）：src/features/todos/screens/TodosScreen.tsx。原实现跨周选日时在旧 `sections` 里定位必然失败，选日只切周不滚动。改为 `deferredScrollDateId` 挂起意图 + `useLayoutEffect([weekId, sections])` 统一消费：目标不在当前渲染则挂起，新数据渲染后滚动；有挂起目标优先滚目标，无目标换周后回顶部（原 `scrollToTop` 移入该 effect）；目标所在周与当前周不符（用户又导航离开）时丢弃陈旧意图。effect 无 setState，仅 ref 与滚动命令，时钟 tick 重建 `sections` 只空跑短路判断。
+- 跨午夜跟随（P0-2）：`onWeekChange` 写入 `browsedWeekId` 时归一为 `next === derivedWeekId ? null : next`——点"返回今天"或浏览回派生周即清除覆盖、恢复跨午夜跟随今天所在周；停留其它周时覆盖保留。逻辑层设计 §6.3 同步为现状语义，审查问题 10（文档写意图非现状）一并消除。
+- 滚动重试生命周期（P1-3）：重试状态收敛为 `{ dateId, attempts, issuedAt, timer }`——2 秒窗口内最多重试 3 次、重试期间不叠加定时器、卸载时 `clearTimeout`；每次主动发起滚动重置状态，避免陈旧目标被无关失败触发。已知不对称：换周回顶部仍不加重试（首屏失败概率极低）。
+- 分组头可见性与无障碍（P2）：`scrollToLocation` 增加 `viewOffset` 补偿（分组头显式 `lineHeight: 18`，常量推算首组 26dp、非首组 42dp），定位后"M月D日"分组头不再被顶出可视区；分组头增加 `accessibilityRole="header"`。
+- 测试：tests/todos/todos.test.cjs 新增"整周查询组内排序与单日一致，筛选、空周与非周一 weekId 行为确定"用例，覆盖组内置顶/时刻/优先级三种排序、`filter: "pending"` + 整周、关键词无结果、非周一 `weekId` 的 7 天窗口语义与空周返回 `[]`。初版断言误算 09-21（下周一）在周一周边界内，已按实际周边界语义修正。
+- 验证：修改后 `node --test "tests/todos/*.test.cjs"` 35/35 通过；`npm run check` 结果见本条目验证说明（类型、Lint、主题检查及全量测试）。
+- 限制：未运行应用或真机交互验收；挂起滚动在"目标日被筛选条件排除且停留当前周"期间保持等待，行为可预期但属新边界。
+
+---
+
+## 2026-09-20 07:57:34 | 新增功能：待办列表按周条可见周整周分组展示
+
+- 已获用户确认实施方案及保持整体布局的文字预览（空白天选择"只显示有待办的天"）。列表从"选中单日"改为跟随右侧周条可见周：周一至周日整周范围内的待办按所属日期分节展示，每天显示"M月D日 周X"分组头（13sp；今天组追加主题蓝"今天"标记，分组头右侧接 1dp `divider` 通栏分隔线；非首节分组头上间距 16dp，头部下缘距首卡 8dp，节内卡片间距 12dp 不变），当天无待办的日期不显示分节；整周无结果显示"本周暂无待办"（搜索无结果仍为"无匹配待办"）。
+- 类型与查询层：src/features/todos/todos.types.ts、src/features/todos/domain/todo-query.ts。按逻辑层设计"引入日期范围需新增明确查询类型"的约定新增 `TodoWeekQuery` 与 `queryTodosByWeek`（weekId 起覆盖 7 天，日期升序在前，节内沿用置顶/时刻/优先级统一排序）；原 `queryTodos` 单日查询保留不动，筛选与排序逻辑抽取为共用内部函数，语义不变。
+- 组件与页面：src/features/todos/components/TodoCalendarRail.tsx、src/features/todos/screens/TodosScreen.tsx。日期轨道新增受控 `weekId`/`onWeekChange`（不传时保持内部自持，行为不变），可见周状态上提到页面；页面换用 SectionList 按天分节渲染，点选轨道某天滚动到对应分节（`scrollToLocation` + `onScrollToIndexFailed` 延时重试兜底），滑动换周后列表回到顶部；未主动浏览其他周时列表默认跟随今天所在周并随跨午夜更新（`browsedWeekId` 覆盖派生周，无 effect 内 setState）。点选日期仍不改变列表查询范围语义之外的业务：`selectTodoDate` 保留用于周条高亮、滚动定位与新建默认日期。
+- 测试与文档：tests/todos/todos.test.cjs、docs/待办/待办逻辑层设计.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。新增整周查询用例（周边界过滤、跨周数据不串、日期升序、关键词过滤）；逻辑层设计更新到 1.2（§2、§6.3、§9.1–9.3 同步整周查询与分节语义），界面基线更新到 1.3（§10 分组头规格、空态与滚动联动）。
+- 限制：未运行应用或真机交互验收；`scrollToLocation` 在卡片高度不定时的远距离定位依赖失败重试兜底，极端情况落点可能略偏，待真机验证。
+
+---
+
+## 2026-09-20 05:24:33 | 修复问题：历史笔记空值兼容及正式接口真机验证通过
+
+- 用户已确认修复，并要求使用 npx expo start 局域网调试。文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 根因证据：设备连接 https://tech-mou.top/api；05:16:50、05:17:32 的真实 /api/notes/snapshot HTTP 200 响应校验失败，data[0].is_pinned 为 null。后端 NoteSyncDTO 明确允许 is_pinned/is_starred 为 boolean|null，原客户端校验不匹配。
+- 修复：CloudNote 和解析器仅对这两个字段接受合法 null，镜像保留原值，cloudNoteToLocal 映射为 false；true/false 原样保留。缺失、数字、字符串、对象仍拒绝，其他字段及分页校验不变。未修改线上笔记或数据库结构。
+- 自动验证：基于 88495fe 加前轮已授权未提交改动，修改前 typecheck 通过；最终 npm run check 通过（类型、lint、主题、251 项测试，0 失败/0 跳过）。同步测试 27 项通过，包括九种标星/置顶组合、非法类型、SQLite 原值镜像、增量转换、重复事件和编辑时间保持。
+- 真机结果：Xiaomi 23113RKC6C（ADB 77b6a943）05:22:15 日志确认正式 API；05:22:18 首次 sync_completed，count=11，elapsedMs=1263；05:23:46 手动刷新 sync_completed，count=11，elapsedMs=655。修复后这两次操作未出现响应校验失败或账号变化警告；未做线上新增/编辑/删除实验，不代表完整多端冲突验收。
+- 环境：停止本任务先前的 localhost 服务，执行 npx expo start，默认 LAN 地址 192.168.31.67:8081，按 s 切至 Expo Go；设备以 exp://192.168.31.67:8081 加载，移除本任务的 USB 8081 reverse。开发服务保持运行，加载入口 http://192.168.31.67:8081/_expo/loading。
+- 证据边界：同步完成来自实际设备日志；没有取得独立逐请求网络抓包，Inspector WebSocket 返回 401 后未继续。未提交、推送、打包、发布或更改服务端配置，保留此前修复。
+
+---
+
+## 2026-09-20 05:20:44 | 修复问题：历史笔记置顶与标星空值兼容（实施中）
+
+- 用户明确确认修复，并指定后续使用 npx expo start 局域网调试、连接正式后端。此前真机正式请求 /api/notes/snapshot 返回 HTTP 200，data[0].is_pinned 为 null；后端 NoteSyncDTO 继承 boolean|null，与客户端原 boolean 校验不一致。
+- 文件：src/features/notes/api/notes-sync.types.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 修改：只允许 is_pinned / is_starred 的合法 null，镜像保留原值，转成本地领域对象时映射为 false；缺失字段、数字、字符串、对象、分页布尔值仍严格拒绝，不修改历史数据库。
+- 验证基线：88495fe 加此前未提交修复，修改前 npm run typecheck 通过。新增测试覆盖两个字段的 true/false/null 组合、错误类型拒绝、SQLite 镜像/增量转换和编辑时间不变；最终检查及局域网真机结果待完成。
+
+---
+
+## 2026-09-20 05:11:45 | 修复问题：热更新后笔记同步账号绑定恢复
+
+- 变更概述：用户确认后修复同步模块重新加载、Provider 保留同账号 ref 时直接返回而不恢复 currentOwner 的缺陷；不把本修复等同于原“同步响应无效”问题已解决。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 具体内容：同账号 layout effect 仍调用幂等 setNoteSyncOwner，不重置通知、不重复欢迎、不取消同账号请求；实际账号变化推进会话代际并 abort 旧请求，阻止 A→B→A 后旧任务继续提交。退出/重登仍使用现有连接会话重置。
+- 复现：新增测试执行真实 Provider 源码的 layout effect，模拟保留 refs 与重新加载同步模块；修复前同账号恢复与直接切换再切回两项失败、退出重登通过，修复后三项均通过。使用真实 Node SQLite 和显式网络/React hook 测试替身，不冒充设备运行结果。
+- 验证：基于 88495fe 工作区，修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、lint、theme:check、249 项测试，0 失败/0 跳过），同步测试 25 项通过。git diff --check 通过，修改文件未发现冲突标记。
+- 真机边界：ADB 设备 77b6a943 为 device 状态。读取日志仍仅有 05:05:52 的旧“笔记同步账号已变化”；本机未检测到 Expo 启动进程、8081/status 不可达，未重载设备现有应用或宣称真机修复通过。仍需开发服务提供新 bundle 后验证同步及原字段级错误。
+- 保留前轮已授权字段诊断改动；本轮未修改后端、数据库、密钥或启动/停止开发服务，未提交、推送、打包、部署。
+
+---
+
+## 2026-09-20 05:10:30 | 修复问题：笔记同步账号重绑定（实施中）
+
+- 用户已确认修复。基于 88495fe 工作区保留前轮字段级诊断改动，修改前 npm run typecheck 通过。
+- 文件：src/core/notifications/notification-provider.tsx、src/features/notes/services/note-sync-coordinator.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 同账号 Provider layout effect 重新执行时也绑定同步模块账号，以恢复 Fast Refresh 重建的模块状态，不重复清空通知或显示欢迎提示；setter 同账号幂等，实际账号变化推进会话代际并取消旧请求，阻止 A→B→A 恢复旧任务。
+- 修改前新增测试已复现同账号模块重载无法同步、直接切账号再切回未取消旧请求；退出/重新登录场景原先通过。修复后的全量检查与设备验收待完成。
+- 本轮不修改响应校验、后端、数据库、密钥或运行中的开发服务，不将账号状态问题视为原响应字段错误已解决。
+
+---
+
+## 2026-09-20 04:57:49 | 修复问题：笔记同步响应字段级诊断完成
+
+- 变更概述：用户确认后，为快照和增量响应校验增加可定位且不含原始数据的错误信息，解决所有不匹配均显示同一句提示、无法确定失败字段的问题；本轮没有修复尚未确认的实际响应差异。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 解析器：新增 NotesSyncResponseError，标明 data[i] / data[i].data / page / sync 等具体字段路径、预期类型或约束、实际类型；区分缺失、null、格式、账号、序号顺序等问题。所有原校验规则保留，不将非法响应转换成可用数据。
+- 请求：只在本地响应校验失败时附加固定接口路径和实际 HTTP 状态。response 仅包含 status，供现有日志显示；不保存响应对象、请求参数、正文、标题、用户 ID、Token、游标或原异常 cause。网络/HTTP 失败与其他异常原样传播。
+- 验证：基于提交 88495fe，修改前 npm run typecheck 通过；最终 npm run check 通过（类型、lint、主题、246 项测试，0 失败/0 跳过）。同步测试 22 项通过，新增 3 组覆盖具体字段、嵌套增量、分页结构、敏感值不泄漏、200 响应校验失败上下文，以及 503 错误不被替换；git diff --check 通过，无冲突标记。
+- 边界：测试使用显式构造响应和 Axios adapter，并非问题设备的实际响应。需在 App 重载本次代码并再次刷新后，根据新日志确认真正不匹配项。未修改数据库、密钥、后台服务、部署、打包、提交或推送。
+
+---
+
+## 2026-09-20 04:55:01 | 修复问题：笔记同步响应字段级诊断（实施中）
+
+- 用户已确认诊断改造。基线 88495fe，工作区干净，修改前 npm run typecheck 通过。
+- 文件：src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 保留现有拒绝规则，错误补充字段路径、预期类型/约束、实际类型以及快照/增量接口和 HTTP 状态。不保存原始响应、正文、标题、用户 ID、Token 或游标，不触及数据、密钥、后端部署。
+- 正在补充脱敏诊断与校验回归测试；本轮只增强诊断，原设备响应不匹配的具体原因尚待新日志定位。
+
+---
+
+## 2026-09-20 04:42:02 | 新增功能：App 笔记快照与增量同步接入完成
+
+- 变更概述：用户已确认方案及实施范围。在 a49c363 工作区接入后端 notes/snapshot 与 notes/changes；首次快照后追赶增量，后续复用持久游标，业务读取入口不再调用旧 getNotes()。
+- 修改文件：src/core/database/migrations/0007-add-note-sync-state.ts、src/core/database/migrations/index.ts、src/core/notifications/notification-provider.tsx、src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-sync.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/services/note-save.service.ts、src/features/notes/notes.events.ts、src/features/notes/screens/NotesScreen.tsx、src/features/notes/screens/NoteDetailScreen.tsx、src/features/profile/hooks/useProfileOverview.ts、src/features/sync/upload-task-adapters.ts、tests/sync/notes-sync.test.cjs、CHANGELOG.md。
+- 数据：SQLite v7 新建账号隔离的同步状态、云端镜像和快照暂存表，不改写旧笔记、历史版本和草稿。快照分页暂存，收齐后原子替换云端镜像；增量每页镜像与游标同事务提交，追上本轮及一次新水位后再投影本地，防止中间历史事件回退已接受写入。无变化同步仍需读取本地镜像，不等于本地存储层也只访问变化行。
+- 保护：镜像版本识别重复事件、保留删除身份、拒绝异常复活；dirty/syncing 本地内容与云端候选分别保留。云端删除有本地编辑/草稿时保留内容及历史、阻止自动上传；无变化保存不能清除这一保护。旧正文编辑时间冲突协议及不确定创建保护保留，未将客户端时间当作增量顺序。
+- 调度：列表、详情、个人页使用共用同步入口；登录、前台恢复、连接恢复及笔记/分类写入后触发，同账号并发请求合并，后台/退出/切账号取消并在事务提交前检查。观察现有 Axios 写入与本地上传回执全过程，写入交叉时停止投影并重试。分类删除仍按最新云端镜像删除分类内笔记后删除分类，未改变既有业务语义。
+- 错误：410 有限次重建基线并保留本地候选；401/400/503 等失败不当成空列表、不回退旧全量接口；结构化同步错误按文字显示。密钥留在服务器，App 不持有 SYNC_CURSOR_SECRET。
+- 验证：修改前 npm run typecheck 通过；最终 npm run check 通过（typecheck、Expo lint、theme:check、243 项测试，0 失败/0 跳过）。新增 19 项测试使用真实 Node SQLite、可控网络/会话替身和 Axios adapter，覆盖分页续传、事务回滚、快照/游标过期、账号切换、并发上传、删除草稿、旧结构保留、大整数序号等；不能替代生产 HTTP 或 Expo 真机验收。首次完整回归发现静态网络导入影响纯草稿测试，已改为分类删除按需加载，35 项旧草稿测试及最终全量检查均通过。
+- 收尾：git diff --check 通过，src 与新增测试未发现 Git 冲突标记。保留原有 package.json、package-lock.json、connection-events.ts 和日志改动；没有新增依赖、提交、推送、服务器迁移、部署、APK 构建/发布，也未停止已有开发服务。
+- 上线边界：真实后端需完成 006/007、固定 SYNC_CURSOR_SECRET 及全部实例切换；仍需真实账号、双设备离线/冲突/删除验收。本地状态按账号隔离，测试/生产使用同一 App 数据空间的整体环境隔离不在本轮范围。
+
+---
+
+## 2026-09-20 04:30:50 | 新增功能：App 笔记增量同步接入（实施中）
+
+- 已获用户明确确认。新增账号隔离的云端镜像、快照暂存及游标，分离下载进度与本地编辑。
+- 文件：src/core/database/migrations/0007-add-note-sync-state.ts、migrations/index.ts；src/features/notes/api/notes-sync.types.ts、notes-sync.api.ts；data/note-sync.repository.ts、note-local.repository.ts；services/note-sync.service.ts、note-sync-coordinator.ts、note-save.service.ts；notes.events.ts；screens/NotesScreen.tsx、NoteDetailScreen.tsx；src/features/profile/hooks/useProfileOverview.ts；src/core/notifications/notification-provider.tsx；src/features/sync/upload-task-adapters.ts；CHANGELOG.md。
+- 增量每页与游标同事务，完整快照先暂存，追上增量后投影；未上传内容与草稿保留，写入期间停止投影。列表、详情和个人页改用共用同步入口；分类删除保留现有删除分类内笔记的语义。
+- 修改前基线：a49c363，npm run typecheck 通过。当前实施与测试尚未完成；没有执行服务器迁移、部署或构建发布。保留原有 package.json、package-lock.json、connection-events.ts 与日志改动。
+
+---
+
+## 2026-09-20 04:01:36 | 新增功能：start:test 命令一键切换测试环境启动
+
+- 文件：package.json（新增 start:test 脚本、devDependencies 新增 cross-env）、.env.local（删除）、package-lock.json（cross-env 安装产物）、CHANGELOG.md。
+- 已获用户确认。目标：`npm start` 默认连接生产地址（代码默认值 https://tech-mou.top/api），`npm run start:test` 通过命令行注入 EXPO_PUBLIC_BASE_URL=http://test.tech-mou.top/api 连接测试服，实现一条命令切换。
+- 删除 .env.local 的原因：Expo CLI 启动时自动加载且优先级最高，其常驻的测试地址会覆盖生产默认值，导致"默认生产"不成立；其中 EXPO_PUBLIC_BASE_URL_LOCAL 无任何代码读取，一并清除。.env.release.local 为发布脚本专用，开发模式不加载，保持不动。
+- 使用 cross-env 保证 Windows 下 npm 脚本的变量注入跨平台生效。src/shared/http/client.ts 现有"环境变量优先 + 默认值兜底"逻辑零改动。
+- 验证：npm start 启动 Metro 正常（[API] 地址日志需客户端加载 bundle 后出现，未在本次验证）；npm run typecheck 通过，无新增类型错误。未执行构建、上传或发布。
+
+---
+
+## 2026-09-19 16:10:44 | 新增功能：待办 SQLite 本地持久化与异步会话保护
+
+- 已获用户确认实施方案及保持原布局的文字预览；基线 840d7a4881b5820da8e9c560fec4b9dce5a94bd8。范围限本地持久化，不实现云同步、后端 API、通知、系统日历、循环或笔记关联，不新增依赖。
+- 数据库文件：src/core/database/migrations/0007-create-local-todos.ts、src/core/database/migrations/index.ts。注册版本 7，创建独立 local_todos 表、所有者与稳定 ID 复合主键、所有者/日期索引及身份、日期时间、布尔、优先级、版本和完成状态检查；已有笔记、草稿、版本及上传队列表不改动。
+- 仓库文件：src/features/todos/data/todo-local.repository.ts、src/features/todos/data/todo-memory.repository.ts、src/features/todos/data/todo-repository.port.ts。复用公共数据库生命周期/事务队列；事务内读取当前所有者最新数据，用隔离内存工作集复用既有领域规则，仅差异行执行参数化 SQL。保留稳定 ID 幂等、非重叠字段合并、版本冲突、无变化不写入/不增版本/不广播、批量全部成功或回滚；提交后才发布不可变页面快照。
+- 生命周期文件：src/features/todos/state/todo-store.ts、src/features/todos/hooks/useTodoScope.ts。游客采用数据库内稳定 guest:local，账号采用 user:<ID>；切换立即清空快照并加载新归属，落盘数据独立保留且不合并；认证加载、数据库端口更换使旧代次失效，过期加载/写入回执不覆盖新会话。加载失败使用重要横幅重试，旧横幅不能重新激活旧账号。
+- 调用方文件：src/features/todos/services/todo-service.ts、src/features/todos/hooks/useTodoForm.ts、src/features/todos/screens/TodosScreen.tsx、src/features/todos/components/TodoFormDialog.tsx、src/features/todos/testing/todo-seeds.ts。保存、完成、批量及删除等待 SQLite 事务回执，失败保留输入/选择并报告；列表抑制重复命令，保存沿用“保存中…”锁定；开发种子按异步回执写入独立 preview 命名空间。布局、配色和 dp 尺寸保持不变。
+- 测试与文档：tests/todos/todo-local.test.cjs、tests/todos/todos.test.cjs、docs/待办/待办逻辑层设计.md、CHANGELOG.md。新增 13 项本地仓库/状态层测试并保留 20 项既有领域/内存测试，覆盖 Node SQLite 隔离文件关闭重开、全部字段映射、迁移旧表保留与约束、游客/账号隔离、冲突、批量写入/删除回滚、提交失败重试及切换竞争；设计文档更新到 1.1，明确已实现与后续边界。
+- 验证：修改前及第一轮修改后 npm run typecheck 通过；node --test "tests/todos/*.test.cjs" 最终 33/33 通过。追加无变化快照复用和状态层测试后，最终 npm run check 通过（类型、Lint、主题及全部 240 项测试）；git -c core.whitespace=-blank-at-eol diff --check、冲突标记、文档链接/代码围栏及历史日志内容保留检查通过。检查对应上述基线的未提交工作区，不代表新提交或发布版本。
+- 限制：旧进程内数据没有可靠迁移来源，首次升级为空表；每次写入读取当前所有者全部待办，大规模数据增量优化未实施；COMMIT 期间切换账号可能留下原所有者的合法写入，但不向新账号发布。Node SQLite 文件测试不代表 Expo 原生 SQLite、真机杀进程恢复或交互验收通过；未运行应用、浏览器、设备、构建、上传或发布，未执行 Git 暂存、提交或推送。
+
+---
+
+## 2026-09-18 17:05:50 | 修复问题：修正时间轮盘的同方向虚拟列表嵌套
+
+- 已获用户确认修复方案及尺寸预览，基线 a967f521ff00ebd75c936db42a269c4c289ddd0e。用户提供的日志与源码一致：时间弹窗的纵向 ScrollView 包含两个纵向 FlatList，触发 React Native 的虚拟列表同方向嵌套告警；此前静态和领域测试未覆盖这项运行时问题。
+- 修改文件：src/shared/ui/TimePickerField/TimePickerField.tsx、docs/待办/待办组件实施与提交记录-待审阅.md、CHANGELOG.md。
+- 修复内容：小时／分钟轮盘改为普通 ScrollView，固定渲染 24／60 项；初始索引改用固定 contentOffset，点击定位改用 scrollTo。保留 48dp 行高、240dp 可视区、10dp 列间隔、分钟步进、吸附、取消／确定／清除及外层小屏滚动容器，没有改动表单校验和保存逻辑。
+- 待审阅记录：新增 C8 根因、修复、检查和未验收边界，补录 C7 的真实 SHA；保留首版检查的历史结果，不将其当作运行时验收。
+- 验证：修改前 npm run typecheck 通过；修复后 npm run check 通过类型、Lint、主题检查及全部 227 项测试，失败／跳过均为 0。未新增 UI 自动化测试；未启动应用或复测设备，告警消失、初始位置、滚动吸附、嵌套手势和小屏表现仍待真机验收。
+- 按已确认约定追加本地 fix 提交，不推送、不上传、不发布，不改写已有提交历史。
+
+---
+
+## 2026-09-18 04:57:53 | 优化代码：按职责提交待办组件并记录待审阅实施清单
+
+- 已获用户明确授权执行分组本地提交，不推送；分支 kroos_todo，基线 d95fc547c003ac6f77320fb362c9c0e540c345d6。本次不再修改组件逻辑，将此前完成的实现拆成六组代码提交，并将本文档及实现日志单独提交。
+- 修改文件：docs/待办/待办组件实施与提交记录-待审阅.md、CHANGELOG.md。
+- 实际代码提交：377654e（五色主题令牌）、0ba476f（领域规则／内存仓库／测试）、7bb23f9（公共输入／时间与弹窗组件）、cc2da90（状态／表单会话／时钟 hooks）、e15f3b2（四个列表组件）、4d2ecab（弹窗与页面接入）。待审阅 MD 记录完整 SHA、全部文件范围、依赖、保存退出矩阵、时间与五色判断、筛选排序及批量流程，不将中间提交包装成已独立验收。
+- 验证：分组提交前 npm run typecheck 通过；六组代码提交后，对 4d2ecabbb7c1d28c16bece46f125024d0bbaa958 的最终代码运行 npm run check，通过类型、Lint、主题检查及全部 227 项测试（失败／跳过均为 0）。逐组核对暂存范围并运行 git diff --cached --check，通过；本次文件未发现 Git 冲突标记。
+- 明确记录未实施持久化、云同步、通知及系统日历；未运行应用、浏览器／真机验收、构建、上传、推送或发布。本文待审阅，静态检查不等于交互验收。
+
+---
+
+## 2026-09-18 04:39:50 | 新增功能：落实待办新建编辑弹窗与五色列表（内存首版）
+
+- 已获用户确认，按待办创建弹窗与列表设计 v1.2、逻辑层设计 v1.0 实现新建／编辑弹窗和列表。数据仅保存在内存，进程重启或所有者切换不保留；未实现持久化、云同步、系统日历、通知调度、关联笔记及循环待办。
+- 页面与主题文件：src/app/_layout.tsx、src/features/todos/screens/CreateTodoScreen.tsx、src/features/todos/screens/TodosScreen.tsx、src/features/todos/components/TodoCalendarRail.tsx、src/shared/theme/presets/default-light.json、global.css、CHANGELOG.md。
+- 新增业务组件：src/features/todos/components/TodoFormDialog.tsx、src/features/todos/components/TodoCard.tsx、src/features/todos/components/TodoFilterBar.tsx、src/features/todos/components/TodoBatchToolbar.tsx、src/features/todos/components/TodoIconAction.tsx。
+- 新增领域与仓库：src/features/todos/todos.types.ts、src/features/todos/todo-colors.ts、src/features/todos/domain/todo-validation.ts、src/features/todos/domain/todo-state.ts、src/features/todos/domain/todo-query.ts、src/features/todos/data/todo-repository.port.ts、src/features/todos/data/todo-memory.repository.ts、src/features/todos/services/todo-service.ts、src/features/todos/state/todo-store.ts、src/features/todos/hooks/useTodoScope.ts、src/features/todos/hooks/useTodoForm.ts、src/features/todos/hooks/useTodoClock.ts、src/features/todos/testing/todo-seeds.ts。
+- 公共组件文件：src/shared/ui/Input/Input.tsx、src/shared/ui/index.ts、src/shared/ui/BodyInput/BodyInput.tsx、src/shared/ui/BodyInput/index.ts、src/shared/ui/TimePickerField/TimePickerField.tsx、src/shared/ui/TimePickerField/index.ts、src/shared/ui/Dialog/FormDialog.tsx、src/shared/ui/Dialog/dialog.tsx、src/shared/ui/Dialog/dialog.styles.ts、src/shared/ui/Dialog/DeleteConfirmDialog.tsx。
+- 删除确认兼容入口：src/features/notes/components/editor/delete-confirm-dialog.tsx、src/features/notes/components/editor/draft-dialog.tsx、src/features/notes/components/editor/draft-dialog.styles.ts；将通用弹窗、按钮、样式和两秒倒计时删除确认提取到共享 UI，原笔记／分类／草稿调用方通过原入口继续复用，避免待办依赖笔记业务。
+- 弹窗：AppModal／Overlay 外壳，24dp 圆角和内距、144dp 正文输入、日期子弹窗、纯 JS 小时／分钟轮盘（1 分钟步进）、优先级、标星与置顶；新建路由透明承载，默认日期继承当前选中日期。确认、取消、遮罩及系统返回遵循统一校验和保存规则；空编辑不删除，保存失败保留输入，保存中锁定，旧所有者／代次禁止提交。
+- 列表：主题注册五组底色与强调色，按优先级和完成所属日期显示卡片；按日期及全部／待进行／进行中／已过期筛选，支持搜索、三种排序、置顶、单条完成与编辑。长按进入批量，全选当前结果，标星／置顶按全体开启状态统一取反，删除经共享确认；筛选或日期改变清空选择，外部变更移除隐藏／已删除目标。
+- 逻辑：本地日期与任意分钟严格校验，正文统一换行、按 Unicode 码点限制 4000 字，时区缺失不阻断；UUID 会话身份去重、不可变实体、修改字段合并和版本冲突保护、批量全验证后一次广播。统一时钟处理开始／结束边界、午夜、前台刷新和后台暂停。种子仅在开发且 EXPO_PUBLIC_TODO_PREVIEW=1 时进入独立 preview 所有者空间，正常空列表与搜索无结果不注入种子。
+- 验证：基于 d95fc547c003ac6f77320fb362c9c0e540c345d6 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 227 项测试）。新增 tests/todos/todos.test.cjs 的 20 项覆盖校验、退出规则、时间边界、五色、创建去重、编辑冲突、所有者、排序和原子批量；共享提取的三项函数与全部样式配方经 AST 对比保持一致（忽略格式）。git diff --check 与本次源码／测试冲突标记检查通过。
+- 检查过程：修复本次时间轮盘渲染期 ref 读取的 Lint 错误；全量测试首次因本机缺少已声明的 cos-nodejs-sdk-v5@3.0.0 无法加载 COS 测试，隔离安装并恢复本机该包及依赖后通过。未修改 package.json 或锁文件，未升级应用依赖。
+- 未运行应用、浏览器／真机验收、构建、上传或发布；静态检查和领域测试不代表键盘、窄屏、大字体、轮盘、父子弹层及视觉实测已通过。未执行 Git 暂存、提交或推送。
+
+---
+
+## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
+
+- 文件：docs/待办/待办逻辑层设计.md、docs/待办/待办后端API预留契约.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认。本次仅落地方案文档，不实现页面、组件、数据存储、后端路由、云同步、日历或通知，不新增依赖。
+- 逻辑层：定义领域模型、UI/表单/业务/仓库边界、内存首版、校验与时间状态刷新、确认/取消/遮罩/返回退出矩阵、自动保存会话结束、编辑字段合并及并发保护、确定筛选排序、原子批量、账号隔离、开发种子与后续验收清单。
+- API 预留：定义独立创建/查询/更新/删除、批量及增量端点；字段和默认值、客户端稳定身份、幂等重试、基础版本冲突、设备字段隔离、快照分页、提交序列、删除防复活、游标过期恢复、错误及后端迁移/联调清单。明确为尚未实现的待评审契约，不作为真实后端已支持的证据。
+- 时间规格：按用户要求改为 1 分钟步进，小时 0–23、分钟 0–59，允许 09:01、09:37 等任意分钟；原界面设计 v1.1 → v1.2，更新 §5.2 与文档变更记录，保留其余既有设计内容。
+- 验证：文档章节顺序、代码围栏、相对 Markdown 链接、11 段 JSON 示例及冲突标记检查通过；原设计内容逆向还原后 SHA-256 与修改前一致，既有 TodoCalendarRail.tsx 哈希未变。普通 git diff --check 提示原设计元信息的 Markdown 双空格换行，保留既有格式；git -c core.whitespace=-blank-at-eol diff --check 通过。不运行 typecheck、应用测试、构建、真实 API 请求、数据库迁移或浏览器/设备验收；未执行暂存、提交或推送。
+- 开放决策：云同步启用策略、跨设备时区及夏令时语义、幂等/快照/墓碑保留期限和真实后端存量迁移，均留待独立立项评审。
+
+---
+
+## 2026-09-18 03:12:47 | 优化代码：待办设计文档升版 v1.1，定稿五色状态卡与筛选批量方案
+
+- 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认（方向确认后指定先改设计文档，代码未动）。为待办列表新方案定稿设计规范，文档 v1.0 → v1.1。
+- 设计要点（按方案推荐值写入，待用户审阅数值）：§10 重写为「五色状态体系（底色/强调色五对：不重要 #C5DFFC/#64A9F7、正常 #FDEBC4/#F9C962 基准、重要 #FCCADB/#F76998、已完成 #CDF9DB/#71EF9B、已结束 #E6E8EA/#ACB2B9）+ 顶部筛选栏（全部/待进行/进行中/已过期 + ⏱排序菜单 + 🔍内联搜索）+ 4dp 强调色竖线卡片 + 长按批量模式（删除/标星/置顶）」；状态推导规则（当日完成浅绿、隔日回看灰+删除线、无时刻当天视为进行中）落入 §10.1。
+- 弹窗变更：§3 明确新增/编辑复用同一弹窗（标题「编辑待办」、编辑态删除走共享确认弹窗），新增 §3.4 优先级三段行（替代颜色行）；§6 自由颜色选择器 ContainerColorPicker 移出首版；§5.2 增加纯 JS 时间轮盘实现约束（不引原生依赖，保持 Expo Go 可加载）；§9 增加卡片铃铛为展示态的边界。
+- 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
+- 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
+
+## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
+
+- 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
+- 用户已确认方案和文字预览。基于客户端 73b664cf543b9bc72c8ff36dd806d36c78dbd310 与服务端 898440c8ea35936e6e355cdce61e5433d448d6a4，绘制页面/本地 SQLite 与 AsyncStorage/上传队列/Axios/Express/PostgreSQL 主链路，补充 Redis、Resend、MinIO，以及本地 Gradle/EAS、源站/COS 分发和 Android 原生更新器。
+- HTML 支持浅深色和内置交互，保留可维护 JSON、14 个固定提交源码引用、源码依据与校验收据。明确待办/摘录仍待业务接入；图示为源码架构，不代表线上部署已验收。记录当前完整包与差量策略以及差量补丁由源站分发的边界。
+- 验证：修改前 npm run typecheck 通过；npm run check 通过（类型、Lint、主题检查及 224/224 测试）；Archify showcase 9/9、0 错误、0 警告，14 个源码引用验证通过。首版纵向溢出经布局调整解决；最终四种桌面尺寸浏览器检查通过，四张浅深色截图已逐张视觉审阅。
+- 仅新增架构文档与生成制品，未修改应用业务逻辑，未执行 APK 构建、上传、发布、Git 提交或服务重启。Archify visual-check 不支持 --headed --persistent，实际使用默认截图检查，未宣称使用上述参数。
+
+---
+
+## 2026-09-18 13:17:10 | 修复问题：临时发布构建工作区结束后自动清理
+
+- 文件：scripts/release/workspace.mjs、scripts/release/cli.mjs、tests/releases/workspace.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。默认本地正式构建继续复用当前项目的 reuse-* 缓存；--fresh 和 EAS 的一次性 r-* 工作区在成功、提前返回或构建/上传报错后自动尝试清理，防止正常结束的构建反复累积完整依赖与编译产物。
+- 清理能力只绑定本次创建的目录，校验真实父路径、目录类型及文件系统身份，拒绝清理被替换或重定向的工作区。不扫描其他构建，不删除 dist/releases 的正式 APK 或差分基础包。清理失败警告包含残留路径并保留原始结果；强制结束或断电仍可能残留。
+- 新增真实临时目录测试，覆盖产物保留、错误退出、上传重试、缓存复用、锁释放、路径替换和目录联接保护。验证：node --test tests/releases/workspace.test.cjs tests/releases/cache.test.cjs 通过（27/27）；npm run check 通过（类型检查、Lint、主题检查、224/224 测试）；另对修改的两个脚本和测试文件直接执行 ESLint，通过；git diff --check 通过，无冲突标记。未执行真实 APK 构建或真机验证。
+- 变更前 npm run typecheck 通过（基于 821bc9a）。现有 14 个旧 r-* 的删除预演被工具策略拦截，尚未清理；没有停止已有构建，没有执行正式打包、上传、发布或 Git 提交。
+
+---
+
+## 2026-09-18 12:37:33 | 新增文件：IRisNote 0.2.4 更新说明
+
+- 文件：releases/notes-0.2.4.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.4（补丁更新，基准 0.2.3 / 86d2955，目标 c7b2b42，工作区干净）：更新应用图标；头像更换改为气泡菜单并增加横幅反馈；更新提示策略对落后较多版本强制更新（用户确认服务端已部署）；修复左右滑动页面时页面边缘灰色细线；修复多设备同步时云端较旧内容可能覆盖本地较新编辑及编辑时间记录问题。排除构建缓存复用、.codegraph 清理等纯开发记录。仅生成文案，未执行预留、构建、上传或发布。
+
+---
+
+## 2026-09-18 12:09:56 | 修复问题：分离圆角背景和边框以避免滑动接缝露灰
+
+- 文件：src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 用户反馈上一轮调整后滑动时仍有竖向细线，并确认本轮方案及文字预览。当前 React Native 0.86.3 Android BackgroundDrawable 在圆角与边框同时存在时将背景四边各缩进 0.8 个物理像素；笔记右侧、待办左侧没有边框覆盖，可能露出灰色父背景。
+- 将笔记和待办的白色背景及对应 30dp 圆角移至现有无边框父容器，内层保留圆角边框和内容布局，避免白色填充触发上述缩进。保留 15dp 顶部间隔、75dp 侧栏、1dp 边框、16dp 内容内边距及 24dp 底部内边距；保留上一轮弹性高度和分页底色修改。
+- 验证：基于 6f44167 的未提交修改，修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无冲突标记。源码机制与现象吻合，但 ADB 无连接设备，滑动接缝消除效果及圆角外观仍待 Android 真机验证。未构建、发布 APK 或执行 Git 提交。
+
+---
+
+## 2026-09-18 11:58:10 | 修复问题：分页白色底层与内容区高度对齐
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/todos/screens/TodosScreen.tsx、CHANGELOG.md。
+- 已获用户确认方案及文字预览。分页承托层和默认场景背景改为纯白主题色 surface，减少页面接缝露出灰底的可能；外层背景及毛玻璃采样结构保持原样。
+- 笔记和待办白色容器由 100% 高度加 8dp 底部外边距改为 flex: 1，与摘录页面既有弹性填充规则统一。保留三页 15dp 顶部间距、75dp 侧栏、30dp 外侧圆角、现有边框、内容内边距和底部导航交互。摘录页面本身已符合该规则，无需修改。
+- 验证：基于 6f44167 的未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题一致性及 217/217 测试），git diff --check 通过，修改文件无遗留冲突标记。截图接缝的具体来源尚未真机证实，滑动细缝与像素级高度对齐仍需 Android 真机验收；未执行 APK 构建、发布或 Git 提交。
+
+---
+
+## 2026-09-18 11:14:17 | 修复问题：笔记编辑时间记录与新旧内容同步保护
+
+- 文件：src/features/notes/notes.types.ts、src/features/notes/api/notes.api.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/services/note-save.service.ts、src/features/sync/upload-task-adapters.ts、tests/editor/revisions.test.cjs、tests/editor/drafts.test.cjs、CHANGELOG.md。
+- 已获用户确认。标题/正文实际变化时生成本地编辑时间，连续编辑与时钟回拨时保持递增；重复保存、置顶、标星、分类调整及上传重试不刷新内容修改时间。
+- 上传携带 updated_at；服务端回传时间持久化到已有 server_updated_at 列。较旧云端内容不覆盖本地，较新云端内容生成本地历史版本后合并；同一时间不同内容保留本地并报告冲突。
+- 409 冲突快照只对对应笔记及请求版本合并，旧响应不能覆盖新编辑；队列已同步任务不重复上传，旧上传成功但本地还有新版本时继续重试。
+- 历史已同步笔记的旧 local_updated_at 可能是同步时间，因此 server_updated_at 为 NULL 时不伪造已知编辑时间；首次有时间的云端同步建立基线。时间规则不能消除不同设备时钟偏差。
+- 验证：基于 d00c6b7542aaf22ca29c29d2fd8a8486d8766392 的未提交修改；修改前 npm run typecheck 通过，最终 npm run check 通过（TypeScript、Lint、主题、217/217 测试）。git diff --check 通过，无遗留冲突标记。保留同期出现的 app.json 其他修改。未执行线上迁移、部署、APK 构建或真机验收。
+
+---
+
+## 2026-09-18 11:34:14 | 修复问题：更换头像菜单改为锚点气泡样式
+
+- 文件：src/features/profile/hooks/useAvatar.ts、src/features/profile/screens/ProfileScreen.tsx、CHANGELOG.md。
+- 已获用户确认。点击用户中心头像后，“从相册选择/拍照”不再使用 Android 原生系统 Alert 对话框，改为共享 AnchoredPopover 锚点气泡菜单：白底 24dp 圆角面板、三角箭头指向头像、进入/退出动画、点击外部或返回键关闭；行规格为最小高 56dp、内边距 16/12dp、22dp 主题蓝图标、17sp 文字、行间不贯通分割线，触发按钮增加 300ms 防重复打开冷却锁与 expanded 无障碍状态；上传中沿用原位遮罩并禁止打开菜单。
+- 附带按《全局横幅通知设计与调用规范》将头像上传成功/失败的系统 Alert 反馈改为全局横幅（稳定 ID avatar-update，成功 success 5 秒自动关闭，失败 important 常驻可关闭并保留具体原因），异步回调经通知会话校验；移除原 Alert 选择菜单的“取消”按钮（点外部即取消）。SettingsScreen 中两处引用原 showAvatarOptions 的代码均在注释块内，未受影响；CategoryBar 只读取头像展示，不受影响。
+- 验证：修改前 npm run typecheck 通过（无既有错误）；修改后 npm run typecheck 通过、npm run check 通过（类型、Lint、主题一致性与全部 217 项测试）。静态检查通过不代表真机视觉验收；气泡位置、动画、返回键关闭及横幅反馈待用户在 Android 真机验收。
+
+---
+
+## 2026-09-18 03:04:54 | 新增功能：三版本差分窗口与强制更新
+
+- 文件：src/features/updates/release.ts、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 用户已确认规则与原有弹窗交互：落后 1～2 个已发布版本可跳过，落后 3 版强制差分更新，超过 3 版强制完整 APK 覆盖更新；跨主版本仍使用完整 APK。强制弹窗只保留更新按钮，返回或取消安装时先保存草稿再退出。
+- 服务端统一限制差分基础版本与发布校验范围；新客户端协商策略版本 2，保留历史补丁供旧客户端兼容升级。保留完整包身份、摘要、签名及安装授权检查。
+- 验证：当前源码基于 02d0b6cfff7e2186fb4f9e2b0e95945cbedd7ccd 的未提交改动；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题与全部 207 项测试），其中更新专项 30 项通过。服务端基于 7bc85889019bb5eb71fbffa4b5298a7266540b5d，npm run build、test:releases（15 项）及 test:installer（4 项）通过。git diff --check 通过，无冲突标记。服务端新增路由测试使用注入式数据库/文件响应，未访问生产数据库；UI 断言不是实际渲染验收。未部署服务、未构建上传发布，Android 真机弹窗、退出、完整包覆盖保留数据及旧客户端分步升级待验收。
+
+---
+
+## 2026-09-18 02:27:59 | 优化代码：本地正式 APK 构建缓存复用
+
+- 文件：scripts/release/cli.mjs、scripts/release/workspace.mjs、scripts/release/cache.mjs、tests/releases/cache.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。自有渠道使用按项目隔离的固定工作区和互斥锁，按预留提交同步源码并清除过期文件；指纹一致时复用依赖与原生编译输出，依赖、配置、本地模块、构建环境变化或上次构建未完成时重新初始化。
+- 每次重新生成 Android 工程后只恢复允许保留的构建输出，避免移除插件后残留原生文件；启用 Gradle Daemon 和构建缓存，增加阶段耗时与 --fresh 全新工作区入口，保留完整检查、版本签名校验及原有上传和差分验证行为。
+- 验证：基于 4e9b6292301b9283dbf47fe3b0286490294a075e 的未提交工作区；修改前 npm run typecheck 通过，最终 npm run check 通过（类型、Lint、主题及全部 196 项测试），其中缓存专项 18 项通过；实际 npm 配置读取确认版本号变化不改变配置指纹输入；脚本语法与 git diff --check 通过，无冲突标记。未运行正式 APK 构建、上传或发布，实际冷热构建耗时、Windows Gradle Daemon 下的原生缓存复用和真机差分升级尚未验收。
+
+---
+
+## 2026-09-18 02:08:28 | 新增文件：IRisNote 0.2.3 更新说明
+
+- 文件：releases/notes-0.2.3.txt、CHANGELOG.md。
+- 已获用户确认。按更新说明编写规范生成 0.2.3（补丁更新，基准 0.2.2 buildCode 11 / 48bf49a，目标 86d2955）：修复切换底部标签页时毛玻璃区域偶尔出现深灰色闪烁带的问题（a7ba4f9，已通过真机验收）。
+
+---
+
+## 2026-09-17 23:10:03 | 修复问题：Tab 切页毛玻璃采样层稳定化
+
+- 文件：src/core/navigation/components/SwipeTabsNavigator.tsx、src/app/(tabs)/_layout.tsx、src/core/navigation/components/FloatingMenu.tsx、CHANGELOG.md。
+- 已获用户确认。将各页面独立的毛玻璃采样目标改为包裹整个切页容器的固定 BlurTargetView，悬浮导航作为同级覆盖层置于采样区域之外，避免采样自身；移除随 activeTab 改变的 BlurView key，切页时复用原生毛玻璃实例。
+- 切页容器及采样区域补齐主题背景色，保留页面滑动、懒加载、底栏图标动画、15dp 顶部渐变、66dp 控件高度及 20dp 底部间隔。
+- 验证基线：HEAD 48bf49a9b85aa2c6a573b74e98f61fd9f2af9b85 加本次未提交修改；修改前 npm run typecheck 通过，修改后 npm run check 通过（类型、Lint、主题及全部 178 项测试）。首次 Lint 的渲染阶段 ref 传递警告已通过稳定的 Tab 栏组件边界修正并完整重检；git diff --check 通过，无冲突标记。
+- 原包复现：USB 真机 Android 17 / API 37，原安装包 0.2.2 buildCode 11 的 712 帧录像中，点击底栏时毛玻璃区域出现横向深灰带（连续第 299～301 帧）；固定采样区域共 30 帧平均亮度低于 150/255，最低 106.05。仅检查按钮下方间隔会漏检；Expo Go 同区域未出现此现象。
+- 原生构建：通过本机 Gradle 执行 :app:assembleRelease --offline --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a，并沿用项目 Ninja init script 与正式签名配置，11m 23s BUILD SUCCESSFUL。测试包使用现有构建号 11 / 0.2.2；仅限本机验收，未预留版本、上传、发布或提交 Git。source map 内 3 个改动源码与工作区一致，APK 内 JS bundle 与本次生成产物一致；签名与手机原正式包一致，非 debuggable。
+- 修复后真机验收：保留应用数据覆盖安装测试包。首轮混入用户进入设置页的操作，仅采用前 14 秒有效片段（1260 帧），无同类深灰带。用户确认暂停操作后完成独立一轮 21 次底栏点击、4 次横向滑动、2 次纵向滚动，1970 帧中未见同类深灰闪屏（上述阈值异常帧 0）；底栏滚动隐藏与恢复正常。测试进程日志未发现 FATAL EXCEPTION / TypeError / ReferenceError。
+- 证据：本机临时目录 irisnote-tab-flash-48bf49a 中保存旧包、测试包、切页录像、异常连续帧、最终时间序列图、操作记录及 source-verification.json / apk-verification.json；测试 APK SHA-256 为 1c108ddba92307eebbe2ea017481202a1ad9169e20b0d05bde91ca58ed8af118。
+- 验收收尾：按用户明确选择，以 adb install -r 保留应用数据恢复原正式包 0.2.2 buildCode 11，并通过手机已安装 APK 的 SHA-256 与保存的原包比对确认一致；恢复结果保存在 restoration-verification.json。修复保留在工作区，等待正式发布，手机当前原正式包尚不含此修复。
+
+---
+
+## 2026-09-17 21:26:11 | 优化代码 / 修复问题：原生后台校验与安装授权衔接
+
+- 文件：modules/irisnote-updater/android/src/main/java/expo/modules/irisnoteupdater/IrisNoteUpdaterModule.kt、modules/irisnote-updater/index.ts、modules/irisnote-updater/README.md、src/features/updates/update-store.ts、src/features/updates/UpdateDialog.tsx、src/features/notes/hooks/useNoteDraft.ts、src/features/notes/services/active-draft-flush.ts、tests/releases/releases.test.cjs、tests/releases/active-draft-flush.test.cjs、CHANGELOG.md。
+- 已获用户确认。完整目标 APK 摘要校验由正常差量安装流程的 5 次收敛为原生准备完成、实际安装前各 1 次，保留旧包、补丁、目标包身份与签名检查；原生独立线程报告真实读取进度和阶段耗时。
+- 更新弹窗可收起并继续编辑笔记；完成后按前台状态衔接安装授权，拒绝授权不循环跳转，授权返回后继续；拉起系统页面前等待草稿写入。
+- 后台范围为应用进程存活期间的应用内任务；切到其他应用时延迟拉起安装器，未引入系统常驻服务或自动发布。
+- 验证：基于 d70cd4a70fc5f9d95931ec984e48f390d1f324b6 的未提交工作区；修改前后 npm run typecheck 通过，npm run check 通过（类型、Lint、主题及全部 178 项测试），其中更新和草稿协调专项测试 23 项通过。首次 Lint 的计时器纯渲染错误已修正并完整重检。原生 npm run gradle -- :irisnote-updater:compileReleaseKotlin --offline 通过（BUILD SUCCESSFUL，1m 36s）；Debug 检查因 HTTPS 依赖读取长时间等待主动中止，改用已缓存的 Release 依赖完成编译。无冲突标记。
+- 真机验收：adb devices -l 无设备，尚未验证实际 UI、授权跳转、编辑流畅度与 10～15 秒校验目标；原生模块编译成功不代表已生成完整 APK 或通过真机安装。
+
+---
+
+## 2026-09-17 22:00:00 | 新增文件：IRisNote 0.2.2 更新说明
+
+- 文件：releases/notes-0.2.2.txt。
+- 已获用户确认。按更新说明编写规范生成 0.2.2（补丁更新，基准 0.2.1 buildCode 10 / d70cd4a，目标 301aa45）：修复更新安装授权循环、安装前自动保存活动草稿；优化后台下载衔接与下载进度显示、更新弹窗 UI。仅生成文案，未执行预留、构建、上传或发布。
+
+---
+
+## 2026-09-17 18:30:00 | 优化代码：更新 README 至当前项目状态
+
+- 文件：README.md。
+- 已获用户确认。技术栈版本修正为 Expo SDK 57 / React Native 0.86 / Reanimated 4，补充 Zustand、Flash List。
+- 功能状态表更新：笔记编辑与恢复、阅读统计、分享导出、本地存储与同步、应用内更新等已实现能力；待办改为开发中（日历轨道）；新增应用内更新模块行。
+- 开发检查命令改为实际 npm scripts（check/typecheck/lint/test/theme:check）。
+- Android 构建章节更新为已上线能力描述（差量更新、COS 上传）；开发文档链接修正为 docs 重组后的分类路径（架构指南/UI/构建发布/API后端），并新增更新说明编写规范入口；后端描述改为本地同目录项目（GitHub 仓库已不存在）；License 移至文末。
+
+---
+
+## 2026-09-17 18:00:42 | 优化代码：补充更新说明的版本号判断规范
+
+- 文件：docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 已获用户确认。更新说明规范新增版本号递增类型判断：按 `X.Y.Z` 区分主版本、第二位功能更新版本号和尾号补丁版本号，并要求先依据上一已发布版本与目标差异判断功能更新、补丁更新、需评估主版本或信息不足。
+- 补充功能更新与补丁更新的判定规则、混合更新优先级、纯开发维护记录处理、指定版本号一致性核对，以及维护者交付中需列出的建议版本号和待确认事项。
+- 后续调用示例改写为可直接要求 AI 先判断版本类型、再生成用户可见更新说明；交付前检查同步增加版本判断核对项。未修改应用源码、发布脚本或版本配置。
+
+---
+
+## 2026-09-17 11:04:39 | 修复问题：APK 经 CDN 回读并兼容已开启的 COS 版本控制
+
+- 文件：scripts/release/cos.mjs、tests/releases/cos.test.cjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。COS 默认域名 APK GET 返回 DownloadForbidden，回读改用已配置的 HTTPS CDN 自定义域名，校验 HTTP 200、大小、ETag 与完整 SHA-256；不发送 COS 凭据、禁止重定向，错误时保留远端文件供重试。
+- 允许 Enabled 和未开启版本控制；暂停/未知状态仍停止。先检查同名对象，已存在只校验；新上传比对 ETag/版本 ID，校验结束再 HEAD 检查对象稳定性。不修改桶设置、不删除历史版本。Enabled 下禁止覆盖请求头无效，检查不提供跨上传者原子互斥，文档明确并发限制。
+- 新增只读 verifyExisting 入口用于已有文件验证；补充 CDN 缓存、大小、摘要、并发版本变化及 Enabled 模式测试。
+- 验证：修改前 npm run typecheck 通过；19 项上传专项测试、定向 ESLint 和最终 npm run check（类型、Lint、主题、163 项测试）通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加未提交修改。真实只读下载 CDN 的 IRisNote-0.1.0-6.apk，122182378 字节，SHA-256 c125580baad40ca7f63bbcba43fd5318490be14183ca228ee8eb9cfb6fceff0d，与本地 APK 一致，ETag 和 COS 对象稳定性检查通过。本次未执行真实 PUT、发布、APK 构建或修改云端配置。
+
+---
+
+## 2026-09-17 09:53:59 | 新增功能：APK 自动上传服务器与 COS 并支持失败续传
+
+- 文件：scripts/release/cli.mjs、scripts/release/cos.mjs、scripts/release/upload.mjs、package.json、package-lock.json、tests/releases/cos.test.cjs、tests/releases/upload.test.cjs、docs/构建发布/release.env.example、docs/构建发布/android-releases.md、CHANGELOG.md；本机忽略文件 .env.release.local 仅补齐缺失配置项。
+- 已获用户确认。自建 APK 构建并校验成功后串联服务器上传、实际文件回读校验、COS 上传和回读 SHA-256 校验及差量生成；upload 支持匹配草稿重试，不自动发布。
+- 默认桶 irisnote-1334342309、地域 ap-guangzhou、CDN https://download.tech-mou.top，无目录前缀；对象名 IRisNote-版本号-构建号.apk。COS 使用官方 SDK 3.0.0，仅作为开发依赖，上传密钥从构建子进程环境移除。
+- 同名文件实际内容一致才跳过，冲突禁止覆盖；版本控制开启/暂停时停止，不自动修改桶配置。服务器/COS 已上传文件在失败时保留。下载侧沿用后端 CDN HEAD 检测及服务器回退，不修改后端。
+- 配置示例敏感值改为占位符；文档说明权限、回读流量、公开对象与发布状态的区别、30 秒缓存和失败恢复。
+- 验证：修改前 npm run typecheck 通过；修改后 npm run check 通过（类型、Lint、主题与 158 项测试，其中新增 14 项上传/COS 测试含真实 SDK 本地 HTTP 验证）；irisapi 的 npm run test:releases 10 项通过；额外对新增 .cjs 测试执行定向 ESLint，补齐显式 Buffer 导入后通过；node --check、git diff --check 及冲突标记检查通过。基于 HEAD d23772fff9dc009db87ae48b07f42cda7425e942 加本次未提交改动。COS 凭据尚未配置，未进行真实云端上传、发布、APK 构建或设备验收。
+
+---
+
+## 2026-09-17 03:22:24 | 优化代码：差量包上传成功后删除基础 APK 并保留补丁记录
+
+- 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
+- 已获用户确认。preparePatches() 上传差量包成功后，删除临时下载的基础 APK（rm force），保留 `<构建>-from-<基础构建>-*` 目录及 update.hdiff 与元数据作为本机补丁记录；上传失败仍抛异常并保留现场。
+- 文档补充该清理行为说明。验证：node --check、定向 ESLint、修改前后 npm run typecheck、releases 相关 17 项测试、git diff --check 均通过；未执行真实差量上传。
+
+---
+
+## 2026-09-17 01:46:36 | 新增功能：生成 0.2.0 版本更新说明并调整说明文件命名规范
+
+- 文件：releases/notes-0.2.0.txt、docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
+- 已获用户确认。按规范核实版本范围（上一发布 0.1.0 构建 6 提交 10b265a，目标为待构建草稿，范围 10b265a..35e48f3），面向用户改写待办日期轨道与标签栏互换两条可见变化，并保留待办/剪贴占位提醒。
+- 说明文件命名规范调整为 UTF-8 纯文本 `releases/notes-<版本号>.txt`，文件名不加构建号、draft 等附加词，与现有 0.1.0 文件一致；同版本多次构建复用同一文件。
+- 验证：未改应用源码，无需 typecheck；未执行构建、上传、发布或 Git 写操作。目标提交与对比范围见交付说明，0.2.0 构建号尚未预留。
+
+---
+
+## 2026-09-18 03:46:15 | 新增功能：新增待办逻辑层设计与独立后端 API 预留契约（设计文档）
+
+- 文件：docs/待办/待办逻辑层设计.md、docs/待办/待办后端API预留契约.md、docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认。本次仅落地方案文档，不实现页面、组件、数据存储、后端路由、云同步、日历或通知，不新增依赖。
+- 逻辑层：定义领域模型、UI/表单/业务/仓库边界、内存首版、校验与时间状态刷新、确认/取消/遮罩/返回退出矩阵、自动保存会话结束、编辑字段合并及并发保护、确定筛选排序、原子批量、账号隔离、开发种子与后续验收清单。
+- API 预留：定义独立创建/查询/更新/删除、批量及增量端点；字段和默认值、客户端稳定身份、幂等重试、基础版本冲突、设备字段隔离、快照分页、提交序列、删除防复活、游标过期恢复、错误及后端迁移/联调清单。明确为尚未实现的待评审契约，不作为真实后端已支持的证据。
+- 时间规格：按用户要求改为 1 分钟步进，小时 0–23、分钟 0–59，允许 09:01、09:37 等任意分钟；原界面设计 v1.1 → v1.2，更新 §5.2 与文档变更记录，保留其余既有设计内容。
+- 验证：文档章节顺序、代码围栏、相对 Markdown 链接、11 段 JSON 示例及冲突标记检查通过；原设计内容逆向还原后 SHA-256 与修改前一致，既有 TodoCalendarRail.tsx 哈希未变。普通 git diff --check 提示原设计元信息的 Markdown 双空格换行，保留既有格式；git -c core.whitespace=-blank-at-eol diff --check 通过。不运行 typecheck、应用测试、构建、真实 API 请求、数据库迁移或浏览器/设备验收；未执行暂存、提交或推送。
+- 开放决策：云同步启用策略、跨设备时区及夏令时语义、幂等/快照/墓碑保留期限和真实后端存量迁移，均留待独立立项评审。
+
+---
+
+## 2026-09-18 03:12:47 | 优化代码：待办设计文档升版 v1.1，定稿五色状态卡与筛选批量方案
+
+- 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
+- 已获用户确认（方向确认后指定先改设计文档，代码未动）。为待办列表新方案定稿设计规范，文档 v1.0 → v1.1。
+- 设计要点（按方案推荐值写入，待用户审阅数值）：§10 重写为「五色状态体系（底色/强调色五对：不重要 #C5DFFC/#64A9F7、正常 #FDEBC4/#F9C962 基准、重要 #FCCADB/#F76998、已完成 #CDF9DB/#71EF9B、已结束 #E6E8EA/#ACB2B9）+ 顶部筛选栏（全部/待进行/进行中/已过期 + ⏱排序菜单 + 🔍内联搜索）+ 4dp 强调色竖线卡片 + 长按批量模式（删除/标星/置顶）」；状态推导规则（当日完成浅绿、隔日回看灰+删除线、无时刻当天视为进行中）落入 §10.1。
+- 弹窗变更：§3 明确新增/编辑复用同一弹窗（标题「编辑待办」、编辑态删除走共享确认弹窗），新增 §3.4 优先级三段行（替代颜色行）；§6 自由颜色选择器 ContainerColorPicker 移出首版；§5.2 增加纯 JS 时间轮盘实现约束（不引原生依赖，保持 Expo Go 可加载）；§9 增加卡片铃铛为展示态的边界。
+- 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
+- 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
+
+---
+
+> > > > > > > > > Temporary merge branch 2
+
+## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
+
+- 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
+- 已获用户确认。Android 完整原生日志确认：清除应用存储后登录时，密码框右侧眼睛按钮的原生视图仍挂在包装容器 146 下，却被 Fabric 要求插入登录表单容器 182，触发 `The specified child already has a parent` 并使应用退出。
+- `Input` 的 `trailing` 包装 `View` 增加 `collapsable={false}`。密码按钮在登录提交时由可点击切换为不可点击、登录完成后恢复时，该包装层将始终保留为独立原生容器，避免视图扁平化改变按钮父级；不改密码显隐、按钮禁用语义、尺寸、间距、登录请求、路由或数据逻辑。
+- 调用范围已核对：`trailing` 插槽当前仅由认证字段的密码显隐按钮使用；`InputSave` 明确排除此插槽。无新增依赖。
+- 验证：修改前 `npm run typecheck` 通过；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，未发现 Git 冲突标记。未构建、安装或进行真机登录验证；需使用包含此修复且与原复现包同配置的 Android 安装包验证清除系统数据后的登录、失败后重试和密码显隐。
+
+---
+
+## 2026-09-17 13:57:54 | 优化代码：补充清除系统存储后提交登录闪退的定向诊断日志
+
+- 文件：src/features/auth/screens/LoginScreen.tsx、src/core/navigation/components/SwipeTabsNavigator.tsx、src/features/profile/screens/ProfileScreen.tsx、src/features/notes/screens/NotesScreen.tsx、CHANGELOG.md。
+- 已获用户确认。现象为 Android 系统设置清除应用存储后，填写邮箱、验证码和密码并提交登录时闪退；历史崩溃签名为 Fabric `addViewAt` / `The specified child already has a parent`。现有栈未能对应具体业务组件，本次仅补充诊断，不宣称已修复闪退。
+- 统一使用 `[IRisNoteCrashTrace]` + JSON 输出阶段与 Unix 毫秒时间戳。登录记录请求返回、会话保存、状态刷新、资料同步、用户中心跳转请求/派发、成功提示请求及失败所在阶段，各阶段包含相对提交开始的耗时；导航记录挂载/卸载、实际激活的 Tab 与索引切换请求；用户中心记录挂载/卸载及存活耗时。
+- 笔记页记录挂载/卸载、本地读取、云端获取、对账、列表更新请求、同步完成、失败或账号归属变化导致的跳过，并记录各阶段数量及请求累计耗时；列表数据提交后记录数量。派发路由或提交 React 数据不等同于原生画面成功显示，需与 AndroidRuntime / SurfaceMountingManager 日志对齐判断。
+- 新增日志不含邮箱、密码、验证码、Token、用户资料、笔记正文或响应/错误正文；不改 UI、登录请求、会话写入、路由目标、同步对账、排序与列表裁剪策略。无新增依赖、测试或持久化诊断数据。
+- 验证：修改前 `npm run typecheck` 未报告错误；修改后 `npm run check` 通过（typecheck、Expo lint、theme:check、147/147 测试，退出码 0），`git diff --check` 通过，四个改动源码未发现 Git 冲突标记。检查基于 HEAD `61054b3cceafc7c98de84545cd30009090d27e70` 加当前工作区；未构建、安装、清除设备数据或进行真机登录复现，需用户使用包含本次日志的应用版本复现后继续定位。
+
+---
+
+## 2026-09-17 13:26:02 | 优化代码：忽略 irisnote-updater Gradle 构建产物并移出误提交缓存
+
+- 文件：.gitignore、CHANGELOG.md（另通过 `git rm -r --cached` 移出 16 个索引文件，本地文件保留）。
+- 已获用户确认。`.gitignore` 追加 `modules/*/android/build/` 规则；`git rm -r --cached` 将先前误提交的 16 个构建缓存移出索引：`modules/irisnote-updater/android/build/` 下 8 个 debug 产物（BuildConfig.java、R.jar、R.txt 等）与 `modules/irisnote-updater/android/.gradle/` 下 8 个缓存文件。
+- 动机：v3 出包尝试后 git status 被 45 项 build 中间产物刷屏；且规则缺失前已有 16 个缓存文件进入仓库历史。清理后 git status 仅剩真实改动，协作者克隆不再携带二进制垃圾。
+- 验证：`git check-ignore -v` 确认 build 与 .gradle 两类路径分别命中新规则（.gitignore:67）与既有规则（.gitignore:64）；暂存删除恰好 16 项。未触碰任何源码，typecheck 不适用。
+
+---
+
+## 2026-09-17 10:31:10 | 优化代码：待办日期轨道间距对齐笔记页轨道节奏
+
+- 文件：src/features/todos/components/TodoCalendarRail.tsx、CHANGELOG.md。
+- 已获用户确认（方案+UI 文字预览）。以笔记页左侧分类轨道实测节奏（1272×2800 截图像素扫描+源码互证：条目 50×60、间距 6、节距 66dp）为基准，统一待办页右侧日期轨道。
+- `DAY_SIZE=50` 拆分为 `DAY_WIDTH=50`/`DAY_HEIGHT=60`/`DAY_GAP=6`：7 张日期卡高 50→60（宽不变）、容器 gap 2→6；「返回今天」按钮与今天占位高 50→60、上边距 8→6（改用 DAY_GAP 联动节奏）；月份头维持 50×50 与笔记页头像位对应。轨道节距由 52dp 变为 66dp，与笔记页一致。
+- 未触碰：轨道总宽 75、页面结构、分隔线 28×2/my-8、AppCalendar 月历弹层（48dp 格，如需统一另行立项）。无新增功能。
+- 验证：修改前后 `npm run typecheck` 均 0 错；`npx eslint --no-cache` 单文件通过；无测试引用该组件。UI 待用户真机验收。
+
+---
+
+## 2026-09-17 03:27:16 | 新增功能：笔记排序同步与分层列表设计文档
+
+- 文件：docs/架构指南/笔记排序同步与分层列表设计.md、CHANGELOG.md。
+- 新增阶段二正式设计稿：以「排序=已同步字段的推导函数」为总则，服务端 `notes` 增 `updated_at`/`pinned_at`/`starred_at` 三时间戳列（值变化才盖章、互不牵连、服务端唯一盖章方），客户端镜像存储后按 `(is_pinned, is_starred, 层内时间戳, id)` 总序排序，单 FlatList 四段分层（置顶已标星→置顶未标星→标星→普通）。
+- 记录行为语义（编辑不打乱层内次序、置顶/重置顶跳层顶）、多设备到达序 LWW 与 `id` 同刻决胜、存量回填建议（`created_at`）、`pinned_order`/`local_order` 退役计划、实施顺序（服务端先行向后兼容→客户端切键→UI 分层须文字预览）与残余风险（批量合法变序仍依赖 RN 上游修复）。
+- 2026-09-16 23:46:17 落地的 reconcile 护栏为本设计的兼容层，文档内互相引用。本次只新增文档，未改代码、依赖与构建配置。
+- 验证：`npx tsc --noEmit` 通过（0 错，未触及 TS 文件）；检查 Markdown 结构、相对路径引用、`git diff --check` 空白与冲突标记。
+
+---
+
+## 2026-09-16 23:46:17 | 修复问题：同步对账不再抹除本地排序字段，消除启动约 40 秒闪退
+
+- 文件：src/features/notes/data/note-local.repository.ts、tests/editor/revisions.test.cjs、CHANGELOG.md。
+- 问题现象：release 包（versionCode 2）连续三次在启动约 40-48 秒时前台闪退，堆栈为 Fabric `addViewAt: failed to insert view at index 13`，根因 `The specified child already has a parent`。
+- 问题根源：`GET /notes` 不下发 `local_order`/`pinned_order`，而 `reconcileServerNotes` 对每条已同步行无条件 UPDATE，把 `local_order` 覆盖成服务端数组下标、`pinned_order` 抹成 NULL、`local_updated_at` 刷成当前时间。服务端回包（约 40 秒）后整表排序改变，FlatList（initialNumToRender=8 + maxToRenderPerBatch=6，第 14 格即 index 13）发生整表 key 搬移，撞上 RN 0.86 Fabric 批量挂载"插入先于移除"的竞态而崩溃；置顶顺序每次同步被抹属同一根源的数据丢失。
+- 修复方案：UPDATE 前增加逐字段变化检测（title/content/category_id/created_at/is_pinned/is_starred 及服务端提供的排序值），完全无变化的行整行跳过；有变化时排序字段保序回填（`note.local_order ?? existing.local_order`、`note.pinned_order ?? existing.pinned_order`）。效果：同步回包后无实际变化的数据在本地产生逐字段相同的笔记数组，FlatList key 零移动，竞态无从触发；该语义同时是服务端将来下发排序字段（推导排序方案）后的前向兼容层。
+- 选择理由：设备侧 dropbox 三次崩溃签名一致（index 13、存活 40-48s）；结构排查排除日历组件（容器子数不足）与重复 id（client_id 负数隔离 + 唯一约束），唯一与"index 13 插入"结构吻合的是笔记列表批量挂载。修复保序而非改列表参数，拔的是触发器本身。
+- 风险评估：仅影响"服务端未提供排序字段"时的回填行为（服务端现状即不提供），语义收紧；不触碰正文/版本/同步状态字段与 INSERT 分支。`local_updated_at` 读取方仅 `getLocalNotes` 排序兜底，已排查无隐藏依赖。
+- 验证：修改前 `npx tsc --noEmit` 0 错留底；新增 3 个回归用例（无排序字段回包保留本地值且不刷新时间戳、标志变化仍生效、服务端提供排序值时采纳），`tests/editor/revisions.test.cjs` 23/23 通过；`npm run check` 中 tsc/eslint/theme 通过、全量测试 146/147（唯一失败 `tests/releases/source.test.cjs` 为 tar 执行失败，经 git stash 前后对比确认为存量环境问题，与本次修改无关）。真机验证待用户出包：连续多次冷启动并停留超过 1 分钟，确认不再闪退。
+
+---
+
+## 2026-09-16 23:32:21 | 优化代码：新增面向用户的版本更新说明编写规范
+
+- 文件：docs/构建发布/更新说明编写规范.md、AGENTS.md、CHANGELOG.md。
+- 已获用户确认。新增 Agent 编写流程、版本与提交范围核实、用户可见内容筛选、通俗文案规则、正文模板、技术记录改写示例及交付检查清单；在 AGENTS.md 增加读取入口。
+- 说明文件按版本号和构建号命名，未预留时使用草稿文件名；补充预留时读取文案、普通文本显示和说明长度限制，不自动执行构建、上传、发布或 Git 写操作。
+- 验证：修改前后 npm run typecheck 均通过；npm run check 通过（类型、Lint、主题及 144 项测试，0 失败/跳过）；文档链接、Git 差异、空白和冲突标记检查通过。验证基于 HEAD fe77d5b0c4f4ae44f80dda5c09b5d6868a2e805b 加本次未提交文档。本次未生成具体版本说明、构建安装包或进行真机验收。
+
+---
+
 ## 2026-09-16 16:28:01 | 优化代码：构建产物按版本号分目录存放
 
 - 文件：scripts/release/cli.mjs、docs/构建发布/android-releases.md、CHANGELOG.md。
 - 已获用户确认（文件夹命名取仅版本号）。build() 的 APK 与 .apk.json 输出目录由 `dist/releases/` 改为 `dist/releases/<版本号>/`，目录递归自动创建，同版本多次构建共处一夹、靠文件名区分；preparePatches() 的差量补丁临时工作目录同步归入版本子目录。
 - 已有顶层旧产物不自动迁移，保留原地；后续 inspect/upload/patches 的 `--apk` 参数需指向新子目录路径，文档示例已同步更新。
 - 验证：node --check 语法检查、定向 ESLint、git diff --check 通过；未执行真实构建、上传或发布。
+
+---
+
 ## 2026-09-16 16:49:35 | 新增功能：待办创建弹窗与列表设计文档
 
 - 文件：docs/待办/待办创建弹窗与列表设计.md、CHANGELOG.md。
@@ -41,6 +1159,7 @@
 - 修改前基线：npm run typecheck 报 tabs/_layout.tsx 三处 TS7031/TS7006。首次完整检查的类型、Lint、主题检查通过；测试 129 通过、1 失败，原因是已提交的通知测试冲突标记。已合并测试冲突，保留后台/停止状态断言、异步等待和清理逻辑，并显式设置前台状态；清理日志冲突标记、保留双方记录。最终 npm run check 全部通过：类型检查、Lint、主题检查、144 项测试（0 失败/跳过）。导航器修改前后转译的 JavaScript 完全一致；定向 diff --check 通过，src/tests/scripts 与本次文档未检出遗留冲突标记。验证基于 HEAD 4af524d 的本次未提交工作区；未执行 APK 构建或真机验收。
 
 ---
+
 ## 2026-09-16 04:16:59 | 修复问题：Ninja 长路径及 Build Tools 37 签名解析验证完成
 
 - 文件：scripts/release/workspace.mjs、scripts/release/ninja.mjs、scripts/release/cli.mjs、scripts/android/ninja.init.gradle、scripts/release/lib.mjs、tests/releases/workspace.test.cjs、tests/releases/releases.test.cjs、docs/release.env.example、docs/android-releases.md、CHANGELOG.md。
@@ -108,6 +1227,7 @@
 - 已获用户确认。所有发布命令自动读取项目根目录 .env.release.local，使用 Node 内置配置加载功能，终端及 CI 已有变量优先；文件不存在时支持纯环境变量，其他读取错误停止命令且不打印配置内容。
 - 保持应用 .env.local 独立；确认 .env*.local 忽略规则覆盖发布配置，更新模板复制说明、引号和空值规则。不创建或覆盖真实密钥配置。
 - 验证：3 项隔离子进程测试通过，覆盖根路径定位、终端优先及空值、Windows 路径、带 # 的值、可选文件和读取错误；CLI 语法检查、Git 忽略检查及 diff --check 通过。未执行 APK 构建、上传或发布。
+
 # CHANGELOG
 
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
@@ -1201,6 +2321,7 @@
     - `docs/IRisNote视觉设计规范.md` - 升级至 1.9，接入公共组件规范并修正危险按钮禁用字色。
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**
@@ -1888,3 +3009,12 @@
     - `src/app/auth/login.tsx` — 登录成功后调用 `syncProfile`
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
+
+## 2026-09-20 10:26:11 | 修复问题：解决本地 Git 合并冲突
+
+- 文件：CHANGELOG.md、app.json、src/features/todos/screens/TodosScreen.tsx。
+- 合并 `kroos_todo` 与进入工作区的 0.2.4 配置及文档变更：保留待办整周列表、日历和本地提醒实现；合并应用图标、启动页、EAS 项目配置与 Expo 本地通知插件；合并双方历史日志并移除三个真实冲突文件中的 Git 冲突标记。
+- 验证：`git ls-files -u` 无输出，暂存区 `git diff --cached --check` 通过；`npm run check` 的类型检查、Lint、主题检查通过，Node 并发测试运行器出现一次异步反序列化异常后，串行全量测试 282/282 通过；`npx expo config --type public --json` 通过。
+- 未执行 Git 提交、推送、构建或设备验收。
+
+---

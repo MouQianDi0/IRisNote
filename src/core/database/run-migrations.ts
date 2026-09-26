@@ -7,7 +7,10 @@ import { SerialDatabaseQueue } from "./serial-database-queue";
 // 同一运行时按实际路径串行初始化，不按 SQLite 包装对象区分。
 const migrationQueues = new Map<string, SerialDatabaseQueue>();
 
-function withMigrationLock<T>(database: SQLiteDatabase, task: () => Promise<T>) {
+function withMigrationLock<T>(
+    database: SQLiteDatabase,
+    task: () => Promise<T>,
+) {
     let queue = migrationQueues.get(database.databasePath);
     if (!queue) {
         queue = new SerialDatabaseQueue();
@@ -66,8 +69,14 @@ async function assertLedgerMatchesVersion(
                 row.name !== expectedRows[index]?.name,
         )
     ) {
+        // 附上实际/期望账本与版本号，命中时无需再拉库排查即可定位差异行。
+        const describeLedger = (entries: readonly MigrationLedgerRow[]) =>
+            entries.map((entry) => `${entry.version}:${entry.name}`).join(", ");
         throw new Error(
-            "[Database] Migration ledger does not match PRAGMA user_version.",
+            `[Database] Migration ledger does not match PRAGMA user_version. ` +
+                `user_version=${currentVersion}; ` +
+                `actual=[${describeLedger(rows)}]; ` +
+                `expected=[${describeLedger(expectedRows)}].`,
         );
     }
 }
@@ -131,7 +140,8 @@ export function initializeApplicationDatabase(database: SQLiteDatabase) {
             return await runLockedMigrations(database);
         } catch (error) {
             console.error("[Database] Initialization failed.", {
-                message: error instanceof Error ? error.message : "Unknown error",
+                message:
+                    error instanceof Error ? error.message : "Unknown error",
             });
             throw error;
         }

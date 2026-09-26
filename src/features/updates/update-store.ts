@@ -1,17 +1,21 @@
+import { flushActiveDrafts } from "@/features/notes/services/active-draft-flush";
+import { installedUpdateFile } from "@/core/storage/storage-policy";
 import { API_BASE_URL } from "@/shared/http/client";
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Application from "expo-application";
-import { File } from "expo-file-system";
 import * as FS from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
-import { Platform } from "react-native";
+import { AppState, BackHandler, Platform } from "react-native";
 import { create } from "zustand";
-import NativeUpdater from "../../../modules/irisnote-updater";
+import NativeUpdater, {
+    type TargetOptions,
+    type UpdateStage,
+    type VerificationResult,
+} from "../../../modules/irisnote-updater";
 import {
     ANDROID_PACKAGE,
     isNewerRelease,
+    isRequiredUpdate,
     parseRelease,
     type AppRelease,
 } from "./release";
@@ -25,6 +29,8 @@ type Phase =
     | "verifying"
     | "merging"
     | "ready"
+    | "permission"
+    | "saving"
     | "installing"
     | "error";
 type State = {
@@ -35,6 +41,10 @@ type State = {
     received: number;
     error: string;
     fileUri: string | null;
+    stage: UpdateStage | null;
+    stageProgress: number | null;
+    stageStartedAt: number;
+    timingsMs: VerificationResult["timingsMs"];
 };
 export const useUpdateStore = create<State>(() => ({
     visible: false,
@@ -44,12 +54,24 @@ export const useUpdateStore = create<State>(() => ({
     received: 0,
     error: "",
     fileUri: null,
+    stage: null,
+    stageProgress: null,
+    stageStartedAt: 0,
+    timingsMs: {},
 }));
 const set = useUpdateStore.setState;
 const lastCheckKey = "irisnote.release.last-check";
+const requiredUpdateKey = "irisnote.release.required-update";
+let checkedThisSession = false;
+let cleanupAttemptedThisSession = false;
+let pendingExit = false;
+let exiting = false;
 let busy = false;
 let generation = 0;
 let download: FS.DownloadResumable | null = null;
+let pendingInstall = false;
+let requestSequence = 0;
+const foreground = () => AppState.currentState === "active";
 const message = (error: unknown) =>
     error instanceof Error ? error.message : "操作失败，请稍后重试";
 export function updateSupported() {
@@ -60,9 +82,44 @@ export function updateSupported() {
     );
 }
 
+async function cleanupInstalledUpdateFiles() {
+    if (cleanupAttemptedThisSession) return;
+    cleanupAttemptedThisSession = true;
+    const cacheDirectory = FS.cacheDirectory;
+    const buildVersion = Application.nativeBuildVersion;
+    if (!cacheDirectory || !buildVersion || !/^[1-9]\d*$/.test(buildVersion))
+        return;
+    const installedBuildCode = Number(buildVersion);
+    if (
+        !Number.isSafeInteger(installedBuildCode) ||
+        String(installedBuildCode) !== buildVersion
+    )
+        return;
+    try {
+        const names = await FS.readDirectoryAsync(cacheDirectory);
+        for (const name of names) {
+            if (!installedUpdateFile(name, buildVersion)) continue;
+            const uri = `${cacheDirectory}${name}`;
+            try {
+                const info = await FS.getInfoAsync(uri);
+                if (info.exists && !info.isDirectory)
+                    await FS.deleteAsync(uri, { idempotent: true });
+            } catch (error) {
+                console.warn("清理已安装更新文件失败", name, message(error));
+            }
+        }
+    } catch (error) {
+        console.warn("读取更新缓存目录失败", message(error));
+    }
+}
+
 export async function checkForUpdate(manual = false) {
     if (busy) {
         if (manual) set({ visible: true });
+        return;
+    }
+    if (manual && useUpdateStore.getState().fileUri) {
+        set({ visible: true });
         return;
     }
     if (!updateSupported()) {
@@ -74,12 +131,15 @@ export async function checkForUpdate(manual = false) {
             });
         return;
     }
-    const cached = useUpdateStore.getState();
+    let cached = useUpdateStore.getState();
     busy = true;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-        if (!manual) {
+        // The running binary's build number is available offline. Keep newer
+        // packages for the installer; never clean immediately after launching it.
+        await cleanupInstalledUpdateFiles();
+        if (!manual && checkedThisSession) {
             const last = Number(await AsyncStorage.getItem(lastCheckKey));
             if (last && Date.now() - last < 6 * 60 * 60 * 1000) return;
         }
@@ -88,7 +148,6 @@ export async function checkForUpdate(manual = false) {
             error: "",
             ...(manual ? { visible: true } : {}),
         });
-        await AsyncStorage.setItem(lastCheckKey, String(Date.now()));
         const endpoint =
             process.env.EXPO_PUBLIC_RELEASE_API_URL?.trim() ||
             `${API_BASE_URL.replace(/\/$/, "")}/releases`;
@@ -103,11 +162,39 @@ export async function checkForUpdate(manual = false) {
                   sha256: "",
                   deltaSupported: false,
               };
+        // Once a mandatory policy is known, restarting offline must not dismiss it.
+        const saved = await AsyncStorage.getItem(requiredUpdateKey);
+        if (saved) {
+            try {
+                const record = JSON.parse(saved) as Record<string, unknown>;
+                if (record.installedBuildCode === installed.buildCode) {
+                    const remembered = parseRelease(
+                        record.release,
+                        Application.applicationId!,
+                        installed,
+                    );
+                    if (
+                        isRequiredUpdate(remembered) &&
+                        isNewerRelease(
+                            remembered,
+                            Application.nativeBuildVersion,
+                        )
+                    ) {
+                        set({ release: remembered, visible: true });
+                        cached = useUpdateStore.getState();
+                    }
+                }
+            } catch {
+                // A corrupt local record never becomes a trusted update instruction.
+                await AsyncStorage.removeItem(requiredUpdateKey);
+            }
+        }
         const query = new URLSearchParams({
             version: installed.version,
             buildCode: String(installed.buildCode),
             sha256: installed.sha256,
             deltaSupported: String(installed.deltaSupported),
+            updatePolicy: "2",
         });
         const response = await fetch(
             `${endpoint.replace(/\/$/, "")}/latest?${query}`,
@@ -120,6 +207,7 @@ export async function checkForUpdate(manual = false) {
             Application.applicationId!,
             installed,
         );
+        checkedThisSession = true;
         if (isNewerRelease(release, Application.nativeBuildVersion)) {
             const keepFile =
                 release!.delivery.mode !== "unavailable" &&
@@ -133,6 +221,16 @@ export async function checkForUpdate(manual = false) {
                 fileUri: keepFile ? cached.fileUri : null,
             });
         } else set({ release: null, phase: "latest", fileUri: null });
+        if (isRequiredUpdate(release)) {
+            await AsyncStorage.setItem(
+                requiredUpdateKey,
+                JSON.stringify({
+                    installedBuildCode: installed.buildCode,
+                    release,
+                }),
+            );
+        } else await AsyncStorage.removeItem(requiredUpdateKey);
+        await AsyncStorage.setItem(lastCheckKey, String(Date.now()));
     } catch (error) {
         set({ phase: "error", error: message(error) });
     } finally {
@@ -141,44 +239,76 @@ export async function checkForUpdate(manual = false) {
     }
 }
 
-async function verifyFile(
-    uri: string,
-    release: { size: number; sha256: string },
-    current: number,
+function updater() {
+    if (!NativeUpdater)
+        throw new Error("当前安装包缺少原生更新模块，请安装完整版本");
+    return NativeUpdater;
+}
+
+async function nativeTask(
+    stage: UpdateStage,
+    action: (requestId: string) => Promise<VerificationResult>,
 ) {
-    const file = new File(uri);
-    if (!file.exists || file.size !== release.size)
-        throw new Error("下载文件大小不匹配，请重新下载");
-    const handle = file.open();
-    const hash = sha256.create();
+    const native = updater();
+    const current = generation;
+    const requestId = `${generation}-${++requestSequence}`;
+    set({
+        phase: "verifying",
+        stage,
+        stageProgress: null,
+        stageStartedAt: Date.now(),
+    });
+    const listener = native.addListener("onProgress", (event) => {
+        if (event.requestId !== requestId || current !== generation) return;
+        set({
+            phase: event.stage === "merge" ? "merging" : "verifying",
+            stage: event.stage,
+            stageProgress:
+                event.total > 0
+                    ? Math.min(1, event.processed / event.total)
+                    : null,
+            stageStartedAt: Date.now() - event.elapsedMs,
+        });
+    });
     try {
-        let read = 0;
-        while (read < release.size) {
-            if (current !== generation) throw new Error("下载已取消");
-            const chunk = handle.readBytes(
-                Math.min(256 * 1024, release.size - read),
-            );
-            if (!chunk.length) throw new Error("安装包不完整");
-            hash.update(chunk);
-            read += chunk.length;
-            await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        }
-        if (bytesToHex(hash.digest()) !== release.sha256)
-            throw new Error("安装包校验失败，请重新下载");
+        const result = await action(requestId);
+        if (current !== generation) return;
+        set({
+            timingsMs: {
+                ...useUpdateStore.getState().timingsMs,
+                ...result.timingsMs,
+            },
+        });
     } finally {
-        handle.close();
+        listener.remove();
     }
 }
 
 export async function downloadUpdate() {
     const release = useUpdateStore.getState().release;
-    if (busy || !release || !updateSupported() || !FS.cacheDirectory) return;
+    if (
+        busy ||
+        exiting ||
+        pendingExit ||
+        !release ||
+        !updateSupported() ||
+        !FS.cacheDirectory
+    )
+        return;
     const transfer = release.delivery;
     if (transfer.mode === "unavailable") {
         set({ error: transfer.reason });
         return;
     }
+    if (!NativeUpdater) {
+        set({
+            phase: "error",
+            error: "当前安装包缺少原生更新模块，请安装完整版本",
+        });
+        return;
+    }
     busy = true;
+    pendingInstall = false;
     const current = ++generation;
     const uri = `${FS.cacheDirectory}irisnote-release-${release.buildCode}.apk`;
     const downloadedUri =
@@ -197,6 +327,9 @@ export async function downloadUpdate() {
             error: "",
             fileUri: null,
             visible: true,
+            stage: null,
+            stageProgress: null,
+            timingsMs: {},
         });
         download = FS.createDownloadResumable(
             transfer.downloadUrl,
@@ -219,29 +352,30 @@ export async function downloadUpdate() {
         if (current !== generation) return;
         if (!result || result.status !== 200)
             throw new Error("下载失败，请重试");
-        set({ phase: "verifying" });
-        await verifyFile(downloadedUri, transfer, current);
         if (transfer.mode === "delta") {
-            if (!NativeUpdater)
-                throw new Error("当前安装版本不支持差量合并，请先安装基础版本");
-            set({ phase: "merging" });
-            await NativeUpdater.applyPatch({
-                ...targetOptions(uri, release),
-                patchUri: downloadedUri,
-                baseSha256: transfer.baseSha256,
-                patchSha256: transfer.sha256,
-            });
+            await nativeTask("base", (requestId) =>
+                updater().applyPatch({
+                    ...targetOptions(uri, release, requestId, "target"),
+                    patchUri: downloadedUri,
+                    patchSize: String(transfer.size),
+                    baseSha256: transfer.baseSha256,
+                    patchSha256: transfer.sha256,
+                }),
+            );
+        } else {
+            await nativeTask("target", (requestId) =>
+                updater().verifyApk(
+                    targetOptions(uri, release, requestId, "target"),
+                ),
+            );
         }
-        set({ phase: "verifying" });
-        await verifyFile(uri, release, current);
-        if (NativeUpdater)
-            await NativeUpdater.verifyApk(targetOptions(uri, release));
         if (current !== generation) return;
         complete = true;
         set({ phase: "ready", fileUri: uri, progress: 1 });
+        pendingInstall = true;
     } catch (error) {
         if (current === generation)
-            set({ phase: "error", error: message(error) });
+            set({ phase: "error", error: message(error), visible: true });
     } finally {
         download = null;
         if (!complete)
@@ -254,10 +388,18 @@ export async function downloadUpdate() {
             );
         busy = false;
     }
+    await resumePendingInstallation();
 }
 
-function targetOptions(uri: string, release: AppRelease) {
+function targetOptions(
+    uri: string,
+    release: AppRelease,
+    requestId: string,
+    verificationStage: "target" | "install",
+): TargetOptions {
     return {
+        requestId,
+        verificationStage,
         outputUri: uri,
         targetSha256: release.sha256,
         targetSize: String(release.size),
@@ -267,45 +409,185 @@ function targetOptions(uri: string, release: AppRelease) {
 }
 
 export async function cancelUpdate() {
+    if (useUpdateStore.getState().phase !== "downloading") return;
+    pendingInstall = false;
     generation++;
     await download?.pauseAsync().catch(() => undefined);
     set({ phase: "available", progress: 0, received: 0, error: "" });
 }
+
+export function hideUpdateDialog() {
+    if (isRequiredUpdate(useUpdateStore.getState().release)) {
+        void exitForRequiredUpdate();
+        return;
+    }
+    set({ visible: false });
+}
+
+export async function exitForRequiredUpdate() {
+    if (!isRequiredUpdate(useUpdateStore.getState().release)) return;
+    pendingExit = true;
+    if (exiting || !foreground()) return;
+    exiting = true;
+    const previousPhase = useUpdateStore.getState().phase;
+    try {
+        await saveBeforeLeaving();
+        pendingInstall = false;
+        generation++;
+        await download?.pauseAsync().catch(() => undefined);
+        set({
+            visible: true,
+            phase: useUpdateStore.getState().fileUri ? "ready" : "available",
+        });
+        pendingExit = false;
+        BackHandler.exitApp();
+    } catch (error) {
+        pendingExit = false;
+        set({
+            visible: true,
+            phase: previousPhase,
+            error: `草稿保存失败，未退出应用：${message(error)}`,
+        });
+    } finally {
+        exiting = false;
+    }
+}
+
+export async function resumePendingInstallation() {
+    if (pendingInstall && foreground() && !busy && !pendingExit && !exiting)
+        await installUpdate();
+}
+
+/** Mounted once with the application, not tied to the update dialog's visibility. */
+export function observeUpdateLifecycle() {
+    const listener = AppState.addEventListener("change", (state) => {
+        if (state === "active") {
+            if (isRequiredUpdate(useUpdateStore.getState().release))
+                set({ visible: true });
+            if (pendingExit) void exitForRequiredUpdate();
+            else if (pendingInstall) void resumePendingInstallation();
+            else if (!busy) void checkForUpdate();
+        }
+    });
+    void resumePendingInstallation();
+    return () => listener.remove();
+}
+
+async function saveBeforeLeaving() {
+    set({ phase: "saving" });
+    await flushActiveDrafts();
+}
+
 export async function installUpdate() {
     const { fileUri, release } = useUpdateStore.getState();
-    if (!fileUri || !release || busy) return;
+    if (!fileUri || !release || busy || pendingExit || exiting) return;
+    const current = generation;
+    pendingInstall = true;
+    if (!foreground()) return;
     busy = true;
     try {
-        set({ phase: "verifying", error: "" });
-        await verifyFile(fileUri, release, generation);
-        if (NativeUpdater)
-            await NativeUpdater.verifyApk(targetOptions(fileUri, release));
+        const native = updater();
+        set({ error: "" });
+        if (!(await native.canInstallPackages())) {
+            if (!foreground()) return;
+            await saveBeforeLeaving();
+            if (!foreground() || current !== generation || pendingExit) return;
+            set({ phase: "permission" });
+            // Resolves when the settings activity returns. No hash scans while awaiting consent.
+            await IntentLauncher.startActivityAsync(
+                "android.settings.MANAGE_UNKNOWN_APP_SOURCES",
+                {
+                    data: `package:${ANDROID_PACKAGE}`,
+                },
+            );
+            if (current !== generation) return;
+            if (!(await native.canInstallPackages())) {
+                pendingInstall = false;
+                set({
+                    phase: "permission",
+                    visible: true,
+                    error: "尚未允许安装，请开启“允许来自此来源的应用”，再继续安装。",
+                });
+                if (isRequiredUpdate(release)) await exitForRequiredUpdate();
+                return;
+            }
+        }
+        if (!foreground() || current !== generation || pendingExit) return;
+        try {
+            await nativeTask("install", (requestId) =>
+                native.verifyApk(
+                    targetOptions(fileUri, release, requestId, "install"),
+                ),
+            );
+        } catch (error) {
+            pendingInstall = false;
+            await FS.deleteAsync(fileUri, { idempotent: true }).catch(
+                () => undefined,
+            );
+            set({
+                phase: "error",
+                fileUri: null,
+                visible: true,
+                error: `安装前验证失败：${message(error)}`,
+            });
+            return;
+        }
+        if (!foreground() || current !== generation || pendingExit) return;
+        if (!(await native.canInstallPackages())) {
+            pendingInstall = false;
+            set({
+                phase: "permission",
+                visible: true,
+                error: "安装权限已关闭，请重新授权后继续。",
+            });
+            return;
+        }
         const uri = await FS.getContentUriAsync(fileUri);
+        await saveBeforeLeaving();
+        if (!foreground() || current !== generation || pendingExit) return;
+        pendingInstall = false;
         set({ phase: "installing" });
-        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-            data: uri,
-            type: "application/vnd.android.package-archive",
-            flags: 1,
-        });
+        const required = isRequiredUpdate(release);
+        const result = await IntentLauncher.startActivityAsync(
+            required
+                ? "android.intent.action.INSTALL_PACKAGE"
+                : "android.intent.action.VIEW",
+            {
+                data: uri,
+                type: "application/vnd.android.package-archive",
+                flags: 1,
+                ...(required
+                    ? { extra: { "android.intent.extra.RETURN_RESULT": true } }
+                    : {}),
+            },
+        );
+        if (current !== generation) return;
         set({ phase: "ready" });
+        if (
+            required &&
+            result.resultCode === IntentLauncher.ResultCode.Canceled
+        )
+            await exitForRequiredUpdate();
+        else if (
+            required &&
+            result.resultCode !== IntentLauncher.ResultCode.Success
+        )
+            set({ visible: true, error: "安装未成功，请重试。" });
     } catch (error) {
+        pendingInstall = false;
         set({
             phase: "ready",
-            error: `未完成安装：${message(error)}。可检查安装权限后重试。`,
+            visible: true,
+            error: `未完成安装：${message(error)}`,
         });
     } finally {
         busy = false;
+        if (pendingInstall) {
+            set({ phase: "ready" });
+            void resumePendingInstallation();
+        }
     }
 }
 export async function openInstallSettings() {
-    try {
-        await IntentLauncher.startActivityAsync(
-            "android.settings.MANAGE_UNKNOWN_APP_SOURCES",
-            { data: `package:${ANDROID_PACKAGE}` },
-        );
-    } catch {
-        set({
-            error: "无法打开安装权限设置，请在系统设置中允许 IRisNote 安装未知应用",
-        });
-    }
+    await installUpdate();
 }

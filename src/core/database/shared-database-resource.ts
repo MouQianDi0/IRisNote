@@ -46,10 +46,10 @@ export class SharedDatabaseResource<T extends Closeable> {
                 released = entry.value
                     ? entry.value.close()
                     : entry.ready.then(
-                        (value) => value.close(),
-                        // 初始化本身失败可以重试；前一连接关闭失败则保留阻断。
-                        () => entry.previousClosing,
-                    );
+                          (value) => value.close(),
+                          // 初始化本身失败可以重试；前一连接关闭失败则保留阻断。
+                          () => entry.previousClosing,
+                      );
                 this.closing = released;
                 // 调用方仍收到关闭错误，后续 acquire 也会失败，不复用不确定连接。
                 void released.catch(() => undefined);

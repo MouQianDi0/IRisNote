@@ -7,11 +7,13 @@ const sourceRoot = path.resolve(scriptDirectory, "..", "src");
 const themeRoot = path.join(sourceRoot, "shared", "theme");
 
 function sourceFiles(directory) {
-    return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-        const fullPath = path.join(directory, entry.name);
-        if (entry.isDirectory()) return sourceFiles(fullPath);
-        return /\.(ts|tsx)$/.test(entry.name) ? [fullPath] : [];
-    });
+    return fs
+        .readdirSync(directory, { withFileTypes: true })
+        .flatMap((entry) => {
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) return sourceFiles(fullPath);
+            return /\.(ts|tsx)$/.test(entry.name) ? [fullPath] : [];
+        });
 }
 
 const files = sourceFiles(sourceRoot);
@@ -52,8 +54,8 @@ for (const file of files) {
         }
         const fontSizeCount = countMatches(content, /fontSize\s*:/g);
         const borderRadiusCount = countMatches(content, /borderRadius\s*:/g);
-        const arbitraryClassCount = lines.filter(
-            (line) => /className=.*\[[^\]]+\]/.test(line),
+        const arbitraryClassCount = lines.filter((line) =>
+            /className=.*\[[^\]]+\]/.test(line),
         ).length;
         metrics.rawFontSizes += fontSizeCount;
         metrics.rawBorderRadii += borderRadiusCount;

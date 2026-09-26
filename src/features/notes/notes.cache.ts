@@ -8,10 +8,7 @@ const getCacheKey = (noteId: number, ownerUserId?: number) =>
 export const setCachedNotes = (notes: Note[]) => {
     cachedNotesByOwnerAndId.clear();
     notes.forEach((note) =>
-        cachedNotesByOwnerAndId.set(
-            getCacheKey(note.id, note.user_id),
-            note,
-        ),
+        cachedNotesByOwnerAndId.set(getCacheKey(note.id, note.user_id), note),
     );
 };
 
@@ -30,10 +27,7 @@ export const getCachedNoteById = (noteId: number, ownerUserId?: number) => {
     );
 };
 
-export const removeCachedNoteById = (
-    noteId: number,
-    ownerUserId?: number,
-) => {
+export const removeCachedNoteById = (noteId: number, ownerUserId?: number) => {
     if (ownerUserId != null) {
         cachedNotesByOwnerAndId.delete(getCacheKey(noteId, ownerUserId));
         return;

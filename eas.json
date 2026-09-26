@@ -1,26 +1,26 @@
 {
-  "cli": {
-    "version": "24.4.0",
-    "appVersionSource": "local"
-  },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "autoIncrement": false
+    "cli": {
+        "version": "24.7.0",
+        "appVersionSource": "local"
     },
-    "preview": {
-      "autoIncrement": false,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal",
+            "autoIncrement": false
+        },
+        "preview": {
+            "autoIncrement": false,
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            }
+        },
+        "production": {
+            "autoIncrement": false
+        }
     },
-    "production": {
-      "autoIncrement": false
+    "submit": {
+        "production": {}
     }
-  },
-  "submit": {
-    "production": {}
-  }
 }

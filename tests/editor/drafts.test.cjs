@@ -28,10 +28,16 @@ const { createLocalNotes } = require('../../src/core/database/migrations/0002-cr
 const { createNoteDrafts } = require('../../src/core/database/migrations/0003-create-note-drafts.ts');
 const { createNoteRevisions } = require('../../src/core/database/migrations/0004-create-note-revisions.ts');
 const { createUploadQueue } = require('../../src/core/database/migrations/0005-create-upload-queue.ts');
+const { addServerUpdatedAt } = require('../../src/core/database/migrations/0006-add-server-updated-at.ts');
 const apiPath = require.resolve('../../src/features/notes/api/notes.api.ts');
 const api = { createNote: async () => { throw new Error('test network unavailable'); }, updateNote: async () => { throw new Error('test network unavailable'); } };
 require.cache[apiPath] = { id: apiPath, filename: apiPath, loaded: true, exports: api };
 const saves = require('../../src/features/notes/services/note-save.service.ts');
+const cloudPolicy = require('../../src/core/cloud-storage/cloud-storage-policy.ts');
+function authorizeCloud(t, owner) {
+    cloudPolicy.setCloudStorageSession(owner, true, true);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+}
 const queue = require('../../src/core/sync/upload-queue.repository.ts');
 const categoryApiPath = require.resolve('../../src/features/notes/categories/api/categories.api.ts');
 const unexpectedCategoryCall = async () => { throw new Error('Unexpected category request'); };
@@ -168,6 +174,7 @@ test('reading candidates does not take ownership; superseded session cannot save
 });
 
 test('formal save clears corresponding explicit file and recovery, preserving another draft', async (t) => {
+    authorizeCloud(t, 7);
     fileMemory.clear();
     const { port } = await database(t);
     t.mock.method(api, 'createNote', async (body) => ({ id: 900, server_id: 900, ...body, user_id: 7, created_at: new Date().toISOString() }));
@@ -185,6 +192,7 @@ test('formal save clears corresponding explicit file and recovery, preserving an
 });
 
 test('file cleanup failure retains linked recovery and retry does not duplicate a synced note', async (t) => {
+    authorizeCloud(t, 7);
     fileMemory.clear();
     const { port } = await database(t);
     let posts = 0;
@@ -210,6 +218,7 @@ test('file cleanup failure retains linked recovery and retry does not duplicate 
 });
 
 test('discard after local-only commit keeps saved file linked to same note', async (t) => {
+    authorizeCloud(t, 7);
     fileMemory.clear();
     const { port } = await database(t);
     let posts = 0;
@@ -278,6 +287,7 @@ async function database(t, filename = ':memory:') {
     await createNoteDrafts.up(migrationPort);
     await createNoteRevisions.up(migrationPort);
     await createUploadQueue.up(migrationPort);
+    await addServerUpdatedAt.up(migrationPort);
     return { port, sql, migrationPort };
 }
 
@@ -460,6 +470,7 @@ test('changed base content blocks save without deleting the draft', async (t) =>
 });
 
 test('cloud unknown retains linked draft and retry does not issue a second POST', async (t) => {
+    authorizeCloud(t, 1);
     const { port } = await database(t);
     let posts = 0;
     api.createNote = async () => { posts++; throw new Error('network lost'); };
@@ -478,6 +489,7 @@ test('cloud unknown retains linked draft and retry does not issue a second POST'
 });
 
 test('accepted cloud save clears only its own submitted draft', async (t) => {
+    authorizeCloud(t, 1);
     const { port } = await database(t);
     api.createNote = async (body) => ({ id: 99, server_id: 99, ...body, user_id: 1, created_at: new Date().toISOString() });
     const commit = { key: 'new', sessionId: 'a', sequence: 1 };
@@ -490,6 +502,7 @@ test('accepted cloud save clears only its own submitted draft', async (t) => {
 });
 
 test('new session opened during upload survives old save cleanup', async (t) => {
+    authorizeCloud(t, 1);
     const { port } = await database(t);
     api.createNote = async (body) => {
         await drafts.openNoteDraft(port, 1, 'new', 'b', null, value(''));

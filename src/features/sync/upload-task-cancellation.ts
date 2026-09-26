@@ -10,8 +10,7 @@ import { notifyNotesChanged } from "@/features/notes/notes.events";
 import type { Note } from "@/features/notes/notes.types";
 
 export type UploadTaskCancellationAvailability =
-    | { allowed: true }
-    | { allowed: false; reason: string };
+    { allowed: true } | { allowed: false; reason: string };
 
 const noteTaskIdentity = (task: UploadQueueTask) => {
     const clientId = task.payload.clientId;
@@ -67,13 +66,14 @@ export async function cancelUploadTaskWithLocalRollback(
         async (transaction, currentTask) => {
             if (currentTask.kind !== "note-sync") return;
             const { clientId, revisionId } = noteTaskIdentity(currentTask);
-            outcome.restoredNote = await rollbackQueuedLocalNoteToPreviousRevision(
-                transaction,
-                ownerUserId,
-                clientId,
-                revisionId,
-                currentTask.attemptCount > 0,
-            );
+            outcome.restoredNote =
+                await rollbackQueuedLocalNoteToPreviousRevision(
+                    transaction,
+                    ownerUserId,
+                    clientId,
+                    revisionId,
+                    currentTask.attemptCount > 0,
+                );
         },
     );
 

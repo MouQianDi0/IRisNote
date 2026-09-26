@@ -25,9 +25,9 @@ const screenStyles = tv({
 /** VariantProps 让 Screen 的可用变体由样式配方直接驱动。 */
 type ScreenProps = PropsWithChildren<
     ViewProps &
-    VariantProps<typeof screenStyles> & {
-        className?: string;
-    }
+        VariantProps<typeof screenStyles> & {
+            className?: string;
+        }
 >;
 
 export function Screen({

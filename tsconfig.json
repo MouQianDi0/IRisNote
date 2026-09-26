@@ -5,7 +5,8 @@
         "skipLibCheck": true,
         "paths": {
             "@/*": ["./src/*"],
-            "@/assets/*": ["./assets/*"]
+            "@/assets/*": ["./assets/*"],
+            "@modules/*": ["./modules/*"]
         }
     },
     "include": [

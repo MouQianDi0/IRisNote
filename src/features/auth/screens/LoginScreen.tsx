@@ -1,3 +1,4 @@
+import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
 import {
     loginWithPassword,
@@ -7,12 +8,12 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { getApiErrorMessage } from "@/shared/http/errors";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { AppButton } from "@/shared/ui";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { AuthButton } from "../components/AuthButton";
-import { AppButton } from "@/shared/ui";
 import { AuthField } from "../components/AuthField";
 import { AuthScreenLayout } from "../components/AuthScreenLayout";
 
@@ -33,8 +34,26 @@ export default function LoginScreen() {
 
     // 倒计时清理
     useEffect(() => {
+        const mountedAt = Date.now();
+        console.info(
+            "[IRisNoteCrashTrace]",
+            JSON.stringify({
+                scope: "login",
+                stage: "mounted",
+                timestamp: mountedAt,
+            }),
+        );
         mountedRef.current = true;
         return () => {
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "login",
+                    stage: "unmounted",
+                    timestamp: Date.now(),
+                    elapsedMs: Date.now() - mountedAt,
+                }),
+            );
             mountedRef.current = false;
             if (countdownRef.current) clearInterval(countdownRef.current);
         };
@@ -94,25 +113,55 @@ export default function LoginScreen() {
         requestRef.current = true;
         setFormError("");
         setLoading(true);
+        const startedAt = Date.now();
+        let stage = "request_started";
+        const trace = (nextStage: string) => {
+            stage = nextStage;
+            const timestamp = Date.now();
+            console.info(
+                "[IRisNoteCrashTrace]",
+                JSON.stringify({
+                    scope: "login",
+                    stage,
+                    timestamp,
+                    elapsedMs: timestamp - startedAt,
+                }),
+            );
+        };
+        trace("request_started");
         try {
             const data = await loginWithPassword({
                 email: email.trim(),
                 password,
                 code: code.trim(),
             });
+            trace("request_completed");
 
             // 保存 token 和用户信息
+            trace("session_save_started");
+            // Revoke the previous account before either half of the stored session changes.
+            setCloudStorageSession(null, false, false);
             await AsyncStorage.setItem(storageKeys.authToken, data.token);
             await AsyncStorage.setItem(
                 storageKeys.authUser,
                 JSON.stringify(data.user),
             );
+            trace("session_save_completed");
+            trace("session_refresh_started");
             await refresh();
+            trace("session_refresh_completed");
+            trace("profile_sync_started");
             await syncProfile();
+            trace("profile_sync_completed");
 
+            trace("navigation_requested_user");
             router.replace("/(tabs)/user");
+            trace("navigation_dispatched_user");
             banner.show({ type: "success", title: "登录成功" });
+            trace("success_banner_requested");
         } catch (err: unknown) {
+            // 只记录失败阶段，禁止把认证响应、凭据或错误正文写入诊断日志。
+            trace(`failed_after_${stage}`);
             setFormError(getApiErrorMessage(err, "登录失败，请稍后再试"));
         } finally {
             requestRef.current = false;
