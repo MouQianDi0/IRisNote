@@ -403,6 +403,12 @@ async function uploadRelease(release, apk, info) {
     });
 }
 async function preparePatches(release, apk) {
+    if (release.full_package_required === true) {
+        console.log(
+            "该版本已标记为完整包屏障：此前安装的用户将下载完整 APK，无需差量包。",
+        );
+        return;
+    }
     const bases = await api(`/${release.build_code}/bases`);
     if (bases.length > 3)
         throw new Error(
@@ -538,18 +544,24 @@ async function main() {
         )
             throw new Error("请先提交应用改动；构建只使用已提交代码");
         const notes = await readFile(path.resolve(required("notes")), "utf8");
-        console.log(
-            JSON.stringify(
-                await api("/reserve", "POST", {
-                    version,
-                    notes,
-                    source,
-                    commit,
-                }),
-                null,
-                2,
-            ),
-        );
+        const fullPackage = args.includes("--full-package");
+        const reserved = await api("/reserve", "POST", {
+            version,
+            notes,
+            source,
+            commit,
+            ...(fullPackage ? { fullPackage } : {}),
+        });
+        console.log(JSON.stringify(reserved, null, 2));
+        // An older release service ignores the unknown field; never let the barrier silently vanish.
+        if (fullPackage && reserved.full_package_required !== true)
+            throw new Error(
+                `构建 ${reserved.build_code} 已预留，但版本服务未记录完整包标记：请先执行迁移 014 并部署新版服务端，再重新预留（该编号请勿发布）`,
+            );
+        if (fullPackage)
+            console.log(
+                "已标记为完整包屏障：此前安装的用户升级到该版本及之后版本都将下载完整 APK。",
+            );
     } else if (action === "build") await build();
     else if (action === "inspect" || action === "upload") {
         const release = await api(`/${code()}`);
@@ -568,7 +580,7 @@ async function main() {
         console.log(JSON.stringify(await api(`/${code()}`), null, 2));
     else
         console.log(
-            "IRisNote 发布工具\n  setup-ninja\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file>\n  build --build <code> [--fresh]\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
+            "IRisNote 发布工具\n  setup-ninja\n  setup-delta\n  doctor\n  reserve --source self|eas --version 1.1.0 --notes <file> [--full-package]\n  build --build <code> [--fresh]\n  inspect|upload|patches --build <code> --apk <file>\n  status|publish|withdraw --build <code>",
         );
 }
 main().catch((error) => {

@@ -7,9 +7,18 @@ export type AppRelease = {
     sha256: string;
     size: number;
     publishedAt: string;
-    updatePolicy?: { version: 2; releasesBehind: number; mandatory: boolean };
+    updatePolicy?: UpdatePolicy;
     delivery: Delivery;
 };
+/** Version 3 adds developer-set full-package barriers; version 2 may still come from an older server. */
+export type UpdatePolicy =
+    | { version: 2; releasesBehind: number; mandatory: boolean }
+    | {
+          version: 3;
+          releasesBehind: number;
+          mandatory: boolean;
+          fullPackageRequired: boolean;
+      };
 export type InstalledVersion = {
     version: string;
     buildCode: number;
@@ -70,13 +79,19 @@ export function parseRelease(
         const policy = v.updatePolicy;
         if (
             !policy ||
-            policy.version !== 2 ||
+            (policy.version !== 2 && policy.version !== 3) ||
+            (policy.version === 3 &&
+                typeof policy.fullPackageRequired !== "boolean") ||
             !Number.isSafeInteger(policy.releasesBehind) ||
             policy.releasesBehind < 1 ||
             policy.mandatory !== policy.releasesBehind >= 3
         )
             throw new Error("无效更新策略");
-        if (policy.releasesBehind > 3) expectedMode = "full";
+        if (
+            policy.releasesBehind > 3 ||
+            (policy.version === 3 && policy.fullPackageRequired)
+        )
+            expectedMode = "full";
     }
     const delivery = v.delivery;
     if (delivery.mode === "unavailable") {
@@ -117,6 +132,11 @@ export function parseRelease(
 
 export function isRequiredUpdate(release: AppRelease | null) {
     return release?.updatePolicy?.mandatory === true;
+}
+
+export function isFullPackageRequired(release: AppRelease | null) {
+    const policy = release?.updatePolicy;
+    return policy?.version === 3 && policy.fullPackageRequired;
 }
 
 export function isNewerRelease(
