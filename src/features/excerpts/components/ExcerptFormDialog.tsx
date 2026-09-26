@@ -7,6 +7,7 @@ import { AppButton, BodyInput, InlineHint } from "@/shared/ui";
 import { FormDialog } from "@/shared/ui/Dialog/FormDialog";
 import {
     EXCERPT_CONTENT_LIMIT,
+    measureExcerpt,
     normalizeExcerptContent,
 } from "../domain/excerpt-validation";
 import { newExcerptId } from "../services/excerpt-service";
@@ -121,6 +122,9 @@ export function ExcerptFormDialog({
                     invalid={!!error}
                     disabled={busy}
                     maxLength={EXCERPT_CONTENT_LIMIT}
+                    // 不截断原文：开头空行等会在保存时规范化掉，计数与上限只看将要保存的正文。
+                    truncate={false}
+                    measure={measureExcerpt}
                     accessibilityLabel="摘录正文"
                 />
                 <InlineHint

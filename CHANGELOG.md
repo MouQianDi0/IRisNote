@@ -1,3 +1,19 @@
+## 2026-09-26 00:16:40 | 修复问题：摘录与阅读进度审查意见 7 条（退出登录丢写入、输入截断、昨天判断、剪贴板检测、复制结果、旧进度搬迁）
+
+- 变更概述：逐条核实 Codex 审查的 7 条意见均成立，用户确认分析报告与方案（第 2 条按文字预览：不截断、计数按规范化字数、超限变红；第 7 条按“删除标记 + 负数编号存在性检查”）。
+- 修改文件：src/features/excerpts/data/excerpt-local.repository.ts、src/shared/ui/BodyInput/BodyInput.tsx、src/features/excerpts/components/ExcerptFormDialog.tsx、src/features/excerpts/domain/excerpt-validation.ts、src/features/excerpts/domain/excerpt-display.ts、src/features/excerpts/domain/clipboard-detection.ts、src/features/excerpts/domain/clipboard-detection-trigger.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/services/excerpt-service.ts、src/features/excerpts/screens/ExcerptsScreen.tsx、src/features/notes/data/note-reading-progress.repository.ts、tests/excerpts/excerpt-local.test.cjs、tests/excerpts/clipboard-detection.test.cjs、tests/reading/reading-storage.test.cjs、tests/ui/body-input.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、CHANGELOG.md。
+- 具体内容：
+  ① P1 退出登录丢写入：摘录页挂载时，登录态变化会立即切到游客并取消“等队列清空再释放”，排队中或提交中的写入在事务里校验会话失败而回滚。改为会话只在受理时校验，已受理的写入固定写入调用时的账号与数据库、照常提交；提交后仅在会话未变时发布到列表。切换后才调用的写入仍被拒绝。
+  ② 输入截断：`BodyInput` 新增可选 `truncate`（默认 true）与 `measure`（默认按码点计数），待办表单行为不变；摘录表单不截断原文，计数按规范化正文（`measureExcerpt`，开头空行、末尾空白不计），超上限时计数变为 destructive 红色，保存沿用“内容超过 20000 字，建议保存为笔记”。
+  ③ 今天/昨天按本地日历日边界（`new Date(年, 月, 日±1)`）判断，不再加减 24 小时。
+  ④ 新增 `createSerialRunner`：检测进行中再次请求时不并发也不丢弃，本轮结束后补查一次（多次合并）。
+  ⑤ `detectClipboard` 在“有无文字”之后、读取正文之前再次确认开关；hook 的开关判断同时要求页面仍有焦点、账号未变。
+  ⑥ 新增 `copyExcerptText`：剪贴板写入返回 false 时按失败提示“复制失败 / 未能写入剪贴板，请重试”。
+  ⑦ 旧阅读进度搬迁跳过已删除笔记：有 `note_trash_purged` 标记，或本地编号（负数）且笔记表、回收站都没有；服务器编号本地查不到时照常搬迁（可能只是清理了缓存）。跳过的旧键同样从 AsyncStorage 删除。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 582 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有环境问题，与本次无关）；新增回归测试 10 项，第 1、3、7 条的测试已确认在修复前失败。Prettier：本次文件均通过；`clipboard-handled.ts` 的格式警告为修改前既有，未改动。未做真机验证（退出登录时序、剪贴板系统提示、夏令时时区），未提交 Git。
+
+---
+
 ## 2026-09-26 00:00:16 | 优化代码：完整包屏障版本上传结束时显示专用提示
 
 - 变更概述：用户确认计划与文案。屏障版本上传流程的最后一句不再显示“所需差量包已就绪”，改为说明该版本为完整包屏障、不生成差量包；普通版本提示不变。

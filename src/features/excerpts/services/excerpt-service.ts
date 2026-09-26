@@ -30,3 +30,11 @@ export async function pasteClipboardAsExcerpt(
         throw new ExcerptError("empty", "剪贴板里没有文字");
     return repository.save(ownerKey, newExcerptId(), text, "paste", now());
 }
+
+/** 复制摘录正文；平台返回 false（写入未生效）时同样视为失败，不提示「已复制」。 */
+export async function copyExcerptText(
+    writeText: (text: string) => Promise<boolean>,
+    content: string,
+): Promise<void> {
+    if (!(await writeText(content))) throw new Error("未能写入剪贴板，请重试");
+}

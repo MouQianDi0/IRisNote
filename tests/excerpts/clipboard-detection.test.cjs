@@ -86,7 +86,30 @@ test("新内容规范化后提示，并返回内容哈希", async () => {
         content: " 链接",
         hash: hash(" 链接"),
     });
-    assert.deepEqual(calls, ["enabled", "hasText", "readText", "isHandled"]);
+    assert.deepEqual(calls, [
+        "enabled",
+        "hasText",
+        "enabled",
+        "readText",
+        "isHandled",
+    ]);
+});
+
+test("判断有无文字期间离开页面或关闭开关时，不再读取剪贴板正文", async () => {
+    let allowed = true;
+    const { calls, sources: input } = sources({
+        enabled: () => allowed,
+        hasText: () => {
+            allowed = false;
+            return true;
+        },
+    });
+    assert.deepEqual(await detectClipboard(input), {
+        kind: "skip",
+        reason: "disabled",
+        hash: null,
+    });
+    assert.deepEqual(calls, ["enabled", "hasText", "enabled"]);
 });
 
 test("空白、已处理、超长、本应用复制、已存为摘录时不提示", () => {
@@ -187,6 +210,7 @@ const {
     WINDOW_FOCUS_DELAY_MS,
     WINDOW_FOCUS_FALLBACK_MS,
     CLIPBOARD_CHANGE_DELAY_MS,
+    createSerialRunner,
 } = require("@/features/excerpts/domain/clipboard-detection-trigger.ts");
 
 function trigger(platform, initialAppState = "active") {
@@ -279,4 +303,40 @@ test("进后台前的失焦与回前台合并，只检测一次", () => {
         WINDOW_FOCUS_FALLBACK_MS,
         WINDOW_FOCUS_DELAY_MS,
     ]);
+});
+
+test("检测进行中再次请求：不并发，本轮结束后补查一次，多次请求合并", async () => {
+    const run = createSerialRunner();
+    const log = [];
+    let release;
+    const first = run(async () => {
+        log.push("first:start");
+        await new Promise((resolve) => {
+            release = resolve;
+        });
+        log.push("first:end");
+    });
+    // 本轮读取剪贴板期间又来了两次请求（剪贴板变化），都不应并发执行。
+    await run(async () => log.push("dropped"));
+    await run(async () => log.push("rerun"));
+    assert.deepEqual(log, ["first:start"]);
+    release();
+    await first;
+    assert.deepEqual(log, ["first:start", "first:end", "rerun"]);
+    await run(async () => log.push("later"));
+    assert.deepEqual(log.at(-1), "later");
+});
+
+test("检测任务出错也会释放串行锁", async () => {
+    const run = createSerialRunner();
+    await assert.rejects(
+        run(async () => {
+            throw new Error("clipboard failed");
+        }),
+    );
+    let ran = false;
+    await run(async () => {
+        ran = true;
+    });
+    assert.equal(ran, true);
 });

@@ -13,6 +13,7 @@ import { useOverlay } from "@/shared/ui/Overlay/overlay-context";
 import { detectClipboard } from "../domain/clipboard-detection";
 import {
     createDetectionTrigger,
+    createSerialRunner,
     PAGE_FOCUS_DELAY_MS,
 } from "../domain/clipboard-detection-trigger";
 import { clipboardHandledStoreFor } from "../services/clipboard-handled";
@@ -46,7 +47,6 @@ export function useClipboardDetection({
     const [offer, setOffer] = useState<ClipboardOffer | null>(null);
     const [saving, setSaving] = useState(false);
     const focused = useRef(false);
-    const running = useRef(false);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const latest = useRef({ enabled, ready, ownerKey, generation, entities });
     // AppModal 打开时会登记到全局弹窗层，top 非空即表示有应用内弹窗。
@@ -65,13 +65,16 @@ export function useClipboardDetection({
         [database],
     );
 
-    const check = useCallback(async () => {
+    const detectOnce = useCallback(async () => {
         const start = latest.current;
-        if (running.current || !focused.current || !start.ready) return;
-        running.current = true;
+        if (!focused.current || !start.ready) return;
         try {
             const result = await detectClipboard({
-                enabled: async () => latest.current.enabled,
+                // 读取正文前还会再确认：已离开摘录页、关闭开关或切换账号时不再读取。
+                enabled: async () =>
+                    focused.current &&
+                    latest.current.enabled &&
+                    latest.current.ownerKey === start.ownerKey,
                 hasText: clipboardService.hasText,
                 readText: clipboardService.readText,
                 isHandled: (hash) =>
@@ -95,10 +98,15 @@ export function useClipboardDetection({
             else if (result.hash) await markHandled(result.hash);
         } catch {
             // 检测失败不打扰用户，下次进入页面再试。
-        } finally {
-            running.current = false;
         }
     }, [database, markHandled]);
+
+    // 检测进行中时剪贴板又变化：本轮可能已读到旧内容，结束后再查一次。
+    const [runSerially] = useState(createSerialRunner);
+    const check = useCallback(
+        () => runSerially(detectOnce),
+        [runSerially, detectOnce],
+    );
 
     const cancel = useCallback(() => {
         if (timer.current) clearTimeout(timer.current);
