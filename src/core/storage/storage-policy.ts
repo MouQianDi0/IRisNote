@@ -2,7 +2,7 @@ export type CleanupSelection = {
     updates: boolean;
     shares: boolean;
     notes: boolean;
-    /** 诊断日志用于帮助与反馈排查问题，和笔记缓存一样默认不勾选。 */
+    /** 诊断日志用于帮助与反馈排查问题，和笔记正文一样默认不勾选。 */
     diagnostics: boolean;
 };
 export const defaultCleanupSelection = (): CleanupSelection => ({

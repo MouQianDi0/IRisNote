@@ -37,7 +37,7 @@ export async function withNoteCacheMaintenance<T>(
         owners = new Set();
         cacheMaintenance.set(db, owners);
     }
-    if (owners.has(owner)) throw new Error("笔记缓存正在清理，请稍后重试");
+    if (owners.has(owner)) throw new Error("笔记正文正在释放，请稍后重试");
     owners.add(owner);
     try {
         const running = jobs.get(db)?.get(owner);
@@ -71,7 +71,7 @@ export function syncNotes(
     owner: number,
 ): Promise<Result> {
     if (cacheMaintenance.get(db)?.has(owner))
-        return Promise.reject(new Error("笔记缓存正在清理，请稍后同步"));
+        return Promise.reject(new Error("笔记正文正在释放，请稍后同步"));
     // Return a rejected Promise (rather than throwing before callers attach .catch).
     let checkPermission: () => void;
     try {

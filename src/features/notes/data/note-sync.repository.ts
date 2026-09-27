@@ -4,26 +4,40 @@ import type {
 } from "@/core/database";
 import {
     cloudNoteToLocal,
-    parseCloudNote,
+    isCloudNoteMeta,
+    parseMirrorNote,
     type ChangesPage,
+    type CloudNote,
+    type CloudNoteMeta,
+    type MirrorNote,
     type SnapshotPage,
 } from "../api/notes-sync.types";
+import { hasBodyState } from "./note-body.repository";
+import {
+    readEvictedNoteIdentity,
+    removeEvictedNoteIdentity,
+} from "./note-cache.repository";
+import { linkCreatedNotes } from "./note-create-operation.repository";
 import { reconcileNotesInTransaction } from "./note-local.repository";
 import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 import { deleteNoteRevisions } from "./note-revision.repository";
 import {
     archiveLocalNote,
     recordRemoteDeletion,
+    removedServerIds,
     restoreFromRemote,
 } from "./note-trash.repository";
 import { NOTE_TRASH_MS } from "../api/notes-trash.types";
 
+export type MirrorMode = "full" | "meta";
 export type SyncState = {
     changes_cursor: string | null;
     snapshot_token: string | null;
     snapshot_cursor: string | null;
     snapshot_changes_cursor: string | null;
     completed_at: string | null;
+    /** 0017 之前的结构没有该列，视为 full。 */
+    mirror_mode?: MirrorMode;
 };
 export async function readSyncState(db: Tx, owner: number): Promise<SyncState> {
     return (
@@ -45,10 +59,15 @@ async function ensureState(tx: Tx, owner: number) {
         [owner],
     );
 }
+/**
+ * 重新建立快照。传入 `mode` 时同时切换镜像模式：快照令牌与模式绑定，必须从头取一轮；
+ * 现有镜像保留到新快照取完才整体替换，期间两种格式的记录可能并存。
+ */
 export async function resetSnapshot(
     db: ApplicationDatabase,
     owner: number,
     check: () => void,
+    mode?: MirrorMode,
 ) {
     await db.transaction(async (tx) => {
         check();
@@ -61,6 +80,11 @@ export async function resetSnapshot(
             snapshot_cursor=NULL,snapshot_changes_cursor=NULL WHERE owner_user_id=?`,
             [owner],
         );
+        if (mode)
+            await tx.run(
+                "UPDATE note_sync_state SET mirror_mode=? WHERE owner_user_id=?",
+                [mode, owner],
+            );
         check();
     });
 }
@@ -186,25 +210,263 @@ export async function applyChanges(
         check();
     });
 }
-export async function readCloudMirror(db: Tx, owner: number) {
+export async function readCloudMirror(
+    db: Tx,
+    owner: number,
+): Promise<MirrorNote[]> {
     const rows = await db.getAll<{ payload: string }>(
         "SELECT payload FROM note_sync_mirror WHERE owner_user_id=? AND payload IS NOT NULL ORDER BY server_id",
         [owner],
     );
-    return rows.map((row) => parseCloudNote(JSON.parse(row.payload), owner));
+    return rows.map((row) => parseMirrorNote(JSON.parse(row.payload), owner));
 }
 
-/** Projection runs after catching up, so intermediate historical events cannot roll back a write receipt. */
+async function hasNoteTrash(db: Tx) {
+    return Boolean(
+        await db.getFirst(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='note_trash'",
+        ),
+    );
+}
+
+/**
+ * 元数据镜像的正文下载计划（服务端 ID）：
+ * - 下载：已同步但正文哈希与云端不同的、被置顶或星标的已淘汰笔记、垃圾桶里被其他设备恢复的，
+ *   以及本机还没有、且在保留范围内（置顶、星标，或按修改时间从新到旧补满 keepRecent 篇）的新笔记。
+ * - 只插入摘要：本机还没有、超出保留范围的新笔记（旧结构数据库不支持时照常下载）。
+ * 未同步的本地修改不在此列（合并时会跳过）。调用前先补算本地哈希。
+ */
+export async function readBodyPlan(db: Tx, owner: number, keepRecent: number) {
+    const trash = await hasNoteTrash(db);
+    const bodyState = await hasBodyState(db);
+    const rows = await db.getAll<{
+        payload: string;
+        local_hash: string | null;
+        local_null: number | null;
+        sync_status: string | null;
+        body_state: string | null;
+        trash_version: number | null;
+        trash_state: string | null;
+        purged: number | null;
+    }>(
+        `SELECT m.payload, n.content_hash AS local_hash, n.content IS NULL AS local_null, n.sync_status,
+        ${bodyState ? "n.body_state" : "NULL"} AS body_state,
+        ${trash ? "t.version" : "NULL"} AS trash_version, ${trash ? "t.state" : "NULL"} AS trash_state,
+        ${
+            trash
+                ? "(SELECT 1 FROM note_trash_purged p WHERE p.owner_user_id=m.owner_user_id AND p.server_id=m.server_id)"
+                : "NULL"
+        } AS purged
+        FROM note_sync_mirror m
+        LEFT JOIN local_notes n ON n.owner_user_id=m.owner_user_id AND n.server_id=m.server_id
+        ${trash ? "LEFT JOIN note_trash t ON t.owner_user_id=m.owner_user_id AND t.server_id=m.server_id" : ""}
+        WHERE m.owner_user_id=? AND m.payload IS NOT NULL ORDER BY m.server_id`,
+        [owner],
+    );
+    const fetch: number[] = [];
+    const fresh: CloudNoteMeta[] = [];
+    for (const row of rows) {
+        const note = parseMirrorNote(JSON.parse(row.payload), owner);
+        if (!isCloudNoteMeta(note)) continue;
+        if (row.trash_state !== null) {
+            if (
+                row.trash_state !== "deleting" &&
+                (row.trash_version ?? 0) < note.version
+            )
+                fetch.push(note.id);
+            continue;
+        }
+        if (row.purged) continue;
+        if (row.sync_status === null) {
+            fresh.push(note);
+            continue;
+        }
+        if (row.sync_status !== "synced") continue;
+        if (row.body_state === "evicted") {
+            if (note.is_pinned || note.is_starred) fetch.push(note.id);
+            continue;
+        }
+        const same = row.local_null
+            ? note.content_hash === null
+            : row.local_hash !== null && row.local_hash === note.content_hash;
+        if (!same) fetch.push(note.id);
+    }
+    const evictedInserts = new Set<number>();
+    if (!bodyState) {
+        fetch.push(...fresh.map((note) => note.id));
+        return { fetch, evictedInserts };
+    }
+    let budget =
+        keepRecent -
+        ((
+            await db.getFirst<{ count: number }>(
+                `SELECT count(*) AS count FROM local_notes WHERE owner_user_id=? AND server_id IS NOT NULL
+                 AND body_state='present' AND is_pinned=0 AND is_starred=0`,
+                [owner],
+            )
+        )?.count ?? 0);
+    const recency = (note: CloudNoteMeta) => note.updated_at ?? note.created_at;
+    for (const note of [...fresh].sort((a, b) =>
+        recency(b).localeCompare(recency(a)),
+    )) {
+        if (note.is_pinned || note.is_starred) fetch.push(note.id);
+        else if (budget-- > 0) fetch.push(note.id);
+        else evictedInserts.add(note.id);
+    }
+    return { fetch, evictedInserts };
+}
+
+/**
+ * 已淘汰正文的笔记只更新元数据与摘要（不动正文、不建版本）；本机还没有、计划只插入摘要的新笔记
+ * 以淘汰状态插入，沿用清理缓存留下的本地身份。未同步或正文在本机的笔记不经过这里。
+ */
+async function applyMetadataOnly(
+    tx: Tx,
+    owner: number,
+    rows: readonly { note: CloudNoteMeta; index: number }[],
+    evictedInserts: ReadonlySet<number>,
+) {
+    const removed = await removedServerIds(tx, owner);
+    let added = 0;
+    for (const { note, index } of rows) {
+        const local = await tx.getFirst<{ client_id: number }>(
+            "SELECT client_id FROM local_notes WHERE owner_user_id=? AND server_id=?",
+            [owner, note.id],
+        );
+        if (local) {
+            await tx.run(
+                `UPDATE local_notes SET title=?, category_id=?, created_at=?, is_pinned=?, is_starred=?,
+                 server_updated_at=?, local_updated_at=COALESCE(?, local_updated_at),
+                 content_hash=?, content_preview=?, content_length=?
+                 WHERE owner_user_id=? AND client_id=? AND body_state='evicted' AND sync_status='synced'`,
+                [
+                    note.title,
+                    note.category_id,
+                    note.created_at,
+                    note.is_pinned ? 1 : 0,
+                    note.is_starred ? 1 : 0,
+                    note.updated_at,
+                    note.updated_at,
+                    note.content_hash,
+                    note.content_preview,
+                    note.content_length,
+                    owner,
+                    local.client_id,
+                ],
+            );
+            continue;
+        }
+        if (!evictedInserts.has(note.id) || removed.has(note.id)) continue;
+        const identity = await readEvictedNoteIdentity(tx, owner, note.id);
+        await tx.run(
+            `INSERT INTO local_notes (owner_user_id, client_id, server_id, title, content, category_id, created_at,
+                is_pinned, is_starred, local_order, pinned_order, sync_status, sync_operation, local_updated_at,
+                server_updated_at, current_revision_id, body_state, content_hash, content_preview, content_length)
+             VALUES (?,?,?,?,NULL,?,?,?,?,?,?,'synced',NULL,?,?,?,'evicted',?,?,?)`,
+            [
+                owner,
+                identity?.client_id ?? note.id,
+                note.id,
+                note.title,
+                note.category_id,
+                note.created_at,
+                note.is_pinned ? 1 : 0,
+                note.is_starred ? 1 : 0,
+                identity?.local_order ?? index,
+                identity?.pinned_order ?? null,
+                note.updated_at ?? note.created_at,
+                note.updated_at,
+                identity?.current_revision_id ?? null,
+                note.content_hash,
+                note.content_preview,
+                note.content_length,
+            ],
+        );
+        if (identity) await removeEvictedNoteIdentity(tx, owner, note.id);
+        added++;
+    }
+    return added;
+}
+
+/**
+ * 元数据记录补上正文：优先用刚下载的正文，其次在哈希相同时用本地正文；都没有时返回 null，本轮跳过该笔记。
+ * 完整记录原样返回。
+ */
+function withBody(
+    row: MirrorNote,
+    bodies: ReadonlyMap<number, CloudNote>,
+    local: ReadonlyMap<
+        number,
+        {
+            content: string | null;
+            content_hash: string | null;
+            body_state: string;
+        }
+    >,
+): CloudNote | null {
+    if (!isCloudNoteMeta(row)) return row;
+    const body = bodies.get(row.id);
+    if (body && body.version >= row.version) return body;
+    const copy = local.get(row.id);
+    // An evicted body is not a local copy of the content.
+    if (!copy || copy.body_state === "evicted") return null;
+    const same =
+        copy.content === null
+            ? row.content_hash === null
+            : copy.content_hash !== null &&
+              copy.content_hash === row.content_hash;
+    if (!same) return null;
+    const {
+        content_hash: _hash,
+        content_length: _length,
+        content_preview: _preview,
+        ...base
+    } = row;
+    return { ...base, content: copy.content };
+}
+
+/**
+ * Projection runs after catching up, so intermediate historical events cannot roll back a write receipt.
+ * In metadata mode `bodies` carries the downloaded contents; notes whose body is unknown are skipped this round.
+ */
 export async function projectMirror(
     db: ApplicationDatabase,
     owner: number,
     check: () => void,
+    bodies: ReadonlyMap<number, CloudNote> = new Map(),
+    evictedInserts: ReadonlySet<number> = new Set(),
 ) {
     return db.transaction(async (tx) => {
         check();
-        const rows = await readCloudMirror(tx, owner);
+        // Adopt notes created by an unconfirmed idempotent request before they can appear as a second copy.
+        const linkedCount = await linkCreatedNotes(tx, owner);
+        const mirror = await readCloudMirror(tx, owner);
+        const bodyState = await hasBodyState(tx);
+        const local = mirror.some(isCloudNoteMeta)
+            ? new Map(
+                  (
+                      await tx.getAll<{
+                          server_id: number;
+                          content: string | null;
+                          content_hash: string | null;
+                          body_state: string;
+                      }>(
+                          `SELECT server_id,content,content_hash,${bodyState ? "body_state" : "'present' AS body_state"}
+                           FROM local_notes WHERE owner_user_id=? AND server_id IS NOT NULL`,
+                          [owner],
+                      )
+                  ).map((row) => [row.server_id, row]),
+              )
+            : new Map();
+        const rows: CloudNote[] = [];
+        const metadataOnly: { note: CloudNoteMeta; index: number }[] = [];
+        for (const [index, row] of mirror.entries()) {
+            const note = withBody(row, bodies, local);
+            if (note) rows.push(note);
+            else if (isCloudNoteMeta(row)) metadataOnly.push({ note: row, index });
+        }
         for (const row of rows) await restoreFromRemote(tx, owner, row);
-        const addedCount = await reconcileNotesInTransaction(
+        let addedCount = await reconcileNotesInTransaction(
             tx,
             owner,
             rows.map(cloudNoteToLocal),
@@ -212,6 +474,13 @@ export async function projectMirror(
             undefined,
             true,
         );
+        if (bodyState && metadataOnly.length)
+            addedCount += await applyMetadataOnly(
+                tx,
+                owner,
+                metadataOnly,
+                evictedInserts,
+            );
         const missing = await tx.getAll<{
             client_id: number;
             sync_status: string;
@@ -262,6 +531,6 @@ export async function projectMirror(
             [new Date().toISOString(), owner],
         );
         check();
-        return { addedCount };
+        return { addedCount, linkedCount };
     });
 }

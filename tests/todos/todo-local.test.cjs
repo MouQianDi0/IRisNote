@@ -147,8 +147,8 @@ test("迁移 1–6 升级到 7，保留既有表数据，迁移可重复且具�
     );
     await createLocalTodos.up(database);
     await createLocalTodos.up(database);
-    // 0011 增加系统偏好表；0012 增加笔记垃圾桶表；0013 增加笔记清除标记表；0014 增加本地摘录表；0015 增加阅读进度表，当前版本随之推进。
-    assert.equal(CURRENT_DATABASE_VERSION, 15);
+    // 0011 增加系统偏好表；0012 增加笔记垃圾桶表；0013 增加笔记清除标记表；0014 增加本地摘录表；0015 增加阅读进度表；0016 增加新建笔记幂等请求表；0017 增加笔记正文哈希与镜像模式；0018 增加笔记正文淘汰状态，当前版本随之推进。
+    assert.equal(CURRENT_DATABASE_VERSION, 18);
     assert.equal(
         sqlite.prepare("SELECT title FROM local_notes").get().title,
         "保留笔记",

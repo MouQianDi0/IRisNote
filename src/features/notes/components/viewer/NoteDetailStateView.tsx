@@ -3,7 +3,12 @@ import { colors } from "@/shared/theme";
 import { Button } from "@/shared/ui";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
-export type NoteDetailState = "loading" | "error" | "not-found" | "local-only";
+export type NoteDetailState =
+    | "loading"
+    | "error"
+    | "not-found"
+    | "local-only"
+    | "body-missing";
 
 type NoteDetailStateViewProps = {
     loadState: NoteDetailState;
@@ -46,14 +51,18 @@ export default function NoteDetailStateView({
                                 ? "本机暂无此笔记"
                                 : loadState === "not-found"
                                   ? "笔记不存在"
-                                  : "加载失败"}
+                                  : loadState === "body-missing"
+                                    ? "正文未下载"
+                                    : "加载失败"}
                         </Text>
                         <Text className="text-center text-sm text-gray-500">
                             {loadState === "local-only"
                                 ? "当前笔记不在本机，开启云存储后可尝试从云端获取"
                                 : loadState === "not-found"
                                   ? "当前笔记可能已被删除或链接无效"
-                                  : errorMessage}
+                                  : loadState === "body-missing"
+                                    ? "这篇笔记的正文不在本机，联网后可以查看"
+                                    : errorMessage}
                         </Text>
                         {loadState !== "local-only" && (
                             <Button

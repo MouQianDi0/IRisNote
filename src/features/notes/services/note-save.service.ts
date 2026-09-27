@@ -10,9 +10,26 @@ import { getApiErrorMessage } from "@/shared/http/errors";
 import { isAxiosError, type AxiosProgressEvent } from "axios";
 import {
     createNote,
+    fetchCloudNote,
     normalizeConflictNote,
+    probeNotesServer,
     updateNote,
 } from "../api/notes.api";
+import {
+    ensureNotesServerV2,
+    markNotesServerV2,
+    notesServerV2,
+} from "../api/notes-capability";
+import {
+    cloudNoteToLocal,
+    noteSyncErrorMessage,
+} from "../api/notes-sync.types";
+import {
+    deleteNoteCreateOperation,
+    prepareNoteCreateOperation,
+    readNoteCreateOperation,
+    type NoteCreateOperation,
+} from "../data/note-create-operation.repository";
 import {
     deleteNoteDraft,
     type DraftCommit,
@@ -100,6 +117,41 @@ function classifyCloudFailure(
     return isAxiosError(error) && error.response ? "rejected" : "unknown";
 }
 
+/** 服务端错误码：同步接口为 `{error:{code}}`，旧接口为 `{code}`。 */
+function cloudErrorCode(error: unknown): string | undefined {
+    if (!isAxiosError<{ code?: unknown; error?: unknown }>(error))
+        return undefined;
+    const data = error.response?.data;
+    const nested =
+        data?.error && typeof data.error === "object"
+            ? (data.error as { code?: unknown }).code
+            : undefined;
+    const code = nested ?? data?.code;
+    return typeof code === "string" ? code : undefined;
+}
+
+export type UncertainCreatePolicy = "replay" | "blocked" | "later";
+
+/**
+ * 结果未知的新建能否重发：固定过请求、且服务端已确认支持幂等时原样重发（replay）；
+ * 暂时无法判断服务端能力（离线等）时稍后再试（later）；旧服务端或升级前遗留的请求仍需用户处理（blocked）。
+ */
+export async function uncertainCreatePolicy(
+    database: ApplicationDatabase,
+    owner: number,
+    clientId: number,
+): Promise<UncertainCreatePolicy> {
+    if (!(await readNoteCreateOperation(database, owner, clientId)))
+        return "blocked";
+    try {
+        return (await ensureNotesServerV2(probeNotesServer))
+            ? "replay"
+            : "blocked";
+    } catch {
+        return "later";
+    }
+}
+
 async function syncPendingNote(
     database: ApplicationDatabase,
     ownerUserId: number,
@@ -138,6 +190,25 @@ async function syncPendingNoteWithReceipt(
             retryable: false,
         };
     }
+    const creating = note.sync_operation === "create" || note.server_id == null;
+    const createPayload: CreateNotePayload = {
+        title: note.title,
+        content: note.content ?? "",
+        ...(note.updated_at ? { updated_at: note.updated_at } : {}),
+        ...(note.category_id == null ? {} : { category_id: note.category_id }),
+    };
+    // Fixed before dispatch so a lost response can be replayed with the same key and body.
+    const operation: NoteCreateOperation | null = creating
+        ? await prepareNoteCreateOperation(
+              database,
+              ownerUserId,
+              note,
+              createPayload,
+          )
+        : null;
+    const expectedRevisionId = operation
+        ? operation.revisionId
+        : (note.current_revision_id ?? null);
     const syncingNote = await markLocalNoteSyncing(
         database,
         ownerUserId,
@@ -146,6 +217,102 @@ async function syncPendingNoteWithReceipt(
     if (!syncingNote) throw new Error("笔记已移入垃圾桶或不存在，已停止上传");
     if (syncingNote) publishNote(syncingNote);
     let receivedResponse = false;
+
+    const acceptCloudNote = async (
+        serverNote: Note,
+        responseStatus?: number,
+    ): Promise<NoteSaveResult> => {
+        const acceptedNote = await acceptServerNote(
+            database,
+            ownerUserId,
+            note.id,
+            serverNote,
+            expectedRevisionId,
+        );
+        if (!acceptedNote) {
+            throw new Error("[Note sync] Accepted note could not be reloaded.");
+        }
+        if (operation) {
+            try {
+                await deleteNoteCreateOperation(
+                    database,
+                    ownerUserId,
+                    note.id,
+                    operation.operationId,
+                );
+            } catch {
+                // The note already has its server id, so a leftover request is never replayed.
+                console.warn("[Note sync] 新建请求记录清理未完成", {
+                    clientId: note.id,
+                });
+            }
+        }
+
+        publishNote(acceptedNote);
+        console.log("[Note sync] 云端已接受笔记", {
+            clientId: acceptedNote.id,
+            serverId: acceptedNote.server_id,
+            httpStatus: responseStatus ?? null,
+            status: acceptedNote.sync_status,
+        });
+        return {
+            note: acceptedNote,
+            cloudState:
+                acceptedNote.sync_status === "synced" ? "accepted" : "queued",
+            retryable: acceptedNote.sync_status !== "synced",
+        };
+    };
+
+    /** 云端已有同一身份的笔记（回执过期后重发等）：取回并认领；云端已删除时放弃这次新建。 */
+    const recoverExistingCreate = async (
+        data: unknown,
+    ): Promise<NoteSaveResult | null> => {
+        const existing = (
+            data as {
+                existing?: { id?: unknown; client_id?: unknown; deleted?: unknown };
+            } | null
+        )?.existing;
+        if (!operation || !existing || existing.client_id !== operation.cloudId)
+            return null;
+        if (existing.deleted === true) {
+            await deleteNoteCreateOperation(
+                database,
+                ownerUserId,
+                note.id,
+                operation.operationId,
+            );
+            const message =
+                "云端已删除这篇笔记，本地内容已保留；再次保存会作为新笔记上传。";
+            const rejected = await markLocalNoteSyncFailed(
+                database,
+                ownerUserId,
+                note.id,
+                "rejected",
+                message,
+                note.current_revision_id ?? null,
+            );
+            if (!rejected) return null;
+            publishNote(rejected);
+            return {
+                note: rejected,
+                cloudState: "rejected",
+                message,
+                httpStatus: 409,
+                retryable: false,
+            };
+        }
+        if (typeof existing.id !== "number") return null;
+        try {
+            checkAccess();
+            const remote = await fetchCloudNote(ownerUserId, existing.id);
+            checkAccess();
+            if (remote.client_id !== operation.cloudId) return null;
+            return await acceptCloudNote(cloudNoteToLocal(remote), 409);
+        } catch {
+            // Retried later: the same key replays the same conflict receipt.
+            return null;
+        }
+    };
 
     console.log("[Note sync] 开始上传云端", {
         clientId: note.id,
@@ -170,20 +337,13 @@ async function syncPendingNoteWithReceipt(
             },
         };
         const serverNote =
-            note.sync_operation === "create" || note.server_id == null
-                ? await createNote(
-                      {
-                          title: note.title,
-                          content: note.content ?? "",
-                          ...(note.updated_at
-                              ? { updated_at: note.updated_at }
-                              : {}),
-                          ...(note.category_id == null
-                              ? {}
-                              : { category_id: note.category_id }),
-                      },
-                      uploadOptions,
-                  )
+            creating || note.server_id == null
+                ? operation
+                    ? await createNote(operation.request, {
+                          ...uploadOptions,
+                          idempotencyKey: operation.operationId,
+                      })
+                    : await createNote(createPayload, uploadOptions)
                 : await updateNote(
                       note.server_id,
                       {
@@ -196,30 +356,7 @@ async function syncPendingNoteWithReceipt(
                   );
         receivedResponse = true;
         checkAccess();
-        const acceptedNote = await acceptServerNote(
-            database,
-            ownerUserId,
-            note.id,
-            serverNote,
-            note.current_revision_id ?? null,
-        );
-        if (!acceptedNote) {
-            throw new Error("[Note sync] Accepted note could not be reloaded.");
-        }
-
-        publishNote(acceptedNote);
-        console.log("[Note sync] 云端已接受笔记", {
-            clientId: acceptedNote.id,
-            serverId: acceptedNote.server_id,
-            httpStatus: responseStatus ?? null,
-            status: acceptedNote.sync_status,
-        });
-        return {
-            note: acceptedNote,
-            cloudState:
-                acceptedNote.sync_status === "synced" ? "accepted" : "queued",
-            retryable: acceptedNote.sync_status !== "synced",
-        };
+        return await acceptCloudNote(serverNote, responseStatus);
     } catch (error: unknown) {
         if (
             isCloudStoragePermissionError(error) &&
@@ -303,18 +440,57 @@ async function syncPendingNoteWithReceipt(
                 // 无效冲突快照/本地合并失败走普通失败处理，不能把未落库的内容标为成功。
             }
         }
-        const cloudState = classifyCloudFailure(error);
+        const code = cloudErrorCode(error);
         const httpStatus = isAxiosError(error)
             ? error.response?.status
             : undefined;
+        const receiptCode =
+            operation !== null &&
+            httpStatus === 409 &&
+            (code === "OPERATION_IN_PROGRESS" ||
+                code === "CLIENT_ID_EXISTS" ||
+                code === "IDEMPOTENCY_KEY_REUSED");
+        // Only the idempotent create route answers with these codes.
+        if (receiptCode) markNotesServerV2(true);
+        if (operation && receiptCode && code === "CLIENT_ID_EXISTS") {
+            const recovered = await recoverExistingCreate(
+                isAxiosError(error) ? error.response?.data : null,
+            );
+            if (recovered) return recovered;
+        } else if (
+            operation &&
+            httpStatus !== undefined &&
+            httpStatus >= 400 &&
+            httpStatus < 500 &&
+            ![401, 403, 408, 409, 429].includes(httpStatus)
+        ) {
+            // The server rejected the request without creating a note; the next save fixes a new request.
+            await deleteNoteCreateOperation(
+                database,
+                ownerUserId,
+                note.id,
+                operation.operationId,
+            );
+        }
+        const inProgress = receiptCode && code === "OPERATION_IN_PROGRESS";
+        const cloudState = inProgress ? "unknown" : classifyCloudFailure(error);
         const retryable =
             httpStatus == null ||
             httpStatus === 408 ||
             httpStatus === 429 ||
-            httpStatus >= 500;
+            httpStatus >= 500 ||
+            inProgress ||
+            (receiptCode && code === "CLIENT_ID_EXISTS");
+        const structured =
+            isAxiosError<{ error?: unknown }>(error) &&
+            typeof error.response?.data?.error === "object";
         const message = isCloudStoragePermissionError(error)
             ? "云存储权限已关闭，已发出的请求结果尚未确认，保留本机内容"
-            : getApiErrorMessage(error, "云端同步失败");
+            : operation && cloudState === "unknown" && notesServerV2()
+              ? "云端尚未确认是否收到这篇笔记，稍后会用同一请求重试，不会重复创建"
+              : structured
+                ? noteSyncErrorMessage(error)
+                : getApiErrorMessage(error, "云端同步失败");
         const failedNote = await markLocalNoteSyncFailed(
             database,
             ownerUserId,
@@ -446,7 +622,12 @@ export async function stageEditedNoteForSync(
             retryable: false,
         };
     }
-    if (note.server_id == null && note.sync_status === "unknown") {
+    // A fixed idempotent request can be replayed by the queue; only legacy uncertain creates stay local.
+    if (
+        note.server_id == null &&
+        note.sync_status === "unknown" &&
+        !(await readNoteCreateOperation(database, ownerUserId, localNote.id))
+    ) {
         const message =
             "此前创建请求结果未知；为避免重复创建，本次仅保存本地改动。";
         const unknownNote = await markLocalNoteSyncFailed(
@@ -548,7 +729,11 @@ export async function queueNoteUploadNow(
     const note = await getLocalNoteByClientId(database, owner, id);
     checkAccess();
     if (!note) throw new Error("笔记已不存在");
-    if (note.server_id == null && note.sync_status === "unknown") {
+    if (
+        note.server_id == null &&
+        note.sync_status === "unknown" &&
+        !(await readNoteCreateOperation(database, owner, id))
+    ) {
         throw new Error(
             "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
         );
@@ -562,7 +747,10 @@ export async function queueNoteUploadNow(
     } satisfies NoteSaveResult;
 }
 
-/** Explicit retry uses the current local snapshot and never replays an uncertain create. */
+/**
+ * Explicit retry uses the current local snapshot. An uncertain create is replayed only with its
+ * fixed idempotent request on a server confirmed to deduplicate it.
+ */
 export async function uploadNoteNow(
     database: ApplicationDatabase,
     owner: number,
@@ -576,9 +764,14 @@ export async function uploadNoteNow(
     if (note.sync_status === "syncing")
         throw new Error("笔记正在同步，请稍后重试。");
     if (note.server_id == null && note.sync_status === "unknown") {
-        throw new Error(
-            "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
-        );
+        const policy = await uncertainCreatePolicy(database, owner, id);
+        checkAccess();
+        if (policy === "later")
+            throw new Error("暂时无法确认服务器状态，请稍后重试。");
+        if (policy === "blocked")
+            throw new Error(
+                "此前创建请求结果未知，为避免重复笔记，暂不能再次上传。",
+            );
     }
     return syncPendingNote(database, owner, note, onUploadProgress);
 }
