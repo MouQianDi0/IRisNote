@@ -33,13 +33,22 @@ const {
   desiredTodoLiveUpdates,
   desiredTodoLiveTimeline,
   desiredTodoLiveTimelines,
+  createTodoLiveDemoTimeline,
+  desiredTodoLiveDemoUpdate,
 } = require("@/features/todos/services/todo-live-update.service.ts");
 const {
   TodoLiveUpdateCoordinator,
 } = require("@/features/todos/state/todo-live-update-coordinator.ts");
 const {
+  LIVE_TEST_NOTIFICATION_ID,
   LIVE_TODO_CHANNEL,
+  LIVE_TODO_SUMMARY_CHANNEL,
+  LIVE_TODO_SUMMARY_NOTIFICATION_ID,
 } = require("@/core/system-notifications/system-notification.types.ts");
+const {
+  todoSummaryTimeline,
+  desiredTodoSummary,
+} = require("@/features/todos/services/todo-aggregate-live.service.ts");
 
 const todo = (patch = {}) => ({
   ownerKey: "user:one",
@@ -64,6 +73,96 @@ const todo = (patch = {}) => ({
 const at = (hour, minute, second = 0) =>
   new Date(2030, 8, 20, hour, minute, second);
 
+test("聚合卡四场景、计数、独立渠道及结束窗口", () => {
+  const entities = [
+    todo({ clientId: "one", startTime: "11:00", endTime: "12:00", reminderEnabled: false, isStarred: true }),
+    todo({ clientId: "two", startTime: null, endTime: null, reminderEnabled: false }),
+  ];
+  const timeline = todoSummaryTimeline(entities, at(9, 0), false);
+  const today = desiredTodoSummary(timeline, at(9, 0));
+  assert.equal(today.scene, "today");
+  // 胶囊标题只显示进行/临近计数，今日总量放副标题。
+  assert.equal(today.title, "进行中 0");
+  // 重要 = 创建时 priority=high（fixture 默认 normal，isStarred 不再计入）。
+  assert.equal(today.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 0条进行中 | 0条已完成");
+  assert.equal(today.notificationId, LIVE_TODO_SUMMARY_NOTIFICATION_ID);
+  assert.equal(today.channelId, LIVE_TODO_SUMMARY_CHANNEL);
+  assert.equal(desiredTodoSummary(timeline, at(10, 0)).scene, "near");
+  assert.equal(desiredTodoSummary(timeline, at(10, 30)).scene, "near");
+  const activeCard = desiredTodoSummary(timeline, at(11, 30));
+  assert.equal(activeCard.scene, "active");
+  // 胶囊不再展示 chronometer 倒计时；标题只显示进行/临近计数。
+  assert.equal(activeCard.title, "进行中 1");
+  assert.equal(activeCard.secondsEligible, false);
+  assert.equal(activeCard.chronoAt, null);
+  assert.equal(activeCard.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 1条进行中 | 0条已完成");
+  const short = todoSummaryTimeline([
+    todo({ startTime: "09:00", endTime: "10:00" }),
+    todo({ clientId: "soon", startTime: "10:10", endTime: null }),
+  ], at(9, 30), true);
+  const shortCard = desiredTodoSummary(short, at(9, 30, 30), true);
+  assert.equal(shortCard.title, "进行中 1·临近 1");
+  assert.equal(shortCard.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 1条进行中 | 0条已完成");
+  assert.equal(desiredTodoSummary(todoSummaryTimeline([], at(9, 0), true), at(9, 0)), null);
+  const endedTimeline = todoSummaryTimeline([todo({ endTime: "10:00" })], at(10, 1), true);
+  assert.equal(desiredTodoSummary(endedTimeline, at(10, 1)).scene, "ended");
+  assert.equal(desiredTodoSummary(endedTimeline, at(10, 10)), null);
+  assert.equal(desiredTodoSummary(todoSummaryTimeline([todo()], at(10, 1), false), at(10, 1)), null);
+  const completedTimeline = todoSummaryTimeline([todo({
+    isCompleted: true, completedAt: at(9, 45).toISOString(),
+  })], at(9, 46), true);
+  assert.equal(desiredTodoSummary(completedTimeline, at(9, 46)).text, "1·已完成");
+  assert.equal(desiredTodoSummary(completedTimeline, at(9, 55)), null);
+});
+
+test("聚合摘要脱敏截断且最早开始项确定性优先", () => {
+  const first = todo({ clientId: "first", body: "  开会\n保密内容", startTime: "10:00" });
+  const second = todo({ clientId: "second", body: "后来", startTime: "10:30" });
+  const a = desiredTodoSummary(todoSummaryTimeline([second, first], at(9, 30), false), at(9, 30));
+  const b = desiredTodoSummary(todoSummaryTimeline([first, second], at(9, 30), false), at(9, 30));
+  assert.deepEqual(a, b);
+  assert.equal(a.scene, "near");
+  // 文案改为纯计数后确定性由标题承载：进行/临近数量与输入顺序无关。
+  assert.equal(a.title, "进行中 0·临近 2");
+  assert.equal(a.text, "今日 2 条待办 | 0条重要 | 2条待完成 | 0条进行中 | 0条已完成");
+});
+
+test("协调器聚合卡独立权限、后台快照和提升唯一性", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, { summaryPermissionGranted: async () => true }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.summaries.length, 1);
+  assert.equal(sinks.summaries[0].scene, "active");
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.find((card) => card.id === LIVE_TODO_SUMMARY_NOTIFICATION_ID).summarySeenActivity, true);
+  // 仅聚合卡与重要（priority=high）事件携带提升式请求；普通事件非提升。
+  assert.equal(sinks.handoffs.filter((card) => card.promoted).length, 1);
+  await coordinator.stop();
+  assert.equal(sinks.cancels.includes(LIVE_TODO_SUMMARY_NOTIFICATION_ID), true);
+});
+
+test("逐条渠道关闭时聚合卡仍发，且后台只移交聚合快照", async () => {
+  const sinks = {};
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks, {
+      permissionGranted: async () => false,
+      summaryPermissionGranted: async () => true,
+    }),
+    () => ({ ownerKey: "user:one", ready: true, entities: [todo()] }),
+    () => at(9, 30),
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 0);
+  assert.equal(sinks.summaries.length, 1);
+  await coordinator.handoff();
+  assert.deepEqual(sinks.handoffs.map((card) => card.id), [LIVE_TODO_SUMMARY_NOTIFICATION_ID]);
+  await coordinator.stop();
+});
+
 /** 统一 port 桩：sinks 收集 handoff/persistTimeline/timelineCancels/fgs 调用记录。 */
 function portStub(sinks = {}, overrides = {}) {
   sinks.posts ??= [];
@@ -72,10 +171,14 @@ function portStub(sinks = {}, overrides = {}) {
   sinks.timelineCancels ??= [];
   sinks.persists ??= [];
   sinks.fgs ??= [];
+  sinks.summaries ??= [];
   return {
     supported: () => true,
+    progressStyleSupported: () => true,
     permissionGranted: async () => true,
+    summaryPermissionGranted: async () => false,
     post: async (card) => sinks.posts.push({ ...card }),
+    postSummary: async (card) => sinks.summaries.push({ ...card }),
     cancel: async (id) => sinks.cancels.push(id),
     handoff: async (cards) => sinks.handoffs.push(...cards),
     cancelTimeline: async () => sinks.timelineCancels.push(true),
@@ -85,12 +188,60 @@ function portStub(sinks = {}, overrides = {}) {
   };
 }
 
-test("动态通知整型 ID 稳定、区分账号与待办且大于保留段", () => {
+test("动态通知整型 ID 稳定、区分账号与待办且避开诊断保留段", () => {
   const first = liveUpdateNotificationId("user:one", "todo-1");
   assert.equal(first, liveUpdateNotificationId("user:one", "todo-1"));
-  assert.ok(Number.isInteger(first) && first > 16);
+  assert.ok(Number.isInteger(first) && first >= 10_000);
   assert.notEqual(first, liveUpdateNotificationId("user:one", "todo-2"));
   assert.notEqual(first, liveUpdateNotificationId("user:two", "todo-1"));
+});
+
+test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真实卡片额度", async () => {
+  const start = at(9, 30).getTime();
+  const demo = createTodoLiveDemoTimeline(start);
+  assert.equal(demo.endAt - demo.startAt, 60_000);
+  assert.equal(demo.notificationId, LIVE_TEST_NOTIFICATION_ID);
+  assert.equal(demo.channelId, LIVE_TODO_CHANNEL);
+  assert.equal(demo.promoted, true);
+  assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start - 1)), null);
+  assert.equal(desiredTodoLiveDemoUpdate(demo, new Date(start + 60_000)), null);
+
+  const sinks = {};
+  let now = new Date(start + 1_000);
+  let demoTimeline = demo;
+  const entities = [0, 1, 2].map((index) => todo({
+    clientId: `real-${index}`,
+  }));
+  const coordinator = new TodoLiveUpdateCoordinator(
+    portStub(sinks),
+    () => ({ ownerKey: "user:one", ready: true, entities, demoTimeline }),
+    () => now,
+  );
+  await coordinator.start();
+  assert.equal(sinks.posts.length, 4);
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID, demo.endAt), true);
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID, demo.endAt + 1), false);
+  assert.equal(sinks.posts.find((card) => card.notificationId === LIVE_TEST_NOTIFICATION_ID).text,
+    "已进行 0 / 1 分钟");
+
+  await coordinator.handoff();
+  assert.equal(sinks.handoffs.length, 4);
+  assert.deepEqual(sinks.handoffs.find((card) => card.id === LIVE_TEST_NOTIFICATION_ID), {
+    id: LIVE_TEST_NOTIFICATION_ID,
+    channelId: LIVE_TODO_CHANNEL,
+    title: demo.title,
+    textStarted: null,
+    startAt: start,
+    endAt: start + 60_000,
+    promoted: true,
+  });
+
+  now = new Date(start + 60_001);
+  demoTimeline = null;
+  await coordinator.start();
+  assert.equal(coordinator.hasPosted(LIVE_TEST_NOTIFICATION_ID), false);
+  assert.equal(sinks.posts.filter((card) => card.notificationId === LIVE_TEST_NOTIFICATION_ID).length, 1);
+  await coordinator.stop();
 });
 
 test("进行中资格与列表状态口径一致：恰好开始/结束仍在窗口内", () => {
@@ -132,7 +283,11 @@ test("时间线快照携带墙钟重算所需的全部字段", () => {
   assert.equal(card.startAt, at(9, 0).getTime());
   assert.equal(card.endAt, at(10, 0).getTime());
   assert.equal(card.textStarted, null);
-  assert.equal(card.promoted, true);
+  // 普通事件（非 high）降级为非提升动态通知。
+  assert.equal(card.promoted, false);
+  const high = desiredTodoLiveTimeline(todo({ priority: "high" }), at(9, 30));
+  assert.ok(high);
+  assert.equal(high.promoted, true);
   const open = desiredTodoLiveTimeline(todo({ endTime: null }), at(9, 30));
   assert.ok(open);
   assert.equal(open.endAt, null);
@@ -195,6 +350,9 @@ test("有结束时间的进行中卡片计算分钟进度并携带倒计时锚�
   assert.equal(card.max, 60);
   assert.equal(card.text, "已进行 15 / 60 分钟");
   assert.equal(card.ongoing, true);
+  assert.equal(card.promoted, false);
+  const highCard = desiredTodoLiveUpdate(todo({ priority: "high" }), at(9, 15));
+  assert.equal(highCard.promoted, true);
   assert.equal(card.chronoAt, at(10, 0).getTime());
   assert.equal(card.chronoCountdown, true);
   assert.equal(

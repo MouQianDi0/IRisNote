@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
+import expo.modules.irisnotesystem.R
 
 /**
  * 待办动态卡片通知构建与差量应用（JS 前台驱动、闹钟节拍、前台服务共用）。
@@ -38,6 +39,18 @@ object LiveTodoNotifier {
     nowMs: Long,
     smoothSeconds: Boolean,
   ): Notification {
+    if (card.summaryItems != null) {
+      val scene = requireNotNull(LiveTodoSummary.scene(card, nowMs, smoothSeconds))
+      return buildExplicitNotification(
+        context = context, channelId = card.channelId, title = scene.title,
+        text = scene.text, progress = 0, max = 0, indeterminate = true,
+        ongoing = true, promoted = true, chronoAt = scene.chronoAt,
+        chronoCountdown = scene.chronoAt != null,
+        iconResourceName = scene.iconResourceName,
+        // 聚合卡为纯计数文案，不展示进度条。
+        hideProgress = true,
+      )
+    }
     val endAt = card.endAt
     var progress = 0
     var max = 0
@@ -71,7 +84,8 @@ object LiveTodoNotifier {
   /**
    * 显式参数构建（Module.postProgressNotification 与设置页演示链路使用）：
    * progress/max 由调用方给定（演示为秒值、前台 JS 为分钟值）。
-   * Android 16（API 36）ProgressStyle 属基础 SDK 符号，低版本由调用方门禁。
+   * ProgressStyle 仅 API 36+ 构建使用；低版本内部退化为普通进度条，
+   * 提升式请求经反射兼容（方法不存在时静默退化为普通卡片）。
    */
   fun buildExplicitNotification(
     context: Context,
@@ -85,30 +99,49 @@ object LiveTodoNotifier {
     promoted: Boolean,
     chronoAt: Long?,
     chronoCountdown: Boolean,
+    iconResourceName: String? = null,
+    hideProgress: Boolean = false,
   ): Notification {
-    val style = Notification.ProgressStyle()
-    if (indeterminate) {
-      style.setProgressIndeterminate(true)
+    val style = if (hideProgress) {
+      // 纯文本状态卡（聚合卡）：不设置任何进度形态。
+      null
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
+      Notification.ProgressStyle().apply {
+        if (indeterminate) {
+          setProgressIndeterminate(true)
+        } else {
+          val percent =
+            if (max <= 0) 0
+            else ((progress.toLong() * 100) / max).toInt().coerceIn(0, 100)
+          setProgress(percent)
+        }
+      }
     } else {
-      val percent =
-        if (max <= 0) 0
-        else ((progress.toLong() * 100) / max).toInt().coerceIn(0, 100)
-      style.setProgress(percent)
+      // API < 36 无 ProgressStyle：退化为平台普通进度条（不请求提升式），
+      // 卡片保留与后台闹钟重算链路不受影响。
+      null
     }
 
-    val smallIcon =
-      context.applicationInfo.icon.takeIf { it != 0 }
+    val smallIcon = when (iconResourceName) {
+      "ic_live_todo_today" -> R.drawable.ic_live_todo_today
+      "ic_live_todo_near" -> R.drawable.ic_live_todo_near
+      "ic_live_todo_active" -> R.drawable.ic_live_todo_active
+      "ic_live_todo_ended" -> R.drawable.ic_live_todo_ended
+      null -> context.applicationInfo.icon.takeIf { it != 0 }
         ?: android.R.drawable.sym_def_app_icon
+      else -> throw IllegalArgumentException("不支持的动态通知图标")
+    }
     val builder = Notification.Builder(context, channelId)
       .setSmallIcon(smallIcon)
       .setContentTitle(title)
-      .setStyle(style)
       .setCategory(Notification.CATEGORY_PROGRESS)
       .setOnlyAlertOnce(true)
       .setAutoCancel(false)
       // 提升式硬性要求 setOngoing(true)（通知渠道适配 §2.4），promoted 时强制进行中。
       .setOngoing(ongoing || promoted)
       .setContentIntent(appLaunchPendingIntent(context))
+    if (style != null) builder.setStyle(style)
+    else if (!hideProgress) builder.setProgress(progress, max, indeterminate)
     if (!text.isNullOrBlank()) builder.setContentText(text)
 
     // 方案 C：系统级秒跳动计时（倒计时锚定 chronoAt）。
@@ -147,6 +180,8 @@ object LiveTodoNotifier {
         continue
       }
       if (!card.isActiveAt(nowMs)) continue
+      val channel = manager.getNotificationChannel(card.channelId)
+      if (channel == null || channel.importance == NotificationManager.IMPORTANCE_NONE) continue
       desiredIds.add(card.id)
       manager.notify(card.id, buildNotification(context, card, nowMs, smoothSeconds))
     }

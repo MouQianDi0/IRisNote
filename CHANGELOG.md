@@ -1,3 +1,12 @@
+## 2026-09-27 01:52:28 | 修复问题：合并 origin/master（e857a52）并修复 CHANGELOG 上次合并截断
+
+- 变更概述：把 origin/master 合入 kroos_todo（merge-base d0a8eaf，带入 20 个提交：本地摘录库与剪贴板检测、缓存重构第一期、完整包屏障、0.4.2/0.5.0 发布记录等）。唯一冲突文件 CHANGELOG.md；解决时发现上次合并（5143765）把本分支 CHANGELOG 误截断为 29 行，丢失 17 条 kroos 独有条目且「逐条待办卡按重要度提升」条目只剩一行正文，已从其父提交 5143765^1 完整找回。
+- 修改文件：CHANGELOG.md、docs/logs/2026-09-27-merge-master-e857a52.md（新增）。
+- 具体内容：① CHANGELOG.md 重建为两侧并集共 283 条 = master 266 条全量（内部顺序未改）+ 本分支独有 17 条按时间序插回；② master 带入的功能以 master 侧各自条目为准，本条不重复罗列；③ 带入的新依赖 expo-secure-store、expo-crypto 已本机安装。
+- 验证：合并前 npm run typecheck 0 错误；合并后 npm run check 全部通过——类型检查、Lint、theme:check、测试 593 通过 / 0 失败 / 0 跳过（此前记录的发布归档 ENAMETOOLONG 既有失败本次未出现）。未做真机验证，未推送远程。
+
+---
+
 ## 2026-09-26 22:29:31 | 新增文档：记录笔记正文按需加载需求的后端实现结论
 
 - 变更概述：需求 1–4 已在后端 irisapi `Timmi` 分支实现（未部署、未提交），同一任务还实现了笔记新建幂等（按用户要求不写入本需求文档，详见 irisapi `docs/notes-api.md` 与其 CHANGELOG）。本次把后端定下的细节写回需求文档，App 代码未改动。
@@ -16,12 +25,122 @@
 
 ---
 
+## 2026-09-26 20:30:00 | 新增功能：IRisNote 0.6.0 正式发布
+
+- 变更概述：已获用户确认（含 publish 授权）。完成 0.6.0 功能版本全流程发布：更新说明 → 依赖补装 → 检查 → 预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。用户原要求发完整包，经确认本次是首个支持策略 3 的客户端版本，改为正常发布、下一个版本再设屏障。
+- 发布信息：构建号 21，绑定提交 3d02b23；APK SHA-256 b113cefb934398729dd2f1010a352b30f9e9d359d3d3444f12fe61d5531f865d，大小 127608614 字节，签名证书与 0.3.0~0.5.0 相同（7319b25...）；CDN 地址 https://download.tech-mou.top/IRisNote-0.6.0-21.apk；full_package_required=false（未设屏障）。
+- 流程记录：① 对比 0.5.0（构建 20，提交 067463b）到 HEAD（e857a52）差异，判定为功能更新（摘录本与剪贴板自动检测、修改邮箱、存储优化、SecureStore），版本号 0.6.0；用户确认 irisapi 迁移 014 与 B3c 接口均已部署；② 本机 node_modules 缺 expo-secure-store/expo-crypto（远程合入的新依赖），npm install 补装后 `npm run check` 全绿（typecheck/lint/theme:check，测试 585/585）；③ 更新说明经用户确认，提交 3d02b23 后 reserve（首次 fetch failed 瞬时网络错误，重试成功）分配构建 21；④ build 复用 reuse-53ef3389ab44 工作区（依赖缓存指纹变化重新 npm ci），Gradle 11m23s 构建成功；⑤ 服务器与 COS 上传通过 SHA-256 校验，差量包阶段与 CDN 回读各遇一次 fetch failed/回读超时，按工具指引重试 upload 补齐（APK 已存在校验一致，未重复上传）；⑥ 差量包 20→21（15.8%）、19→21（15.9%）、17→21（15.9%）均本机合并还原校验通过后上传；⑦ inspect/status 核对包名、版本、签名、摘要一致；⑧ publish 成功，服务端状态 published。
+- 发布内容：0.6.0 说明所列——摘录本、剪贴板自动检测、修改邮箱（新增功能）；分类离线兜底、历史版本上限与自动清理、存储页摘录统计与诊断日志清理、登录凭据 SecureStore（体验优化）；登录失效时编辑页误弹「放弃修改？」（问题修复）。
+- 修改文件：releases/notes-0.6.0.txt（新增）、CHANGELOG.md（本记录）。
+- 验证边界：本机 `npm run check` 全量通过（585/585）；真机安装验收未执行（发布期间无连接设备），建议更新推送后在真机核对摘录功能、剪贴板检测、修改邮箱、令牌迁移免登录升级；本地领先远程 1 个提交（3d02b23 及本记录），待用户授权后推送。遗留事项：EAS 构建路径 eas-cli 版本不一致仍未修复；完整包屏障留待下个版本评估使用。
+
+---
+
+## 2026-09-26 06:55:00 | 优化代码：待办聚合动态通知设计稿转已实施存档
+
+- 变更概述：docs/架构指南/待办聚合动态通知设计.md 原为「尚未实施」设计稿，口径已过时（倒计时文案、加星重要口径、逐条卡提升规则）；按文档自身约定转为已实施存档，回写最终展示口径、promoted 策略演进（仅聚合卡→全量提升→按 priority=high 提升）与遗留真机确认项，代码现状仍以负责说明为准。
+- 修改文件：`docs/架构指南/待办聚合动态通知设计.md`、`CHANGELOG.md`。
+- 具体内容：纯文档改动，无代码行为变化。
+- 验证：未执行（纯文档改动，按仓库约定豁免 npm run check 与 docs/logs 全链路日志）。
+
+---
+
+## 2026-09-26 06:40:00 | 优化代码：逐条待办卡按重要度提升，普通事件降级非提升
+
+- 变更概述：逐条待办卡的提升式（上岛）从「全部提升」改为按创建时重要度（`priority=high`）提升，普通事件降级为非提升动态通知；聚合卡「N条重要」计数同步从加星口径改为 priority 口径；聚合卡自身提升不变；60 秒模拟卡保持提升演示。
+- 修改文件：`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/services/todo-aggregate-live.service.ts`、`modules/irisnote-system/index.ts`、`modules/irisnote-system/android/.../live/LiveTodoTimeline.kt`、`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 9 节）、`CHANGELOG.md`。
+- 具体内容：desiredTodoLiveUpdate 两分支与 desiredTodoLiveTimeline 的 promoted 改为 `todo.priority === "high"`；TodoSummaryItem/NativeTodoSummaryItem/LiveTodoSummaryItem 的 starred 字段统一替换为 priority（JSON 解析缺省回落 "normal"）；聚合副标题重要数 = 未完成且 priority=high；协调器/Provider/原生构建无改动（promoted 已透传，cardEquals 自动对翻转触发原位更新）。
+- 验证：npm run check 全部通过（506 项测试 0 失败）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；真机未验收。
+
+---
+
+## 2026-09-26 06:05:00 | 优化代码：聚合卡副标题改为分段统计
+
+- 变更概述：聚合卡副标题由「今日 N 条待办」改为分段统计「今日 N 条待办 | N条重要 | N条待完成 | N条进行中 | N条已完成」，JS 与 Kotlin 镜像同步；标题不变。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`、`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 8 节）、`CHANGELOG.md`。
+- 具体内容：重要 = 未完成且 is_starred；待完成 = 未完成数；进行中 = 已开始且未过结束的有时间待办；已完成 = 今日已完成数。分段以 " | " 连接。
+- 验证：npm run check 全部通过（506 项测试 0 失败）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；真机展示未验收。
+
+---
+
+## 2026-09-26 05:40:00 | 优化代码：聚合动态卡移除进度条
+
+- 变更概述：聚合卡为纯计数文案，取消其不定进度条展示——原生构建新增 hideProgress 开关，JS postStateCard 与原生 LiveTodoNotifier 聚合分支均置 true，进度形态（ProgressStyle/setProgress）完全跳过；逐条待办卡进度条不受影响。
+- 修改文件：`modules/irisnote-system/android/.../live/LiveTodoNotifier.kt`、`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`modules/irisnote-system/index.ts`、`src/core/system-notifications/system-notification.service.ts`、`tests/todos/system-notifications.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（第 7 节）、`CHANGELOG.md`。
+- 具体内容：buildExplicitNotification 新增 hideProgress 参数（默认 false，逐条卡行为不变）；聚合卡后台重建与前台 postProgressNotification 两条路径均透传；无新增权限。
+- 验证：:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；npm run check 全部通过（506 项测试 0 失败）；真机展示未验收。
+
+---
+
+## 2026-09-26 05:12:00 | 修复问题：聚合卡后台镜像文案未同步计数口径
+
+- 变更概述：上一轮聚合卡计数化只改了 JS 前台，退后台由 Kotlin LiveTodoSummary 重算的文案仍是旧口径（「待办 N·进行中 M」+ chronometer 剩余 mm:ss），前后台展示不一致；本轮将原生镜像改为同一计数口径。
+- 修改文件：`modules/irisnote-system/android/.../live/LiveTodoSummary.kt`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（补充第 6 节）、`CHANGELOG.md`。
+- 具体内容：scene() 标题「进行中 N[·临近 N]」、副标题「今日 N 条待办」，不再输出 chronoAt/秒级资格；nextEventAt() 移除分钟级兜底节拍（临近/开始/结束/保留终点节拍保留）；移除 Locale import；smoothSeconds 参数保留兼容调用方。
+- 验证：:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL；npm run check 全部通过（506 项测试 0 失败）；后台真机文案未验收。
+
+---
+
+## 2026-09-26 04:45:21 | 优化代码：待办动态卡形态调整——聚合卡计数化、逐条卡独立升级动态大卡
+
+- 变更概述：聚合动态卡弃用系统 chronometer 倒计时，改为静态计数（标题「进行中 N[·临近 N]」、副标题「今日 N 条待办」）；有时间的逐条待办卡（含模拟卡）由非提升改为独立请求 promoted，升级为动态大卡。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`、`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/core/system-notifications/system-notification-native-provider.tsx`、`tests/todos/todo-live-update.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`docs/logs/2026-09-26-aggregate-count-and-promoted-todo-cards.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 聚合卡 active/near/today 三场景统一标题「进行中 N」，有临近（开始前 1 小时内）待办时追加「·临近 N」，副标题统一「今日 N 条待办」（含已完成），ended 场景不变；`chronoAt` 恒为 null，不再走系统秒级 chronometer，前台服务秒级刷新随 `secondsEligible=false` 自动停止。② `TodoLiveUpdateCard` 新增 `promoted` 字段；前台卡两分支、退后台时间线快照、60 秒模拟卡均 `promoted=true`；协调器 `cardEquals` 纳入 promoted 比较；Provider post 透传 `card.promoted`。低版本/36.0 设备由原生反射静默退化为普通进度卡，无新增权限与原生代码改动。
+- 验证：`npm run check` 全部通过（TypeScript、Lint、theme:check、node --test 506 项 0 失败）；未做真机验收（Android 16.1 提升式大卡与胶囊渲染需真机观察）。
+
+---
+
+## 2026-09-26 04:23:39 | 修复问题：退后台动态卡全撤，handoff/persist 入参改 JSON 字符串
+
+- 变更概述：真机定位到退后台即撤卡的根因——`scheduleLiveTodoCards`/`updateLiveTodoCards` 的 Kotlin 泛型集合签名（`List<Map<String, Any?>>` 及其单 Map 包装）无法接收 Expo Modules 传来的 JS 嵌套对象数组，参数转换在进入函数体前必抛 "Cannot convert ... to a Kotlin type"，移交失败触发协调器失败分支清场撤卡；两入口改为 JSON 字符串入参、原生 `org.json` 解析后真机验证退后台 3 分钟卡片零撤回。
+- 修改文件：`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`live/LiveTodoTimeline.kt`、`modules/irisnote-system/index.ts`、`src/core/system-notifications/system-notification.service.ts`、`src/core/diagnostics/{diagnostic-log.ts,index.ts}`、`tests/todos/system-notifications.test.cjs`、`docs/架构指南/系统通知模块负责说明.md`、`AGENTS.md`、`docs/logs/2026-09-26-handoff-json-param-fix.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 两入口签名改 `payload: String`，解析抽为 `LiveTodoTimelineCard.fromJson` 与 `LiveTodoTimelineStore.load()` 共用，字段常量提升为文件级，消除双份解析；② JS `handoffLiveTodoTimelines`/`persistLiveTodoTimelines` 改传 `JSON.stringify(timelines)`；③ `handoff_failed`/`timeline_persist_failed` 诊断增加脱敏截断的 `message` 字段（`sanitizeText` 导出），本轮靠它定位根因；④ 测试断言改为解析 JSON payload；⑤ AGENTS §8 与负责说明补充该 Expo Modules 转换限制，防止后续新增接口重蹈。
+- 验证：`npm run typecheck` 通过；受影响测试 49/49 通过；`assembleStaging` 构建成功；真机（Android 16）修复前退后台 8 秒内全撤、修复后退后台 3 分钟 6 次采样卡片零撤回且原生闹钟链接管。`npm run check` 全量、26–35 兼容档真机、退后台跨场景长时观察**未做**。
+
+---
+
+## 2026-09-26 03:20:19 | 优化代码：动态通知能力分档，API 26–35 退后台保卡
+
+- 变更概述：把动态通知能力从绑死 Android 16（API 36）拆为两档——新增 `liveUpdateCompatSupported()`（Android 8.0+）兼容档，低版本设备现在前台可发普通进度条卡片、退后台由原生闹钟链保留并续算（修复"退后台即撤卡"）；ProgressStyle/提升式与前台服务秒级刷新仍仅 36+ 档，方案 B 开关语义不变。
+- 修改文件：`modules/irisnote-system/android/.../IrisNoteSystemModule.kt`、`live/LiveTodoNotifier.kt`、`src/core/system-notifications/{system-notification.service.ts,system-notification-native-provider.tsx,system-notification-context.ts,system-notification-provider.tsx}`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/features/settings/screens/PermissionSettingsScreen.tsx`、`tests/todos/{system-notifications.test.cjs,todo-live-update.test.cjs}`、`docs/架构指南/系统通知模块负责说明.md`、`docs/UI/通知渠道适配.md`（升 1.5）、`docs/logs/2026-09-26-live-update-compat-tier.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 原生 `postProgressNotification/scheduleLiveTodoCards/updateLiveTodoCards/cancelScheduledLiveTodoCards` 门禁从 36 降为 26，FGS 两入口保持 36；② `LiveTodoNotifier` 按 SDK 分支：36+ 用 ProgressStyle，26–35 用平台普通进度条（`ProgressStyle` 为 API 36 类，不放开会在低版本崩溃）；③ JS service 八个函数门禁切 compat 档、FGS 两函数保持 36 档；④ 端口新增 `progressStyleSupported()`，协调器前台服务判定改用之；context 新增 `liveUpdateProgressCapable`，设置页"后台实时刷新"行按 36 档判定、动态通知入口按 compat 档放开；⑤ 测试桩支持自定义版本并新增兼容档/低于下限断言。全链路日志见 `docs/logs/2026-09-26-live-update-compat-tier.md`。
+- 验证：`npm run typecheck` 通过；`node --test tests/todos/system-notifications.test.cjs tests/todos/todo-live-update.test.cjs` 49/49 通过；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL；`git diff --check` 与冲突标记扫描通过。`npm run check` 全量与 26–35 真机退后台保卡验收**未做**。
+
+---
+
+## 2026-09-26 02:42:46 | 新增功能：建立 docs/logs 全链路变更日志规则与 change-trace-log 技能
+
+- 变更概述：在 AGENTS.md 第 19 节新增「全链路变更日志（docs/logs）」小节，要求实际代码改动后除 CHANGELOG 外必须在 `docs/logs/` 留存按层改动清单、与原代码实测对比、改动原因、完整调用链路与验证情况；配套新增项目技能 `.claude/skills/change-trace-log/SKILL.md` 定义触发条件、文件命名、编写流程与质量红线；以本次合并带入的聚合动态通知分析为首篇日志范例。
+- 修改文件：`AGENTS.md`、`.claude/skills/change-trace-log/SKILL.md`（新增）、`docs/logs/2026-09-26-todo-aggregate-live-update.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 规则明确基点与对比必须来自 `git diff` 实测，禁止凭最终代码臆测旧行为，行为反转的默认值需单独标注；② 纯文档、CHANGELOG 记录本身、无行为变化的格式化提交豁免，有疑义时写日志；③ 日志与代码同一次提交入库，旧日志不回改，新日志引用并说明差异；④ 首篇日志记录聚合动态通知合并（基点 `cac0b44` → 合并提交 `f2e84e8`），作为格式范例。
+- 验证：仅文档与规则文件变更，未运行应用测试；AGENTS.md 与 CHANGELOG 格式经人工核对与既有条目一致。
+
+---
+
 ## 2026-09-26 00:56:11 | 新增文档：更新说明编写规范补充“完整包”预留规则
 
 - 变更概述：用户确认方案，并选择完整包版本在正文“升级提醒”中提示用户。开发者明确要求发布完整包时，预留命令加 `--full-package`；其余情况按默认规则，不加该参数。
 - 修改文件：docs/构建发布/更新说明编写规范.md、CHANGELOG.md。
 - 具体内容：① 第 6 节新增“预留时是否加 `--full-package`”：默认分发规则、仅开发者明确要求时才加（Agent 可建议但不自行添加）、预留后不可修改且对之后所有版本生效、使用前提指向 android-releases.md“完整包屏障（updatePolicy=3）”；预留时读取说明全文，故写说明时即确定是否完整包，使用时在“升级提醒”中通俗提示需要下载完整安装包，不写技术概念；交付说明写明是否使用及依据。② 第 8 节交付前检查新增对应一项。③ 第 9 节调用示例补充同一规则。
 - 验证：仅文档修改，未运行代码检查；Prettier 对该文档的 3 处提示位于第 9 节原有引用块，修改前已存在，本次新增内容无格式问题。未提交 Git。
+
+---
+
+## 2026-09-26 00:43:15 | 优化代码：通知文档补录待办聚合动态通知待实现接口与设计
+
+- 变更概述：通读通知系统全部文档后，把上一轮确认的聚合卡方案以"待实现（规划）"形式补进两份通知文档，并修正一处现状漂移；仅文档变更。
+- 修改文件：`docs/架构指南/系统通知模块负责说明.md`、`docs/UI/通知渠道适配.md`、`CHANGELOG.md`。
+- 具体内容：① 负责说明新增"九、待实现（规划）：待办聚合动态通知"，明确聚合卡优先（唯一 promoted）、逐条卡降级非提升，列出四场景状态机与各层待实现接口（渠道常量/ID 7002、`todo-aggregate-live.service.ts` 纯函数、core 通用状态卡 port、Kotlin 聚合快照与图标 drawable、协调器并入、测试扩展）；② 渠道适配升版 1.4：新增 §6.3 待实现规划节（渠道 `irisnote.live-todo-summary.v1` 拟行入 §7.1 映射表、§9 立项清单加条目），§7.4 精确闹钟风险行的"首版不声明"过期表述修正为已声明并实现授权重排的现状（与负责说明 §5 对齐）；③ 全文保持"现状"与"规划"分区，未把未实现内容混入现状描述。
+- 验证：仅文档变更，未运行 `npm run check` 与原生/真机验证（不适用）；文档新增内容与 `待办聚合动态通知设计.md`、`todo-live-update.service.ts`、`live/LiveTodoNotifier.kt` 现状交叉核对一致。
+
+---
+
+## 2026-09-26 00:39:53 | 新增功能：输出待办聚合动态通知（Android 16）设计文档
+
+- 变更概述：确立"聚合卡优先、逐条卡保留非提升展示"方案，新增设计文档沉淀四场景规范、通知身份、更新节拍与实施顺序；本轮仅文档，未改代码。
+- 修改文件：`docs/架构指南/待办聚合动态通知设计.md`（新增）、`CHANGELOG.md`。
+- 具体内容：① 确认聚合动态卡为唯一 promoted 提升卡，现有逐条 ProgressStyle 卡与模拟演示卡降为非提升展示；② 定义今日待办/临近（≤1 小时）/进行中/结束四场景的判定优先级、标题与内容文案、"重要 = is_starred"口径、结束保留 10 分钟、N=0 不发卡；③ 新增聚合卡独立渠道（建议 `irisnote.live-todo-summary.v1`）与 0–9999 预留段通知 ID；④ 明确前台 30 秒/秒级与退后台原生闹钟节拍、mm:ss 退化策略、单色原生 drawable 图标要求；⑤ 规划 core/system-notifications 通用状态卡协议与 feature 层纯函数分层、诊断隐私约束、降级矩阵、六步实施顺序与真机验收清单。
+- 验证：仅文档变更，未运行 `npm run typecheck` / `npm run check` 与真机验证（不适用）；文档现状描述与 `docs/架构指南/系统通知模块负责说明.md` 及 `todo-live-update.service.ts` 当前实现核对一致。
 
 ---
 
@@ -60,6 +179,51 @@
 
 ---
 
+## 2026-09-25 22:52:01 | 优化代码：解决 codex-a 合并中 AGENTS.md 规则文档冲突
+
+- 变更概述：合并 `kroos_vps/codex-a`（60 秒模拟待办改造）时 `AGENTS.md` 出现 6 处冲突，经用户确认按「codex-a 结构 + 保留流程段」方案解决；代码与文档改动由合并自动带入，本次仅裁决冲突文件。
+- 修改文件：`AGENTS.md`。
+- 具体内容：① 主体采用 codex-a 的 18 节精简结构，删除 HEAD 侧已被其完整吸收的旧长文「一~二十」（含过期的 `features/todos/sync` 路径表述）；② 新增「19. 变更管控流程与记录」，保留 HEAD 独有的计划→确认→执行→记录工作流、CHANGELOG 维护义务（交叉引用由「三、」修正为「16.」）、typecheck/check 前后置检查、冲突标记残留核查、发布 SHA 核对与更新说明编写规范；③ ZCode 模型调度与 Codex 模型推荐规则分别收入 19 节两个子节，维持互不覆盖约束。
+- 验证：全文件扫描确认无遗留冲突标记；`node --test tests/todos/system-notifications.test.cjs tests/todos/todo-live-update.test.cjs` 43/43 通过（覆盖合并带入的通知代码）；`npm run check` 全量与 Android 真机未执行。
+
+---
+
+## 2026-09-25 18:23:56 | 新增功能：接入 Android 16 待办聚合动态通知
+
+- 变更概述：按待办聚合动态通知设计稿接入四场景聚合卡；聚合卡使用独立渠道与固定 ID 7002 并唯一请求提升式展示，逐条卡和 60 秒模拟卡保留非提升 ProgressStyle。
+- 修改文件：`src/features/todos/services/todo-aggregate-live.service.ts`（新增）、`src/features/todos/services/todo-live-update.service.ts`、`src/features/todos/state/todo-live-update-coordinator.ts`、`src/core/system-notifications/{system-notification.types.ts,system-notification.service.ts,system-notification-native-provider.tsx}`、`modules/irisnote-system/index.ts`、`modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/{IrisNoteSystemModule.kt,live/LiveTodoTimeline.kt,live/LiveTodoNotifier.kt,live/LiveTodoScheduler.kt,live/LiveTodoSummary.kt（新增）}`、`modules/irisnote-system/android/src/main/res/drawable/ic_live_todo_*.xml`（新增四种）、`tests/todos/{todo-live-update.test.cjs,system-notifications.test.cjs}`、`docs/待办/待办聚合动态通知设计（Android 16）.md`、`docs/架构指南/系统通知模块负责说明.md`、`docs/UI/通知渠道适配.md`、`CHANGELOG.md`。
+- 具体内容：聚合统计独立于逐条提醒资格，按进行中、临近、今日待办、结束优先级推导；结束态需曾展示活动卡，保留 10 分钟；摘要复用脱敏截断。协调器复用现有刷新节拍并分别检查两个渠道；退后台把聚合快照交给原生 SharedPreferences 和单一 AlarmManager 链，按场景边界续算，最后一小时前台服务可秒级更新、后台降为分钟文案；冷启动清理两个渠道。诊断只记场景、数量和 ID。
+- 验证：受影响待办测试和通知测试通过；`npm run typecheck`、`EXPO_NO_TELEMETRY=1 npm run lint`、四个 drawable XML 解析、`git diff --check` 通过。`EXPO_NO_TELEMETRY=1 npm run check` 共 516 项测试，513 通过、2 跳过、1 失败；失败为发布归档测试创建超长中文文件名时的既有 `ENAMETOOLONG`。已生成被 Git 忽略的本地 `android/` 工程；`:irisnote-system:compileReleaseKotlin` 因环境无 Java/JDK（`JAVA_HOME` 未设置）未能运行，Android 真机展示与 36.0/36.1 差异未验收。
+
+---
+
+## 2026-09-25 18:00:18 | 新增功能：归档待办聚合动态通知设计稿
+
+- 变更概述：将 Android 16 待办聚合动态通知的已确认决策与实施验收口径归档至待办文档目录，标明尚未实施。
+- 修改文件：`docs/待办/待办聚合动态通知设计（Android 16）.md`（新增）、`CHANGELOG.md`。
+- 具体内容：记录聚合卡与逐条卡的提升策略、四场景状态机、独立渠道与通知 ID、前后台更新节拍、原生图标、架构分层、诊断隐私、降级矩阵及实施顺序；现状说明暂不改写。
+- 验证：已核对文档章节与原始设计内容，`git diff --check` 通过；仅文档变更，未运行应用测试或真机验收。
+
+---
+
+## 2026-09-24 07:27:36 | 优化代码：将 Android 16 动态通知测试改为 60 秒模拟待办
+
+- 变更概述：帮助页动态通知测试改为临时模拟待办，复用真实待办的 ProgressStyle 发卡、前后台协调器、原生时间线和到点撤卡；不写入待办数据库或同步队列。
+- 修改文件：`src/core/system-notifications/{system-notification-context.ts,system-notification-provider.tsx,system-notification-native-provider.tsx,system-notification.service.ts,system-notification.types.ts}`、`src/features/todos/{services/todo-live-update.service.ts,state/todo-live-update-coordinator.ts}`、`src/features/settings/screens/HelpFeedbackScreen.tsx`、`tests/todos/{todo-live-update.test.cjs,system-notifications.test.cjs}`、`docs/{UI/通知渠道适配.md,架构指南/系统通知模块负责说明.md}`、`CHANGELOG.md`。
+- 具体内容：模拟卡使用 ID 7001 和真实待办的静默渠道，60 秒时间线由协调器在前台差量更新、退后台交给原生闹钟；可选前台服务沿用原有秒级更新。真实卡继续最多三张且 ID 避开 0–9999 保留段；测试确认原生端口接受发卡后才启动计时，结束或离开页面清理。检查应用与渠道两级通知权限，移除旧 120 秒 JS 倒计时及不再使用的测试渠道创建。
+- 验证：`EXPO_NO_TELEMETRY=1 npm run check` 的类型检查、Lint、主题检查通过；500 项测试中 497 通过、2 跳过、1 失败。唯一失败为既有发布归档测试在本机创建过长中文文件名导致 `ENAMETOOLONG`，通知相关测试通过；`git diff --check` 通过。未执行 Android 真机展示及原生构建（未修改 Kotlin/Manifest）。
+
+---
+
+## 2026-09-24 06:10:57 | 优化代码：建立 Codex 全局与 IRisNote 项目双层协作规则
+
+- 变更概述：按用户明确要求写入当前环境有效的 Codex 全局配置，并将仓库根目录协作文件改为项目专属规则；依据当前仓库核对目录、依赖、数据门控、原生模块、验证入口和日志格式，保留原有未提交工作。
+- 修改文件：`/root/.codex-account-a/AGENTS.md`、`AGENTS.md`、`CHANGELOG.md`。
+- 具体内容：① 全局规则覆盖授权、提问、修改范围、事实与假设、验证、Git 工作区、日志及技能缺失时的处理；② 项目规则记录 Expo/React Native 技术栈、本地优先数据流、云存储授权、通知权限单一来源、两个本地原生模块和实际 Todo 同步目录；③ 沿用仓库现有 CHANGELOG 条目结构，未改动业务代码。
+- 验证：已对照 `package.json`、`app.json`、相关源码和目录做静态核查；`git diff --check` 未发现格式问题；应用类型检查、测试、构建和真机验证未执行（本次仅修改协作指令与日志）。
+
+---
+
 ## 2026-09-24 03:35:07 | 新增功能：IRisNote 0.4.2 正式发布（优化版本）
 
 - 变更概述：已获用户确认（含 publish 授权）。完成 0.4.2 优化版本全流程发布：更新说明 → 检查修复 → 预留 → 构建 → 双端上传 → 差量包 → 核对 → 发布。
@@ -68,6 +232,8 @@
 - 发布内容：0.4.2 说明所列——"我的"页面概览按内容变更更新且卡片尺寸稳定（体验优化）、首页与"关于"页应用图标显示异常修复（问题修复）。
 - 修改文件：releases/notes-0.4.2.txt（新增）、tests/todos/todo-local.test.cjs（断言修复）、CHANGELOG.md（本记录），以上随提交 f3c0565 进入构建源码。
 - 验证边界：本机与构建环境 `npm run check` 均全量通过（450/450）；真机安装验收未执行（发布期间无连接设备），建议更新推送后在真机核对差量升级、图标显示与"我的"页概览；未推送 Git 远程。遗留事项：package.json 的 eas 脚本（eas-cli@24.4.0）与 eas.json CLI 约束（24.7.0）不一致，EAS 构建路径仍不可用，待后续单独修复。
+
+---
 
 ## 2026-09-25 22:57:08 | 新增功能：数据与存储页显示摘录、拆分头像与诊断、可清理诊断日志（缓存重构第一期 T7、T9）
 
@@ -248,6 +414,15 @@
 
 ---
 
+## 2026-09-24 02:51:48 | 优化代码：合并 kroos_todo 并更新协作约定
+
+- 变更概述：将远端 kroos_todo 的 5d9053c 合入当前分支，整合动态通知及后台实时刷新功能与现有设置页组件；按用户提供内容更新项目协作约定。
+- 修改文件：AGENTS.md、.vscode/settings.json、docs/UI/通知渠道适配.md、docs/待办/待办创建弹窗与列表设计.md、docs/构建发布/本地测试包构建.md、docs/架构指南/系统通知模块负责说明.md、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoAlarmReceiver.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoForegroundService.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoScheduler.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt、modules/irisnote-system/index.ts、src/core/system-notifications/system-notification-context.ts、src/core/system-notifications/system-notification-native-provider.tsx、src/core/system-notifications/system-notification-provider.tsx、src/core/system-notifications/system-notification.service.ts、src/core/system-notifications/system-notification.types.ts、src/features/settings/data/system-preferences.repository.ts、src/features/settings/screens/HelpFeedbackScreen.tsx、src/features/settings/screens/PermissionSettingsScreen.tsx、src/features/todos/services/todo-live-update.service.ts、src/features/todos/state/todo-live-update-coordinator.ts、tests/todos/todo-live-update.test.cjs、CHANGELOG.md。
+- 具体内容：保留帮助页的动态通知演示入口与权限页的后台实时刷新开关，统一使用当前分支的 ListRow；保留双方 CHANGELOG 历史记录并按时间整理；根目录 AGENTS.md 改为本次提供的协作约定。
+- 验证：合并前及冲突整合后 `npm run typecheck` 均通过；`EXPO_NO_TELEMETRY=1 npm run check` 的类型检查、Lint、主题检查通过，483 项测试中 479 通过、2 跳过、2 失败。失败为既有的发布归档测试超长中文文件名 `ENAMETOOLONG`，以及合并前即存在的待办迁移测试期望版本 12 而实际版本 13；新增动态通知测试通过。无本次新增类型错误，Android 原生构建与真机验收未执行（当前工作区无生成的 android 目录）。合并停在未提交状态。
+
+---
+
 ## 2026-09-24 02:35:23 | 新增功能：个人资料地区选择与数据来源署名（B2 客户端）
 
 - 变更概述：用户确认地区字典采用 dr5hn（ODbL v1.0）、港澳台归入中国省级、中国与其他国家均选到省/州、关于页署名，并确认 P04 文字预览。新增设置地区页，个人资料“地区”行开放；关于页新增“数据来源”。依赖后端迁移 011 与 `region` 字段。
@@ -291,6 +466,8 @@
 - 修改文件：docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
 - 具体内容：① 新增 7.0 后端核实结论（users 表实际结构、会话、验证码、邮件、头像、密码、部署与测试环境限制）；② 新增 7.3 已冻结接口约定（迁移 010/011、资料读写、长度规则、头像校验与清理、本地缓存、邮箱与密码流程）；③ 阶段表 B0 已验收、B1 进行中并扩充范围（4.5–6 人日）；④ 第 12 节新增 D12–D20，并修订 D04、D08。
 - 验证：仅文档改动，未运行代码检查；后端未做任何修改。
+
+---
 
 ## 2026-09-24 02:54:16 | 修复问题：同步合并 master 后的过期迁移版本断言（12→13）与组件名残留
 
@@ -519,6 +696,8 @@
 - 界面：沿用 64dp 返回栏、16dp 页面/卡片内边距、12dp 卡片间距和 48dp 操作按钮，补充加载、空态、错误重试及底部安全区。
 - 验证：对应基于 288e266 的未提交工作区。修改前后 npm run typecheck 通过，完整 npm run check 的类型检查和 ESLint 通过，但 theme:check 因既有 global.css 色值大小写与主题生成结果不一致而失败；从 288e266 原文件复核可复现，本次未修改主题文件。单独执行 npm test：443 项中 441 通过、2 失败，分别为既有待办页 className 字符串断言不匹配（基线提交同样不匹配）和 react-native-tab-view 运行依赖 DEAD_ZONE=12、测试要求100；均不涉及本次修改文件。最终类型检查、定向 ESLint、git diff --check 及本次源码冲突标记检查通过。检查日志：系统临时目录 irisnote-profile-pages-check.log、irisnote-profile-pages-tests.log。ADB 无设备，现有预览端口8081的浏览器导航和状态读取均超时，未完成视觉或真机验收；未重启现有服务，未构建、提交或发布。
 
+---
+
 ## 2026-09-22 22:17:17 | 优化代码：按项目现状重写测试包构建指南新电脑从零构建章节
 
 - 变更概述：已获用户确认（从系统环境变量之后写起，环境配置部分不展开；按项目改动后现状重新参考）。项目统一云存储改造（47bedd6）后旧开关 `EXPO_PUBLIC_TODO_CLOUD_SYNC` 已从代码移除，且此前写入文档的"新电脑从零搭建"章节已随 330780b 移除。本次按当前代码现状重写该章节：不含软件清单与环境变量小节（引言一句带过前提），从克隆代码到产出 APK 组织为步骤 1–7 流水线。
@@ -607,6 +786,8 @@
 - 修改文件：src/app/_layout.tsx、CHANGELOG.md。
 - 具体内容：① 引入 expo-router 的 usePathname 读取当前路由；② 新增 WHITE_SURFACE_ROUTES 白名单常量（`["/auth/", "/pages/note/"]`），集中维护白色页面清单，未命中的新页面自动回落灰色；③ SafeAreaView 的 backgroundColor 由固定 colors.appBackground 改为动态 safeAreaBackground；④ 不改动任何布局、间距与状态栏图标颜色。
 - 验证：修改前 npm run typecheck 通过（基线 0 错误）；中途发现 legacy colors 无 white 键（TS2339），改用等值的 colors.surface 后复检通过；npm run check 的 typecheck、lint 与 343/343 项测试全部通过。已知轻微瑕疵：fade_from_bottom 切页动画期间安全区颜色存在一帧跳变。未执行真机目视验收。
+
+---
 
 ## 2026-09-22 03:35:33 | 优化代码：审查修正——权限单一来源、类型语义、写库短路与导入别名
 
@@ -1053,6 +1234,8 @@
 - 范围与治理：五色状态色定为业务 Token（palette + nativewindColorRefs，theme:sync 生成）；v1 明确内存 store + 种子数据先行验收，持久化/云同步、循环待办、关联笔记、日历写入、通知调度均不在首版；§12 实现顺序、§13 验收清单、§14 决策（新增「已决 v1.1」小节）同步更新；新增 §15 文档变更记录。
 - 验证：纯文档变更，typecheck/eslint 不适用；未修改任何源码与主题文件。
 
+---
+
 ## 2026-09-19 18:19:17 | 新增功能：Archify 交互式系统架构文档
 
 - 文件：docs/架构指南/系统架构图/irisnote.architecture.json、irisnote-architecture.html、README.md、delivery-receipt.json、irisnote-architecture.visual-check.json、irisnote-architecture.visual-check.html、irisnote-architecture.visual-check.1440x900.light.png、irisnote-architecture.visual-check.1440x900.dark.png、irisnote-architecture.visual-check.2048x1320.light.png、irisnote-architecture.visual-check.2048x1320.dark.png（均位于该目录），以及 CHANGELOG.md。
@@ -1257,6 +1440,8 @@
 
 > > > > > > > > > Temporary merge branch 2
 
+---
+
 ## 2026-09-17 14:55:23 | 修复问题：固定输入框右侧操作容器的原生层级
 
 - 文件：src/shared/ui/Input/Input.tsx、CHANGELOG.md。
@@ -1445,6 +1630,8 @@
 
 # CHANGELOG
 
+---
+
 ## 2026-09-16 15:51:22 | 优化代码：待办页右侧竖向日期轨道与快速跳转
 
 - **变更概述**：待办页将原内容区横向周历移入右侧 75dp 预留栏，改为按周展示的七日竖向日期轨道；日期轨道距栏顶部 30dp，单元格采用与笔记分类图标同级的 50dp 方形基准。今天固定显示主题色，点击其他日期显示淡色选中态；上下翻动切换周，左箭头以公共锚点气泡弹窗打开月历快速跳转。
@@ -1513,6 +1700,8 @@
     - `src/features/excerpts/screens/ExcerptsScreen.tsx` - 将页面改为内容区与右侧工具栏栏位的横向布局。
     - `CHANGELOG.md` - 记录本次剪贴板工具栏预留。
 - **验证结果**：定向 ESLint 通过，`git diff --check` 通过；未启动浏览器、模拟器或真机。
+
+---
 
 ## 2026-09-16 07:52:27 | 优化代码：剪贴板页镜像笔记容器
 
@@ -2537,6 +2726,8 @@
     - `docs/样式开发规范.md` - 增加可替换主题及调用方样式约束。
     - `CHANGELOG.md` - 记录本次规范变更。
 
+---
+
 ## 2026-09-14 04:16:49 | 优化代码
 
 - **移除根布局底部安全区留白**
@@ -2914,6 +3105,8 @@
     - `src/core/providers/AppProviders.tsx`、`src/app/(tabs)/_layout.tsx`、`src/components/FloatingBarComponents/FloatingBar.tsx` - 改为使用新的认证与个人资料入口
     - `src/api/auth.ts`、`src/api/user.ts`、`src/hooks/useAuth.tsx`、`src/hooks/useAvatar.ts`、`src/hooks/useEmailValidation.ts` - 删除已迁移的旧入口
 
+---
+
 ## 2026-07-12 02:16:59 | 优化代码
 
 - **阶段二：迁移共享能力与应用导航基础设施**
@@ -2935,6 +3128,8 @@
     - `src/app/_layout.tsx`、`src/app/(tabs)/_layout.tsx` - 改为使用 AppProviders、核心导航组件和共享主题
     - `src/app/**`、`src/components/**`、`src/hooks/**`、`src/api/**` - 更新为使用新的 shared/core 导入路径与 storage key
     - `src/api/client.ts`、`src/api/errors.ts`、`src/theme/*`、`src/components/ui/*`、`src/data/actions.ts`、`src/data/floatingMenuVisibility.ts`、相关旧导航组件与 Hooks - 删除已迁移源文件
+
+---
 
 ## 2026-07-12 01:57:17 | 优化代码
 
@@ -2958,6 +3153,8 @@
     - `src/components/Note/NoteViewer.tsx`、`src/components/Note/SwipeableNoteItem.tsx` - 移除重复笔记类型声明
     - `src/components/FloatingBarComponents/FloatingBar.tsx`、`src/components/FloatingBarComponents/FloatingBarCategoryButton.tsx`、`src/hooks/FloatingBar/*` - 改为从分类领域类型模块导入类型
     - `src/hooks/notes/useNotePin.ts`、`src/hooks/notes/useNoteStar.ts` - 移除对 UI 组件类型的依赖
+
+---
 
 ## 2026-07-11 20:46:07 | 优化代码
 
@@ -3225,11 +3422,11 @@
     - `src/app/auth/register.tsx` — 注册成功后调用 `syncProfile`
     - `src/components/FloatingBar.tsx` - 在 `handlePress` 的 `setCurrentCategory` 之后添加 `notifyCategoriesChanged()` 调用
 
+---
+
 ## 2026-09-20 10:26:11 | 修复问题：解决本地 Git 合并冲突
 
 - 文件：CHANGELOG.md、app.json、src/features/todos/screens/TodosScreen.tsx。
 - 合并 `kroos_todo` 与进入工作区的 0.2.4 配置及文档变更：保留待办整周列表、日历和本地提醒实现；合并应用图标、启动页、EAS 项目配置与 Expo 本地通知插件；合并双方历史日志并移除三个真实冲突文件中的 Git 冲突标记。
 - 验证：`git ls-files -u` 无输出，暂存区 `git diff --cached --check` 通过；`npm run check` 的类型检查、Lint、主题检查通过，Node 并发测试运行器出现一次异步反序列化异常后，串行全量测试 282/282 通过；`npx expo config --type public --json` 通过。
 - 未执行 Git 提交、推送、构建或设备验收。
-
----

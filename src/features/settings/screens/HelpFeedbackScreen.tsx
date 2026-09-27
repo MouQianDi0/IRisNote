@@ -4,7 +4,10 @@ import {
     recordDiagnostic,
 } from "@/core/diagnostics";
 import { banner } from "@/core/notifications";
-import { systemNotificationsAvailable } from "@/core/system-notifications/system-notification-provider";
+import {
+    systemNotificationsAvailable,
+    useSystemNotifications,
+} from "@/core/system-notifications/system-notification-provider";
 import { colors } from "@/shared/theme";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import NativeSystem from "@modules/irisnote-system";
@@ -36,6 +39,7 @@ import {
 import { DISCORD_CHANNEL_URL, FEEDBACK_EMAIL } from "../data/support-links";
 
 export default function HelpFeedbackScreen() {
+    const { startTodoLiveDemo } = useSystemNotifications();
     const [exporting, setExporting] = useState(false);
     const [testing, setTesting] = useState(false);
     const [liveTesting, setLiveTesting] = useState(false);
@@ -44,6 +48,7 @@ export default function HelpFeedbackScreen() {
         cancel: () => void;
         completion: Promise<"completed" | "cancelled" | "failed">;
     } | null>(null);
+    const liveDemoDisposed = useRef(false);
     const liveUpdateReady =
         systemNotificationsAvailable &&
         Platform.OS === "android" &&
@@ -245,9 +250,7 @@ export default function HelpFeedbackScreen() {
         void recordDiagnostic("live_update", "demo_button_pressed");
         try {
             const {
-                LIVE_DEMO_SECONDS,
                 requestApplicationNotificationPermission,
-                startDiagnosticLiveUpdateDemo,
             } =
                 await import("@/core/system-notifications/system-notification.service");
             const permission = await requestApplicationNotificationPermission();
@@ -265,15 +268,18 @@ export default function HelpFeedbackScreen() {
                 });
                 return;
             }
-            setLiveRemaining(LIVE_DEMO_SECONDS);
-            const demo = startDiagnosticLiveUpdateDemo({
-                onTick: (remaining) => setLiveRemaining(remaining),
+            const demo = await startTodoLiveDemo((remaining) => {
+                if (!liveDemoDisposed.current) setLiveRemaining(remaining);
             });
+            if (liveDemoDisposed.current) {
+                demo.cancel();
+                return;
+            }
             liveDemoRef.current = demo;
             const result = await demo.completion;
             if (result === "completed") {
                 banner.show({
-                    title: "动态通知演示完成",
+                    title: "模拟待办已完成",
                     message: "本次操作已写入诊断日志",
                     type: "success",
                 });
@@ -305,10 +311,14 @@ export default function HelpFeedbackScreen() {
         }
     };
 
-    // 离开页面即终止演示并撤下通知，不留残留在通知栏
+    // 离开页面时取消模拟待办；按 Home 退后台时页面仍挂载，由原生时间线续算。
     useEffect(
-        () => () => {
-            liveDemoRef.current?.cancel();
+        () => {
+            liveDemoDisposed.current = false;
+            return () => {
+                liveDemoDisposed.current = true;
+                liveDemoRef.current?.cancel();
+            };
         },
         [],
     );
@@ -411,7 +421,7 @@ export default function HelpFeedbackScreen() {
                         />
                         <ListRow
                             icon={Timer}
-                            label="发送动态通知"
+                            label="测试待办动态通知"
                             value={
                                 liveTesting
                                     ? `演示中 ${liveRemaining}s`
@@ -419,7 +429,7 @@ export default function HelpFeedbackScreen() {
                                       ? "立即演示"
                                       : "需 Android 16+"
                             }
-                            description="120 秒倒计时动态通知演示，进度每秒原位更新；需 Android 16 及以上设备"
+                            description="运行 60 秒模拟待办；可按 Home 验证后台进度与到点撤卡，需 Android 16+"
                             disabled={liveTesting || !liveUpdateReady}
                             onPress={() => void startLiveDemo()}
                             last
