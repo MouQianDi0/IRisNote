@@ -27,7 +27,7 @@ async function diagnosticLogFile() {
     return new File(Paths.document, DIAGNOSTIC_LOG_FILE);
 }
 
-function sanitizeText(value: string) {
+export function sanitizeText(value: string) {
     return value
         .replace(/[\r\n\t]+/g, " ")
         .replace(

@@ -4,6 +4,26 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+private const val FIELD_ID = "id"
+private const val FIELD_CHANNEL_ID = "channelId"
+private const val FIELD_TITLE = "title"
+private const val FIELD_TEXT_STARTED = "textStarted"
+private const val FIELD_START_AT = "startAt"
+private const val FIELD_END_AT = "endAt"
+private const val FIELD_PROMOTED = "promoted"
+private const val FIELD_SUMMARY_ITEMS = "summaryItems"
+private const val FIELD_SUMMARY_SEEN = "summarySeenActivity"
+
+data class LiveTodoSummaryItem(
+  val title: String,
+  val startAt: Long?,
+  val endAt: Long?,
+  val completed: Boolean,
+  /** 创建时选择的重要度；high 视为「重要」。 */
+  val priority: String,
+  val completedAt: Long?,
+)
+
 /**
  * 待办动态卡片的时间线快照：JS 退后台时移交原生，原生凭墙钟即可重算
  * 进度与文案，无需 JS/数据库参与。startAt/endAt 均为 epoch 毫秒；
@@ -17,13 +37,46 @@ data class LiveTodoTimelineCard(
   val startAt: Long,
   val endAt: Long?,
   val promoted: Boolean,
+  val summaryItems: List<LiveTodoSummaryItem>? = null,
+  val summarySeenActivity: Boolean = false,
 ) {
   /** 是否处于进行中窗口（已到开始且未过结束；恰好结束不算）。 */
   fun isActiveAt(nowMs: Long): Boolean =
-    nowMs >= startAt && (endAt == null || nowMs < endAt)
+    if (summaryItems != null) LiveTodoSummary.scene(this, nowMs) != null
+    else nowMs >= startAt && (endAt == null || nowMs < endAt)
 
   /** 是否尚未到开始时刻（退后台后到点开始，由原生节拍补发卡片）。 */
-  fun isFutureAt(nowMs: Long): Boolean = nowMs < startAt
+  fun isFutureAt(nowMs: Long): Boolean = summaryItems == null && nowMs < startAt
+
+  companion object {
+    /** 与 store.load() 共用的 JSON 解析；缺 id/channelId/title/startAt 抛错。 */
+    fun fromJson(obj: JSONObject): LiveTodoTimelineCard {
+      val endAt = if (obj.isNull(FIELD_END_AT)) null else obj.optLong(FIELD_END_AT)
+      return LiveTodoTimelineCard(
+        id = obj.optInt(FIELD_ID),
+        channelId = obj.optString(FIELD_CHANNEL_ID),
+        title = obj.optString(FIELD_TITLE),
+        textStarted = if (obj.isNull(FIELD_TEXT_STARTED)) null else obj.optString(FIELD_TEXT_STARTED),
+        startAt = obj.optLong(FIELD_START_AT),
+        endAt = endAt,
+        promoted = obj.optBoolean(FIELD_PROMOTED, true),
+        summaryItems = obj.optJSONArray(FIELD_SUMMARY_ITEMS)?.let { items ->
+          (0 until items.length()).mapNotNull { itemIndex ->
+            val item = items.optJSONObject(itemIndex) ?: return@mapNotNull null
+            LiveTodoSummaryItem(
+              title = item.optString("title"),
+              startAt = if (item.isNull("startAt")) null else item.optLong("startAt"),
+              endAt = if (item.isNull("endAt")) null else item.optLong("endAt"),
+              completed = item.optBoolean("completed"),
+              priority = item.optString("priority").ifEmpty { "normal" },
+              completedAt = if (item.isNull("completedAt")) null else item.optLong("completedAt"),
+            )
+          }
+        },
+        summarySeenActivity = obj.optBoolean(FIELD_SUMMARY_SEEN),
+      )
+    }
+  }
 }
 
 /**
@@ -41,16 +94,12 @@ class LiveTodoTimelineStore(context: Context) {
       val array = JSONArray(raw)
       (0 until array.length()).mapNotNull { index ->
         val obj = array.optJSONObject(index) ?: return@mapNotNull null
-        val endAt = if (obj.isNull(FIELD_END_AT)) null else obj.optLong(FIELD_END_AT)
-        LiveTodoTimelineCard(
-          id = obj.optInt(FIELD_ID),
-          channelId = obj.optString(FIELD_CHANNEL_ID),
-          title = obj.optString(FIELD_TITLE),
-          textStarted = if (obj.isNull(FIELD_TEXT_STARTED)) null else obj.optString(FIELD_TEXT_STARTED),
-          startAt = obj.optLong(FIELD_START_AT),
-          endAt = endAt,
-          promoted = obj.optBoolean(FIELD_PROMOTED, true),
-        )
+        try {
+          LiveTodoTimelineCard.fromJson(obj)
+        } catch (_: Throwable) {
+          // 单卡损坏跳过，不拖垮其余快照
+          null
+        }
       }
     } catch (_: Throwable) {
       emptyList()
@@ -76,6 +125,20 @@ class LiveTodoTimelineStore(context: Context) {
       } else {
         obj.put(FIELD_TEXT_STARTED, card.textStarted)
       }
+      card.summaryItems?.let { items ->
+        val arrayItems = JSONArray()
+        for (item in items) {
+          arrayItems.put(JSONObject()
+            .put("title", item.title)
+            .put("startAt", item.startAt ?: JSONObject.NULL)
+            .put("endAt", item.endAt ?: JSONObject.NULL)
+            .put("completed", item.completed)
+            .put("priority", item.priority)
+            .put("completedAt", item.completedAt ?: JSONObject.NULL))
+        }
+        obj.put(FIELD_SUMMARY_ITEMS, arrayItems)
+        obj.put(FIELD_SUMMARY_SEEN, card.summarySeenActivity)
+      }
       array.put(obj)
     }
     prefs.edit().putString(KEY_TIMELINE, array.toString()).apply()
@@ -88,12 +151,5 @@ class LiveTodoTimelineStore(context: Context) {
   companion object {
     private const val PREFS_NAME = "irisnote_live_todo"
     private const val KEY_TIMELINE = "timeline"
-    private const val FIELD_ID = "id"
-    private const val FIELD_CHANNEL_ID = "channelId"
-    private const val FIELD_TITLE = "title"
-    private const val FIELD_TEXT_STARTED = "textStarted"
-    private const val FIELD_START_AT = "startAt"
-    private const val FIELD_END_AT = "endAt"
-    private const val FIELD_PROMOTED = "promoted"
   }
 }

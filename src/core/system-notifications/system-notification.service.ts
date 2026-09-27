@@ -9,12 +9,14 @@ import {
     diagnosticErrorCategory,
     opaqueDiagnosticId,
     recordDiagnostic,
+    sanitizeText,
 } from "@/core/diagnostics";
 import {
     DIAGNOSTIC_CHANNEL,
-    LIVE_TEST_CHANNEL,
     LIVE_TEST_NOTIFICATION_ID,
     LIVE_TODO_CHANNEL,
+    LIVE_TODO_SUMMARY_CHANNEL,
+    LIVE_TODO_SUMMARY_NOTIFICATION_ID,
     REMINDER_CHANNEL,
     RUNTIME_CHANNEL,
     RUNTIME_NOTIFICATION_ID,
@@ -373,6 +375,20 @@ export function liveUpdateSupported(): boolean {
     );
 }
 
+/**
+ * 动态通知基础能力：Android 8.0（API 26，通知渠道时代）+ 本地原生模块。
+ * 该档位使用普通进度条通知（不请求提升式），退后台仍可由原生闹钟链
+ * 保留并重算卡片；ProgressStyle/提升式展示与前台服务秒级刷新仅在
+ * liveUpdateSupported()（API 36+）档位开放。
+ */
+export function liveUpdateCompatSupported(): boolean {
+    return (
+        Platform.OS === "android" &&
+        Number(Platform.Version) >= 26 &&
+        NativeSystem !== null
+    );
+}
+
 export type LiveUpdateContent = {
     id: number;
     channelId: string;
@@ -384,36 +400,35 @@ export type LiveUpdateContent = {
     ongoing: boolean;
     /**
      * 请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶）。
-     * 默认开启：仅 live-test/live-todo 两渠道走本收口，内容均为
-     * "用户主动发起、正在进行"的任务（计时器/进行中待办），符合政策准入；
-     * 普通提醒类不经此函数，政策禁区不受影响。36.0 设备原生侧自动退化。
+     * 默认关闭；聚合状态卡通过 postStateCard 明确开启。
+     * 普通提醒类不经此函数，政策禁区不受影响。
+     * 36.0 设备与 API < 36 设备原生侧均退化为普通进度卡片。
      */
     promoted?: boolean;
     /** 系统 chronometer 秒级计时锚点（epoch ms）；null 不启用。 */
     chronoAt?: number | null;
     /** true = 倒计时（锚点为终点），false = 正向计时（锚点为起点）。 */
     chronoCountdown?: boolean;
+    iconResourceName?: string | null;
+    /** true = 不设置任何进度形态（聚合卡纯文本状态卡）。 */
+    hideProgress?: boolean;
 };
 
 async function initializeLiveUpdateChannels() {
     if (Platform.OS !== "android") return;
-    await Notifications.setNotificationChannelAsync(LIVE_TEST_CHANNEL, {
-        name: "动态通知测试",
-        description: "用于验证 Android 16 动态通知展示链路",
-        importance: Notifications.AndroidImportance.DEFAULT,
-        sound: "default",
-        enableVibrate: true,
+    await Notifications.setNotificationChannelAsync(LIVE_TODO_CHANNEL, {
+        name: "待办进行中",
+        description: "正在进行中的待办动态进度卡片",
+        importance: Notifications.AndroidImportance.LOW,
+        sound: null,
+        enableVibrate: false,
         showBadge: false,
         lockscreenVisibility:
             Notifications.AndroidNotificationVisibility.PRIVATE,
     });
-    void recordDiagnostic("live_update", "test_channel_ready", {
-        channel: LIVE_TEST_CHANNEL,
-        importance: "default",
-    });
-    await Notifications.setNotificationChannelAsync(LIVE_TODO_CHANNEL, {
-        name: "待办进行中",
-        description: "正在进行中的待办动态进度卡片",
+    await Notifications.setNotificationChannelAsync(LIVE_TODO_SUMMARY_CHANNEL, {
+        name: "待办总览",
+        description: "今日待办的聚合动态状态",
         importance: Notifications.AndroidImportance.LOW,
         sound: null,
         enableVibrate: false,
@@ -442,11 +457,53 @@ export function ensureLiveUpdateChannels(): Promise<void> {
     return liveUpdateChannelsReady;
 }
 
+/** 应用权限与待办进行中渠道均可展示时才允许发动态卡片。 */
+export async function liveTodoNotificationPermission(): Promise<boolean> {
+    if (!liveUpdateCompatSupported()) return false;
+    if (!(await applicationNotificationPermission()).granted) return false;
+    await ensureLiveUpdateChannels();
+    const channel = await Notifications.getNotificationChannelAsync(LIVE_TODO_CHANNEL);
+    return channel !== null &&
+        channel !== undefined &&
+        channel.importance !== Notifications.AndroidImportance.NONE;
+}
+
+/** 聚合渠道权限独立于逐条卡渠道。 */
+export async function liveTodoSummaryNotificationPermission(): Promise<boolean> {
+    if (!liveUpdateCompatSupported()) return false;
+    if (!(await applicationNotificationPermission()).granted) return false;
+    await ensureLiveUpdateChannels();
+    const channel = await Notifications.getNotificationChannelAsync(LIVE_TODO_SUMMARY_CHANNEL);
+    return channel !== null && channel !== undefined &&
+        channel.importance !== Notifications.AndroidImportance.NONE;
+}
+
+/** 通用状态卡发送协议：调用模块声明渠道、快照文案、图标与通知身份。 */
+export type StateCardPayload = {
+    id: number;
+    channelId: string;
+    title: string;
+    text: string;
+    iconResourceName: string;
+    chronoAt?: number | null;
+    chronoCountdown?: boolean;
+};
+
+export function postStateCard(card: StateCardPayload): Promise<void> {
+    return postLiveUpdate({
+        id: card.id, channelId: card.channelId, title: card.title,
+        text: card.text, progress: 0, max: 0, indeterminate: true,
+        ongoing: true, promoted: true, iconResourceName: card.iconResourceName,
+        chronoAt: card.chronoAt, chronoCountdown: card.chronoCountdown,
+        hideProgress: true,
+    });
+}
+
 export async function postLiveUpdate(
     content: LiveUpdateContent,
 ): Promise<void> {
-    if (!liveUpdateSupported())
-        throw new Error("动态通知需要 Android 16 及以上设备");
+    if (!liveUpdateCompatSupported())
+        throw new Error("动态通知需要 Android 8.0 及以上设备");
     await ensureLiveUpdateChannels();
     const native = NativeSystem;
     if (!native) throw new Error("当前安装包不支持动态通知");
@@ -460,9 +517,11 @@ export async function postLiveUpdate(
             max: content.max,
             indeterminate: content.indeterminate,
             ongoing: content.ongoing,
-            promoted: content.promoted ?? true,
+            promoted: content.promoted ?? false,
+            iconResourceName: content.iconResourceName ?? null,
             chronoAt: content.chronoAt ?? null,
             chronoCountdown: content.chronoCountdown ?? false,
+            hideProgress: content.hideProgress ?? false,
         });
     } catch (cause) {
         void recordDiagnostic(
@@ -479,7 +538,7 @@ export async function postLiveUpdate(
 }
 
 export async function cancelLiveUpdate(id: number): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
@@ -505,11 +564,11 @@ export async function cancelLiveUpdate(id: number): Promise<void> {
 export async function handoffLiveTodoTimelines(
     timelines: readonly NativeLiveTodoTimelineCard[],
 ): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
-        await native.scheduleLiveTodoCards([...timelines]);
+        await native.scheduleLiveTodoCards(JSON.stringify(timelines));
         void recordDiagnostic("live_update", "handoff_scheduled", {
             cards: timelines.length,
         });
@@ -520,6 +579,9 @@ export async function handoffLiveTodoTimelines(
             {
                 cards: timelines.length,
                 error: diagnosticErrorCategory(cause),
+                message: sanitizeText(
+                    cause instanceof Error ? cause.message : String(cause),
+                ),
             },
             "error",
         );
@@ -535,11 +597,11 @@ export async function handoffLiveTodoTimelines(
 export async function persistLiveTodoTimelines(
     timelines: readonly NativeLiveTodoTimelineCard[],
 ): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
-        await native.updateLiveTodoCards([...timelines]);
+        await native.updateLiveTodoCards(JSON.stringify(timelines));
         void recordDiagnostic("live_update", "timeline_persisted", {
             cards: timelines.length,
         });
@@ -550,6 +612,9 @@ export async function persistLiveTodoTimelines(
             {
                 cards: timelines.length,
                 error: diagnosticErrorCategory(cause),
+                message: sanitizeText(
+                    cause instanceof Error ? cause.message : String(cause),
+                ),
             },
             "error",
         );
@@ -564,7 +629,7 @@ export async function persistLiveTodoTimelines(
  * 分钟级驱动，下一次 start 重试收回）。
  */
 export async function reclaimLiveTodoTimelines(): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
@@ -633,12 +698,18 @@ let staleLiveUpdatesCleared: Promise<void> | null = null;
 export function clearStaleLiveUpdates(): Promise<void> {
     if (!staleLiveUpdatesCleared) {
         staleLiveUpdatesCleared = (async () => {
-            if (!liveUpdateSupported()) return;
+            if (!liveUpdateCompatSupported()) return;
             const native = NativeSystem;
             if (!native) return;
             try {
                 await native.cancelProgressNotificationsByChannel(
                     LIVE_TODO_CHANNEL,
+                );
+                await native.cancelProgressNotificationsByChannel(
+                    LIVE_TODO_SUMMARY_CHANNEL,
+                );
+                await native.cancelProgressNotification(
+                    LIVE_TODO_SUMMARY_NOTIFICATION_ID,
                 );
                 await native.cancelProgressNotification(
                     LIVE_TEST_NOTIFICATION_ID,
@@ -655,98 +726,6 @@ export function clearStaleLiveUpdates(): Promise<void> {
         })();
     }
     return staleLiveUpdatesCleared;
-}
-
-export const LIVE_DEMO_SECONDS = 120;
-
-export type LiveUpdateDemoResult = "completed" | "cancelled" | "failed";
-
-export type LiveUpdateDemoHandle = {
-    cancel(): void;
-    completion: Promise<LiveUpdateDemoResult>;
-};
-
-/**
- * 设置页动态通知演示：120 秒倒计时，进度每秒原位更新同一条通知
- * （同一整型 ID + setOnlyAlertOnce），倒计时归零后自动消除。
- */
-export function startDiagnosticLiveUpdateDemo(options?: {
-    onTick?: (remainingSeconds: number) => void;
-}): LiveUpdateDemoHandle {
-    let remaining = LIVE_DEMO_SECONDS;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    let finished = false;
-    let settle: (result: LiveUpdateDemoResult) => void = () => {};
-    const completion = new Promise<LiveUpdateDemoResult>((resolve) => {
-        settle = resolve;
-    });
-
-    const post = async () => {
-        if (finished) return;
-        await postLiveUpdate({
-            id: LIVE_TEST_NOTIFICATION_ID,
-            channelId: LIVE_TEST_CHANNEL,
-            title: "IRisNote 动态通知",
-            text: `倒计时演示：剩余 ${remaining} 秒`,
-            progress: remaining,
-            max: LIVE_DEMO_SECONDS,
-            indeterminate: false,
-            ongoing: true,
-        });
-        options?.onTick?.(remaining);
-    };
-
-    const finish = async (result: LiveUpdateDemoResult) => {
-        if (finished) return;
-        finished = true;
-        if (timer) {
-            clearInterval(timer);
-            timer = null;
-        }
-        try {
-            await cancelLiveUpdate(LIVE_TEST_NOTIFICATION_ID);
-        } catch {
-            // 取消失败已写入诊断日志，不影响演示结果上报
-        }
-        void recordDiagnostic("live_update", "demo_finished", { result });
-        settle(result);
-    };
-
-    void (async () => {
-        try {
-            if (!liveUpdateSupported())
-                throw new Error("动态通知需要 Android 16 及以上设备");
-            await post();
-            void recordDiagnostic("live_update", "demo_started", {
-                seconds: LIVE_DEMO_SECONDS,
-            });
-            timer = setInterval(() => {
-                if (finished) return;
-                remaining = Math.max(0, remaining - 1);
-                void post()
-                    .then(() => {
-                        if (remaining <= 0) return finish("completed");
-                    })
-                    .catch(() => finish("failed"));
-            }, 1000);
-        } catch (cause) {
-            void recordDiagnostic(
-                "live_update",
-                "demo_failed",
-                { error: diagnosticErrorCategory(cause) },
-                "error",
-            );
-            finished = true;
-            settle("failed");
-        }
-    })();
-
-    return {
-        cancel: () => {
-            void finish("cancelled");
-        },
-        completion,
-    };
 }
 
 export async function openSystemNotificationSettings() {
