@@ -15,8 +15,17 @@ export type CloudNote = {
     is_pinned: boolean | null;
     is_starred: boolean | null;
 };
+/** `fields=meta` 返回的笔记：不含正文，改为正文摘要（服务端读取时计算）。 */
+export type CloudNoteMeta = Omit<CloudNote, "content"> & {
+    content_hash: string | null;
+    content_length: number;
+    content_preview: string | null;
+};
+/** 镜像中的一条记录：完整模式为 CloudNote，元数据模式为 CloudNoteMeta。 */
+export type MirrorNote = CloudNote | CloudNoteMeta;
+export type NoteFields = "meta";
 export type NoteChange = { change_seq: string } & (
-    | { operation: "upsert"; data: CloudNote }
+    | { operation: "upsert"; data: MirrorNote }
     | {
           operation: "delete";
           id: number;
@@ -26,7 +35,7 @@ export type NoteChange = { change_seq: string } & (
       }
 );
 export type SnapshotPage = {
-    data: CloudNote[];
+    data: MirrorNote[];
     page: {
         next_cursor: string | null;
         has_more: boolean;
@@ -42,7 +51,9 @@ export type SnapshotQuery = {
     limit: number;
     cursor?: string;
     snapshot_token?: string;
+    fields?: NoteFields;
 };
+export type BatchPage = { data: CloudNote[]; missing: number[] };
 export type NotesSyncTransport = {
     snapshot: (
         owner: number,
@@ -54,10 +65,22 @@ export type NotesSyncTransport = {
         cursor: string,
         limit: number,
         signal: AbortSignal,
+        fields?: NoteFields,
     ) => Promise<ChangesPage>;
+    /** 服务端是否支持元数据同步（第二期接口）；暂时无法判断时抛出。缺省视为不支持。 */
+    supportsMeta?: () => Promise<boolean>;
+    /** 按服务端 ID 批量取完整笔记（最多 50 个）。元数据模式下补正文使用。 */
+    batch?: (
+        owner: number,
+        ids: readonly number[],
+        signal: AbortSignal,
+    ) => Promise<BatchPage>;
 };
 
-type SyncEndpoint = "/api/notes/snapshot" | "/api/notes/changes";
+type SyncEndpoint =
+    | "/api/notes/snapshot"
+    | "/api/notes/changes"
+    | "/api/notes/batch";
 type ResponseContext = { endpoint: SyncEndpoint; status: number };
 
 /** Only field paths, fixed expectations, and type names are retained; never response values. */
@@ -200,6 +223,84 @@ export function parseCloudNote(
                 : boolean(row.is_starred, at("is_starred")),
     };
 }
+export function isCloudNoteMeta(note: MirrorNote): note is CloudNoteMeta {
+    return "content_hash" in note;
+}
+export function parseCloudNoteMeta(
+    value: unknown,
+    owner: number,
+    field = "note",
+): CloudNoteMeta {
+    const row = object(value, field);
+    const at = (key: string) => `${field}.${key}`;
+    if ("content" in row)
+        throw invalid(at("content"), "不存在（元数据模式）", row.content);
+    const { content: _content, ...base } = parseCloudNote(
+        { ...row, content: null },
+        owner,
+        field,
+    );
+    const hash =
+        row.content_hash === null
+            ? null
+            : text(row.content_hash, at("content_hash"));
+    if (hash !== null && !/^[0-9a-f]{64}$/.test(hash))
+        throw invalid(
+            at("content_hash"),
+            "64 位小写十六进制 string",
+            row.content_hash,
+            "（格式不符）",
+        );
+    const length = row.content_length;
+    if (
+        typeof length !== "number" ||
+        !Number.isSafeInteger(length) ||
+        length < 0
+    )
+        throw invalid(at("content_length"), "非负安全整数", length);
+    const preview =
+        row.content_preview === null
+            ? null
+            : text(row.content_preview, at("content_preview"));
+    if ((hash === null) !== (preview === null) || (hash === null && length))
+        throw invalid(
+            at("content_hash"),
+            "与正文长度和摘要一致",
+            row.content_hash,
+            "（互相矛盾）",
+        );
+    return {
+        ...base,
+        content_hash: hash,
+        content_length: length,
+        content_preview: preview,
+    };
+}
+/** 按记录自身格式解析：带 content_hash 的是元数据，否则是完整笔记。镜像切换模式期间两种格式可能并存。 */
+export function parseMirrorNote(
+    value: unknown,
+    owner: number,
+    field = "note",
+): MirrorNote {
+    const row = object(value, field);
+    return "content_hash" in row
+        ? parseCloudNoteMeta(row, owner, field)
+        : parseCloudNote(row, owner, field);
+}
+export function parseBatch(value: unknown, owner: number): BatchPage {
+    const row = object(value);
+    if (!Array.isArray(row.data)) throw invalid("data", "array", row.data);
+    if (!Array.isArray(row.missing))
+        throw invalid("missing", "array", row.missing);
+    return {
+        data: row.data.map((item, index) =>
+            parseCloudNote(item, owner, `data[${index}]`),
+        ),
+        missing: row.missing.map((id, index) =>
+            integer(id, `missing[${index}]`),
+        ),
+    };
+}
 export function parseSnapshot(value: unknown, owner: number): SnapshotPage {
     const row = object(value),
         page = object(row.page, "page"),
@@ -210,7 +311,7 @@ export function parseSnapshot(value: unknown, owner: number): SnapshotPage {
         throw invalid("page.next_cursor", "null（快照末页）", page.next_cursor);
     return {
         data: row.data.map((item, index) =>
-            parseCloudNote(item, owner, `data[${index}]`),
+            parseMirrorNote(item, owner, `data[${index}]`),
         ),
         page: {
             has_more: hasMore,
@@ -249,7 +350,7 @@ export function parseChanges(value: unknown, owner: number): ChangesPage {
             return {
                 change_seq: seq,
                 operation: "upsert",
-                data: parseCloudNote(change.data, owner, `${field}.data`),
+                data: parseMirrorNote(change.data, owner, `${field}.data`),
             };
         if (change.operation !== "delete")
             throw invalid(

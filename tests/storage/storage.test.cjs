@@ -185,8 +185,7 @@ function screenHarness() {
     '@/features/auth/hooks/useAuth':{useAuth:()=>({user:{id:1}})},
     '@/core/storage/storage-policy':policy,
     '@/core/storage/storage-files':{scanStorageFiles:async()=>scan,clearStorageFiles:async(_scan,selection,check)=>{check();filesCalled.push(selection);return {released:150,failed:0,skipped:0,interrupted:false};}},
-    '@/features/notes/data/note-cache.repository':{readNoteCacheCandidates:async()=>[{bytes:300}]},
-    '@/features/notes/services/note-cache.service':{clearNoteCache:async(_db,owner,check)=>{check();notesCalled.push(owner);return {ids:[1],skipped:0};}},
+    '@/features/notes/services/note-body.service':{readNoteBodyUsage:async()=>({present:2,evicted:1,releasable:1}),releaseNoteBodies:async(_db,owner,check)=>{check();notesCalled.push(owner);return 1;}},
     '@/shared/theme':{colors:{primary:'green',surface:'white',appBackground:'gray'}},
     '@/shared/ui':{Card:'Card',PageHeader:'Header',Screen:'Screen'},
     '@/shared/ui/Overlay/app-modal':{AppModal:'AppModal'},
@@ -201,18 +200,19 @@ function screenHarness() {
 
 test('screen defaults notes to unchecked, sends only selected items, and resets notes after leaving and returning', async () => {
   const h=screenHarness();h.render();await h.settle();
-  assert.equal(h.label('笔记缓存').props.accessibilityState.checked,false);
+  assert.ok(h.find(node=>node.props?.label==='笔记正文' && node.props.value==='已下载 2 · 摘要 1'));
+  assert.equal(h.label('笔记正文').props.accessibilityState.checked,false);
   h.label('清理所选项目').props.onPress();h.render();
   const confirm = () => h.find(node=>node.type==='Pressable' && node.props.children?.props?.children==='清理');
   confirm().props.onPress();await h.settle();
   assert.equal(h.notesCalled.length,0);
   assert.equal(h.filesCalled[0].notes,false);
-  h.label('笔记缓存').props.onPress();h.render();
-  assert.equal(h.label('笔记缓存').props.accessibilityState.checked,true);
+  h.label('笔记正文').props.onPress();h.render();
+  assert.equal(h.label('笔记正文').props.accessibilityState.checked,true);
   h.label('清理所选项目').props.onPress();h.render();confirm().props.onPress();await h.settle();
   assert.equal(h.notesCalled.length,1);
   h.blur();h.focus();await h.settle();
-  assert.equal(h.label('笔记缓存').props.accessibilityState.checked,false);
+  assert.equal(h.label('笔记正文').props.accessibilityState.checked,false);
 });
 
 

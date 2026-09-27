@@ -71,6 +71,7 @@ import {
     queueNoteUploadNow,
     saveEditedNoteLocalFirst,
 } from "../services/note-save.service";
+import { ensureNoteBody } from "../services/note-body.service";
 import { syncNotes } from "../services/note-sync-coordinator";
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
@@ -539,7 +540,12 @@ export default function NotesScreen() {
                     : await saveEditedNoteLocalFirst(
                           database,
                           user.id,
-                          activeContextNote,
+                          // A title-only save keeps the body, so an evicted body is downloaded first.
+                          await ensureNoteBody(
+                              database,
+                              user.id,
+                              activeContextNote,
+                          ),
                           { title },
                       );
             return result.localOnly
@@ -634,8 +640,11 @@ export default function NotesScreen() {
             setOpenedNoteId(null);
             hideFloatingMenu();
             setContextMenuNote(item);
+            // Copy, share and rename need the body; the list update brings it into the menu.
+            if (item.body_state === "evicted" && user)
+                void ensureNoteBody(database, user.id, item).catch(() => {});
         },
-        [hideFloatingMenu],
+        [database, hideFloatingMenu, user],
     );
 
     const handleCloseContextMenu = useCallback(() => {

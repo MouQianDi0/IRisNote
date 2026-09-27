@@ -1410,13 +1410,13 @@ test("cache maintenance aborts an existing download and prevents concurrent sync
         await held.promise;
     });
     assert.equal(requestSignal.aborted, true);
-    await assert.rejects(local.syncNotes(port, 1), /缓存正在清理/);
+    await assert.rejects(local.syncNotes(port, 1), /正文正在释放/);
     reply.resolve(snapshot([]));
     await rejected;
     await entered.promise;
     await assert.rejects(
         local.withNoteCacheMaintenance(port, 1, noOp),
-        /缓存正在清理/,
+        /正文正在释放/,
     );
     held.resolve();
     await clean;

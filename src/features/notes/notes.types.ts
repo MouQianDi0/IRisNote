@@ -31,6 +31,9 @@ export type Note = {
     server_updated_at?: string | null;
     /** 本地当前稳定版本指针；服务器来源的笔记在合并入库前为空。 */
     current_revision_id?: string | null;
+    /** 正文是否在本机；evicted 时 content 为 null，列表改用 content_preview。缺省视为 present。 */
+    body_state?: "present" | "evicted";
+    content_preview?: string | null;
 };
 
 /** Notes API 返回的服务端 DTO，不包含本地同步字段。 */
@@ -49,6 +52,8 @@ export type CreateNotePayload = {
     content: string;
     category_id?: number;
     updated_at?: string;
+    /** 幂等新建时由客户端生成的云端身份（UUID）；旧服务端会忽略该字段。 */
+    client_id?: string;
 };
 
 export type UpdateNotePayload = Partial<

@@ -6,6 +6,8 @@ import {
     type NoteDeletion,
 } from "../api/notes-trash.types";
 import type { NoteDraft } from "./note-draft.repository";
+import { readEvictedPreviews } from "./note-body.repository";
+import { deleteNoteCreateOperation } from "./note-create-operation.repository";
 import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 import { insertNoteRevision } from "./note-revision.repository";
 import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
@@ -150,7 +152,11 @@ export function trashPreview(row: TrashRow): {
         content:
             "content" in parsed && typeof parsed.content === "string"
                 ? parsed.content
-                : null,
+                : // Evicted bodies and metadata mirrors only carry the preview.
+                  "content_preview" in parsed &&
+                    typeof parsed.content_preview === "string"
+                  ? parsed.content_preview
+                  : null,
     };
 }
 export async function recordRemoteDeletion(
@@ -245,6 +251,14 @@ export async function archiveLocalNote(
         return false;
     }
     const old = await readTrash(tx, owner, clientId);
+    const previews = await readEvictedPreviews(tx, owner, clientId);
+    const archived = previews.has(clientId)
+        ? {
+              ...local,
+              body_state: "evicted",
+              content_preview: previews.get(clientId) ?? null,
+          }
+        : local;
     const drafts = await tx.getAll<NoteDraft>(
         "SELECT * FROM note_drafts WHERE owner_user_id=? AND note_id=?",
         [owner, clientId],
@@ -265,7 +279,7 @@ export async function archiveLocalNote(
                 ? new Date(Date.parse(now) + NOTE_TRASH_MS).toISOString()
                 : null,
             state,
-            JSON.stringify(local),
+            JSON.stringify(archived),
             JSON.stringify(
                 drafts.length
                     ? drafts
@@ -283,6 +297,8 @@ export async function archiveLocalNote(
         "DELETE FROM note_drafts WHERE owner_user_id=? AND note_id=?",
         [owner, clientId],
     );
+    // 移入垃圾桶即放弃尚未确认的新建；恢复后作为新请求重新固定。
+    await deleteNoteCreateOperation(tx, owner, clientId);
     await tx.run(
         "DELETE FROM local_notes WHERE owner_user_id=? AND client_id=?",
         [owner, clientId],
@@ -327,6 +343,13 @@ export async function restoreArchivedNote(
             (local.owner_user_id !== owner || local.client_id !== row.client_id)
         )
             throw new Error("本地垃圾桶记录损坏");
+        // Only the cloud holds an evicted body; restoring from the local record would store an empty note.
+        if (
+            !cloud &&
+            local &&
+            (local as { body_state?: unknown }).body_state === "evicted"
+        )
+            throw new Error("此笔记正文未下载到本机，请联网恢复");
         const localTime = local
             ? Date.parse(
                   local.sync_status === "synced"

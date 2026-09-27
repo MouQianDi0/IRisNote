@@ -14,8 +14,10 @@ import {
 } from "@/core/storage/storage-policy";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { readExcerptStorageStats } from "@/features/excerpts/data/excerpt-local.repository";
-import { readNoteCacheCandidates } from "@/features/notes/data/note-cache.repository";
-import { clearNoteCache } from "@/features/notes/services/note-cache.service";
+import {
+    readNoteBodyUsage,
+    releaseNoteBodies,
+} from "@/features/notes/services/note-body.service";
 import { colors } from "@/shared/theme";
 import { Card, PageHeader, Screen } from "@/shared/ui";
 import { AppModal } from "@/shared/ui/Overlay/app-modal";
@@ -37,7 +39,7 @@ const body = { color: colors.textPrimary, fontSize: 16 };
 const labels = {
     updates: "更新缓存",
     shares: "分享临时文件",
-    notes: "笔记缓存",
+    notes: "笔记正文",
     diagnostics: "诊断日志",
 };
 const keys: (keyof CleanupSelection)[] = [
@@ -82,7 +84,11 @@ export default function DataStorageSettingsScreen() {
     const cloud = useCloudStorage();
     const insets = useSafeAreaInsets();
     const [scan, setScan] = useState<StorageScan | null>(null);
-    const [notes, setNotes] = useState({ count: 0, bytes: 0 });
+    const [bodies, setBodies] = useState({
+        present: 0,
+        evicted: 0,
+        releasable: 0,
+    });
     const [excerpts, setExcerpts] = useState<{
         count: number;
         bytes: number;
@@ -107,15 +113,13 @@ export default function DataStorageSettingsScreen() {
         setError("");
         try {
             const files = await scanStorageFiles();
-            let candidates: Awaited<
-                ReturnType<typeof readNoteCacheCandidates>
-            > = [];
+            let bodyStats = { present: 0, evicted: 0, releasable: 0 };
             let noteError = "";
             try {
                 if (owner !== null)
-                    candidates = await readNoteCacheCandidates(db, owner);
+                    bodyStats = await readNoteBodyUsage(db, owner);
             } catch {
-                noteError = "笔记缓存暂未统计，请重试";
+                noteError = "笔记正文暂未统计，请重试";
             }
             let excerptStats: { count: number; bytes: number } | null = null;
             try {
@@ -134,10 +138,7 @@ export default function DataStorageSettingsScreen() {
             )
                 return;
             setScan(files);
-            setNotes({
-                count: candidates.length,
-                bytes: candidates.reduce((sum, row) => sum + row.bytes, 0),
-            });
+            setBodies(bodyStats);
             setExcerpts(excerptStats);
             setError(
                 [
@@ -151,7 +152,7 @@ export default function DataStorageSettingsScreen() {
         } catch (cause) {
             if (focused.current && version === scanVersion.current) {
                 setScan(null);
-                setNotes({ count: 0, bytes: 0 });
+                setBodies({ present: 0, evicted: 0, releasable: 0 });
                 setExcerpts(null);
                 setError(causeMessage(cause));
             }
@@ -178,7 +179,7 @@ export default function DataStorageSettingsScreen() {
     const available = {
         updates: (scan?.cleanable.updates ?? 0) > 0,
         shares: (scan?.cleanable.shares ?? 0) > 0,
-        notes: !!scan?.supported && cloud.enabled && notes.count > 0,
+        notes: !!scan?.supported && cloud.enabled && bodies.releasable > 0,
         diagnostics: (scan?.cleanable.diagnostics ?? 0) > 0,
     };
     const selected = Object.fromEntries(
@@ -231,16 +232,14 @@ export default function DataStorageSettingsScreen() {
             "已安装版本和更旧的更新文件；正在使用的文件会保留；每次启动后也会自动清理",
         shares: "已结束使用超过 24 小时的临时导出文件；每次启动后也会自动清理",
         notes: !cloud.enabled
-            ? "需开启云存储并联网核实副本后清理"
-            : "清理后需联网重新同步；未同步内容、草稿与历史记录保留",
+            ? "需开启云存储后释放"
+            : "释放已同步笔记的正文，笔记仍在列表中，打开时联网下载；置顶、星标、有草稿和未同步的笔记保留",
         diagnostics: "用于帮助与反馈排查问题；清理后无法导出此前的记录",
     };
     const values = {
         updates: amount(scan?.cleanable.updates),
         shares: amount(scan?.cleanable.shares),
-        notes: loading
-            ? "正在计算…"
-            : `${notes.count} 条 · 内容约 ${formatBytes(notes.bytes)}`,
+        notes: loading ? "正在计算…" : `可释放 ${bodies.releasable} 篇`,
         diagnostics: amount(scan?.cleanable.diagnostics),
     };
     const excerptValue = loading
@@ -272,17 +271,14 @@ export default function DataStorageSettingsScreen() {
             skipped: 0,
             interrupted: false,
         };
-        let noteCount = 0,
-            skipped = 0;
+        let noteCount = 0;
         const errors: string[] = [];
         try {
             if (selected.notes) {
                 try {
-                    const cleared = await clearNoteCache(db, owner, check);
-                    noteCount = cleared.ids.length;
-                    skipped = cleared.skipped;
+                    noteCount = await releaseNoteBodies(db, owner, check);
                 } catch (cause) {
-                    errors.push(`笔记缓存：${causeMessage(cause)}`);
+                    errors.push(`笔记正文：${causeMessage(cause)}`);
                 }
             }
             fileResult = await clearStorageFiles(scan, selected, check);
@@ -306,7 +302,7 @@ export default function DataStorageSettingsScreen() {
                 await refresh();
                 if (focused.current && currentOwner.current === owner) {
                     setResult(
-                        `文件已释放 ${formatBytes(fileResult.released)}${selected.notes ? `；清理了 ${noteCount} 条笔记缓存，数据库空间可复用` : ""}。${fileResult.skipped + skipped ? `已跳过 ${fileResult.skipped + skipped} 项已变化或需要保留的内容。` : ""}`,
+                        `文件已释放 ${formatBytes(fileResult.released)}${selected.notes ? `；释放了 ${noteCount} 篇笔记正文，数据库空间可复用` : ""}。${fileResult.skipped ? `已跳过 ${fileResult.skipped} 项已变化或需要保留的内容。` : ""}`,
                     );
                     if (fileResult.failed)
                         errors.push(
@@ -379,6 +375,18 @@ export default function DataStorageSettingsScreen() {
                         label="笔记与应用数据"
                         value={amount(scan?.totals.database)}
                         description="包含笔记、待办、摘录、历史版本和同步数据；历史版本每篇最多保留 50 个"
+                    />
+                    <View
+                        style={{ height: 1, backgroundColor: colors.divider }}
+                    />
+                    <Detail
+                        label="笔记正文"
+                        value={
+                            loading
+                                ? "正在计算…"
+                                : `已下载 ${bodies.present} · 摘要 ${bodies.evicted}`
+                        }
+                        description="超过上限后，最久没打开的笔记只保留摘要，打开时联网下载；置顶、星标、有草稿和未同步的笔记始终保留正文"
                     />
                     <View
                         style={{ height: 1, backgroundColor: colors.divider }}
@@ -475,11 +483,11 @@ export default function DataStorageSettingsScreen() {
                 <Text style={{ ...hint, marginTop: 12 }}>
                     已选择 {count} 项，文件预计释放 {formatBytes(fileBytes)}
                     {selected.notes
-                        ? `；另清理最多 ${notes.count} 条笔记缓存`
+                        ? `；另释放最多 ${bodies.releasable} 篇笔记正文`
                         : ""}
                 </Text>
                 <Text style={{ ...hint, marginTop: 8 }}>
-                    笔记缓存仅处理当前账号可重新下载的副本，数据库文件不会立即缩小。仅本机笔记、草稿、历史记录、登录状态与待同步内容会保留。
+                    笔记正文仅释放当前账号已同步到云端的内容，数据库文件不会立即缩小。本机笔记、草稿、历史记录、登录状态与待同步内容会保留。
                 </Text>
                 <Pressable
                     accessibilityRole="button"
@@ -604,7 +612,7 @@ export default function DataStorageSettingsScreen() {
                         </Text>
                         <Text style={{ ...hint, marginTop: 12 }}>
                             {selected.notes
-                                ? "笔记缓存清理后，相关笔记需要联网重新同步。仅本机笔记、未同步修改、草稿及历史记录会保留。"
+                                ? "释放后笔记仍在列表中，打开时需要联网下载正文。本机笔记、未同步修改、草稿及历史记录会保留。"
                                 : "仅清理可安全移除的临时文件，笔记、草稿与待同步内容会保留。"}
                             {selected.diagnostics
                                 ? "诊断日志清理后，无法在帮助与反馈中导出此前的记录。"

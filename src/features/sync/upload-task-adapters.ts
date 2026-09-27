@@ -23,6 +23,7 @@ import {
 } from "@/features/notes/data/note-local.repository";
 import { readCloudMirror } from "@/features/notes/data/note-sync.repository";
 import {
+    uncertainCreatePolicy,
     uploadNoteNow,
     type NoteSaveResult,
 } from "@/features/notes/services/note-save.service";
@@ -119,11 +120,26 @@ async function executeNoteTask(
         return { state: "accepted", transferredBytes: 0 };
     }
     if (localNote.server_id == null && localNote.sync_status === "unknown") {
-        return {
-            state: "blocked",
-            message: "此前创建请求结果未知，为避免重复笔记，暂不能自动重试",
-            transferredBytes: 0,
-        };
+        // Replay only a fixed idempotent request; legacy uncertain creates still need the user.
+        const policy = await uncertainCreatePolicy(
+            database,
+            task.ownerUserId,
+            clientId,
+        );
+        if (policy === "later") {
+            return {
+                state: "retry",
+                message: "暂时无法确认服务器状态，稍后重试",
+                transferredBytes: 0,
+            };
+        }
+        if (policy === "blocked") {
+            return {
+                state: "blocked",
+                message: "此前创建请求结果未知，为避免重复笔记，暂不能自动重试",
+                transferredBytes: 0,
+            };
+        }
     }
     let transferredBytes = 0;
     const result: NoteSaveResult =
@@ -142,7 +158,13 @@ async function executeNoteTask(
               );
     if (result.cloudState !== "accepted") {
         const unknownCreate =
-            result.note.server_id == null && result.cloudState === "unknown";
+            result.note.server_id == null &&
+            result.cloudState === "unknown" &&
+            (await uncertainCreatePolicy(
+                database,
+                task.ownerUserId,
+                clientId,
+            )) === "blocked";
         return {
             state: unknownCreate || !result.retryable ? "blocked" : "retry",
             message: result.message ?? "云端同步未完成",

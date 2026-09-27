@@ -227,7 +227,11 @@ export default function SwipeableNoteItem({
                 <Animated.View style={cardStyle}>
                     <NoteCard
                         title={item.title}
-                        content={item.content}
+                        content={
+                            item.body_state === "evicted"
+                                ? (item.content_preview ?? null)
+                                : item.content
+                        }
                         categoryName={categoryName}
                         isPinned={item.is_pinned}
                         isStarred={item.is_starred}
