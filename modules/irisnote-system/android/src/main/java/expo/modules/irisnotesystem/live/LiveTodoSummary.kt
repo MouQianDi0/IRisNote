@@ -1,7 +1,5 @@
 package expo.modules.irisnotesystem.live
 
-import java.util.Locale
-
 /** 聚合卡原生重算：后台无需 JS，场景切换由同一闹钟链驱动。 */
 object LiveTodoSummary {
   private const val NEAR_MS = 60 * 60_000L
@@ -16,38 +14,34 @@ object LiveTodoSummary {
     val secondsEligible: Boolean = false,
   )
 
-  fun scene(card: LiveTodoTimelineCard, nowMs: Long, smoothSeconds: Boolean = false): Scene? {
+  /** smoothSeconds 保留以兼容既有调用方；聚合卡已改为静态计数文案，不再使用。 */
+  fun scene(card: LiveTodoTimelineCard, nowMs: Long, @Suppress("UNUSED_PARAMETER") smoothSeconds: Boolean = false): Scene? {
     val items = card.summaryItems ?: return null
     if (card.endAt != null && nowMs >= card.endAt) return null
     val pending = items.filter { !it.completed }
-    val count = pending.size
-    val starred = pending.count { it.starred }
     val timed = pending.filter { it.startAt != null && (it.endAt == null || it.endAt > nowMs) }
     val order = compareBy<LiveTodoSummaryItem> { it.startAt }.thenBy { it.title }
-    val active = timed.filter { (it.startAt ?: Long.MAX_VALUE) <= nowMs }.sortedWith(order).firstOrNull()
-    val near = timed.filter { (it.startAt ?: 0) > nowMs && (it.startAt ?: Long.MAX_VALUE) - nowMs <= NEAR_MS }
-      .sortedWith(order).firstOrNull()
-    if (active != null) {
-      val remaining = active.endAt?.let { (it - nowMs).coerceAtLeast(0) }
-      val duration = if (remaining == null) "" else if (remaining <= NEAR_MS && smoothSeconds) {
-        String.format(Locale.ROOT, "%02d:%02d", remaining / 60_000, remaining % 60_000 / 1000)
-      } else {
-        val minutes = (remaining + 59_999) / 60_000
-        String.format(Locale.ROOT, "%02d:%02d", minutes / 60, minutes % 60)
-      }
-      return Scene(
-        "active", "待办 $count·进行中 ${timed.count { (it.startAt ?: Long.MAX_VALUE) <= nowMs }}",
-        active.title + if (duration.isEmpty()) "" else " · 剩余 $duration",
-        "ic_live_todo_active", active.endAt,
-        remaining != null && remaining <= NEAR_MS,
-      )
-    }
-    if (near != null) return Scene(
-      "near", "待办 $count·临近 ${timed.count { (it.startAt ?: 0) > nowMs && (it.startAt ?: Long.MAX_VALUE) - nowMs <= NEAR_MS }}",
-      near.title, "ic_live_todo_near",
-    )
+    val activeItems = timed.filter { (it.startAt ?: Long.MAX_VALUE) <= nowMs }.sortedWith(order)
+    val nearItems = timed.filter { (it.startAt ?: 0) > nowMs && (it.startAt ?: Long.MAX_VALUE) - nowMs <= NEAR_MS }
+      .sortedWith(order)
+    // 与 JS desiredTodoSummary 同口径：标题「进行中 N[·临近 N]」，副标题分段统计。
+    val title = if (nearItems.isNotEmpty()) "进行中 ${activeItems.size}·临近 ${nearItems.size}"
+    else "进行中 ${activeItems.size}"
+    val pendingCount = pending.size
+    val completedCount = items.size - pendingCount
+    val starredCount = pending.count { it.priority == "high" }
+    val text = listOf(
+      "今日 ${items.size} 条待办",
+      "${starredCount}条重要",
+      "${pendingCount}条待完成",
+      "${activeItems.size}条进行中",
+      "${completedCount}条已完成",
+    ).joinToString(" | ")
+    val active = activeItems.firstOrNull()
+    if (active != null) return Scene("active", title, text, "ic_live_todo_active")
+    if (nearItems.isNotEmpty()) return Scene("near", title, text, "ic_live_todo_near")
     if (pending.any { it.startAt == null || (it.startAt > nowMs && (it.endAt == null || it.endAt > nowMs)) })
-      return Scene("today", "待办 $count·重要 $starred", "今日有 $count 条待办，$starred 条重要", "ic_live_todo_today")
+      return Scene("today", title, text, "ic_live_todo_today")
     if (!card.summarySeenActivity || items.isEmpty()) return null
     val terminalAt = items.maxOfOrNull { if (it.completed && it.completedAt != null) it.completedAt else it.endAt ?: Long.MIN_VALUE }
       ?: return null
@@ -64,8 +58,7 @@ object LiveTodoSummary {
       item.endAt?.let { events.add(it); events.add(it + END_HOLD_MS) }
       item.completedAt?.let { events.add(it + END_HOLD_MS) }
     }
-    // 进行中剩余分钟文案的兜底节拍。
-    if (scene(card, nowMs)?.name == "active") events.add((nowMs / 60_000 + 1) * 60_000)
+    // 聚合卡已为静态计数文案，无需分钟级兜底节拍。
     return events.filter { it > nowMs }.minOrNull()
   }
 }

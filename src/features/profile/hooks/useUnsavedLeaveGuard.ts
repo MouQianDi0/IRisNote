@@ -1,3 +1,4 @@
+import { isSessionExiting } from "@/shared/http/session-events";
 import { router, type Href } from "expo-router";
 import { useNavigation, usePreventRemove } from "expo-router/react-navigation";
 import { useRef, useState } from "react";
@@ -19,7 +20,8 @@ export function useUnsavedLeaveGuard(dirty: boolean, saving: boolean) {
     const allowLeaveRef = useRef(false);
 
     usePreventRemove(saving || dirty, ({ data }) => {
-        if (allowLeaveRef.current) {
+        // 登录已失效时直接放行跳转欢迎页，本地未保存的输入无法再提交。
+        if (allowLeaveRef.current || isSessionExiting()) {
             navigation.dispatch(data.action);
             return;
         }

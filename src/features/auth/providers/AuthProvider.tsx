@@ -1,6 +1,7 @@
 import { getUserProfile } from "@/features/auth/api/session.api";
 import type { User } from "@/shared/types/user";
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { authTokenStorage } from "@/shared/storage/token-storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect, type Href } from "expo-router";
 import {
@@ -13,13 +14,17 @@ import {
 import { AuthContext } from "../auth.context";
 import { banner } from "@/core/notifications";
 import { resetConnectionSession } from "@/shared/http/connection-events";
-import { onSessionRejected } from "@/shared/http/session-events";
+import {
+    onSessionRejected,
+    publishSessionEnded,
+    setSessionExiting,
+} from "@/shared/http/session-events";
 import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
 
 const welcomeRoute = "/auth/welcome" as Href;
 
 async function readStoredSession() {
-    const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
+    const storedToken = await authTokenStorage.read();
     const storedUser = await AsyncStorage.getItem(storageKeys.authUser);
     return {
         token: storedToken,
@@ -49,7 +54,7 @@ export function AuthProvider({
     }, [applySession]);
 
     const syncProfile = useCallback(async () => {
-        const storedToken = await AsyncStorage.getItem(storageKeys.authToken);
+        const storedToken = await authTokenStorage.read();
         if (!storedToken) return;
         try {
             const profile = await getUserProfile();
@@ -102,7 +107,7 @@ export function AuthProvider({
         const { user: storedUser } = await readStoredSession();
         if (!storedUser || storedUser.id !== next.id) return false;
         // 令牌必须落盘：写入失败时本机仍持有已被撤销的旧令牌，交由调用方提示重新登录。
-        await AsyncStorage.setItem(storageKeys.authToken, nextToken);
+        await authTokenStorage.write(nextToken);
         try {
             await AsyncStorage.setItem(
                 storageKeys.authUser,
@@ -120,7 +125,11 @@ export function AuthProvider({
         let active = true;
         void readStoredSession().then((session) => {
             if (!active) return;
-            applySession(session);
+            // 只有令牌、没有用户资料（如 iOS 卸载重装后钥匙串仍保留令牌）按未登录处理并清掉遗留令牌。
+            // 只在启动首次加载时清理：此时不可能有“已写令牌、未写资料”的登录流程在进行。
+            const orphan = !!session.token && !session.user;
+            if (orphan) void authTokenStorage.clear().catch(() => undefined);
+            applySession(orphan ? { token: null, user: null } : session);
             if (!initialLoadDone.current) {
                 initialLoadDone.current = true;
                 syncProfile();
@@ -141,10 +150,11 @@ export function AuthProvider({
         setCloudStorageSession(null, false, false);
         banner.clearSession();
         resetConnectionSession();
-        await AsyncStorage.removeItem(storageKeys.authToken);
+        await authTokenStorage.clear();
         await AsyncStorage.removeItem(storageKeys.authUser);
         setUser(null);
         setToken(null);
+        publishSessionEnded();
     }, []);
 
     // 只有被拒绝的令牌仍是本机当前令牌才退出：旧账号或换新令牌前发出的迟到请求不影响当前登录。
@@ -154,12 +164,12 @@ export function AuthProvider({
             onSessionRejected((rejected) => {
                 void (async () => {
                     if (expiring.current) return;
-                    const current = await AsyncStorage.getItem(
-                        storageKeys.authToken,
-                    );
+                    const current = await authTokenStorage.read();
                     if (!current || current !== rejected || expiring.current)
                         return;
                     expiring.current = true;
+                    // 同步开启，保证 replace 触发的离开保护回调能读到；重新登录后关闭。
+                    setSessionExiting(true);
                     try {
                         await logout();
                         banner.show({
@@ -175,6 +185,9 @@ export function AuthProvider({
             }),
         [logout],
     );
+    useEffect(() => {
+        if (token) setSessionExiting(false);
+    }, [token]);
 
     return (
         <AuthContext.Provider

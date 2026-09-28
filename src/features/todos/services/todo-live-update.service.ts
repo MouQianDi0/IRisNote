@@ -22,6 +22,8 @@ export type TodoLiveUpdateCard = {
     max: number;
     indeterminate: boolean;
     ongoing: boolean;
+    /** 请求 Live Updates 提升式展示（Android 16+ 上岛大卡）；低版本原生静默退化。 */
+    promoted: boolean;
     /** 系统 chronometer 秒级计时锚点（epoch ms）：倒计时终点或正计时起点；null 不启用。 */
     chronoAt: number | null;
     chronoCountdown: boolean;
@@ -115,6 +117,7 @@ export function desiredTodoLiveUpdate(
             max: 0,
             indeterminate: true,
             ongoing: true,
+            promoted: todo.priority === "high",
             chronoAt: timeOnDate(todo.dateId, startTime),
             chronoCountdown: false,
         };
@@ -135,6 +138,7 @@ export function desiredTodoLiveUpdate(
         max: totalMinutes,
         indeterminate: false,
         ongoing: true,
+        promoted: todo.priority === "high",
         chronoAt: end,
         chronoCountdown: true,
     };
@@ -172,7 +176,8 @@ export function desiredTodoLiveTimeline(
             todo.endTime !== null
                 ? timeOnDate(todo.dateId, todo.endTime)
                 : null,
-        promoted: false,
+        // 重要事件（创建时 priority=high）独立提升动态大卡；普通事件非提升。
+        promoted: todo.priority === "high",
     };
 }
 
@@ -208,7 +213,7 @@ export function createTodoLiveDemoTimeline(startAt: number): TodoLiveTimelineCar
         textStarted: null,
         startAt,
         endAt: startAt + 60_000,
-        promoted: false,
+        promoted: true,
     };
 }
 
@@ -232,6 +237,7 @@ export function desiredTodoLiveDemoUpdate(
         max: total,
         indeterminate: false,
         ongoing: true,
+        promoted: timeline.promoted,
         chronoAt: timeline.endAt,
         chronoCountdown: true,
     };

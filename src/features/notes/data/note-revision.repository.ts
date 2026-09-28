@@ -1,4 +1,5 @@
 import type { ApplicationDatabaseTransaction } from "@/core/database";
+import { pruneNoteRevisions } from "./note-revision-retention";
 
 export type NoteRevisionOrigin =
     "local-save" | "server-reconcile" | "restore" | "migrate";
@@ -36,7 +37,10 @@ type InsertRevisionInput = {
     origin: NoteRevisionOrigin;
 };
 
-/** 在调用方事务内插入一个新版本；不负责移动 local_notes 指针。 */
+/**
+ * 在调用方事务内插入一个新版本；不负责移动 local_notes 指针。
+ * 插入后顺带裁剪超出上限的旧版本，新版本与当前版本总在保留范围内。
+ */
 export async function insertNoteRevision(
     tx: ApplicationDatabaseTransaction,
     ownerUserId: number,
@@ -64,6 +68,10 @@ export async function insertNoteRevision(
             $createdAt: new Date().toISOString(),
         },
     );
+    await pruneNoteRevisions(tx, ownerUserId, clientId, undefined, [
+        revisionId,
+        input.parentId,
+    ]);
     return revisionId;
 }
 

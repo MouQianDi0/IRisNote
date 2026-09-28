@@ -7,10 +7,12 @@ import { AuthProvider } from "@/features/auth/providers/AuthProvider";
 import { UpdateDialog } from "@/features/updates/UpdateDialog";
 import type { PropsWithChildren } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { StartupMaintenance } from "./StartupMaintenance";
 
 export function AppProviders({ children }: PropsWithChildren) {
     return (
         <ApplicationDatabaseProvider>
+            <StartupMaintenance />
             <AuthProvider>
                 <CloudStorageProvider>
                     <GestureHandlerRootView style={{ flex: 1 }}>

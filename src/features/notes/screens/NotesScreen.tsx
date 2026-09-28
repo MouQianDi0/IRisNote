@@ -38,7 +38,10 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 import { trashNote } from "../services/note-trash.service";
-import { getCategories } from "../categories/api/categories.api";
+import {
+    loadCategories,
+    readCachedCategories,
+} from "../categories/data/category-cache";
 import { ALL_CATEGORY } from "../categories/categories.constants";
 import {
     notifyCategoriesChanged,
@@ -68,6 +71,7 @@ import {
     queueNoteUploadNow,
     saveEditedNoteLocalFirst,
 } from "../services/note-save.service";
+import { ensureNoteBody } from "../services/note-body.service";
 import { syncNotes } from "../services/note-sync-coordinator";
 
 import { sortNotesByPinned, withLocalOrder } from "../notes.selectors";
@@ -308,7 +312,27 @@ export default function NotesScreen() {
         request = (async () => {
             try {
                 const checkAccess = captureCloudStorageAccess(user.id);
-                const remoteCategories = await getCategories();
+                // 列表为空时先显示本地副本，避免离线或慢网时分类栏空白。
+                const cached = await readCachedCategories(
+                    database,
+                    user.id,
+                ).catch(() => null);
+                checkAccess();
+                if (cached) {
+                    const shown = await applyQueuedCategoryChanges(
+                        database,
+                        user.id,
+                        cached,
+                    );
+                    checkAccess();
+                    setCategories((previous) =>
+                        previous.length ? previous : shown,
+                    );
+                }
+                const { categories: remoteCategories } = await loadCategories(
+                    database,
+                    user.id,
+                );
                 checkAccess();
                 const nextCategories = await applyQueuedCategoryChanges(
                     database,
@@ -516,7 +540,12 @@ export default function NotesScreen() {
                     : await saveEditedNoteLocalFirst(
                           database,
                           user.id,
-                          activeContextNote,
+                          // A title-only save keeps the body, so an evicted body is downloaded first.
+                          await ensureNoteBody(
+                              database,
+                              user.id,
+                              activeContextNote,
+                          ),
                           { title },
                       );
             return result.localOnly
@@ -611,8 +640,11 @@ export default function NotesScreen() {
             setOpenedNoteId(null);
             hideFloatingMenu();
             setContextMenuNote(item);
+            // Copy, share and rename need the body; the list update brings it into the menu.
+            if (item.body_state === "evicted" && user)
+                void ensureNoteBody(database, user.id, item).catch(() => {});
         },
-        [hideFloatingMenu],
+        [database, hideFloatingMenu, user],
     );
 
     const handleCloseContextMenu = useCallback(() => {

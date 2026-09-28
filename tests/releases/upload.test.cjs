@@ -33,6 +33,16 @@ test('dual upload verifies the server before COS and prepares patches last', asy
     await uploadBoth(f.options);
     assert.deepEqual(f.calls, ['preflight', 'put', 'verify', 'cos', 'patches']);
 });
+test('final summary names a full-package barrier instead of claiming patches are ready', async () => {
+    const { uploadBoth } = await modulePromise;
+    for (const barrier of [false, true]) {
+        const f = fixture({ ...draft, full_package_required: barrier });
+        const logs = [];
+        await uploadBoth({ ...f.options, log: (line) => logs.push(line) });
+        assert.match(logs.at(-1), barrier ? /完整包屏障，不生成差量包/ : /所需差量包已就绪/);
+        assert.doesNotMatch(logs.at(-1), barrier ? /差量包已就绪/ : /屏障/);
+    }
+});
 test('COS failure after server success is recoverable with the same draft, without another server PUT', async () => {
     const { uploadBoth } = await modulePromise;
     const f = fixture();

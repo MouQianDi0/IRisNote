@@ -31,6 +31,9 @@ import {
     isRemovedLocalNote,
     removedServerIds,
 } from "./note-trash.repository";
+import { readEvictedPreviews } from "./note-body.repository";
+import { deleteNoteCreateOperation } from "./note-create-operation.repository";
+import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 
 type LocalNoteRow = {
     local_id: number;
@@ -106,6 +109,17 @@ function nextEditTime(previous?: string | null) {
     ).toISOString();
 }
 
+/** 已淘汰正文的笔记带上正文状态与摘要；列定义保持不变，旧结构数据库照常可读。 */
+function withBodyState(note: Note, previews: ReadonlyMap<number, string | null>) {
+    return previews.has(note.id)
+        ? {
+              ...note,
+              body_state: "evicted" as const,
+              content_preview: previews.get(note.id) ?? null,
+          }
+        : note;
+}
+
 async function readNoteByClientId(
     database: ApplicationDatabaseTransaction,
     ownerUserId: number,
@@ -117,7 +131,11 @@ async function readNoteByClientId(
          WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
         { $ownerUserId: ownerUserId, $clientId: clientId },
     );
-    return row ? toNote(row) : null;
+    if (!row) return null;
+    return withBodyState(
+        toNote(row),
+        await readEvictedPreviews(database, ownerUserId, clientId),
+    );
 }
 
 export async function getLocalNotes(
@@ -131,7 +149,8 @@ export async function getLocalNotes(
          ORDER BY COALESCE(local_order, 2147483647) ASC, local_updated_at DESC`,
         { $ownerUserId: ownerUserId },
     );
-    return rows.map(toNote);
+    const previews = await readEvictedPreviews(database, ownerUserId);
+    return rows.map((row) => withBodyState(toNote(row), previews));
 }
 
 export async function recoverInterruptedNoteSyncs(
@@ -270,6 +289,13 @@ export async function updatePendingLocalNote(
             ownerUserId,
             note.id,
         );
+        // A save without the full body would write an empty body into history and upload it.
+        if (
+            existing?.body_state === "evicted" &&
+            payload.content === undefined
+        ) {
+            throw new Error("正文尚未下载到本机，请联网打开笔记后再修改");
+        }
         await assertDraftCommit(
             transaction,
             ownerUserId,
@@ -826,6 +852,11 @@ export async function reconcileNotesInTransaction(
                 continue;
             // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。
             await deleteNoteRevisions(transaction, ownerUserId, row.client_id);
+            await deleteNoteReadingProgress(
+                transaction,
+                ownerUserId,
+                row.client_id,
+            );
             await transaction.run(
                 "DELETE FROM local_notes WHERE local_id = $localId",
                 { $localId: row.local_id },
@@ -1077,6 +1108,8 @@ export async function removeLocalNote(
 ) {
     await database.transaction(async (tx) => {
         await deleteNoteRevisions(tx, ownerUserId, clientId);
+        await deleteNoteReadingProgress(tx, ownerUserId, clientId);
+        await deleteNoteCreateOperation(tx, ownerUserId, clientId);
         await tx.run(
             `DELETE FROM local_notes
              WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,

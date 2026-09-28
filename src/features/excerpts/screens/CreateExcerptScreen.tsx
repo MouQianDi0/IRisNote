@@ -1,10 +1,19 @@
-import { Screen } from "@/shared/ui";
-import { Text } from "react-native";
+import { router } from "expo-router";
+import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
+import { useExcerptScope } from "../hooks/useExcerptScope";
 
 export default function CreateExcerptScreen() {
-    return (
-        <Screen variant="centeredMuted">
-            <Text className="text-2xl font-bold">新建剪贴板摘录</Text>
-        </Screen>
-    );
+    const scope = useExcerptScope();
+    const close = () => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)/excerpt");
+    };
+    return scope.ready ? (
+        <ExcerptFormDialog
+            key={`${scope.ownerKey}:${scope.generation}`}
+            ownerKey={scope.ownerKey}
+            generation={scope.generation}
+            onClose={close}
+        />
+    ) : null;
 }

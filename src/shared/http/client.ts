@@ -1,4 +1,5 @@
 import { storageKeys } from "@/shared/storage/storage.keys";
+import { authTokenStorage } from "@/shared/storage/token-storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
     create,
@@ -192,6 +193,7 @@ const shouldAttachDeviceId = (url?: string) => {
     return (
         url.startsWith("/verify/") ||
         url.startsWith("/user/password-reset/") ||
+        url.startsWith("/user/email-change/") ||
         url.startsWith("/auth/register") ||
         url.startsWith("/auth/login")
     );
@@ -248,7 +250,7 @@ api.interceptors.request.use(async (config) => {
         }
         connectionStamps.set(config, requestConnectionStamp());
         if (config.method === "get" && !config.timeout) config.timeout = 15000;
-        const token = await AsyncStorage.getItem(storageKeys.authToken);
+        const token = await authTokenStorage.read();
         // AxiosHeaders.get is case-insensitive; fall back for plain object headers.
         const existingAuthorization =
             typeof config.headers.get === "function"

@@ -1,6 +1,9 @@
 import api from "@/shared/http/client";
 import { beginNoteCloudWrite } from "../notes.events";
+import { ensureNotesServerV2 } from "./notes-capability";
+import { probeNotesServer } from "./notes.api";
 import {
+    parseBatch,
     parseChanges,
     withSyncResponseContext,
     parseSnapshot,
@@ -46,15 +49,27 @@ export const notesSyncTransport: NotesSyncTransport = {
             () => parseSnapshot(response.data, owner),
         );
     },
-    async changes(owner, cursor, limit, signal) {
+    async changes(owner, cursor, limit, signal, fields) {
         const response = await api.get<unknown>("/notes/changes", {
-            params: { cursor, limit },
+            params: { cursor, limit, ...(fields ? { fields } : {}) },
             signal,
         });
         return withSyncResponseContext(
             "/api/notes/changes",
             response.status,
             () => parseChanges(response.data, owner),
+        );
+    },
+    supportsMeta: () => ensureNotesServerV2(probeNotesServer),
+    async batch(owner, ids, signal) {
+        const response = await api.get<unknown>("/notes/batch", {
+            params: { ids: ids.join(",") },
+            signal,
+        });
+        return withSyncResponseContext(
+            "/api/notes/batch",
+            response.status,
+            () => parseBatch(response.data, owner),
         );
     },
 };

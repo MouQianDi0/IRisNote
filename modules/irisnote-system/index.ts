@@ -14,6 +14,7 @@ export type SavedDiagnosticLog = {
  * setRequestPromotedOngoing（API 36.1 框架符号），36.0 设备退化为普通进度卡片；
  * 仅用于进行中任务/计时器，普通提醒类禁入（政策边界见通知渠道适配 §2.4）。
  * chronoAt/chronoCountdown 为系统 chronometer 秒级计时锚点（倒计时/正计时）。
+ * hideProgress=true 时不设置任何进度形态（聚合卡纯文本状态卡）。
  */
 export type NativeProgressNotification = {
   id: number;
@@ -28,6 +29,7 @@ export type NativeProgressNotification = {
   chronoAt?: number | null;
   chronoCountdown?: boolean;
   iconResourceName?: string | null;
+  hideProgress?: boolean;
 };
 
 /**
@@ -52,7 +54,8 @@ export type NativeTodoSummaryItem = {
   startAt: number | null;
   endAt: number | null;
   completed: boolean;
-  starred: boolean;
+  /** 创建时选择的重要度；high 视为「重要」。 */
+  priority: "low" | "normal" | "high";
   completedAt: number | null;
 };
 
@@ -68,14 +71,11 @@ declare class IrisNoteSystemModule extends NativeModule {
   cancelProgressNotification(id: number): Promise<void>;
   /** 按渠道清理本应用当前展示的全部通知（冷启动 reconcile 被杀残留的动态卡片）。 */
   cancelProgressNotificationsByChannel(channelId: string): Promise<void>;
-  /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。 */
-  scheduleLiveTodoCards(
-    cards: NativeLiveTodoTimelineCard[],
-  ): Promise<void>;
+  /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。
+   *  入参为 JSON 字符串：Expo Modules 无法把 JS 嵌套对象数组转换为 Kotlin 泛型。 */
+  scheduleLiveTodoCards(payload: string): Promise<void>;
   /** 方案 B 数据供给：仅更新时间线快照（不排闹钟），供前台服务每秒重算。 */
-  updateLiveTodoCards(
-    cards: NativeLiveTodoTimelineCard[],
-  ): Promise<void>;
+  updateLiveTodoCards(payload: string): Promise<void>;
   /** 回前台收回接管权：取消闹钟、清快照，不动已展示通知。 */
   cancelScheduledLiveTodoCards(): Promise<void>;
   /** 方案 B：启动前台服务秒级刷新（仅限应用前台调用）。 */

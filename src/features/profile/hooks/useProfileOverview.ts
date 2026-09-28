@@ -5,12 +5,12 @@ import {
     getCloudStorageSnapshot,
     isCloudStoragePermissionError,
 } from "@/core/cloud-storage/cloud-storage-policy";
-import { getCategories } from "@/features/notes/categories/api/categories.api";
+import { loadCategories } from "@/features/notes/categories/data/category-cache";
 import { onCategoriesChanged } from "@/features/notes/categories/categories.events";
 import { getLocalNotes } from "@/features/notes/data/note-local.repository";
 import {
     onReadingProgressChanged,
-    readingProgressStore,
+    readingProgressStoreFor,
 } from "@/features/notes/data/note-reading-progress";
 import { onNotesChanged } from "@/features/notes/notes.events";
 import { syncNotes } from "@/features/notes/services/note-sync-coordinator";
@@ -76,7 +76,7 @@ async function loadProfileOverview(
             const [syncResult, categoriesResult] = await Promise.allSettled([
                 initial ? syncNotes(database, ownerUserId) : Promise.resolve(null),
                 initial || categoriesChanged
-                    ? getCategories()
+                    ? loadCategories(database, ownerUserId)
                     : Promise.resolve(null),
             ]);
             checkAccess();
@@ -85,7 +85,7 @@ async function loadProfileOverview(
                 notesAvailable = true;
             }
             if (categoriesResult.status === "fulfilled" && categoriesResult.value)
-                categoryCount = categoriesResult.value.length;
+                categoryCount = categoriesResult.value.categories.length;
         } catch (error) {
             if (!isCloudStoragePermissionError(error)) throw error;
         }
@@ -95,7 +95,9 @@ async function loadProfileOverview(
     let continueReading = previousOverview.continueReading;
     if (notesAvailable) {
         try {
-            const records = await readingProgressStore.list(ownerUserId);
+            const records = await readingProgressStoreFor(database).list(
+                ownerUserId,
+            );
             continueReading = selectContinueReading(notes, records);
         } catch {
             // 保留上次结果，等待下一次数据变化后重试读取。

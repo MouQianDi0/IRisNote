@@ -46,3 +46,57 @@ export function confirmPasswordReset(
         new_password: newPassword,
     });
 }
+
+/** 修改邮箱的一次性凭据：只保存在页面状态中，不写入存储或日志。 */
+export type EmailChangeTicket = { ticket: string; expires_in: number };
+
+export async function sendEmailChangeCurrentCode(): Promise<void> {
+    await api.post("/user/email-change/send-current", undefined, {
+        timeout: REQUEST_TIMEOUT,
+    });
+}
+
+export async function verifyEmailChangeByCode(
+    code: string,
+): Promise<EmailChangeTicket> {
+    const { data } = await api.post<EmailChangeTicket>(
+        "/user/email-change/verify-current",
+        { code },
+        { timeout: REQUEST_TIMEOUT },
+    );
+    return data;
+}
+
+export async function verifyEmailChangeByPassword(
+    password: string,
+): Promise<EmailChangeTicket> {
+    const { data } = await api.post<EmailChangeTicket>(
+        "/user/email-change/verify-password",
+        { password },
+        { timeout: REQUEST_TIMEOUT },
+    );
+    return data;
+}
+
+export async function sendEmailChangeNewCode(
+    ticket: string,
+    newEmail: string,
+): Promise<void> {
+    await api.post(
+        "/user/email-change/send-new",
+        { ticket, new_email: newEmail },
+        { timeout: REQUEST_TIMEOUT },
+    );
+}
+
+export async function confirmEmailChange(
+    ticket: string,
+    code: string,
+): Promise<User> {
+    const { data } = await api.post<{ user: User }>(
+        "/user/email-change/confirm",
+        { ticket, code },
+        { timeout: REQUEST_TIMEOUT },
+    );
+    return { ...data.user, avatar: normalizeAvatarUrl(data.user.avatar) };
+}

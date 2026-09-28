@@ -5,6 +5,10 @@ import {
     systemNotificationsAvailable,
     useSystemNotifications,
 } from "@/core/system-notifications/system-notification-provider";
+import {
+    ClipboardDetectConfirmDialog,
+    useClipboardPreferences,
+} from "@/features/excerpts";
 import { ANDROID_PACKAGE } from "@/features/updates/release";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as ImagePicker from "expo-image-picker";
@@ -15,6 +19,7 @@ import {
     AlarmClock,
     Bell,
     Camera,
+    ClipboardPaste,
     Cloud,
     Image as ImageIcon,
     PackageCheck,
@@ -164,10 +169,13 @@ export default function PermissionSettingsScreen() {
         runtimeNotificationPending,
         setRuntimeNotificationEnabled,
         liveUpdateCapable,
+        liveUpdateProgressCapable,
         liveTodoRealtimeEnabled,
         liveTodoRealtimePending,
         setLiveTodoRealtimeEnabled,
     } = useSystemNotifications();
+    const clipboardPreferences = useClipboardPreferences();
+    const [confirmingClipboard, setConfirmingClipboard] = useState(false);
     const [snapshot, setSnapshot] = useState<PermissionSnapshot>({
         notifications: readingState,
         exactAlarm:
@@ -231,6 +239,19 @@ export default function PermissionSettingsScreen() {
             await refresh();
         } catch {
             showOpenError("准时提醒权限");
+        }
+    };
+
+    const setClipboardAutoDetect = async (enabled: boolean) => {
+        try {
+            await clipboardPreferences.setAutoDetect(enabled);
+            setConfirmingClipboard(false);
+        } catch {
+            banner.show({
+                title: enabled ? "开启失败" : "关闭失败",
+                message: "请稍后重试",
+                type: "important",
+            });
         }
     };
 
@@ -329,12 +350,12 @@ export default function PermissionSettingsScreen() {
                             value={
                                 liveTodoRealtimeEnabled ? "已开启" : "已关闭"
                             }
-                            description={
-                                liveUpdateCapable
+                                            description={
+                                liveUpdateProgressCapable
                                     ? "退后台保持待办进度卡实时更新；开启后以前台服务运行，耗电略增"
                                     : "需要 Android 16 及以上系统"
                             }
-                            disabled={!liveUpdateCapable}
+                            disabled={!liveUpdateProgressCapable}
                             trailing={
                                 <Host
                                     matchContents
@@ -343,16 +364,51 @@ export default function PermissionSettingsScreen() {
                                     <Switch
                                         value={
                                             liveTodoRealtimeEnabled &&
-                                            liveUpdateCapable
+                                            liveUpdateProgressCapable
                                         }
                                         disabled={
                                             liveTodoRealtimePending ||
-                                            !liveUpdateCapable
+                                            !liveUpdateProgressCapable
                                         }
                                         onValueChange={(value) => {
                                             void setLiveTodoRealtimeEnabled(
                                                 value,
                                             );
+                                        }}
+                                    />
+                                </Host>
+                            }
+                        />
+                        <ListRow
+                            icon={ClipboardPaste}
+                            label="剪贴板自动检测"
+                            value={
+                                clipboardPreferences.autoDetectEnabled
+                                    ? "已开启"
+                                    : "已关闭"
+                            }
+                            description="在摘录页时检测剪贴板新内容"
+                            disabled={!clipboardPreferences.ready}
+                            trailing={
+                                <Host
+                                    matchContents
+                                    accessibilityLabel="剪贴板自动检测"
+                                >
+                                    <Switch
+                                        value={
+                                            clipboardPreferences.autoDetectEnabled
+                                        }
+                                        disabled={
+                                            !clipboardPreferences.ready ||
+                                            clipboardPreferences.pending
+                                        }
+                                        onValueChange={(value) => {
+                                            if (value)
+                                                setConfirmingClipboard(true);
+                                            else
+                                                void setClipboardAutoDetect(
+                                                    false,
+                                                );
                                         }}
                                     />
                                 </Host>
@@ -406,6 +462,12 @@ export default function PermissionSettingsScreen() {
                     </View>
                 </View>
             </ScrollView>
+            <ClipboardDetectConfirmDialog
+                visible={confirmingClipboard}
+                pending={clipboardPreferences.pending}
+                onCancel={() => setConfirmingClipboard(false)}
+                onConfirm={() => void setClipboardAutoDetect(true)}
+            />
         </Screen>
     );
 }

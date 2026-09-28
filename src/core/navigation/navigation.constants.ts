@@ -16,7 +16,7 @@ export const TAB_MENU_ITEMS = [
         icon: Notebook,
     },
     {
-        name: "剪贴",
+        name: "摘录",
         key: "excerpt" as const,
         route: "/(tabs)/excerpt" as const,
         icon: ClipboardPenLine,
@@ -89,7 +89,7 @@ export const getMainAction = (path: string): MainAction => {
         case "excerpt":
             return {
                 icon: ClipboardPenLine,
-                label: "新建剪贴",
+                label: "新建摘录",
                 route: "/pages/excerpt/create",
             };
         case "user":

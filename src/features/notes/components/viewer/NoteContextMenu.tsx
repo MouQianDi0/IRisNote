@@ -195,8 +195,18 @@ export default function NoteContextMenu({
         })();
     };
 
+    // The list downloads an evicted body in the background; never copy or share an empty body meanwhile.
+    const bodyMissing = () => {
+        if (note?.body_state !== "evicted") return false;
+        Alert.alert(
+            "正文未下载",
+            "这篇笔记的正文不在本机，请联网后稍候再试",
+        );
+        return true;
+    };
+
     const handleCopy = async () => {
-        if (!note) return;
+        if (!note || bodyMissing()) return;
         if (!(await closeMenu())) return;
         try {
             await copyNoteToClipboard(note);
@@ -211,7 +221,7 @@ export default function NoteContextMenu({
     };
 
     const handleShare = async (format: NoteShareFormat) => {
-        if (!note || isSharing) return;
+        if (!note || isSharing || bodyMissing()) return;
         if (!(await closeMenu())) return;
         setIsSharing(true);
         try {
@@ -232,7 +242,8 @@ export default function NoteContextMenu({
     };
 
     const handleImageShare = async () => {
-        if (!note || !imageCardRef.current || isSharing) return;
+        if (!note || !imageCardRef.current || isSharing || bodyMissing())
+            return;
         if (!(await saveRename())) return;
 
         if (isNoteShareImageContentTooLong(note.content)) {

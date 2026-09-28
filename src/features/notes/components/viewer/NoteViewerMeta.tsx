@@ -1,5 +1,6 @@
 import { colors } from "@/shared/theme";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
+import { useApplicationDatabase } from "@/core/database";
 import {
     captureCloudStorageAccess,
     getCloudStorageSnapshot,
@@ -10,7 +11,7 @@ import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { getCategories } from "../../categories/api/categories.api";
+import { loadCategories } from "../../categories/data/category-cache";
 import { ALL_CATEGORY } from "../../categories/categories.constants";
 import NoteStatisticsPopover from "./note-statistics-popover";
 
@@ -55,6 +56,7 @@ export default function NoteViewerMeta({
         ownerUserId,
         generation: cloudGeneration,
     } = useCloudStorage();
+    const database = useApplicationDatabase();
     const [categoryNameById, setCategoryNameById] = useState<{
         id: number;
         name: string;
@@ -76,7 +78,10 @@ export default function NoteViewerMeta({
                 if (getCloudStorageSnapshot().generation !== cloudGeneration)
                     return;
                 const checkAccess = captureCloudStorageAccess(ownerUserId);
-                const categories = await getCategories();
+                const { categories } = await loadCategories(
+                    database,
+                    ownerUserId,
+                );
                 checkAccess();
                 const category = categories.find(
                     (item) => item.id === categoryId,
@@ -104,7 +109,7 @@ export default function NoteViewerMeta({
         return () => {
             cancelled = true;
         };
-    }, [categoryId, cloudEnabled, cloudGeneration, ownerUserId]);
+    }, [categoryId, cloudEnabled, cloudGeneration, database, ownerUserId]);
 
     const categoryName =
         categoryId != null && categoryNameById?.id === categoryId

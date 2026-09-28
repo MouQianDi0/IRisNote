@@ -9,6 +9,7 @@ import {
     diagnosticErrorCategory,
     opaqueDiagnosticId,
     recordDiagnostic,
+    sanitizeText,
 } from "@/core/diagnostics";
 import {
     DIAGNOSTIC_CHANNEL,
@@ -374,6 +375,20 @@ export function liveUpdateSupported(): boolean {
     );
 }
 
+/**
+ * 动态通知基础能力：Android 8.0（API 26，通知渠道时代）+ 本地原生模块。
+ * 该档位使用普通进度条通知（不请求提升式），退后台仍可由原生闹钟链
+ * 保留并重算卡片；ProgressStyle/提升式展示与前台服务秒级刷新仅在
+ * liveUpdateSupported()（API 36+）档位开放。
+ */
+export function liveUpdateCompatSupported(): boolean {
+    return (
+        Platform.OS === "android" &&
+        Number(Platform.Version) >= 26 &&
+        NativeSystem !== null
+    );
+}
+
 export type LiveUpdateContent = {
     id: number;
     channelId: string;
@@ -386,7 +401,8 @@ export type LiveUpdateContent = {
     /**
      * 请求 Live Updates 提升式展示（状态栏胶囊/锁屏常驻/抽屉置顶）。
      * 默认关闭；聚合状态卡通过 postStateCard 明确开启。
-     * 普通提醒类不经此函数，政策禁区不受影响。36.0 设备原生侧自动退化。
+     * 普通提醒类不经此函数，政策禁区不受影响。
+     * 36.0 设备与 API < 36 设备原生侧均退化为普通进度卡片。
      */
     promoted?: boolean;
     /** 系统 chronometer 秒级计时锚点（epoch ms）；null 不启用。 */
@@ -394,6 +410,8 @@ export type LiveUpdateContent = {
     /** true = 倒计时（锚点为终点），false = 正向计时（锚点为起点）。 */
     chronoCountdown?: boolean;
     iconResourceName?: string | null;
+    /** true = 不设置任何进度形态（聚合卡纯文本状态卡）。 */
+    hideProgress?: boolean;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -441,7 +459,7 @@ export function ensureLiveUpdateChannels(): Promise<void> {
 
 /** 应用权限与待办进行中渠道均可展示时才允许发动态卡片。 */
 export async function liveTodoNotificationPermission(): Promise<boolean> {
-    if (!liveUpdateSupported()) return false;
+    if (!liveUpdateCompatSupported()) return false;
     if (!(await applicationNotificationPermission()).granted) return false;
     await ensureLiveUpdateChannels();
     const channel = await Notifications.getNotificationChannelAsync(LIVE_TODO_CHANNEL);
@@ -452,7 +470,7 @@ export async function liveTodoNotificationPermission(): Promise<boolean> {
 
 /** 聚合渠道权限独立于逐条卡渠道。 */
 export async function liveTodoSummaryNotificationPermission(): Promise<boolean> {
-    if (!liveUpdateSupported()) return false;
+    if (!liveUpdateCompatSupported()) return false;
     if (!(await applicationNotificationPermission()).granted) return false;
     await ensureLiveUpdateChannels();
     const channel = await Notifications.getNotificationChannelAsync(LIVE_TODO_SUMMARY_CHANNEL);
@@ -477,14 +495,15 @@ export function postStateCard(card: StateCardPayload): Promise<void> {
         text: card.text, progress: 0, max: 0, indeterminate: true,
         ongoing: true, promoted: true, iconResourceName: card.iconResourceName,
         chronoAt: card.chronoAt, chronoCountdown: card.chronoCountdown,
+        hideProgress: true,
     });
 }
 
 export async function postLiveUpdate(
     content: LiveUpdateContent,
 ): Promise<void> {
-    if (!liveUpdateSupported())
-        throw new Error("动态通知需要 Android 16 及以上设备");
+    if (!liveUpdateCompatSupported())
+        throw new Error("动态通知需要 Android 8.0 及以上设备");
     await ensureLiveUpdateChannels();
     const native = NativeSystem;
     if (!native) throw new Error("当前安装包不支持动态通知");
@@ -502,6 +521,7 @@ export async function postLiveUpdate(
             iconResourceName: content.iconResourceName ?? null,
             chronoAt: content.chronoAt ?? null,
             chronoCountdown: content.chronoCountdown ?? false,
+            hideProgress: content.hideProgress ?? false,
         });
     } catch (cause) {
         void recordDiagnostic(
@@ -518,7 +538,7 @@ export async function postLiveUpdate(
 }
 
 export async function cancelLiveUpdate(id: number): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
@@ -544,11 +564,11 @@ export async function cancelLiveUpdate(id: number): Promise<void> {
 export async function handoffLiveTodoTimelines(
     timelines: readonly NativeLiveTodoTimelineCard[],
 ): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
-        await native.scheduleLiveTodoCards([...timelines]);
+        await native.scheduleLiveTodoCards(JSON.stringify(timelines));
         void recordDiagnostic("live_update", "handoff_scheduled", {
             cards: timelines.length,
         });
@@ -559,6 +579,9 @@ export async function handoffLiveTodoTimelines(
             {
                 cards: timelines.length,
                 error: diagnosticErrorCategory(cause),
+                message: sanitizeText(
+                    cause instanceof Error ? cause.message : String(cause),
+                ),
             },
             "error",
         );
@@ -574,11 +597,11 @@ export async function handoffLiveTodoTimelines(
 export async function persistLiveTodoTimelines(
     timelines: readonly NativeLiveTodoTimelineCard[],
 ): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
-        await native.updateLiveTodoCards([...timelines]);
+        await native.updateLiveTodoCards(JSON.stringify(timelines));
         void recordDiagnostic("live_update", "timeline_persisted", {
             cards: timelines.length,
         });
@@ -589,6 +612,9 @@ export async function persistLiveTodoTimelines(
             {
                 cards: timelines.length,
                 error: diagnosticErrorCategory(cause),
+                message: sanitizeText(
+                    cause instanceof Error ? cause.message : String(cause),
+                ),
             },
             "error",
         );
@@ -603,7 +629,7 @@ export async function persistLiveTodoTimelines(
  * 分钟级驱动，下一次 start 重试收回）。
  */
 export async function reclaimLiveTodoTimelines(): Promise<void> {
-    if (!liveUpdateSupported()) return;
+    if (!liveUpdateCompatSupported()) return;
     const native = NativeSystem;
     if (!native) return;
     try {
@@ -672,7 +698,7 @@ let staleLiveUpdatesCleared: Promise<void> | null = null;
 export function clearStaleLiveUpdates(): Promise<void> {
     if (!staleLiveUpdatesCleared) {
         staleLiveUpdatesCleared = (async () => {
-            if (!liveUpdateSupported()) return;
+            if (!liveUpdateCompatSupported()) return;
             const native = NativeSystem;
             if (!native) return;
             try {

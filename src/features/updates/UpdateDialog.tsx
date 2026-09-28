@@ -18,7 +18,7 @@ import {
     observeUpdateLifecycle,
     useUpdateStore,
 } from "./update-store";
-import { isRequiredUpdate } from "./release";
+import { isFullPackageRequired, isRequiredUpdate } from "./release";
 
 export function UpdateDialog() {
     const state = useUpdateStore();
@@ -127,7 +127,7 @@ export function UpdateDialog() {
                         >
                             {delivery.mode === "unavailable"
                                 ? delivery.reason
-                                : `${delivery.mode === "delta" ? "差量更新" : "完整更新"} · ${(delivery.size / 1048576).toFixed(1)} MB`}
+                                : `${delivery.mode === "delta" ? "差量更新" : isFullPackageRequired(state.release) ? "完整更新（需完整安装包）" : "完整更新"} · ${(delivery.size / 1048576).toFixed(1)} MB`}
                         </Text>
                     )}
                     {state.release && (

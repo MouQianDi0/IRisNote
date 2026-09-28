@@ -1,6 +1,10 @@
+import { onSessionEnded } from "@/shared/http/session-events";
 import type { Note } from "./notes.types";
 
 const cachedNotesByOwnerAndId = new Map<string, Note>();
+
+// 退出登录后释放上一个账号的笔记对象；再次登录时从 SQLite 重新读取。
+onSessionEnded(() => cachedNotesByOwnerAndId.clear());
 
 const getCacheKey = (noteId: number, ownerUserId?: number) =>
     `${ownerUserId ?? "unknown"}:${noteId}`;

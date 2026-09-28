@@ -21,6 +21,43 @@ export function onSessionRejected(listener: (token: string) => void) {
     };
 }
 
+const endedListeners = new Set<() => void>();
+
+/**
+ * 退出登录（主动退出或登录失效）后发布。各模块据此释放上一个账号留在内存里的数据；
+ * 磁盘上的笔记、摘录、待办等数据不受影响。
+ */
+export function publishSessionEnded() {
+    for (const listener of endedListeners) {
+        try {
+            listener();
+        } catch {
+            console.warn("[Session] 退出登录清理监听器失败，其余清理继续");
+        }
+    }
+}
+
+export function onSessionEnded(listener: () => void) {
+    endedListeners.add(listener);
+    return () => {
+        endedListeners.delete(listener);
+    };
+}
+
+let exiting = false;
+
+/**
+ * 会话失效退出期间为 true：编辑页的离开保护据此放行跳转欢迎页，而不是弹出“放弃修改？”。
+ * 由 AuthProvider 在退出前开启，重新登录后关闭。
+ */
+export function isSessionExiting() {
+    return exiting;
+}
+
+export function setSessionExiting(value: boolean) {
+    exiting = value;
+}
+
 /** 从请求头中取出 Bearer 令牌；认证接口（登录/注册）的 401 表示凭据错误，不是会话失效。 */
 export function rejectedSessionToken(
     url: string | undefined,
