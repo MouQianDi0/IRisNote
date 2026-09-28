@@ -356,6 +356,7 @@ test('mandatory update dialog retains one update button and disables it while pr
     'react/jsx-runtime': { jsx: element, jsxs: element },
     'react-native': Object.fromEntries(['ActivityIndicator', 'Pressable', 'ScrollView', 'Text', 'View'].map(name => [name, name])),
     './update-store': { ...s.store, useUpdateStore: () => s.store.useUpdateStore.getState() }, './release': policy,
+    './ReleaseNotes': { ReleaseNotes: 'ReleaseNotes' },
   });
   const buttons = node => {
     if (!node || typeof node !== 'object') return [];
