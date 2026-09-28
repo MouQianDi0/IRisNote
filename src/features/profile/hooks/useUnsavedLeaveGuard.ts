@@ -48,11 +48,17 @@ export function useUnsavedLeaveGuard(dirty: boolean, saving: boolean) {
         goBack();
     };
 
+    /** 放行下一次离开（如需跳转到其他页面而非返回）。 */
+    const allowLeave = () => {
+        allowLeaveRef.current = true;
+    };
+
     return {
         confirmVisible: pendingLeave !== null,
         continueEditing: () => setPendingLeave(null),
         discardAndLeave,
         leaveAfterSave,
+        allowLeave,
         goBack,
     };
 }
