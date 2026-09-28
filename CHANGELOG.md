@@ -1,3 +1,21 @@
+## 2026-09-29 05:03:13 | 优化代码：将 Markdown 解析与渲染抽为 Utils 公共组件
+
+- 变更概述：公共组件统一放在 src/shared/utils/markdown，更新说明通过统一入口引用。
+- 修改文件：src/shared/utils/markdown/index.ts；src/shared/utils/markdown/parse-markdown.ts；src/shared/utils/markdown/Markdown.tsx；src/features/updates/release-notes.ts；src/features/updates/ReleaseNotes.tsx；tests/ui/markdown.test.cjs；tests/releases/release-notes.test.cjs；docs/构建发布/android-releases.md；docs/构建发布/更新说明编写规范.md；docs/logs/2026-09-29-update-notes-markdown.md；docs/logs/2026-09-29-shared-markdown-utils.md；CHANGELOG.md。
+- 具体内容：导出 Markdown、parseMarkdown、parseMarkdownInline 和相关类型；公共能力不内置更新标题，更新模块传入旧说明兼容配置并负责提示文案；迁移通用测试并保留业务兼容测试，无新增依赖。
+- 验证：修改前后 typecheck 通过；相关测试 6/6 通过；最终 npm run check 成功（645/645 测试，Lint 0 错误、1 条既有权限页面未使用变量警告）；diff 检查与冲突标记扫描通过。Android 构建与真机验证未做。
+
+---
+
+## 2026-09-29 04:56:07 | 优化代码：更新弹窗支持 Markdown 排版
+
+- 变更概述：更新说明增加标题、列表、加粗与行内代码排版，兼容已有纯文本分组。
+- 修改文件：src/features/updates/release-notes.ts；src/features/updates/ReleaseNotes.tsx；src/features/updates/UpdateDialog.tsx；tests/releases/release-notes.test.cjs；tests/releases/releases.test.cjs；docs/构建发布/更新说明编写规范.md；docs/构建发布/android-releases.md；docs/logs/2026-09-29-update-notes-markdown.md；CHANGELOG.md。
+- 具体内容：分组标题、列表换行对齐及段落间距；普通段落与未支持语法保留；空内容占位；沿用滚动容器和更新操作链路，不新增依赖及网络请求；同步文档支持范围和旧客户端兼容约定。
+- 验证：修改前后类型检查通过，新增解析测试 5 项通过；npm run check 首次发现原弹窗测试缺少新增组件依赖替身，补齐后重新完整运行通过（644/644）；Lint 0 错误、1 条既有 PermissionSettingsScreen 未使用变量警告，theme:check 通过；git diff --check 和冲突标记扫描通过。Android 构建、真机验证未做。
+
+---
+
 ## 2026-09-28 19:22:57 | 修复问题：关闭云同步后保持本机主要功能可用
 
 - 变更概述：按用户确认的方案分离本机数据操作与云同步授权；关闭同步后，本机笔记标星、置顶、分类管理、删除和恢复仍可使用，改动持久保存在本机，重新授权后按同步规则处理。

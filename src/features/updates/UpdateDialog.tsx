@@ -19,6 +19,7 @@ import {
     useUpdateStore,
 } from "./update-store";
 import { isFullPackageRequired, isRequiredUpdate } from "./release";
+import { ReleaseNotes } from "./ReleaseNotes";
 
 export function UpdateDialog() {
     const state = useUpdateStore();
@@ -132,16 +133,7 @@ export function UpdateDialog() {
                     )}
                     {state.release && (
                         <ScrollView style={{ marginTop: 16, flexShrink: 1 }}>
-                            <Text
-                                style={{
-                                    color: colors.textPrimary,
-                                    fontSize: 16,
-                                    lineHeight: 24,
-                                }}
-                            >
-                                本次更新{"\n"}
-                                {state.release.notes}
-                            </Text>
+                            <ReleaseNotes notes={state.release.notes} />
                         </ScrollView>
                     )}
                     {!!state.error && (
