@@ -2,7 +2,7 @@ import { colors } from "@/shared/theme";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { useApplicationDatabase } from "@/core/database";
 import {
-    captureCloudStorageAccess,
+    captureLocalStorageAccess,
     getCloudStorageSnapshot,
     isCloudStoragePermissionError,
 } from "@/core/cloud-storage/cloud-storage-policy";
@@ -66,7 +66,6 @@ export default function NoteViewerMeta({
         if (
             categoryId == null ||
             categoryId === ALL_CATEGORY.id ||
-            !cloudEnabled ||
             ownerUserId == null
         )
             return;
@@ -77,7 +76,7 @@ export default function NoteViewerMeta({
             try {
                 if (getCloudStorageSnapshot().generation !== cloudGeneration)
                     return;
-                const checkAccess = captureCloudStorageAccess(ownerUserId);
+                const checkAccess = captureLocalStorageAccess(ownerUserId);
                 const { categories } = await loadCategories(
                     database,
                     ownerUserId,
@@ -114,9 +113,7 @@ export default function NoteViewerMeta({
     const categoryName =
         categoryId != null && categoryNameById?.id === categoryId
             ? categoryNameById.name
-            : cloudEnabled
-              ? "加载中"
-              : "需开启云存储查看";
+            : "加载中";
 
     return (
         <View className="mt-3 flex-row items-center gap-2">

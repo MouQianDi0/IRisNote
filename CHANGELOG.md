@@ -1,24 +1,44 @@
+## 2026-09-28 19:22:57 | 修复问题：关闭云同步后保持本机主要功能可用
+
+- 变更概述：按用户确认的方案分离本机数据操作与云同步授权；关闭同步后，本机笔记标星、置顶、分类管理、删除和恢复仍可使用，改动持久保存在本机，重新授权后按同步规则处理。
+- 修改文件：src/core/cloud-storage/cloud-storage-policy.ts; src/core/database/migrations/0019-local-cloud-independent.ts; src/core/database/migrations/index.ts; src/core/sync/upload-queue.repository.ts; src/features/notes/categories/components/CategoryBar.tsx; src/features/notes/categories/components/CreateCategoryModal.tsx; src/features/notes/categories/data/category-cache.ts; src/features/notes/categories/data/category-local.repository.ts; src/features/notes/components/viewer/NoteDetailStateView.tsx; src/features/notes/components/viewer/NoteViewerMeta.tsx; src/features/notes/data/note-local.repository.ts; src/features/notes/data/note-sync.repository.ts; src/features/notes/data/note-trash.repository.ts; src/features/notes/hooks/useNotePin.ts; src/features/notes/hooks/useNoteStar.ts; src/features/notes/screens/NoteDetailScreen.tsx; src/features/notes/screens/NotesScreen.tsx; src/features/notes/services/note-body.service.ts; src/features/notes/services/note-flags.service.ts; src/features/notes/services/note-save.service.ts; src/features/notes/services/note-sync-coordinator.ts; src/features/notes/services/note-trash.service.ts; src/features/settings/screens/CloudStorageSettingsScreen.tsx; src/features/sync/category-upload-queue.ts; src/features/sync/upload-task-adapters.ts; src/features/sync/upload-task-cancellation.ts; tests/sync/local-only.test.cjs; tests/sync/notes-body-eviction.test.cjs; tests/todos/todo-local.test.cjs; docs/logs/2026-09-28-local-only-cloud-independence.md; CHANGELOG.md。
+- 具体内容：新增迁移 0019、本机分类实体及云 ID 映射、笔记标记待同步记录、回收站删除/恢复意图；本机操作只检查账号会话，云请求继续遵守原授权门控；按版本保护并发修改和迟到回执；分类创建结果未知时停止自动重复创建；正文未下载的笔记保留摘要，支持标记和回收站操作，不上传空正文；分类新建失败保留输入；更新关闭云同步和正文缺失的提示。待办和摘录沿用既有本地流程。详见全链路日志。
+- 验证：修改前 `npm run typecheck` 通过；最终 `npm run check` 退出码 0，TypeScript、theme:check 通过，Lint 0 错误/1 条既有警告（PermissionSettingsScreen.tsx:171，未修改），639/639 测试通过（含新增 17 项本机模式测试）；`git diff --check` 通过，未发现冲突标记。Android 构建、真机交互、真实服务器联调未执行；本次未提交、构建或发布。
+
+---
+
+## 2026-09-28 05:15:00 | 新增功能：IRisNote 0.7.0 正式发布（完整包屏障）
+
+- 变更概述：已获用户确认（含 publish 授权，用户明确要求发完整包）。完成 0.7.0 功能版本全流程发布：更新说明 → 提交 → 检查 → 预留（--full-package）→ 构建 → 双端上传 → 核对 → 发布。本版为完整包屏障版本，此前安装的用户升级到该版本及之后任何版本都下载完整 APK，不生成差量包。
+- 发布信息：构建号 22，绑定提交 38e307d；APK SHA-256 2f6af0f5cdf839f43210d37d7bf9e04113a97faf1a08c9ef98751a80b2b80b45，大小 127680046 字节，签名证书与 0.3.0~0.6.0 相同（7319b25...）；CDN 地址 https://download.tech-mou.top/IRisNote-0.7.0-22.apk；full_package_required=true。
+- 流程记录：① 对比 0.6.0（构建 21，提交 3d02b23）到 HEAD（9cfe27c，更新说明提交后为 38e307d）差异，判定为功能更新（待办汇总动态卡片、动态通知兼容档 Android 8.0+、笔记缓存重构二期：新建幂等/元数据同步/正文按需加载），版本号 0.6.0 → 0.7.0；经 git cat-file 核实 todo-aggregate-live.service.ts 不在 0.6.0 中、HelpFeedbackScreen 0.6.0 无测试待办入口；用户确认版本号与服务端部署状态；② 更新说明经用户确认后保存 releases/notes-0.7.0.txt 并提交（38e307d），`npm run check` 全绿（typecheck/lint/theme:check，测试 622/622）；③ reserve --full-package 分配构建 22，服务端返回 full_package_required=true 确认屏障已记录；④ build 复用 reuse-53ef3389ab44 工作区（modules/ 原生改动致依赖指纹变化重新 npm ci），Gradle 13m20s 构建成功，APK 身份与签名校验通过；⑤ 服务器上传 SHA-256 校验通过、COS 上传与 CDN 回读校验通过；屏障版本无需差量包；⑥ inspect/status 核对包名、版本、签名、摘要与屏障标记一致；⑦ publish 成功，服务端状态 published。
+- 发布内容：0.7.0 说明所列——今日待办汇总卡片与高优先级动态大卡、待办通知兼容 Android 8.0+（新增功能）；笔记正文按需存储与释放、新建笔记断网自动重试不重复创建、帮助页动态通知演示（体验优化）；Android 16 退后台撤卡（问题修复）；完整安装包升级提醒。
+- 修改文件：releases/notes-0.7.0.txt（新增）、CHANGELOG.md（本记录）。
+- 验证边界：本机 `npm run check` 全量通过（622/622）；真机安装验收未执行（发布期间无连接设备），建议更新推送后在真机核对汇总卡片、兼容档退后台保卡、笔记正文按需下载。本地领先远程 1 个提交（38e307d 及本记录），待用户授权后推送。遗留事项：EAS 构建路径 eas-cli 版本不一致仍未修复。
+
+---
+
 ## 2026-09-27 12:59:38 | 新增功能：笔记混合模式，超出范围的正文只留摘要、打开时下载（缓存重构第二期阶段 B2）
 
 - 变更概述：按用户确认的规则实现正文淘汰与按需下载：
-  - 置顶、星标、有草稿、未同步、正在打开的笔记始终保留正文，其余按最近打开保留 300 篇，超出的只留摘要；淘汰时保留历史版本。
-  - 只有在元数据同步下、云端确认存有相同内容时才淘汰，旧服务端不淘汰。
-  - 界面按确认的预览实施：详情页新增"正文未下载"状态；列表卡片显示摘要、不加标记；存储页新增"笔记正文"统计行，"笔记缓存"清理项改为"释放笔记正文"。
+    - 置顶、星标、有草稿、未同步、正在打开的笔记始终保留正文，其余按最近打开保留 300 篇，超出的只留摘要；淘汰时保留历史版本。
+    - 只有在元数据同步下、云端确认存有相同内容时才淘汰，旧服务端不淘汰。
+    - 界面按确认的预览实施：详情页新增"正文未下载"状态；列表卡片显示摘要、不加标记；存储页新增"笔记正文"统计行，"笔记缓存"清理项改为"释放笔记正文"。
 - 修改文件：src/core/database/migrations/0018-add-note-body-state.ts（新增）、src/core/database/migrations/index.ts、src/core/storage/auto-cleanup.ts、src/core/storage/storage-policy.ts、src/features/notes/notes.types.ts、src/features/notes/data/note-body.repository.ts（新增）、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-body.service.ts（新增）、src/features/notes/services/note-sync.service.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NoteDetailScreen.tsx、src/features/notes/screens/NotesScreen.tsx、src/features/notes/components/viewer/NoteDetailStateView.tsx、src/features/notes/components/viewer/NoteContextMenu.tsx、src/features/notes/components/card/SwipeableNoteItem.tsx、src/features/settings/screens/DataStorageSettingsScreen.tsx、tests/sync/notes-body-eviction.test.cjs（新增）、tests/sync/notes-meta-sync.test.cjs、tests/sync/notes-sync.test.cjs、tests/storage/storage.test.cjs、tests/todos/todo-local.test.cjs、docs/API后端/笔记正文按需加载接口需求.md、docs/logs/2026-09-27-note-body-eviction.md（新增）、CHANGELOG.md。
 - 具体内容：
-  - ① 迁移 0018 新增正文状态、摘要、长度、最近打开时间四列；两个触发器保证淘汰时保留哈希，重新写入正文时自动恢复为"正文在本机"。
-  - ② 同步：按保留范围决定下载哪些正文（新设备按修改时间补满 300 篇）；已淘汰的笔记只更新元数据、不生成版本；超出范围的新笔记只插入摘要；合并后按最近打开淘汰超出的正文，正在打开的笔记除外。
-  - ③ 打开已淘汰的笔记时用 `GET /notes/{id}` 下载后显示；离线时显示"正文未下载"，云端已删除时显示"笔记不存在"。
-  - ④ 列表：卡片显示摘要；长按菜单打开时在后台下载正文，复制和分享在正文到位前只提示，改标题前先下载。
-  - ⑤ 兜底：已淘汰的笔记，保存时如果没带完整正文就拒绝，防止把空正文写进历史或上传。
-  - ⑥ 回收站：显示已淘汰笔记的摘要，没有云端数据时拒绝恢复。
-  - ⑦ 存储页：新增统计行"已下载 x · 摘要 y"；"笔记正文"清理项释放所有可释放的正文（不保留最近 300 篇），笔记留在列表中。
-  - 说明：旧的 `note-cache.service.ts`（整条删除式清理）不再被界面调用，但仍有现有测试覆盖，本次保留未删。
+    - ① 迁移 0018 新增正文状态、摘要、长度、最近打开时间四列；两个触发器保证淘汰时保留哈希，重新写入正文时自动恢复为"正文在本机"。
+    - ② 同步：按保留范围决定下载哪些正文（新设备按修改时间补满 300 篇）；已淘汰的笔记只更新元数据、不生成版本；超出范围的新笔记只插入摘要；合并后按最近打开淘汰超出的正文，正在打开的笔记除外。
+    - ③ 打开已淘汰的笔记时用 `GET /notes/{id}` 下载后显示；离线时显示"正文未下载"，云端已删除时显示"笔记不存在"。
+    - ④ 列表：卡片显示摘要；长按菜单打开时在后台下载正文，复制和分享在正文到位前只提示，改标题前先下载。
+    - ⑤ 兜底：已淘汰的笔记，保存时如果没带完整正文就拒绝，防止把空正文写进历史或上传。
+    - ⑥ 回收站：显示已淘汰笔记的摘要，没有云端数据时拒绝恢复。
+    - ⑦ 存储页：新增统计行"已下载 x · 摘要 y"；"笔记正文"清理项释放所有可释放的正文（不保留最近 300 篇），笔记留在列表中。
+    - 说明：旧的 `note-cache.service.ts`（整条删除式清理）不再被界面调用，但仍有现有测试覆盖，本次保留未删。
 - 验证：
-  - `npm run typecheck` 0 个错误。
-  - 新增测试 8/8 通过；存储页 18/18、元数据同步 10/10、笔记同步 35/35。
-  - `npm run check`：lint 0 个错误、1 个既有警告；测试 622 项，619 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
-  - 未与真实后端联调（后端未部署，旧服务端下不会淘汰）；界面效果未做真机验证。
+    - `npm run typecheck` 0 个错误。
+    - 新增测试 8/8 通过；存储页 18/18、元数据同步 10/10、笔记同步 35/35。
+    - `npm run check`：lint 0 个错误、1 个既有警告；测试 622 项，619 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
+    - 未与真实后端联调（后端未部署，旧服务端下不会淘汰）；界面效果未做真机验证。
 
 ---
 
@@ -27,18 +47,18 @@
 - 变更概述：服务端支持时，笔记快照和增量改为只取元数据，镜像表不再保存正文，每篇已同步笔记在本机少一份正文副本。只为正文哈希变化或本机还没有的笔记批量下载正文；只改置顶、星标、分类的变化不再下载正文。服务端不支持时保持原来的完整模式。本阶段所有笔记仍在本机保留完整正文，用户看不到界面变化。
 - 修改文件：src/core/database/migrations/0017-add-note-content-hash.ts（新增）、src/core/database/migrations/index.ts、src/features/notes/api/notes-sync.types.ts、src/features/notes/api/notes-sync.api.ts、src/features/notes/data/note-content-hash.ts（新增）、src/features/notes/data/note-sync.repository.ts、src/features/notes/services/note-sync.service.ts、src/features/notes/data/note-cache.repository.ts、src/features/notes/services/note-cache.service.ts、tests/sync/notes-meta-sync.test.cjs（新增）、tests/todos/todo-local.test.cjs、docs/API后端/笔记正文按需加载接口需求.md、docs/logs/2026-09-27-note-metadata-sync.md（新增）、CHANGELOG.md。
 - 具体内容：
-  - ① 迁移 0017：`local_notes.content_hash`、`note_sync_state.mirror_mode`，以及一个触发器，正文被任何路径改写时自动清空哈希。
-  - ② 新增元数据笔记的类型与解析（校验哈希格式与三项一致性），镜像按每条记录自身的格式解析，切换期间两种格式可以并存。
-  - ③ 同步开始时判断服务端能力（与阶段 A 共用，每次启动一次）：支持则切到元数据模式，不支持则回到完整模式，无法判断时沿用当前模式；切换时重建快照。
-  - ④ 合并前补算本地哈希，按哈希判断哪些笔记要下载正文，用 `GET /notes/batch` 每 50 篇一批下载；合并时先用刚下载的正文，其次用哈希相同的本地正文，补不上时本轮跳过，不写错数据。
-  - ⑤ 被其他设备从垃圾桶恢复的笔记也会下载正文后恢复。
-  - ⑥ 清理笔记缓存在元数据镜像下改为比较哈希。
-  - 与计划的偏差：计划中 0017 还要加 `body_state`、`last_opened_at` 等 B2 的列，实际只加了 B1 用到的两列，B2 的列由 B2 自己的迁移添加，避免提前放入没有使用的列。
+    - ① 迁移 0017：`local_notes.content_hash`、`note_sync_state.mirror_mode`，以及一个触发器，正文被任何路径改写时自动清空哈希。
+    - ② 新增元数据笔记的类型与解析（校验哈希格式与三项一致性），镜像按每条记录自身的格式解析，切换期间两种格式可以并存。
+    - ③ 同步开始时判断服务端能力（与阶段 A 共用，每次启动一次）：支持则切到元数据模式，不支持则回到完整模式，无法判断时沿用当前模式；切换时重建快照。
+    - ④ 合并前补算本地哈希，按哈希判断哪些笔记要下载正文，用 `GET /notes/batch` 每 50 篇一批下载；合并时先用刚下载的正文，其次用哈希相同的本地正文，补不上时本轮跳过，不写错数据。
+    - ⑤ 被其他设备从垃圾桶恢复的笔记也会下载正文后恢复。
+    - ⑥ 清理笔记缓存在元数据镜像下改为比较哈希。
+    - 与计划的偏差：计划中 0017 还要加 `body_state`、`last_opened_at` 等 B2 的列，实际只加了 B1 用到的两列，B2 的列由 B2 自己的迁移添加，避免提前放入没有使用的列。
 - 验证：
-  - `npm run typecheck` 0 个错误。
-  - 新增测试 10/10 通过；受影响的现有测试 268/268 通过。
-  - `npm run check`：lint 0 个错误、1 个既有警告；测试 614 项，611 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
-  - 未与真实后端联调（后端未部署），未做真机验证，没有测量大量笔记首次补算哈希的耗时。
+    - `npm run typecheck` 0 个错误。
+    - 新增测试 10/10 通过；受影响的现有测试 268/268 通过。
+    - `npm run check`：lint 0 个错误、1 个既有警告；测试 614 项，611 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
+    - 未与真实后端联调（后端未部署），未做真机验证，没有测量大量笔记首次补算哈希的耗时。
 
 ---
 
@@ -47,19 +67,19 @@
 - 变更概述：用户确认第二期按 A（新建幂等）→ B1（元数据同步）→ B2（正文淘汰与按需下载）推进，本条为 A。新建笔记与待办采用同一套幂等方法：首次发送前固定幂等键、云端身份和请求体，结果未知时原样重发；配套后端 irisapi `75d58c3`（已推送，未部署）。服务端尚未支持时保持原有的阻塞行为。
 - 修改文件：src/core/database/migrations/0016-create-note-create-operations.ts（新增）、src/core/database/migrations/index.ts、src/features/notes/api/notes-capability.ts（新增）、src/features/notes/api/notes.api.ts、src/features/notes/notes.types.ts、src/features/notes/data/note-create-operation.repository.ts（新增）、src/features/notes/data/note-local.repository.ts、src/features/notes/data/note-sync.repository.ts、src/features/notes/data/note-trash.repository.ts、src/features/notes/services/note-save.service.ts、src/features/notes/services/note-sync.service.ts、src/features/sync/upload-task-adapters.ts、tests/sync/notes-idempotent-create.test.cjs（新增）、tests/todos/todo-local.test.cjs、docs/架构指南/自动上传队列开发约定.md、docs/logs/2026-09-27-note-idempotent-create.md（新增）、CHANGELOG.md。
 - 具体内容：
-  - ① 迁移 0016 新建 `note_create_operations`，保存每篇待新建笔记的幂等键、云端身份、固定的请求体和当时的本地版本。
-  - ② `createNote` 可带 `Idempotency-Key`，同时解析新格式回执 `{data, meta}` 和旧格式；新增 `probeNotesServer`、`fetchCloudNote`，以及每次启动判断一次的服务端能力模块。
-  - ③ 上传前固定请求，重试原样发送；成功后按固定时的版本号确认，期间的本地修改随后按更新上传。
-  - ④ 结果未知的新建：有固定请求且服务端支持时由队列自动重发，能力暂时无法判断时稍后重试，旧服务端和升级前遗留的仍然阻塞。
-  - ⑤ 409 `OPERATION_IN_PROGRESS` 可重试；409 `CLIENT_ID_EXISTS` 取回并认领云端笔记，云端已删除时放弃这次新建；其他明确的 4xx 清除固定请求。
-  - ⑥ 同步投影前，按云端身份认领云端已建出、本机没收到响应的笔记，避免列表出现两份，并恢复被阻塞的上传任务。
-  - ⑦ 删除和移入垃圾桶时清除固定请求。
-  - ⑧ 结构化错误改用 `noteSyncErrorMessage` 取文案。
+    - ① 迁移 0016 新建 `note_create_operations`，保存每篇待新建笔记的幂等键、云端身份、固定的请求体和当时的本地版本。
+    - ② `createNote` 可带 `Idempotency-Key`，同时解析新格式回执 `{data, meta}` 和旧格式；新增 `probeNotesServer`、`fetchCloudNote`，以及每次启动判断一次的服务端能力模块。
+    - ③ 上传前固定请求，重试原样发送；成功后按固定时的版本号确认，期间的本地修改随后按更新上传。
+    - ④ 结果未知的新建：有固定请求且服务端支持时由队列自动重发，能力暂时无法判断时稍后重试，旧服务端和升级前遗留的仍然阻塞。
+    - ⑤ 409 `OPERATION_IN_PROGRESS` 可重试；409 `CLIENT_ID_EXISTS` 取回并认领云端笔记，云端已删除时放弃这次新建；其他明确的 4xx 清除固定请求。
+    - ⑥ 同步投影前，按云端身份认领云端已建出、本机没收到响应的笔记，避免列表出现两份，并恢复被阻塞的上传任务。
+    - ⑦ 删除和移入垃圾桶时清除固定请求。
+    - ⑧ 结构化错误改用 `noteSyncErrorMessage` 取文案。
 - 验证：
-  - `npm run typecheck` 修改前后均为 0 个错误。
-  - 新增测试 11/11 通过；受影响的现有测试 245/245 通过。
-  - `npm run check`：lint 0 个错误、1 个既有警告；测试 604 项，601 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
-  - 未与真实后端联调（后端未部署），未做真机验证；没有原生改动，不需要重新打包。
+    - `npm run typecheck` 修改前后均为 0 个错误。
+    - 新增测试 11/11 通过；受影响的现有测试 245/245 通过。
+    - `npm run check`：lint 0 个错误、1 个既有警告；测试 604 项，601 通过、2 跳过、1 失败（既有的发布归档 ENAMETOOLONG）。
+    - 未与真实后端联调（后端未部署），未做真机验证；没有原生改动，不需要重新打包。
 
 ---
 
