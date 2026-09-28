@@ -1,3 +1,5 @@
+import { readTrashIntent } from "../data/note-trash.repository";
+import { cloudCategoryId } from "../categories/data/category-local.repository";
 import type { ApplicationDatabase } from "@/core/database";
 import {
     captureCloudStorageAccess,
@@ -178,6 +180,8 @@ async function syncPendingNoteWithReceipt(
     onUploadProgress?: (event: AxiosProgressEvent) => void,
 ): Promise<NoteSaveResult> {
     const checkAccess = captureCloudStorageAccess(ownerUserId);
+    if (note.body_state === "evicted")
+        throw new Error("正文尚未下载到本机，已保留摘要；标星和置顶会单独同步");
     if (
         note.server_id != null &&
         note.last_sync_error?.startsWith("云端笔记已删除")
@@ -190,12 +194,22 @@ async function syncPendingNoteWithReceipt(
             retryable: false,
         };
     }
+    if (
+        (await readTrashIntent(database, ownerUserId, note.id))?.intent ===
+        "restore"
+    )
+        throw new Error("笔记恢复尚待云端确认，本机内容已保留");
+    const categoryId = await cloudCategoryId(
+        database,
+        ownerUserId,
+        note.category_id,
+    );
     const creating = note.sync_operation === "create" || note.server_id == null;
     const createPayload: CreateNotePayload = {
         title: note.title,
         content: note.content ?? "",
         ...(note.updated_at ? { updated_at: note.updated_at } : {}),
-        ...(note.category_id == null ? {} : { category_id: note.category_id }),
+        ...(categoryId == null ? {} : { category_id: categoryId }),
     };
     // Fixed before dispatch so a lost response can be replayed with the same key and body.
     const operation: NoteCreateOperation | null = creating
@@ -269,7 +283,11 @@ async function syncPendingNoteWithReceipt(
     ): Promise<NoteSaveResult | null> => {
         const existing = (
             data as {
-                existing?: { id?: unknown; client_id?: unknown; deleted?: unknown };
+                existing?: {
+                    id?: unknown;
+                    client_id?: unknown;
+                    deleted?: unknown;
+                };
             } | null
         )?.existing;
         if (!operation || !existing || existing.client_id !== operation.cloudId)
@@ -349,7 +367,7 @@ async function syncPendingNoteWithReceipt(
                       {
                           title: note.title,
                           content: note.content,
-                          category_id: note.category_id,
+                          category_id: categoryId,
                           updated_at: note.updated_at ?? null,
                       },
                       uploadOptions,

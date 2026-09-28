@@ -18,6 +18,7 @@ import {
 } from "../notes.events";
 import { runNoteSync } from "./note-sync.service";
 import { synchronizeNoteTrash } from "./note-trash.service";
+import { syncLocalNoteFlags } from "./note-flags.service";
 
 type Result = Awaited<ReturnType<typeof runNoteSync>>;
 const jobs = new WeakMap<
@@ -107,6 +108,7 @@ export function syncNotes(
         check();
         // Trash has its own durable receipts; an unavailable trash endpoint must not block normal sync.
         await synchronizeNoteTrash(db, owner).catch(() => {});
+        await syncLocalNoteFlags(db, owner).catch(() => {});
         stamp = noteCloudWriteStamp();
         check();
         const before = await getLocalNotes(db, owner);

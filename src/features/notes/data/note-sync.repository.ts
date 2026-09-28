@@ -1,3 +1,4 @@
+import { localCategoryMap } from "../categories/data/category-local.repository";
 import type {
     ApplicationDatabase,
     ApplicationDatabaseTransaction as Tx,
@@ -26,6 +27,7 @@ import {
     recordRemoteDeletion,
     removedServerIds,
     restoreFromRemote,
+    readTrashIntent,
 } from "./note-trash.repository";
 import { NOTE_TRASH_MS } from "../api/notes-trash.types";
 
@@ -327,8 +329,17 @@ async function applyMetadataOnly(
     evictedInserts: ReadonlySet<number>,
 ) {
     const removed = await removedServerIds(tx, owner);
+    const categoryIds = await localCategoryMap(tx, owner);
     let added = 0;
-    for (const { note, index } of rows) {
+    for (const { note: incoming, index } of rows) {
+        const note = {
+            ...incoming,
+            category_id:
+                incoming.category_id === null
+                    ? null
+                    : (categoryIds.get(incoming.category_id) ??
+                      incoming.category_id),
+        };
         const local = await tx.getFirst<{ client_id: number }>(
             "SELECT client_id FROM local_notes WHERE owner_user_id=? AND server_id=?",
             [owner, note.id],
@@ -463,7 +474,8 @@ export async function projectMirror(
         for (const [index, row] of mirror.entries()) {
             const note = withBody(row, bodies, local);
             if (note) rows.push(note);
-            else if (isCloudNoteMeta(row)) metadataOnly.push({ note: row, index });
+            else if (isCloudNoteMeta(row))
+                metadataOnly.push({ note: row, index });
         }
         for (const row of rows) await restoreFromRemote(tx, owner, row);
         let addedCount = await reconcileNotesInTransaction(
@@ -491,6 +503,11 @@ export async function projectMirror(
             [owner],
         );
         for (const row of missing) {
+            if (
+                (await readTrashIntent(tx, owner, row.client_id))?.intent ===
+                "restore"
+            )
+                continue;
             if (await archiveLocalNote(tx, owner, row.client_id)) continue;
             const draft = await tx.getFirst<{ present: number }>(
                 "SELECT 1 AS present FROM note_drafts WHERE owner_user_id=? AND note_id=? LIMIT 1",
