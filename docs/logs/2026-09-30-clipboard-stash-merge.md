@@ -53,7 +53,7 @@
 - `docs/架构指南/业务模块与运行逻辑.md`：更新摘录检测、暂存和合并现状。
 - `docs/架构指南/系统通知模块负责说明.md`：更新捕获窗口负责链路与失败语义；原生通知代码未修改。
 - `CHANGELOG.md`：新增本次记录。
-- `docs/logs/2026-09-29-clipboard-stash-merge.md`（新增 78 行）：本全链路日志。
+- `docs/logs/2026-09-30-clipboard-stash-merge.md`（新增 78 行）：本全链路日志。
 
 ## 与原代码对比及原因
 
@@ -76,3 +76,13 @@
 - `node --test tests/excerpts/*.test.cjs`：摘录测试通过。
 - `npm run check`：TypeScript、lint（仅既有 `PermissionSettingsScreen.tsx` 未使用变量 warning）、theme:check 通过；全仓测试未全过。`tests/todos/todo-local.test.cjs` 固定断言版本 19，本次登记 0020 后实际 20，属于本次迁移触发的旧断言；其余失败发生在发布/待办无关测试，现有沙箱对本地监听与子进程报 `EPERM`，发布源码用例报 `ENAMETOOLONG`。测试文件范围限制在 `tests/excerpts/**`，未改这些无关测试。
 - `git diff --check`：通过。Android 构建、APK 和真机验收未执行（无原生改动）。
+
+## 复核修正（本地，2026-09-30）
+
+实现由 Codex 在服务器 A 完成、以上为其自验记录；复核者在本地（UTC+8）做了三处修正并重跑验证：
+
+1. `tests/todos/todo-local.test.cjs` 数据库版本断言 19 → 20：0020 迁移使 `CURRENT_DATABASE_VERSION` 变为 20，该断言属本次迁移必须同步的既有用例（非无关域逻辑改动），注释同步补 0020 一句。
+2. 本日志文件名按仓库本地日期惯例由 `2026-09-29-` 改为 `2026-09-30-`（服务器为 UTC，生成时用了服务器日期），CHANGELOG 引用同步。
+3. CHANGELOG 条目时间戳由服务器时间订正为本地时间，验证段补充本地复核结果。
+
+本地复核验证：`npm run typecheck` 0 错误；`npm run check` 全过（详见 CHANGELOG 同日条目）。

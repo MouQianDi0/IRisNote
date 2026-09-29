@@ -1,9 +1,9 @@
-## 2026-09-29 19:13:47 | 新增功能：剪贴板摘录支持编辑保存与暂存合并
+## 2026-09-30 03:13:47 | 新增功能：剪贴板摘录支持编辑保存与暂存合并
 
 - 变更概述：通知快速摘录和应用内检测卡改为预填表单后保存；新增按账号隔离的本机暂存区，可排序、编辑、删除、清空并合并为一条摘录。关闭未保存提示不再写已处理标记。
-- 修改文件：src/core/database/migrations/0020-create-excerpt-stash.ts、index.ts；src/features/excerpts/ 的 data、domain、services、hooks、state、components、screens 相关文件；src/features/settings/data/system-preferences.repository.ts；tests/excerpts/；docs/架构指南/业务模块与运行逻辑.md、系统通知模块负责说明.md；docs/logs/2026-09-29-clipboard-stash-merge.md；CHANGELOG.md。
+- 修改文件：src/core/database/migrations/0020-create-excerpt-stash.ts、index.ts；src/features/excerpts/ 的 data、domain、services、hooks、state、components、screens 相关文件；src/features/settings/data/system-preferences.repository.ts；tests/excerpts/、tests/todos/todo-local.test.cjs（数据库版本断言 19→20）；docs/架构指南/业务模块与运行逻辑.md、系统通知模块负责说明.md；docs/logs/2026-09-30-clipboard-stash-merge.md；CHANGELOG.md。
 - 具体内容：暂存哈希阻止重复提示，合并默认空行分隔且切换重生成正文；预填超限禁用保存，重复摘录在表单内提示并保留暂存。摘录仅写本机 SQLite，不触发云上传；无原生模块改动。
-- 验证：修改前后 npm run typecheck 0 错误；摘录测试通过；npm run check 的类型、lint、theme 检查通过，全仓测试未全过：todo-local 固定数据库版本 19 与本次 20 迁移冲突，发布/待办测试另有沙箱 EPERM 和 ENAMETOOLONG；Android 包与真机验证未做。
+- 验证：服务器端（Codex 沙箱）npm run typecheck 0 错误、摘录测试 7/7 文件通过、npm run check 类型/lint/theme 通过、全仓测试 55/60 文件（四项失败为沙箱 EPERM/ENAMETOOLONG 环境限制）；本地复核：npm run typecheck 0 错误，npm run check 全过（node --test 680/680，typecheck/lint/theme:check 通过）。Android 包与真机验证未做。
 
 ---
 
