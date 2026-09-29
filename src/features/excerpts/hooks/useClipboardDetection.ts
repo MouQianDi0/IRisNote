@@ -6,7 +6,6 @@ import {
     useState,
 } from "react";
 import { AppState, Platform } from "react-native";
-import { useFocusEffect } from "expo-router";
 import { useApplicationDatabase } from "@/core/database";
 import { banner } from "@/core/notifications";
 import { useOverlay } from "@/shared/ui/Overlay/overlay-context";
@@ -16,47 +15,74 @@ import {
     createSerialRunner,
     PAGE_FOCUS_DELAY_MS,
 } from "../domain/clipboard-detection-trigger";
+import { sessionIsActive } from "../domain/excerpt-session";
 import { clipboardHandledStoreFor } from "../services/clipboard-handled";
 import { clipboardService } from "../services/clipboard.service";
-import { newExcerptId } from "../services/excerpt-service";
+import { saveDetectedOffer } from "../services/excerpt-service";
+import { useClipboardOfferStore } from "../state/clipboard-offer-store";
 import { excerptRepository } from "../state/excerpt-store";
+import { useExcerptSessionStore } from "../state/excerpt-session-store";
 import type { ExcerptEntity } from "../excerpts.types";
 
-type ClipboardOffer = { ownerKey: string; content: string; hash: string };
+/** 页面只消费共享候选，所有读取入口在根布局 controller 内。 */
+export function useClipboardDetection() {
+    return useClipboardOfferStore();
+}
 
-/**
- * 只在摘录页生效：页面获得焦点、停留在摘录页时从后台回来（Android 等窗口焦点）、
- * 分屏/小窗等其他窗口交还焦点、或停留期间剪贴板变化时检测。
- * 检测时机见 clipboard-detection-trigger。
- * 检测结果只提示，由用户选择保存或忽略；两者都会把该内容记为已处理。
- */
-export function useClipboardDetection({
+export function useClipboardDetectionController({
+    excerptPage,
     enabled,
     ready,
     ownerKey,
     generation,
     entities,
+    beforeDetect,
 }: {
+    excerptPage: boolean;
     enabled: boolean;
     ready: boolean;
     ownerKey: string;
     generation: number;
     entities: readonly ExcerptEntity[];
+    beforeDetect: () => Promise<void>;
 }) {
     const database = useApplicationDatabase();
-    const [offer, setOffer] = useState<ClipboardOffer | null>(null);
-    const [saving, setSaving] = useState(false);
-    const focused = useRef(false);
-    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const latest = useRef({ enabled, ready, ownerKey, generation, entities });
-    // AppModal 打开时会登记到全局弹窗层，top 非空即表示有应用内弹窗。
+    const latest = useRef({
+        excerptPage,
+        enabled,
+        ready,
+        ownerKey,
+        generation,
+        entities,
+    });
     const overlayTop = useOverlay()?.top;
     const inAppModalOpen = useRef(false);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useLayoutEffect(() => {
-        latest.current = { enabled, ready, ownerKey, generation, entities };
+        latest.current = {
+            excerptPage,
+            enabled,
+            ready,
+            ownerKey,
+            generation,
+            entities,
+        };
         inAppModalOpen.current = overlayTop !== undefined;
     });
 
+    const eligibility = useCallback(() => {
+        const current = latest.current;
+        if (
+            !current.ready ||
+            AppState.currentState !== "active" ||
+            inAppModalOpen.current
+        )
+            return null;
+        const session = useExcerptSessionStore.getState().session;
+        if (sessionIsActive(session, current.ownerKey, Date.now()))
+            return session?.sessionId ?? null;
+        return current.excerptPage && current.enabled ? "page" : null;
+    }, []);
     const markHandled = useCallback(
         (hash: string) =>
             clipboardHandledStoreFor(database)
@@ -66,15 +92,18 @@ export function useClipboardDetection({
     );
 
     const detectOnce = useCallback(async () => {
-        const start = latest.current;
-        if (!focused.current || !start.ready) return;
+        if (!eligibility()) return;
         try {
+            await beforeDetect();
+            const start = latest.current;
+            const token = eligibility();
+            if (!token) return;
+            const valid = () =>
+                eligibility() === token &&
+                latest.current.ownerKey === start.ownerKey &&
+                latest.current.generation === start.generation;
             const result = await detectClipboard({
-                // 读取正文前还会再确认：已离开摘录页、关闭开关或切换账号时不再读取。
-                enabled: async () =>
-                    focused.current &&
-                    latest.current.enabled &&
-                    latest.current.ownerKey === start.ownerKey,
+                enabled: async () => valid(),
                 hasText: clipboardService.hasText,
                 readText: clipboardService.readText,
                 isHandled: (hash) =>
@@ -87,130 +116,150 @@ export function useClipboardDetection({
                         latest.current.entities.map((item) => item.contentHash),
                     ),
             });
-            if (!focused.current || latest.current.ownerKey !== start.ownerKey)
-                return;
-            if (result.kind === "offer")
-                setOffer({
-                    ownerKey: start.ownerKey,
-                    content: result.content,
-                    hash: result.hash,
+            if (!valid()) return;
+            if (result.kind === "offer") {
+                const existing = useClipboardOfferStore.getState().offer;
+                // 导航到摘录页时展示已有候选；它只由明确保存/忽略或下一次剪贴板变化替换。
+                if (
+                    existing?.ownerKey === start.ownerKey &&
+                    existing.hash === result.hash
+                )
+                    return;
+                useClipboardOfferStore.setState({
+                    offer: {
+                        ownerKey: start.ownerKey,
+                        generation: start.generation,
+                        content: result.content,
+                        hash: result.hash,
+                    },
                 });
-            else if (result.hash) await markHandled(result.hash);
+            } else if (result.hash) await markHandled(result.hash);
         } catch {
-            // 检测失败不打扰用户，下次进入页面再试。
+            /* 检测失败下次触发再试，不泄露正文到日志。 */
         }
-    }, [database, markHandled]);
-
-    // 检测进行中时剪贴板又变化：本轮可能已读到旧内容，结束后再查一次。
+    }, [beforeDetect, eligibility, database, markHandled]);
     const [runSerially] = useState(createSerialRunner);
-    const check = useCallback(
-        () => runSerially(detectOnce),
-        [runSerially, detectOnce],
-    );
-
     const cancel = useCallback(() => {
         if (timer.current) clearTimeout(timer.current);
         timer.current = null;
     }, []);
-
     const schedule = useCallback(
-        (delayMs: number) => {
+        (delay: number) => {
             cancel();
             timer.current = setTimeout(() => {
                 timer.current = null;
-                void check();
-            }, delayMs);
+                void runSerially(detectOnce);
+            }, delay);
         },
-        [cancel, check],
+        [cancel, runSerially, detectOnce],
     );
 
-    useFocusEffect(
-        useCallback(() => {
-            focused.current = true;
-            const trigger = createDetectionTrigger({
-                platform:
-                    Platform.OS === "android" || Platform.OS === "ios"
-                        ? Platform.OS
-                        : "other",
-                initialAppState: AppState.currentState,
-                schedule,
-                cancel,
-            });
-            trigger.pageFocused();
-            const subscriptions = [
-                AppState.addEventListener("change", trigger.appStateChanged),
-                AppState.addEventListener("blur", () =>
-                    trigger.windowBlurred(inAppModalOpen.current),
-                ),
-                AppState.addEventListener("focus", trigger.windowFocused),
-            ];
-            const stopClipboard = clipboardService.onChange(
-                trigger.clipboardChanged,
-            );
-            return () => {
-                focused.current = false;
-                cancel();
-                for (const subscription of subscriptions) subscription.remove();
-                stopClipboard();
-            };
-        }, [schedule, cancel]),
-    );
-
-    // 刚开启开关、摘录加载完成或切换账号时，若仍停留在本页则补检一次。
     useEffect(() => {
-        if (enabled && ready && focused.current) schedule(PAGE_FOCUS_DELAY_MS);
-    }, [enabled, ready, ownerKey, schedule]);
+        const trigger = createDetectionTrigger({
+            platform:
+                Platform.OS === "android" || Platform.OS === "ios"
+                    ? Platform.OS
+                    : "other",
+            initialAppState: AppState.currentState,
+            schedule,
+            cancel,
+        });
+        trigger.pageFocused();
+        const subscriptions = [
+            AppState.addEventListener("change", trigger.appStateChanged),
+            AppState.addEventListener("blur", () =>
+                trigger.windowBlurred(inAppModalOpen.current),
+            ),
+            AppState.addEventListener("focus", trigger.windowFocused),
+        ];
+        const stopClipboard = clipboardService.onChange(
+            trigger.clipboardChanged,
+        );
+        return () => {
+            cancel();
+            subscriptions.forEach((item) => item.remove());
+            stopClipboard();
+        };
+    }, [schedule, cancel]);
 
-    const visibleOffer =
-        enabled &&
-        offer &&
-        offer.ownerKey === ownerKey &&
-        !entities.some((item) => item.contentHash === offer.hash)
-            ? offer
-            : null;
-
-    const ignore = useCallback(() => {
-        if (!visibleOffer) return;
-        setOffer(null);
-        void markHandled(visibleOffer.hash);
-    }, [visibleOffer, markHandled]);
-
-    const save = useCallback(async () => {
-        if (!visibleOffer || saving) return;
-        setSaving(true);
-        try {
-            const receipt = await excerptRepository.save(
-                ownerKey,
-                newExcerptId(),
-                visibleOffer.content,
-                "auto",
-                new Date(),
-            );
-            setOffer(null);
-            void markHandled(visibleOffer.hash);
-            banner.show(
-                receipt.duplicated
-                    ? {
-                          title: "已存在相同摘录",
-                          message: "已移到最前",
-                          type: "neutral",
-                      }
-                    : { title: "已保存为摘录", type: "success" },
-            );
-        } catch (cause) {
-            if (
-                excerptRepository.ownerKey === ownerKey &&
-                excerptRepository.generation === generation
-            )
-                banner.show({
-                    title: "保存失败",
-                    message: cause instanceof Error ? cause.message : "请重试",
-                    type: "important",
-                });
-        } finally {
-            setSaving(false);
+    const sessionId = useExcerptSessionStore(
+        (state) => state.session?.sessionId,
+    );
+    useEffect(() => {
+        if (ready && !(excerptPage && useClipboardOfferStore.getState().offer))
+            schedule(PAGE_FOCUS_DELAY_MS);
+    }, [
+        ready,
+        enabled,
+        excerptPage,
+        ownerKey,
+        generation,
+        sessionId,
+        schedule,
+    ]);
+    useEffect(() => {
+        const offer = useClipboardOfferStore.getState().offer;
+        if (
+            offer &&
+            (!ready ||
+                offer.ownerKey !== ownerKey ||
+                offer.generation !== generation ||
+                entities.some((item) => item.contentHash === offer.hash) ||
+                (!sessionId && !enabled))
+        ) {
+            useClipboardOfferStore.setState({ offer: null });
         }
-    }, [visibleOffer, saving, ownerKey, generation, markHandled]);
+    }, [ready, ownerKey, generation, entities, enabled, sessionId]);
 
-    return { offer: visibleOffer, saving, ignore, save };
+    useEffect(() => {
+        const ignore = () => {
+            const offer = useClipboardOfferStore.getState().offer;
+            if (!offer || useClipboardOfferStore.getState().saving) return;
+            useClipboardOfferStore.setState({ offer: null });
+            void markHandled(offer.hash);
+        };
+        const save = async () => {
+            const state = useClipboardOfferStore.getState();
+            const offer = state.offer;
+            if (!offer || state.saving) return;
+            useClipboardOfferStore.setState({ saving: true });
+            try {
+                const receipt = await saveDetectedOffer(
+                    excerptRepository,
+                    offer,
+                    markHandled,
+                );
+                if (useClipboardOfferStore.getState().offer === offer)
+                    useClipboardOfferStore.setState({ offer: null });
+                if (
+                    latest.current.ownerKey !== offer.ownerKey ||
+                    latest.current.generation !== offer.generation
+                )
+                    return;
+                banner.show(
+                    receipt.duplicated
+                        ? {
+                              title: "已存在相同摘录",
+                              message: "已移到最前",
+                              type: "neutral",
+                          }
+                        : { title: "已保存为摘录", type: "success" },
+                );
+            } catch (cause) {
+                if (
+                    latest.current.ownerKey === offer.ownerKey &&
+                    latest.current.generation === offer.generation
+                )
+                    banner.show({
+                        title: "保存失败",
+                        message:
+                            cause instanceof Error ? cause.message : "请重试",
+                        type: "important",
+                    });
+            } finally {
+                useClipboardOfferStore.setState({ saving: false });
+            }
+        };
+        useClipboardOfferStore.setState({ ignore, save });
+    }, [markHandled]);
 }

@@ -35,6 +35,8 @@ export const RUNTIME_NOTIFICATION_ID = "irisnote.runtime.status";
 /** Android 原生 NotificationManager 的整型通知 ID：设置页动态通知演示专用。 */
 export const LIVE_TEST_NOTIFICATION_ID = 7001;
 export const LIVE_TODO_SUMMARY_NOTIFICATION_ID = 7002;
+export const EXCERPT_SESSION_CHANNEL = "irisnote.excerpt-session.v1";
+export const EXCERPT_SESSION_NOTIFICATION_ID = 7003;
 // Reserved semantic only; no unused Android channel is created.
 export type SystemNotificationPurpose =
     | "reminder"

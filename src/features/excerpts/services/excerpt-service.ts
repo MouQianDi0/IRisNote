@@ -15,6 +15,29 @@ export function newExcerptId(): string {
 
 type ExcerptWriter = Pick<ExcerptLocalRepository, "save" | "assertSession">;
 
+/** 用户明确保存检测候选；受理前核验账号代次，失败保留候选供重试。 */
+export async function saveDetectedOffer(
+    repository: ExcerptWriter,
+    offer: {
+        ownerKey: string;
+        generation: number;
+        content: string;
+        hash: string;
+    },
+    markHandled: (hash: string) => Promise<void>,
+): Promise<ExcerptSaveReceipt> {
+    repository.assertSession(offer.ownerKey, offer.generation);
+    const receipt = await repository.save(
+        offer.ownerKey,
+        newExcerptId(),
+        offer.content,
+        "auto",
+        new Date(),
+    );
+    await markHandled(offer.hash).catch(() => undefined);
+    return receipt;
+}
+
 /** 「粘贴一次」：由用户点击触发，读取一次剪贴板并保存为摘录。 */
 export async function pasteClipboardAsExcerpt(
     repository: ExcerptWriter,

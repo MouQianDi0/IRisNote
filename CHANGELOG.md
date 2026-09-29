@@ -32,6 +32,47 @@
   - `:irisnote-system:compileReleaseKotlin` 构建成功（仅 `addAction(int,...)` 弃用警告，与模块既有风格一致）。
   - `npm run check` 全过：lint 0 错误 1 既有警告（`PermissionSettingsScreen` 的 `liveUpdateCapable`，非本次文件）、theme:check 通过、node --test 637/637（含新增 todo-card-actions 15/15、既有 todo-live-update 34/34）。
   - 真机验证未做：需 staging 包验收按钮渲染、被杀进程点按钮、无结束卡不下发 +30分钟、提升式岛上按钮样式（文档已列入验收项）。
+
+---
+
+## 2026-09-29 13:30:20 | 新增功能：快速摘录限时会话与 Android 通知入口（一期 A 档）
+
+- 变更概述：摘录工具栏新增 Timer，会话支持 15/30/60/120 分钟；应用内任意页面回流检测剪贴板，摘录页内嵌卡、其他页横幅跳转，由用户确认保存。
+- 修改文件：src/features/excerpts/domain/excerpt-session.ts、src/features/excerpts/data/excerpt-session.repository.ts、src/features/excerpts/services/excerpt-session-coordinator.ts、src/features/excerpts/services/excerpt-session-notifications.ts、src/features/excerpts/services/excerpt-service.ts、src/features/excerpts/state/clipboard-offer-store.ts、src/features/excerpts/state/excerpt-session-store.ts、src/features/excerpts/hooks/useExcerptSession.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/components/ExcerptSessionDialog.tsx、src/features/excerpts/components/ExcerptToolbar.tsx、src/features/excerpts/screens/ExcerptsScreen.tsx、src/app/_layout.tsx、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionActionReceiver.kt、modules/irisnote-system/android/src/main/res/drawable/ic_excerpt_session.xml、tests/excerpts/excerpt-session.test.cjs、tests/excerpts/excerpt-local.test.cjs、tests/todos/system-notifications.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、CHANGELOG.md、docs/logs/2026-09-29-excerpt-session.md。
+- 具体内容：会话复用 system_preferences，记忆上次时长并绑定账号/随机 sessionId；根布局统一检测入口与共享候选保存服务；独立 HIGH 静默通知 ID 7003、promoted 请求、系统倒计时/超时撤卡、摘录深链和原生停止标记。通知权限拒绝或发卡失败降级为应用内；旧动作/旧异步返回隔离；UI 按公共组件与视觉文档实现。未新增表、API 或权限，当前摘录保存仍为本机 SQLite。
+- 验证：修改前类型检查通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误、1 个既有警告；659 项测试 656 通过、2 跳过、1 既有发布归档 ENAMETOOLONG 失败，新增 13 项均通过。差异空白/冲突标记检查通过；模块 XML/权限清单静态检查通过。Android Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动；原生打包和真机 UI/通知实测未做，不宣称可发布。
+
+---
+
+## 2026-09-29 12:49:26 | 优化代码：合并 origin/master（5864c31）到本地开发分支
+
+- 变更概述：按用户要求拉取主分支并合入 kroos_vps/codex-a；合并前 HEAD 557ee29，merge-base 9cfe27c，带入远端 8 个提交，自动合并无冲突。
+- 修改文件：上游带入 51 个文件（逐文件清单见 docs/logs/2026-09-29-merge-master-5864c31.md）；本次自身追加 CHANGELOG.md 与该全链路日志。
+- 具体内容：本地分类、笔记标记与回收站操作独立于云授权；迁移 0019；写入后同步 1.5 秒尾部防抖；公共 Markdown 更新说明及 0.7.0 说明文本。保留双方 CHANGELOG 历史条目；未另行修改业务实现，未构建或发布。
+- 验证：合并前 typecheck 因本机缺少 expo-crypto / expo-secure-store 出现 4 个既有 TS2307；npm ci 按锁文件补齐依赖后，最终 npm run check 的 TypeScript 与主题检查通过，Lint 0 错误、1 个既有警告；测试 646 项，643 通过、2 跳过、1 失败（既有发布归档测试创建超长中文文件名触发 ENAMETOOLONG，相关代码本次未改）。差异空白检查通过，无源码冲突标记。真机验证、后端联调及打包未做。
+
+---
+
+## 2026-09-29 04:36:41 | 优化代码：合并 origin/Timmi（b566523），星标/置顶采用本地优先方案并保留写入后同步防抖
+
+- 变更概述：
+  - 合入远端 4 个提交：0.7.0 更新说明、本地云解耦与迁移 0019、更新说明 Markdown 排版、PR #129。
+  - 远端已经把星标/置顶改为本地优先（`toggleLocalNoteFlag` 写 SQLite 和待发送表，`syncLocalNoteFlags` 统一发送），和本侧 04:08:42 的请求调度器冲突。按用户选择采用远端方案，删除调度器，保留本侧"写入后同步 1.5 秒尾部防抖"。
+  - 两者配合后，连续切换停止 1.5 秒后，每条笔记只发 1 个 PUT。
+  - 本侧"最终值与服务端一致时不发请求"没有保留：切回原值仍会发 1 个 PUT。
+- 修改文件：src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/screens/NotesScreen.tsx（冲突取远端）、src/features/notes/services/note-status-writer.ts（删除）、src/features/notes/services/note-sync-coordinator.ts（自动合并）、tests/sync/note-write-coalescing.test.cjs（只保留协调器防抖测试）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-merge-origin-timmi-b566523.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① 冲突：两个 hooks 和 NotesScreen 取远端版本；CHANGELOG 两边条目按时间倒序交叉排列，共 293 条，与并集一致。
+  - ② 删除已无调用方的 `note-status-writer` 和它的 9 条测试。
+  - ③ 三份架构文档改为合并后的真实链路：本地事务 → 待发送表 → 1.5 秒防抖 → syncNotes → syncLocalNoteFlags → 按 version 确认。
+  - 本侧 04:08:42 条目和前一篇日志保留原样，差异在新日志里说明。
+- 验证：
+  - 在临时工作区里对合并结果跑 `npm run check`：typecheck 0 个错误；lint 0 个错误、1 个既有警告；测试 646 项，642 通过、2 跳过、2 失败。
+    - 发布归档 ENAMETOOLONG：既有环境问题。
+    - gradle-env「Windows fix…」：临时工作区路径过长导致 socket 路径超限，主仓库路径下 2/2 通过，合并也没有改动它。
+  - 冲突标记扫描通过。
+  - 未做真机验证，未与真实服务端联调。
+
 ---
 
 ## 2026-09-29 05:03:13 | 优化代码：将 Markdown 解析与渲染抽为 Utils 公共组件
@@ -49,6 +90,30 @@
 - 修改文件：src/features/updates/release-notes.ts；src/features/updates/ReleaseNotes.tsx；src/features/updates/UpdateDialog.tsx；tests/releases/release-notes.test.cjs；tests/releases/releases.test.cjs；docs/构建发布/更新说明编写规范.md；docs/构建发布/android-releases.md；docs/logs/2026-09-29-update-notes-markdown.md；CHANGELOG.md。
 - 具体内容：分组标题、列表换行对齐及段落间距；普通段落与未支持语法保留；空内容占位；沿用滚动容器和更新操作链路，不新增依赖及网络请求；同步文档支持范围和旧客户端兼容约定。
 - 验证：修改前后类型检查通过，新增解析测试 5 项通过；npm run check 首次发现原弹窗测试缺少新增组件依赖替身，补齐后重新完整运行通过（644/644）；Lint 0 错误、1 条既有 PermissionSettingsScreen 未使用变量警告，theme:check 通过；git diff --check 和冲突标记扫描通过。Android 构建、真机验证未做。
+
+---
+
+## 2026-09-29 04:08:42 | 优化代码：笔记星标/置顶连续切换合并为一次请求，写入后同步改为尾部防抖
+
+- 变更概述：
+  - 快速连续切换笔记星标/置顶时，原来每点一次就发一个 `PUT /notes/:id`，每个请求结束后还会再拉一轮同步，最坏会有十几个请求。
+  - 现在界面仍立即变化；网络请求按笔记做 1 秒尾部防抖（与待办一致），只发最后的值，最终值与服务端一致时不发请求，同一笔记的请求一个一个发。
+  - 失败时只在"之后没有新操作"时回滚，而且只回滚这一条笔记的这一个字段。
+  - 写请求结束后触发的同步改为最后一次写入结束 1.5 秒后只拉取一轮；回到前台、定时、网络恢复的同步时机不变。
+  - 待办、笔记正文、分类原本已经合并，本次未改。
+- 修改文件：src/features/notes/services/note-status-writer.ts（新增）、src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx（仅注释）、tests/sync/note-write-coalescing.test.cjs（新增）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-note-status-write-coalescing.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① `note-status-writer`：按笔记记录服务端确认值、最新值和代次。1 秒内再次点击会重新计时；发送前检查云授权；请求期间有新点击时，返回后接着发最新值；旧请求失败不覆盖新点击；会话变化后丢弃回滚。
+  - ② `useNoteStar` / `useNotePin`：网络部分交给调度器。整表快照回滚改为只回滚单个字段，置顶回滚会恢复原来的 `pinned_order`；去掉 `err: any`。
+  - ③ `note-sync-coordinator`：写入结束的通知改由 `requestAfterWrite`（1.5 秒尾部防抖）处理，其他触发仍是 100ms。
+  - 影响：正文上传、分类写入之后拉取服务端变化会晚约 1.4 秒；长按菜单的状态切换不再等网络返回。
+- 验证：
+  - 改动前后 `npm run typecheck` 都是 0 个错误。
+  - 新增测试 10/10 通过。
+  - `npm run check`：lint 0 个错误、1 个既有警告；测试 632 项，628 通过、2 跳过、2 失败。
+    - 发布归档 ENAMETOOLONG：环境问题，基线同样失败。
+    - storage「startup cleanup is scheduled once per process」：只等真实时间 20ms 的不稳定测试，基线单独跑 20 次失败 5 次，与本次改动无关。
+  - 未做真机验证，未与真实服务端联调。
 
 ---
 
@@ -342,6 +407,33 @@
 - 修改文件：`docs/待办/待办聚合动态通知设计（Android 16）.md`（新增）、`CHANGELOG.md`。
 - 具体内容：记录聚合卡与逐条卡的提升策略、四场景状态机、独立渠道与通知 ID、前后台更新节拍、原生图标、架构分层、诊断隐私、降级矩阵及实施顺序；现状说明暂不改写。
 - 验证：已核对文档章节与原始设计内容，`git diff --check` 通过；仅文档变更，未运行应用测试或真机验收。
+
+---
+
+## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
+
+- 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。
+- 修改文件：src/shared/utils/password-policy.ts（新增）、src/features/profile/api/account-security.api.ts（新增）、src/features/profile/utils/password-errors.ts（新增）、src/features/profile/hooks/usePasswordChange.ts（新增）、src/features/profile/components/VerificationCodeField.tsx（新增）、src/features/profile/screens/ChangePasswordScreen.tsx（新增）、src/app/pages/user/profile/password.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/utils/profile-validation.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/profile/password-change.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新密码规则 6–64 个字符、UTF-8 ≤72 字节（手动按码点计字节，不依赖 TextEncoder），放在 `shared/utils` 供注册与资料共用（计划原写 profile/utils，为避免 auth 依赖 profile 调整位置）；注册页提示改为“6–64 个字符”；② 三个接口调用（15 秒超时，保持云授权受控），重设接口附加设备标识；③ 错误分类：云存储未开启且未发出 → 提示开启；已发出或无响应 → “修改结果未确认”；锁定/限流按服务端等待时间提示（分钟/秒，不重复拼接）；④ 成功以 `applyToken` 换新令牌；新令牌未能保存时主动退出并提示用新密码登录；⑤ P06 按预览实现，云存储关闭时 InlineHint 提示并禁用按钮（文案指向「同步与备份」，比预览中的「设置」更准确）；有输入离开弹出「放弃修改？」；离开保护新增 `allowLeave`；⑥ `maskEmail` 从个人资料页移至 `profile-validation.ts` 共用；个人资料“修改密码”行可点击。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 506 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 7 项通过。后端迁移 013 未执行、未部署；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 08:17:18 | 新增功能：登录失效统一处理与会话令牌替换（B3a 客户端）
+
+- 变更概述：用户确认 B3 执行计划（每次请求按主键查令牌版本、安全接口保持云授权受控、分 B3a/B3b/B3c 推进、注册同步新密码规则）并确认 B3a。服务端将在迁移 013 后按令牌版本拒绝已撤销的会话；客户端新增全局 401 处理，并为 B3b 修改密码后原地换新令牌提供 `applyToken`。
+- 修改文件：src/shared/http/session-events.ts（新增）、src/shared/http/client.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、tests/auth/session-rejected.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 响应拦截器在 401 且请求带 Bearer 令牌时发布“会话被拒”事件，携带该请求实际使用的令牌；`/auth/*`（登录、注册等凭据错误）与未带令牌的请求不发布；② AuthProvider 订阅该事件，仅当被拒令牌与本机当前保存的令牌相同时退出登录（旧账号或换令牌前发出的迟到请求不影响当前会话），并发多个 401 只处理一次；退出只清除登录态，不清理本地笔记、草稿与同步队列；随后显示横幅「登录已失效 / 请重新登录，本机数据不受影响」并回到欢迎页；③ 新增 `applyToken(token, user)`：核对本机账号后先落盘令牌、再写资料缓存并更新界面，账号已变化返回 false。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增测试 4/4；`npm run check` 类型检查、Lint、主题检查通过，测试 499 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。后端迁移 013 未执行、未部署；测试环境开启 DEV_AUTH_BYPASS 不会返回 401，未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 07:28:03 | 修复问题：头像预览弹窗中的头像不是正圆
+
+- 变更概述：用户确认问题分析与修复方案。预览容器宽度为 `100%`（上限 280），圆角却固定为 140。手机上内容区只有约 264dp，半径超过半边长，Android 上背景与裁剪路径处理不一致；「百分比宽度 + maxWidth + aspectRatio」组合也可能让容器不是正方形，两者都会导致头像不是正圆。
+- 修改文件：src/features/profile/components/AvatarPreviewDialog.tsx、CHANGELOG.md。
+- 具体内容：用 `useWindowDimensions` 计算数值边长 `size = min(280, 392, 屏宽 − 96)`，容器改为 `width/height = size`、`borderRadius = size / 2`，去掉百分比宽度和 aspectRatio；内部 `Image` 也设置同样的圆角，与页面小头像的双层圆角写法一致。弹窗布局、间距与按钮不变。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 495 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。未做真机验收，未提交 Git。
 
 ---
 

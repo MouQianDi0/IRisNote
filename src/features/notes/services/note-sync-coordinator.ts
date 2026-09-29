@@ -147,6 +147,9 @@ export function syncNotes(
     return promise;
 }
 
+/** Consecutive writes restart this wait so a burst of edits pulls once. */
+export const NOTE_SYNC_AFTER_WRITE_MS = 1500;
+
 /** Only runs while the app is active. Concurrent screen requests join the same job. */
 export function startNoteSyncCoordinator(
     db: ApplicationDatabase,
@@ -155,25 +158,31 @@ export function startNoteSyncCoordinator(
     let active = false,
         stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+        timer = undefined;
+        if (!active || stopped) return;
+        if (!getCloudStorageSnapshot().enabled) {
+            void synchronizeNoteTrash(db, owner).catch(() => {});
+            return;
+        }
+        const stamp = noteCloudWriteStamp();
+        const wasRunning = jobs.get(db)?.has(owner);
+        void syncNotes(db, owner).catch(() => {
+            const now = noteCloudWriteStamp();
+            if (!now.busy && (wasRunning || now.version !== stamp.version))
+                request();
+        });
+    };
     const request = () => {
         if (!active || stopped || timer) return;
-        timer = setTimeout(() => {
-            timer = undefined;
-            if (!active || stopped) return;
-            if (!getCloudStorageSnapshot().enabled) {
-                void synchronizeNoteTrash(db, owner).catch(() => {});
-                return;
-            }
-            const stamp = noteCloudWriteStamp();
-            const wasRunning = jobs.get(db)?.has(owner);
-            void syncNotes(db, owner).catch(() => {
-                const now = noteCloudWriteStamp();
-                if (!now.busy && (wasRunning || now.version !== stamp.version))
-                    request();
-            });
-        }, 100);
+        timer = setTimeout(run, 100);
     };
-    const unsubscribe = onNoteCloudWrite(request);
+    const requestAfterWrite = () => {
+        if (!active || stopped) return;
+        clearTimeout(timer);
+        timer = setTimeout(run, NOTE_SYNC_AFTER_WRITE_MS);
+    };
+    const unsubscribe = onNoteCloudWrite(requestAfterWrite);
     const expiryTimer = setInterval(request, 60_000);
     let unavailable = false;
     const unsubscribeConnection = onConnectionEvent((event) => {

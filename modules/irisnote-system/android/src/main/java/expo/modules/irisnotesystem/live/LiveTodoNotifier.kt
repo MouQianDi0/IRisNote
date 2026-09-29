@@ -137,6 +137,7 @@ object LiveTodoNotifier {
       "ic_live_todo_near" -> R.drawable.ic_live_todo_near
       "ic_live_todo_active" -> R.drawable.ic_live_todo_active
       "ic_live_todo_ended" -> R.drawable.ic_live_todo_ended
+      "ic_excerpt_session" -> R.drawable.ic_excerpt_session
       null -> context.applicationInfo.icon.takeIf { it != 0 }
         ?: android.R.drawable.sym_def_app_icon
       else -> throw IllegalArgumentException("不支持的动态通知图标")

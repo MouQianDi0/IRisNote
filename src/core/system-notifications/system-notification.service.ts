@@ -13,6 +13,7 @@ import {
 } from "@/core/diagnostics";
 import {
     DIAGNOSTIC_CHANNEL,
+    EXCERPT_SESSION_CHANNEL,
     LIVE_TEST_NOTIFICATION_ID,
     LIVE_TODO_CHANNEL,
     LIVE_TODO_SUMMARY_CHANNEL,
@@ -412,6 +413,8 @@ export type LiveUpdateContent = {
     iconResourceName?: string | null;
     /** true = 不设置任何进度形态（聚合卡纯文本状态卡）。 */
     hideProgress?: boolean;
+    excerptSessionId?: string;
+    expiresAt?: number;
 };
 
 async function initializeLiveUpdateChannels() {
@@ -478,6 +481,26 @@ export async function liveTodoSummaryNotificationPermission(): Promise<boolean> 
         channel.importance !== Notifications.AndroidImportance.NONE;
 }
 
+/** 快速摘录使用独立 HIGH 静默渠道；拒绝权限不影响应用内会话。 */
+export async function excerptSessionNotificationPermission(request = false): Promise<boolean> {
+    if (!liveUpdateCompatSupported()) return false;
+    await Notifications.setNotificationChannelAsync(EXCERPT_SESSION_CHANNEL, {
+        name: "快速摘录",
+        description: "限时快速摘录会话与停止入口",
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: null,
+        enableVibrate: false,
+        showBadge: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
+    });
+    const permission = request
+        ? await requestApplicationNotificationPermission()
+        : await applicationNotificationPermission();
+    if (!permission.granted) return false;
+    const channel = await Notifications.getNotificationChannelAsync(EXCERPT_SESSION_CHANNEL);
+    return !!channel && channel.importance !== Notifications.AndroidImportance.NONE;
+}
+
 /** 通用状态卡发送协议：调用模块声明渠道、快照文案、图标与通知身份。 */
 export type StateCardPayload = {
     id: number;
@@ -487,6 +510,8 @@ export type StateCardPayload = {
     iconResourceName: string;
     chronoAt?: number | null;
     chronoCountdown?: boolean;
+    excerptSessionId?: string;
+    expiresAt?: number;
 };
 
 export function postStateCard(card: StateCardPayload): Promise<void> {
@@ -496,6 +521,8 @@ export function postStateCard(card: StateCardPayload): Promise<void> {
         ongoing: true, promoted: true, iconResourceName: card.iconResourceName,
         chronoAt: card.chronoAt, chronoCountdown: card.chronoCountdown,
         hideProgress: true,
+        excerptSessionId: card.excerptSessionId,
+        expiresAt: card.expiresAt,
     });
 }
 
@@ -522,6 +549,8 @@ export async function postLiveUpdate(
             chronoAt: content.chronoAt ?? null,
             chronoCountdown: content.chronoCountdown ?? false,
             hideProgress: content.hideProgress ?? false,
+            excerptSessionId: content.excerptSessionId ?? null,
+            expiresAt: content.expiresAt ?? null,
         });
     } catch (cause) {
         void recordDiagnostic(

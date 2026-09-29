@@ -1,9 +1,9 @@
-import { ClipboardPaste, Search, X } from "lucide-react-native";
+import { ClipboardPaste, Search, Timer, X } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { semanticColors } from "@/shared/theme";
 import { IconButton } from "@/shared/ui";
 
-/** 行高 40：左侧标题与数量，右侧搜索与「粘贴一次」两个 40×40 图标按钮，间距 4。 */
+/** 行高 40；可用环境右侧为快速摘录 / 搜索 / 粘贴三个 compact 图标，间距 4。 */
 export function ExcerptToolbar({
     count,
     searchOpen,
@@ -11,6 +11,10 @@ export function ExcerptToolbar({
     disabled,
     onSearch,
     onPaste,
+    sessionSupported,
+    sessionActive,
+    sessionDisabled,
+    onSession,
 }: {
     count: number;
     searchOpen: boolean;
@@ -18,6 +22,10 @@ export function ExcerptToolbar({
     disabled: boolean;
     onSearch: () => void;
     onPaste: () => void;
+    sessionSupported: boolean;
+    sessionActive: boolean;
+    sessionDisabled: boolean;
+    onSession: () => void;
 }) {
     return (
         <View
@@ -47,6 +55,19 @@ export function ExcerptToolbar({
                     {` · ${count} 条`}
                 </Text>
             </Text>
+            {sessionSupported && (
+                <IconButton
+                    icon={Timer}
+                    accessibilityLabel={
+                        sessionActive ? "快速摘录进行中" : "开启快速摘录"
+                    }
+                    size="compact"
+                    iconSize={20}
+                    selected={sessionActive}
+                    disabled={sessionDisabled}
+                    onPress={onSession}
+                />
+            )}
             <IconButton
                 icon={searchOpen ? X : Search}
                 accessibilityLabel={searchOpen ? "关闭搜索" : "搜索摘录"}
