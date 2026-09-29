@@ -1,3 +1,22 @@
+## 2026-09-29 14:39:55 | 新增功能：待办动态卡片增加「取消通知/+30分钟/完成」操作按钮
+
+- 变更概述：逐条待办动态卡（进行中进度卡）新增三个不打开应用即可用的按钮，顺序为[取消通知][+30分钟][完成]：取消通知把该待办的本周期卡片永久取消（不改待办数据，完成/删除前不再出现）；+30分钟真实把待办结束时间后移 30 分钟（开始时间不动；+30 分钟将跨过午夜时按无效废弃，数据模型要求同日结束≥开始；随现有更新链路同步服务端；无结束时间的卡不下发该按钮）；完成标记待办完成（聚合卡计数由原生即时重算自愈）。动作由新增的 `LiveTodoActionReceiver` 处理，进程被杀也会被系统拉起：原生先即时改时间线快照并撤卡（可见反馈不依赖 JS），再写操作标记（SharedPreferences），JS 消费例程（原生事件/前台刷新/退后台移交前三处触发）读标记落库或记录抑制，成功才清标记，保证最终一致、不静默丢失。修订：2026-09-29 按用户确认将原「延迟30分钟」（开始/结束整体后移+跨午夜滚日期）改为「+30分钟」（仅结束时间后移、跨午夜废弃）。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoActionReceiver.kt（新增）、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoActionStore.kt（新增）、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_cancel.xml（新增）、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_snooze.xml（新增）、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_complete.xml（新增）、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/services/todo-aggregate-live.service.ts、src/features/todos/services/todo-card-action.service.ts（新增）、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification-native-provider.tsx、tests/todos/todo-card-actions.test.cjs（新增）、tests/todos/todo-live-update.test.cjs、docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-28-todo-live-card-actions.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① 时间线快照（逐条卡与聚合 item）新增 `ownerKey`/`clientId` 身份字段并随 JSON 序列化；旧快照缺字段时不下发按钮，下次移交自动补齐，无迁移。
+  - ② `LiveTodoNotifier` 构建逐条卡时按身份字段附加三个单色图标按钮（PendingIntent 指向广播接收器，请求码混入通知 ID 与动作名防覆盖）；聚合卡与演示卡无身份不下发。
+  - ③ 接收器三分支：取消/完成从快照移除逐条卡，完成另将聚合 item 置 completed（`LiveTodoSummary` 纯原生重算计数）；+30分钟只把逐条卡与聚合 item 的 endAt 后移 30 分钟（开始不动，无结束不产生变更）；统一撤卡、续排闹钟链。
+  - ④ 操作标记存储（同 action+owner+todo 去重覆盖）与 `onDynamicCardAction` 事件桥：模块存活（前台/后台）即时推给 JS，进程死亡静默、标记由下次前台消费兜底。
+  - ⑤ JS 消费例程 `todo-card-action.service.ts`：取消写抑制表（AsyncStorage 持久，协调器构建逐条卡期望集时永久排除，聚合统计不过滤）；+30分钟经 `todoRepository.update` 仅改 `endTime`（`postponeTodoEndTime`：复用表单保存链路，冲突重读一次再试，再冲突按"意图已被并发编辑取代"废弃；无结束/跨午夜等无效时刻废弃不重试）；完成经 `todoRepository.complete`（同冲突策略；已删丢弃；账号不匹配保留标记）。成功（含废弃）才按 id 清标记，意外失败留存重试。
+  - ⑥ 协调器新增可选 `isSuppressed` 过滤（仅逐条卡前台差量与移交快照），移交快照身份字段随 JSON 写入原生；Provider 订阅 `onDynamicCardAction`、refresh 消费前置、退后台先消费再移交。
+- 验证：
+  - `npm run typecheck` 0 个错误（修改前基线亦为 0）。
+  - `:irisnote-system:compileReleaseKotlin` 构建成功（仅 `addAction(int,...)` 弃用警告，与模块既有风格一致）。
+  - `npm run check` 全过：lint 0 错误 1 既有警告（`PermissionSettingsScreen` 的 `liveUpdateCapable`，非本次文件）、theme:check 通过、node --test 637/637（含新增 todo-card-actions 15/15、既有 todo-live-update 34/34）。
+  - 真机验证未做：需 staging 包验收按钮渲染、被杀进程点按钮、无结束卡不下发 +30分钟、提升式岛上按钮样式（文档已列入验收项）。
+
+---
+
 ## 2026-09-27 12:59:38 | 新增功能：笔记混合模式，超出范围的正文只留摘要、打开时下载（缓存重构第二期阶段 B2）
 
 - 变更概述：按用户确认的规则实现正文淘汰与按需下载：
