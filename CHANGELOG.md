@@ -1,3 +1,27 @@
+## 2026-09-29 04:08:42 | 优化代码：笔记星标/置顶连续切换合并为一次请求，写入后同步改为尾部防抖
+
+- 变更概述：
+  - 快速连续切换笔记星标/置顶时，原来每点一次就发一个 `PUT /notes/:id`，每个请求结束后还会再拉一轮同步，最坏会有十几个请求。
+  - 现在界面仍立即变化；网络请求按笔记做 1 秒尾部防抖（与待办一致），只发最后的值，最终值与服务端一致时不发请求，同一笔记的请求一个一个发。
+  - 失败时只在"之后没有新操作"时回滚，而且只回滚这一条笔记的这一个字段。
+  - 写请求结束后触发的同步改为最后一次写入结束 1.5 秒后只拉取一轮；回到前台、定时、网络恢复的同步时机不变。
+  - 待办、笔记正文、分类原本已经合并，本次未改。
+- 修改文件：src/features/notes/services/note-status-writer.ts（新增）、src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx（仅注释）、tests/sync/note-write-coalescing.test.cjs（新增）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-note-status-write-coalescing.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① `note-status-writer`：按笔记记录服务端确认值、最新值和代次。1 秒内再次点击会重新计时；发送前检查云授权；请求期间有新点击时，返回后接着发最新值；旧请求失败不覆盖新点击；会话变化后丢弃回滚。
+  - ② `useNoteStar` / `useNotePin`：网络部分交给调度器。整表快照回滚改为只回滚单个字段，置顶回滚会恢复原来的 `pinned_order`；去掉 `err: any`。
+  - ③ `note-sync-coordinator`：写入结束的通知改由 `requestAfterWrite`（1.5 秒尾部防抖）处理，其他触发仍是 100ms。
+  - 影响：正文上传、分类写入之后拉取服务端变化会晚约 1.4 秒；长按菜单的状态切换不再等网络返回。
+- 验证：
+  - 改动前后 `npm run typecheck` 都是 0 个错误。
+  - 新增测试 10/10 通过。
+  - `npm run check`：lint 0 个错误、1 个既有警告；测试 632 项，628 通过、2 跳过、2 失败。
+    - 发布归档 ENAMETOOLONG：环境问题，基线同样失败。
+    - storage「startup cleanup is scheduled once per process」：只等真实时间 20ms 的不稳定测试，基线单独跑 20 次失败 5 次，与本次改动无关。
+  - 未做真机验证，未与真实服务端联调。
+
+---
+
 ## 2026-09-27 12:59:38 | 新增功能：笔记混合模式，超出范围的正文只留摘要、打开时下载（缓存重构第二期阶段 B2）
 
 - 变更概述：按用户确认的规则实现正文淘汰与按需下载：

@@ -1,10 +1,12 @@
-import { getApiErrorMessage } from "@/shared/http/errors";
+import { isAxiosError } from "axios";
+import { getApiErrorData, getApiErrorMessage } from "@/shared/http/errors";
 import {
     captureCloudStorageAccess,
     isCloudStoragePermissionError,
 } from "@/core/cloud-storage/cloud-storage-policy";
 import { captureNotificationSession } from "@/core/notifications";
 import { updateNote } from "../api/notes.api";
+import { createNoteStatusWriter } from "../services/note-status-writer";
 import type { Note } from "@/features/notes/notes.types";
 import { useCallback } from "react";
 import { Alert } from "react-native";
@@ -21,6 +23,20 @@ type UpdateNotesLocally = (
     updater: (prev: Note[]) => Note[],
     shouldSort?: boolean,
 ) => void;
+
+// 模块级调度器：离开页面后仍发送最后一次切换，界面与缓存已先行更新。
+const pinWriter = createNoteStatusWriter({
+    async send(serverId, isPinned) {
+        const payload = { is_pinned: isPinned };
+        console.log("笔记置顶后端同步开始:", { id: serverId, payload });
+        const data = await updateNote(serverId, payload);
+        console.log("笔记置顶后端同步成功:", {
+            id: serverId,
+            is_pinned: isPinned,
+            response: data,
+        });
+    },
+});
 
 export function useNotePin(
     notesRef: NotesRef,
@@ -53,8 +69,12 @@ export function useNotePin(
                 return;
             }
 
-            const previousNotes = notesRef.current;
-            const nextPinned = !item.is_pinned;
+            // 以列表中的最新值为准，避免连续点击时拿到过期的 item。
+            const current =
+                notesRef.current.find((note) => note.id === item.id) ?? item;
+            const previousPinned = Boolean(current.is_pinned);
+            const previousPinnedOrder = current.pinned_order;
+            const nextPinned = !previousPinned;
             const nextPinnedOrder = nextPinned
                 ? pinnedOrderRef.current + 1
                 : undefined;
@@ -78,41 +98,53 @@ export function useNotePin(
             );
             setOpenedNoteId(null);
 
-            const payload = { is_pinned: nextPinned };
-            console.log("笔记置顶后端同步开始:", { id: serverId, payload });
-
-            try {
-                const data = await updateNote(serverId, payload);
-                checkAccess();
-                console.log("笔记置顶后端同步成功:", {
-                    id: item.id,
-                    is_pinned: nextPinned,
-                    response: data,
-                });
-            } catch (err: any) {
-                if (!isCurrentSession()) return;
-                console.error("笔记置顶后端同步失败:", {
-                    id: item.id,
-                    status: err.response?.status,
-                    data: err.response?.data || err.message,
-                });
-                pinnedOrderRef.current = Math.max(
-                    0,
-                    ...previousNotes.map((note) => note.pinned_order ?? 0),
-                );
-                updateNotesLocally(() => previousNotes, true);
-                Alert.alert(
-                    isCloudStoragePermissionError(err)
-                        ? "需要开启云存储"
-                        : "提示",
-                    isCloudStoragePermissionError(err)
-                        ? err.message
-                        : getApiErrorMessage(
-                              err,
-                              "同步置顶状态失败，已恢复原状态",
-                          ),
-                );
-            }
+            pinWriter.request({
+                owner: item.user_id,
+                noteId: item.id,
+                serverId,
+                confirmed: previousPinned,
+                desired: nextPinned,
+                checkAccess,
+                isCurrentSession,
+                onFailed(confirmed, err) {
+                    console.error("笔记置顶后端同步失败:", {
+                        id: item.id,
+                        status: isAxiosError(err)
+                            ? err.response?.status
+                            : undefined,
+                        data:
+                            getApiErrorData(err) ??
+                            (err instanceof Error ? err.message : err),
+                    });
+                    // 只回滚这条笔记的置顶字段；pinnedOrderRef 保持单调递增，不会与其他置顶冲突。
+                    updateNotesLocally(
+                        (prev) =>
+                            prev.map((note) =>
+                                note.id === item.id
+                                    ? {
+                                          ...note,
+                                          is_pinned: confirmed,
+                                          pinned_order: confirmed
+                                              ? previousPinnedOrder
+                                              : undefined,
+                                      }
+                                    : note,
+                            ),
+                        true,
+                    );
+                    Alert.alert(
+                        isCloudStoragePermissionError(err)
+                            ? "需要开启云存储"
+                            : "提示",
+                        isCloudStoragePermissionError(err)
+                            ? err.message
+                            : getApiErrorMessage(
+                                  err,
+                                  "同步置顶状态失败，已恢复原状态",
+                              ),
+                    );
+                },
+            });
         },
         [notesRef, pinnedOrderRef, updateNotesLocally, setOpenedNoteId],
     );

@@ -508,7 +508,7 @@ export default function NotesScreen() {
         setOpenedNoteId,
     );
 
-    // Existing hooks roll back a list snapshot, so serialize menu status writes.
+    // Toggles resolve after the local update; note-status-writer coalesces the network writes.
     const toggleContextStatus = async (
         toggle: (note: Note) => Promise<void>,
     ) => {
