@@ -16,6 +16,7 @@ import {
 } from "@/core/diagnostics";
 import { banner } from "@/core/notifications";
 import { useTodoScope } from "@/features/todos/hooks/useTodoScope";
+import NativeSystem from "@modules/irisnote-system";
 import {
     todoRepository,
     selectTodoDate,
@@ -23,6 +24,11 @@ import {
 import { TodoReminderRepository } from "@/features/todos/data/todo-reminder.repository";
 import { TodoReminderCoordinator } from "@/features/todos/state/todo-reminder-coordinator";
 import { TodoLiveUpdateCoordinator } from "@/features/todos/state/todo-live-update-coordinator";
+import {
+    consumePendingCardActions,
+    liveTodoCardSuppressions,
+    type TodoCardActionPort,
+} from "@/features/todos/services/todo-card-action.service";
 import {
     createTodoLiveDemoTimeline,
 } from "@/features/todos/services/todo-live-update.service";
@@ -152,10 +158,71 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
     const handled = useRef(new Set<string>());
     const demoStarting = useRef(false);
     const demoCancel = useRef<(() => void) | null>(null);
+    const consumingCardActions = useRef(false);
     const preferences = useMemo(
         () => new SystemPreferencesRepository(database),
         [database],
     );
+    const cardActionPort = useMemo<TodoCardActionPort>(() => {
+        const nativeModule = NativeSystem;
+        if (!nativeModule) {
+            return {
+                native: null,
+                isCurrentOwner: () => false,
+                findTodo: () => ({ kind: "owner-mismatch" }),
+                updateTodo: async () => undefined,
+                completeTodo: async () => undefined,
+                dismissCard: async () => undefined,
+            };
+        }
+        return {
+            native: {
+                consumePendingTodoActions: () =>
+                    nativeModule.consumePendingTodoActions(),
+                clearPendingTodoActions: (payload) =>
+                    nativeModule.clearPendingTodoActions(payload),
+            },
+            isCurrentOwner: (ownerKey) =>
+                todoRepository.ready && todoRepository.ownerKey === ownerKey,
+            findTodo: (ownerKey, clientId) => {
+                if (!todoRepository.ready || todoRepository.ownerKey !== ownerKey)
+                    return { kind: "owner-mismatch" };
+                const todo = todoRepository
+                    .list(ownerKey)
+                    .find((item) => item.clientId === clientId);
+                return todo ? { kind: "current", todo } : { kind: "missing" };
+            },
+            updateTodo: (ownerKey, base, patch, now) =>
+                todoRepository.update(ownerKey, base, patch, now),
+            completeTodo: (ownerKey, base, now) =>
+                todoRepository.complete(ownerKey, base, true, now),
+            dismissCard: async (ownerKey, clientId) => {
+                await liveTodoCardSuppressions.suppress(ownerKey, clientId);
+            },
+        };
+    }, []);
+    /**
+     * 动态卡操作标记消费入口（原生事件 / refresh / 退后台移交前共用）。
+     * 串行防重入；失败只记诊断（服务内部保留标记等待重试）。
+     */
+    const runCardActionConsumption = useMemo(() => async () => {
+        if (consumingCardActions.current) return;
+        consumingCardActions.current = true;
+        try {
+            await consumePendingCardActions(cardActionPort);
+            if (todoRepository.ready && todoRepository.ownerKey)
+                await liveTodoCardSuppressions.prune(
+                    todoRepository.ownerKey,
+                    todoRepository.list(todoRepository.ownerKey),
+                );
+        } catch (cause) {
+            void recordDiagnostic("live_update", "card_action_consume_failed", {
+                error: diagnosticErrorCategory(cause),
+            }, "warning");
+        } finally {
+            consumingCardActions.current = false;
+        }
+    }, [cardActionPort]);
     const coordinator = useMemo(
         () =>
             new TodoReminderCoordinator(
@@ -217,6 +284,11 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                     },
                 },
                 () => snapshot(),
+                undefined,
+                {
+                    isSuppressed: (ownerKey, clientId) =>
+                        liveTodoCardSuppressions.isSuppressed(ownerKey, clientId),
+                },
             ),
         [],
     );
@@ -227,6 +299,9 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
         const refresh = async () => {
             try {
                 await initializeSystemNotifications();
+                // 先消费动态卡操作标记（完成/延迟/取消），再对账，避免
+                // 已应用的按钮操作被过期快照/绑定回滚。
+                await runCardActionConsumption();
                 const next = await systemNotifications.permission();
                 if (!active) return;
                 setPermission(next);
@@ -312,8 +387,12 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                 void refresh();
                 void liveCoordinator.start();
             } else if (state === "background") {
-                // 退后台：卡片保留，时间线移交原生（方案 A 分钟级 + C 系统计时）。
-                void liveCoordinator.handoff();
+                // 退后台：先消费动作标记（原生按钮操作落库），再移交
+                // 时间线快照（方案 A 分钟级 + C 系统计时），移交快照即为
+                // 已应用操作后的状态，避免原生按旧时间续算。
+                void runCardActionConsumption().finally(() => {
+                    void liveCoordinator.handoff();
+                });
             } else {
                 void liveCoordinator.stop();
             }
@@ -327,6 +406,13 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
                     ),
                     kind: typeof kind === "string" ? kind : "unknown",
                 });
+            },
+        );
+        // 动态卡按钮动作（进程死亡时 JS 不在场，标记由 refresh 兜底消费）。
+        const actionListener = NativeSystem?.addListener(
+            "onDynamicCardAction",
+            () => {
+                void runCardActionConsumption();
             },
         );
         const listener = Notifications.addNotificationResponseReceivedListener(
@@ -346,10 +432,11 @@ export function SystemNotificationProvider({ children }: PropsWithChildren) {
             appState.remove();
             listener.remove();
             receivedListener.remove();
+            actionListener?.remove();
             demoCancel.current?.();
             void liveCoordinator.stop();
         };
-    }, [coordinator, preferences, liveCoordinator]);
+    }, [coordinator, preferences, liveCoordinator, runCardActionConsumption]);
 
     useEffect(() => {
         if (!response || !navigation?.key || !scope.ready) return;

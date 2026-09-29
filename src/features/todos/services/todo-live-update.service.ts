@@ -27,6 +27,9 @@ export type TodoLiveUpdateCard = {
     /** 系统 chronometer 秒级计时锚点（epoch ms）：倒计时终点或正计时起点；null 不启用。 */
     chronoAt: number | null;
     chronoCountdown: boolean;
+    /** 动作按钮身份：齐备时原生下发「取消通知/+30分钟/完成」；演示卡缺省无按钮。 */
+    ownerKey?: string;
+    clientId?: string;
 };
 
 /**
@@ -44,6 +47,9 @@ export type TodoLiveTimelineCard = {
     /** 结束时刻（epoch ms）；null = 不定进度。 */
     endAt: number | null;
     promoted: boolean;
+    /** 动作按钮身份；演示卡缺省（原生不下发按钮）。 */
+    ownerKey?: string;
+    clientId?: string;
 };
 
 /**
@@ -120,6 +126,8 @@ export function desiredTodoLiveUpdate(
             promoted: todo.priority === "high",
             chronoAt: timeOnDate(todo.dateId, startTime),
             chronoCountdown: false,
+            ownerKey: todo.ownerKey,
+            clientId: todo.clientId,
         };
     }
     const start = timeOnDate(todo.dateId, startTime);
@@ -141,6 +149,8 @@ export function desiredTodoLiveUpdate(
         promoted: todo.priority === "high",
         chronoAt: end,
         chronoCountdown: true,
+        ownerKey: todo.ownerKey,
+        clientId: todo.clientId,
     };
 }
 
@@ -178,6 +188,8 @@ export function desiredTodoLiveTimeline(
                 : null,
         // 重要事件（创建时 priority=high）独立提升动态大卡；普通事件非提升。
         promoted: todo.priority === "high",
+        ownerKey: todo.ownerKey,
+        clientId: todo.clientId,
     };
 }
 

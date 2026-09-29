@@ -73,6 +73,8 @@ function toNativeTimeline(
         startAt: card.startAt,
         endAt: card.endAt,
         promoted: card.promoted,
+        ownerKey: card.ownerKey ?? null,
+        clientId: card.clientId ?? null,
     };
 }
 
@@ -113,7 +115,25 @@ export class TodoLiveUpdateCoordinator {
         private readonly port: TodoLiveUpdatePort,
         private readonly snapshot: () => TodoLiveUpdateSnapshot,
         private readonly now = () => new Date(),
+        /**
+         * 「取消通知」抑制判定（同步读内存抑制表）：仅作用于逐条卡
+         * （前台差量与移交快照），聚合卡统计不随卡片可见性变化。
+         */
+        private readonly options: {
+            isSuppressed?: (ownerKey: string, clientId: string) => boolean;
+        } = {},
     ) {}
+
+    /** 被用户取消的待办不再参与逐条卡构建（聚合统计不含此过滤）。 */
+    private visibleTodos(
+        entities: readonly TodoEntity[],
+    ): readonly TodoEntity[] {
+        const isSuppressed = this.options.isSuppressed;
+        if (!isSuppressed) return entities;
+        return entities.filter(
+            (todo) => !isSuppressed(todo.ownerKey, todo.clientId),
+        );
+    }
 
     /** 诊断入口核实模拟卡片已经由系统通知端口接受。 */
     hasPosted(notificationId: number, chronoAt?: number): boolean {
@@ -159,7 +179,13 @@ export class TodoLiveUpdateCoordinator {
         detailsEnabled: boolean,
         summaryEnabled: boolean,
     ): NativeLiveTodoTimelineCard[] {
-        const details = detailsEnabled ? desiredTimelines(current, now).map(toNativeTimeline) : [];
+        // 逐条卡按抑制表过滤；聚合卡统计待办实况，不随卡片可见性变化。
+        const details = detailsEnabled
+            ? desiredTimelines(
+                { ...current, entities: this.visibleTodos(current.entities) },
+                now,
+            ).map(toNativeTimeline)
+            : [];
         if (!summaryEnabled || !current.ready || !current.ownerKey) return details;
         const summary = todoSummaryTimeline(current.entities, now, this.summarySeenActivity);
         const currentCard = desiredTodoSummary(summary, now);
@@ -374,7 +400,7 @@ export class TodoLiveUpdateCoordinator {
             ) : null;
         const real =
             granted && current.ready && current.ownerKey
-                ? desiredTodoLiveUpdates(current.entities, now)
+                ? desiredTodoLiveUpdates(this.visibleTodos(current.entities), now)
                 : [];
         const demo = granted
             ? desiredTodoLiveDemoUpdate(current.demoTimeline, now)
