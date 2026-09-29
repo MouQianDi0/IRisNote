@@ -8,6 +8,7 @@ const CLIPBOARD_HINT_DISMISSED_KEY = "clipboard_hint_dismissed";
 /** 旧版存的是不带密钥的内容哈希，短验证码可被枚举还原；写入新标记时删除。 */
 const CLIPBOARD_LEGACY_HANDLED_HASH_KEY = "clipboard_last_handled_hash";
 const CLIPBOARD_LAST_HANDLED_MARK_KEY = "clipboard_last_handled_mark";
+const DEVELOPER_MODE_KEY = "developer_mode_enabled";
 
 export type StoredExactAlarmAccess = "not-required" | "granted" | "denied";
 
@@ -112,6 +113,15 @@ export class SystemPreferencesRepository {
         await this.database.run("DELETE FROM system_preferences WHERE key = ?", [
             CLIPBOARD_LEGACY_HANDLED_HASH_KEY,
         ]);
+    }
+
+    /** 开发者模式为设备级开关，默认关闭，不随账号切换。 */
+    async developerModeEnabled(): Promise<boolean> {
+        return (await this.read(DEVELOPER_MODE_KEY)) === "1";
+    }
+
+    async setDeveloperModeEnabled(enabled: boolean) {
+        await this.write(DEVELOPER_MODE_KEY, enabled ? "1" : "0");
     }
 
     private async read(key: string) {
