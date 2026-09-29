@@ -288,6 +288,9 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
     // 宿主类由 prebuild 生成：发卡前校验可解析性，缺失时主体降级为主应用入口且不提供捕获按钮。
     assert.match(notifications, /captureHostResolvable\(context\)/);
     assert.match(notifications, /getActivityInfo\(ComponentName\(context, CAPTURE_HOST_CLASS\), 0\)/);
+    // 宿主声明在模块 Manifest、无条件合并，getActivityInfo 查不出"声明在、dex 缺类"；
+    // 守卫必须实际加载类（漏跑 prebuild 的包）才判可解析，否则点按钮 ClassNotFoundException 崩进程。
+    assert.match(notifications, /Class\.forName\(CAPTURE_HOST_CLASS, false, context\.classLoader\)/);
     assert.match(notifications, /getLaunchIntentForPackage\(context\.packageName\)/);
     assert.match(notifications, /if \(savePendingIntent != null\)/);
     const activity = fs.readFileSync(

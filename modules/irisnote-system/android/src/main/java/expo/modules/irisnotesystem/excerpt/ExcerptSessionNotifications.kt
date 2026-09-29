@@ -29,9 +29,13 @@ object ExcerptSessionNotifications {
     "expo.modules.irisnotesystem.excerpt.ExcerptCaptureHostActivity"
 
   /** 宿主 Activity 由 config plugin 在 prebuild 时生成到 app 源集（不入库）；
-   *  漏跑 prebuild 的旧工程编译照常通过，但运行时缺类，显式 Intent 点开会崩。 */
+   *  漏跑 prebuild 的旧工程编译照常通过，但运行时缺类，显式 Intent 点开会崩。
+   *  宿主声明写在模块 Manifest、无条件合并进每个包，getActivityInfo 只能证明
+   *  "声明过"，必须再加载类本身：声明在而 dex 缺类（未重新 prebuild）时同样降级。 */
   private fun captureHostResolvable(context: Context): Boolean = try {
     context.packageManager.getActivityInfo(ComponentName(context, CAPTURE_HOST_CLASS), 0)
+    // 用宿主 APK 的 ClassLoader 实际加载一次；initialize=false 不触发静态初始化。
+    Class.forName(CAPTURE_HOST_CLASS, false, context.classLoader)
     true
   } catch (_: Exception) {
     false

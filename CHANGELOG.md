@@ -1,3 +1,12 @@
+## 2026-09-30 03:01:52 | 修复问题：摘录卡宿主守卫补 Class.forName 加载校验，防「声明在、dex 缺类」点按钮崩溃
+
+- 变更概述：真机实测（2026-09-30）发现此前宿主守卫挡不住"清单在、dex 缺类"的安装包：捕获宿主 `ExcerptCaptureHostActivity` 的声明写在模块 Manifest、无条件合并进每个包，`getActivityInfo` 只能证明"声明过"，漏跑 prebuild 的包编译正常但 dex 缺类，点「保存剪贴板」按钮仍 `ClassNotFoundException` 崩进程。现 `captureHostResolvable` 在清单校验通过后追加 `Class.forName(CAPTURE_HOST_CLASS, false, context.classLoader)` 用宿主 ClassLoader 实际加载宿主类（initialize=false 不触发静态初始化），任一失败即降级为主应用启动入口、不提供捕获按钮；停止按钮与倒计时不受影响。无默认值变化、无开关反转。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt；tests/excerpts/excerpt-capture.test.cjs；docs/架构指南/系统通知模块负责说明.md；docs/logs/2026-09-30-host-guard-class-forname.md（新增）；CHANGELOG.md。
+- 具体内容：`captureHostResolvable` 两段校验（清单可解析 + 类可加载）共用原 catch 返回 false；正常安装包两条均通过、行为不变，差异仅出现在"声明已合并、类不在 dex"环境——由"点按钮崩进程"变为与宿主整体缺失一致的降级。测试在会话卡用例新增断言锁定 `Class.forName` 调用必须存在，防止回退成只查清单；负责说明「原生展示」段同步改写，写明漏洞机理、实测日期与不变的降级行为。
+- 验证：node --test tests/excerpts/excerpt-capture.test.cjs 8/8 通过；npm run typecheck 0 错误；npm run check 全过（node --test 684/684，typecheck/lint/theme:check 通过）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 6s，UP-TO-DATE——当前源码与上次成功编译产物一致）；真机复现"漏 prebuild 包点按钮降级不崩"未做。
+
+---
+
 ## 2026-09-30 00:24:07 | 修复问题：摘录卡通知 ID 迁移 7004 消除停机占位冲突，捕获宿主缺失时降级不再崩溃
 
 - 变更概述：按两次独立代码审查的确认项修复。①摘录会话卡通知 ID 7003 → 7004：原与前台服务停机占位（LiveTodoForegroundService）双占，停机瞬间占位会把摘录卡顶掉并连带移除，用户丢失「点通知确认保存」入口；现停机占位独占 7003，摘录卡用 7004，发卡时清理旧 7003 残留。②捕获宿主 `ExcerptCaptureHostActivity` 由 prebuild 生成、漏跑 prebuild 的安装包点通知会 ClassNotFoundException 崩溃：发卡前校验宿主可解析，缺失时卡主体降级为主应用入口、不提供「保存剪贴板」按钮，停止与倒计时不受影响。附带 4 项审查 Minor：注释补齐（40_002 魔数、entryVersion/120min 耦合、保留段路由、停机占位勿复用 7004）与被推翻日志的推翻指引。
