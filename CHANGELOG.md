@@ -1,3 +1,12 @@
+## 2026-09-29 19:21:29 | 修复问题：快速切换完成状态回环不再触发云端 422 校验失败
+
+- 变更概述：已完成的待办在一秒内被快速点击（完成→取消→完成、最终仍为已完成）后，同步只发出含 `completed_at` 的 patch，被服务端以 422 INVALID_COMPLETED_AT（"完成时间必须和完成状态一起提交"）拒绝并常驻失败横幅。修复为：完成时间差异缺少完成状态翻转伴随时视为切换回环噪声，按基线对齐、不发请求。
+- 修改文件：src/features/todos/data/todo-sync.repository.ts、tests/todos/todo-sync.test.cjs、docs/logs/2026-09-29-todo-completed-at-patch-422.md（新增）、CHANGELOG.md。
+- 具体内容：`prepareOperations` 构造 patch 时，若 diff 出 `completed_at` 而 `is_completed` 无差异，丢弃该字段并走既有空 diff no-op publish（记录直接与云端基线对齐，零网络请求）；`is_completed: true` 强制携带完成时间的既有仲裁契约原样保留。诊断依据：服务端 patchInput 成对校验规则 + 线上 nginx 日志 2026-09-29 复现时段 17 次 422 实证；本地 `completedAt` 唯一写入方是 `complete()`（必伴随完成态翻转），孤立时间戳差异只可能来自回环，无用户意图丢失。
+- 验证：修改前 `npm run typecheck` 基线 0 错误；`node --test tests/todos/todo-sync.test.cjs` 28/28（含新增用例：回环不出请求且记录对齐基线、真实翻转仍成对携带字段）；`npm run check` 全过（typecheck、lint、theme:check、node --test 661/661）。真机端到端复现验证未执行，需 staging 包重装后快速点击验收。
+
+---
+
 ## 2026-09-29 17:52:40 | 优化代码：合并 origin/master 主线（0.7.0 发布、本地云解耦与公共 Markdown 组件进入 kroos_todo）
 
 - 变更概述：按用户指令把 origin/master 合并进 kroos_todo 动态卡功能线，带入 0.7.0 发布内容、笔记/分类本机云解耦（v19 迁移）与公共 Markdown 组件；仅 CHANGELOG.md 一处冲突，按时间倒序解决，功能线自有提交不变。
