@@ -20,6 +20,7 @@ import {
     Palette,
     ShieldCheck,
     Smartphone,
+    SquareTerminal,
     UserRound,
 } from "lucide-react-native";
 import { useState } from "react";
@@ -32,6 +33,7 @@ import {
     View,
 } from "react-native";
 import { SettingsOverviewItem } from "../components/SettingsOverviewItem";
+import { useDeveloperMode } from "../hooks/use-developer-mode";
 import { ICP_FILING_NUMBER, ICP_QUERY_URL } from "../data/support-links";
 
 const cardStyle = { borderCurve: "continuous" as const };
@@ -41,6 +43,7 @@ const cloudStorageRoute = "/pages/user/cloud-storage" as Href;
 const aboutRoute = "/pages/user/about" as Href;
 const helpFeedbackRoute = "/pages/user/help-feedback" as Href;
 const personalInfoRoute = "/pages/user/profile" as Href;
+const developerRoute = "/pages/user/developer" as Href;
 
 function SettingsGroupTitle({ children }: { children: string }) {
     return (
@@ -53,6 +56,7 @@ function SettingsGroupTitle({ children }: { children: string }) {
 export default function SettingsScreen() {
     const { isLoggedIn, loading, logout, user } = useAuth();
     const cloudStorage = useCloudStorage();
+    const developerMode = useDeveloperMode();
     const cloudStatus = cloudStorageStatusLabel(cloudStorage);
     const cloudOverview = !cloudStorage.available
         ? "未开放"
@@ -364,6 +368,24 @@ export default function SettingsScreen() {
                             />
                         </Card>
                     </View>
+
+                    {developerMode.enabled ? (
+                        <View className="mt-5">
+                            <SettingsGroupTitle>开发者</SettingsGroupTitle>
+                            <Card
+                                className="overflow-hidden rounded-hyper-card"
+                                style={cardStyle}
+                            >
+                                <ListRow
+                                    icon={SquareTerminal}
+                                    label="开发者选项"
+                                    description="运行环境、诊断日志与通知测试"
+                                    onPress={() => router.push(developerRoute)}
+                                    last
+                                />
+                            </Card>
+                        </View>
+                    ) : null}
 
                     <Pressable
                         accessibilityLabel={

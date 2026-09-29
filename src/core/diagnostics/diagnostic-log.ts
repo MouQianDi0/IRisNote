@@ -1,9 +1,11 @@
 export type DiagnosticValue = string | number | boolean | null;
 export type DiagnosticDetails = Readonly<Record<string, DiagnosticValue>>;
 
-type DiagnosticEvent = {
+export type DiagnosticLevel = "info" | "warning" | "error";
+
+export type DiagnosticEvent = {
     timestamp: string;
-    level: "info" | "warning" | "error";
+    level: DiagnosticLevel;
     scope: string;
     event: string;
     details?: DiagnosticDetails;
@@ -103,6 +105,48 @@ export function opaqueDiagnosticId(value: string) {
         hash = Math.imul(hash, 0x01000193);
     }
     return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+const DIAGNOSTIC_LEVELS: readonly string[] = ["info", "warning", "error"];
+
+/** 逐行解析诊断日志；损坏或字段不全的行跳过，结果按写入顺序倒序（最新在前）。 */
+export function parseDiagnosticLines(
+    lines: readonly string[],
+): DiagnosticEvent[] {
+    const events: DiagnosticEvent[] = [];
+    for (const line of lines) {
+        let value: unknown;
+        try {
+            value = JSON.parse(line);
+        } catch {
+            continue;
+        }
+        if (!value || typeof value !== "object") continue;
+        const entry = value as Partial<DiagnosticEvent>;
+        if (
+            typeof entry.timestamp !== "string" ||
+            typeof entry.scope !== "string" ||
+            typeof entry.event !== "string" ||
+            !DIAGNOSTIC_LEVELS.includes(entry.level as string)
+        )
+            continue;
+        events.push({
+            timestamp: entry.timestamp,
+            level: entry.level as DiagnosticLevel,
+            scope: entry.scope,
+            event: entry.event,
+            ...(entry.details && typeof entry.details === "object"
+                ? { details: entry.details }
+                : {}),
+        });
+    }
+    return events.reverse();
+}
+
+/** 开发者选项的日志查看器：排在已提交的写入之后读取，内容已在写入时脱敏。 */
+export async function readDiagnosticEvents() {
+    await writeQueue;
+    return parseDiagnosticLines(await readPersistentLines());
 }
 
 /**

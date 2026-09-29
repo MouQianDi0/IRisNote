@@ -38,6 +38,30 @@
 
 ---
 
+## 2026-09-29 04:32:49 | 新增功能：开发者模式（连点版本号开启，集中运行环境、诊断日志查看与通知测试）
+
+- 变更概述：
+  - 在「关于 IRisNote」连点版本号 7 次开启开发者模式（剩 3 次起在版本号下方提示），开启后设置页出现「开发者」分组；在开发者选项页底部关闭。开关为设备级，存 `system_preferences`，默认关闭，不需要密码。
+  - 开发者选项页：运行环境信息（可一键复制，不含账号标识和令牌）、诊断日志查看器、发送测试通知、测试待办动态通知。
+  - 「发送测试通知」「测试待办动态通知」从帮助与反馈页移入开发者选项；「导出诊断日志」保留在帮助与反馈页。
+  - 不新增 SQLite 迁移，不发网络请求，不改笔记与待办数据。
+- 修改文件：src/features/settings/data/system-preferences.repository.ts、src/features/settings/state/developer-mode-store.ts（新增）、src/features/settings/hooks/use-developer-mode.ts（新增）、src/features/settings/hooks/use-notification-test-tools.ts（新增）、src/features/settings/services/developer-environment.ts（新增）、src/features/settings/utils/developer-unlock.ts（新增）、src/features/settings/utils/developer-environment-report.ts（新增）、src/features/settings/utils/diagnostic-log-view.ts（新增）、src/features/settings/screens/DeveloperOptionsScreen.tsx（新增）、src/features/settings/screens/DiagnosticLogScreen.tsx（新增）、src/features/settings/screens/AboutScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/core/diagnostics/diagnostic-log.ts、src/core/diagnostics/index.ts、src/app/_layout.tsx、src/app/pages/user/developer/index.tsx（新增）、src/app/pages/user/developer/logs.tsx（新增）、tests/settings/developer-mode.test.cjs（新增）、docs/架构指南/系统通知模块负责说明.md、docs/架构指南/项目架构与文件索引.md、docs/UI/通知渠道适配.md、docs/UI/IRisNote视觉设计规范.md、docs/logs/2026-09-29-developer-mode.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① 开关：`SystemPreferencesRepository` 新增 `developer_mode_enabled`；`developer-mode-store` 供关于页、设置页、开发者页共用，先写库成功再改状态；`useDeveloperModeGuard` 在未开启时（含直接访问路由）退回设置页，关闭按钮只改状态、由守卫统一返回。
+  - ② 连点：纯函数 `tapDeveloperUnlock`，7 次开启，两次间隔超过 1.5 秒重新计数；提示用版本号下方的页内文字（横幅会排队堆积）。
+  - ③ 运行环境：版本/构建号、包名、运行模式、API 与更新服务地址、云存储状态、系统与机型、原生模块链接、通知权限、精确闹钟、动态通知能力、已排程提醒数；通知类读数按 `systemNotificationsAvailable` 动态加载，Expo Go 下显示「不可用」；页面获得焦点时刷新。
+  - ④ 诊断日志：`core/diagnostics` 新增 `parseDiagnosticLines`（跳过损坏行，最新在前）与 `readDiagnosticEvents`（等待写入队列）；查看器支持全部/信息/警告/错误筛选，清空前确认，复用 `clearDiagnosticLog`（同时删除已导出副本）。
+  - ⑤ 测试工具：两个按钮的逻辑原样迁入 `useNotificationTestTools`，诊断 scope 与事件名不变。
+  - 与计划差异：日志列表使用 FlatList（`src/` 目前没有 FlashList 用例，同类列表用 FlatList）。
+- 验证：
+  - 改动前后 `npm run typecheck` 都是 0 个错误。
+  - 新增测试 9/9 通过。
+  - `npm run check`：lint 0 个错误、1 个既有警告（`PermissionSettingsScreen.tsx:171`）；theme:check 通过；测试 641 项，638 通过、2 跳过、1 失败——发布归档 ENAMETOOLONG，为环境问题，已在基点干净代码上复跑确认同样失败。
+  - 提交前先把改动 stash，本地快进到 `origin/Timmi`（`f361cb8`，含迁移 0019），再 pop 回来，只有 CHANGELOG 冲突，已手动合并。在合并后的代码上重跑 `npm run check`：typecheck 0 个错误；lint 0 个错误、1 个既有警告；theme:check 通过；测试 655 项，652 通过、2 跳过、1 失败（同一个 ENAMETOOLONG）。冲突标记扫描通过。
+  - 未做 Android 构建（纯 JS 改动）；未做真机验证。
+
+---
+
 ## 2026-09-29 04:08:42 | 优化代码：笔记星标/置顶连续切换合并为一次请求，写入后同步改为尾部防抖
 
 - 变更概述：
