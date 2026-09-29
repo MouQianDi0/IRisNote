@@ -17,7 +17,7 @@ import CategoryIconPicker from "./CategoryIconPicker";
 type CreateCategoryModalProps = {
     visible: boolean;
     onClose: () => void;
-    onAdd: (name: string, icon: string) => void;
+    onAdd: (name: string, icon: string) => void | Promise<void>;
 };
 
 export default function CreateCategoryModal({
@@ -30,13 +30,26 @@ export default function CreateCategoryModal({
     const [iconsExpanded, setIconsExpanded] = useState(false);
     const DisclosureIcon = iconsExpanded ? ChevronDown : ChevronRight;
 
-    const handleSubmit = () => {
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+    const handleSubmit = async () => {
+        if (saving) return;
         const categoryName = name.trim();
         if (!categoryName) return;
-        onAdd(categoryName, selectedIcon);
-        setName("");
-        setSelectedIcon("Briefcase");
-        onClose();
+        setSaving(true);
+        setError("");
+        try {
+            await onAdd(categoryName, selectedIcon);
+            setName("");
+            setSelectedIcon("Briefcase");
+            onClose();
+        } catch (cause) {
+            setError(
+                cause instanceof Error ? cause.message : "保存失败，请重试",
+            );
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -141,6 +154,14 @@ export default function CreateCategoryModal({
                                 </View>
                             )}
                         </ScrollView>
+                        {error ? (
+                            <Text
+                                accessibilityRole="alert"
+                                className="text-hyper-error"
+                            >
+                                {error}
+                            </Text>
+                        ) : null}
                         <View className="mt-4 flex-row gap-2.5">
                             <DialogButton
                                 className="flex-1"
@@ -150,9 +171,9 @@ export default function CreateCategoryModal({
                             />
                             <DialogButton
                                 className="flex-1"
-                                label="确定"
+                                label={saving ? "保存中" : "确定"}
                                 onPress={handleSubmit}
-                                disabled={!name.trim()}
+                                disabled={saving || !name.trim()}
                             />
                         </View>
                     </View>

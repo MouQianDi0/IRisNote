@@ -70,10 +70,10 @@ export async function ensureNoteBody(
     let checkAccess: () => void;
     try {
         checkAccess = captureCloudStorageAccess(owner);
-    } catch (error) {
+    } catch {
         throw new NoteBodyUnavailableError(
             "local-only",
-            error instanceof Error ? error.message : "需要开启云存储",
+            "本机保留了这篇笔记的摘要，开启云同步并联网后可下载正文",
         );
     }
     let cloud;
@@ -98,7 +98,10 @@ export async function ensureNoteBody(
                 "not-found",
                 "笔记可能已在云端删除",
             );
-        throw new NoteBodyUnavailableError("error", noteSyncErrorMessage(error));
+        throw new NoteBodyUnavailableError(
+            "error",
+            noteSyncErrorMessage(error),
+        );
     }
     await db.transaction(async (tx) => {
         await reconcileNotesInTransaction(

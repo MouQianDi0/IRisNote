@@ -65,6 +65,7 @@ export async function enqueueUploadTask(
             estimated_bytes, transferred_bytes, last_error, created_at, updated_at
          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, 0, NULL, ?, ?)
          ON CONFLICT (owner_user_id, dedupe_key) DO UPDATE SET
+            task_id = excluded.task_id,
             task_kind = excluded.task_kind,
             title = excluded.title,
             operation_label = excluded.operation_label,

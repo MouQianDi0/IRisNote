@@ -28,6 +28,107 @@ import {
     type NoteSaveResult,
 } from "@/features/notes/services/note-save.service";
 import { isAxiosError } from "axios";
+import { syncLocalNoteFlags } from "@/features/notes/services/note-flags.service";
+import { readLocalCategory } from "@/features/notes/categories/data/category-local.repository";
+
+async function executeLocalCategoryTask(
+    database: ApplicationDatabase,
+    task: UploadQueueTask,
+): Promise<UploadTaskExecution> {
+    const check = captureCloudStorageAccess(task.ownerUserId);
+    const id = numberValue(task.payload.localCategoryId, "localCategoryId");
+    const row = await readLocalCategory(database, task.ownerUserId, id);
+    if (!row || !row.dirty) return { state: "accepted", transferredBytes: 0 };
+    let creating = false;
+    try {
+        let serverId = row.server_id;
+        if (serverId === null && row.create_started)
+            return {
+                state: "blocked",
+                message:
+                    "此前分类创建结果未知，本机分类已保留；请核对云端分类后处理，避免重复创建",
+                transferredBytes: 0,
+            };
+        if (row.deleted) {
+            if (serverId !== null) {
+                const { synchronizeNoteTrash } =
+                    await import("@/features/notes/services/note-trash.service");
+                await synchronizeNoteTrash(database, task.ownerUserId);
+                const pending = await database.getFirst(
+                    `SELECT 1 FROM note_trash_intents i JOIN note_trash t
+                     ON t.owner_user_id=i.owner_user_id AND t.client_id=i.client_id
+                     WHERE i.owner_user_id=? AND i.intent='delete' AND json_extract(t.local_json,'$.category_id')=?`,
+                    [task.ownerUserId, id],
+                );
+                if (pending)
+                    return {
+                        state: "blocked",
+                        message:
+                            "分类中的笔记删除尚未确认，本机分类已保留删除状态，请先处理垃圾桶中的同步提示",
+                        transferredBytes: 0,
+                    };
+                const result = await executeCategoryTask(database, {
+                    ...task,
+                    payload: { categoryId: serverId },
+                    kind: "category-delete",
+                });
+                if (result.state !== "accepted") return result;
+            }
+        } else {
+            if (serverId === null) {
+                check();
+                await database.run(
+                    "UPDATE local_categories SET create_started=1 WHERE owner_user_id=? AND id=?",
+                    [task.ownerUserId, id],
+                );
+                creating = true;
+                const created = await createCategory({
+                    name: row.name,
+                    icon: row.icon,
+                });
+                if (!Number.isSafeInteger(created.id) || created.id <= 0)
+                    throw new Error("分类创建回执无效");
+                serverId = created.id;
+                // Persist a confirmed identity even if the local category was edited during the request.
+                await database.run(
+                    "UPDATE local_categories SET server_id=?,create_started=0 WHERE owner_user_id=? AND id=?",
+                    [serverId, task.ownerUserId, id],
+                );
+                creating = false;
+            }
+            check();
+            await updateCategory(serverId, {
+                name: row.name,
+                icon: row.icon,
+                is_pinned: Boolean(row.is_pinned),
+                is_starred: Boolean(row.is_starred),
+            });
+            check();
+        }
+        await database.run(
+            "UPDATE local_categories SET dirty=0 WHERE owner_user_id=? AND id=? AND version=?",
+            [task.ownerUserId, id, row.version],
+        );
+        notifyCategoriesChanged();
+        return { state: "accepted", transferredBytes: task.estimatedBytes };
+    } catch (error) {
+        const status = isAxiosError(error) ? error.response?.status : undefined;
+        if (
+            creating &&
+            ((isCloudStoragePermissionError(error) &&
+                !isCloudStorageRequestDispatched(error)) ||
+                (status !== undefined &&
+                    status >= 400 &&
+                    status < 500 &&
+                    status !== 408))
+        )
+            await database.run(
+                "UPDATE local_categories SET create_started=0 WHERE owner_user_id=? AND id=? AND server_id IS NULL",
+                [task.ownerUserId, id],
+            );
+        return classifyFailure(error, task.estimatedBytes, creating);
+    }
+}
 
 export type UploadTaskExecution = {
     state: "accepted" | "retry" | "blocked" | "suspended";
@@ -173,6 +274,7 @@ async function executeNoteTask(
     }
 
     const draftValue = task.payload.draft;
+    await syncLocalNoteFlags(database, task.ownerUserId).catch(() => {});
     checkPermission();
     if (draftValue && typeof draftValue === "object") {
         const draft = draftValue as Partial<DraftCommit>;
@@ -215,6 +317,8 @@ async function executeCategoryTask(
     database: ApplicationDatabase,
     task: UploadQueueTask,
 ): Promise<UploadTaskExecution> {
+    if (typeof task.payload.localCategoryId === "number")
+        return executeLocalCategoryTask(database, task);
     const checkPermission = captureCloudStorageAccess(task.ownerUserId);
     let created = false;
     try {
