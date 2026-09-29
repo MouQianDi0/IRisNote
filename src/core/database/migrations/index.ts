@@ -18,6 +18,7 @@ import { createNoteCreateOperations } from "./0016-create-note-create-operations
 import { addNoteContentHash } from "./0017-add-note-content-hash";
 import { addNoteBodyState } from "./0018-add-note-body-state";
 import { localCloudIndependent } from "./0019-local-cloud-independent";
+import { createExcerptStash } from "./0020-create-excerpt-stash";
 
 export const databaseMigrations: readonly DatabaseMigration[] = [
     createMigrationLedger,
@@ -39,6 +40,7 @@ export const databaseMigrations: readonly DatabaseMigration[] = [
     addNoteContentHash,
     addNoteBodyState,
     localCloudIndependent,
+    createExcerptStash,
 ];
 
 export const CURRENT_DATABASE_VERSION = databaseMigrations.at(-1)?.version ?? 0;

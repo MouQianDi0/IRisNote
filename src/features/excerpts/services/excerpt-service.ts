@@ -24,17 +24,16 @@ export async function saveDetectedOffer(
         content: string;
         hash: string;
     },
-    markHandled: (hash: string) => Promise<void>,
+    text: string = offer.content,
 ): Promise<ExcerptSaveReceipt> {
     repository.assertSession(offer.ownerKey, offer.generation);
     const receipt = await repository.save(
         offer.ownerKey,
         newExcerptId(),
-        offer.content,
-        "auto",
+        text,
+        "manual",
         new Date(),
     );
-    await markHandled(offer.hash).catch(() => undefined);
     return receipt;
 }
 

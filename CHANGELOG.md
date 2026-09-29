@@ -1,3 +1,12 @@
+## 2026-09-29 19:13:47 | 新增功能：剪贴板摘录支持编辑保存与暂存合并
+
+- 变更概述：通知快速摘录和应用内检测卡改为预填表单后保存；新增按账号隔离的本机暂存区，可排序、编辑、删除、清空并合并为一条摘录。关闭未保存提示不再写已处理标记。
+- 修改文件：src/core/database/migrations/0020-create-excerpt-stash.ts、index.ts；src/features/excerpts/ 的 data、domain、services、hooks、state、components、screens 相关文件；src/features/settings/data/system-preferences.repository.ts；tests/excerpts/；docs/架构指南/业务模块与运行逻辑.md、系统通知模块负责说明.md；docs/logs/2026-09-29-clipboard-stash-merge.md；CHANGELOG.md。
+- 具体内容：暂存哈希阻止重复提示，合并默认空行分隔且切换重生成正文；预填超限禁用保存，重复摘录在表单内提示并保留暂存。摘录仅写本机 SQLite，不触发云上传；无原生模块改动。
+- 验证：修改前后 npm run typecheck 0 错误；摘录测试通过；npm run check 的类型、lint、theme 检查通过，全仓测试未全过：todo-local 固定数据库版本 19 与本次 20 迁移冲突，发布/待办测试另有沙箱 EPERM 和 ENAMETOOLONG；Android 包与真机验证未做。
+
+---
+
 ## 2026-09-30 03:01:52 | 修复问题：摘录卡宿主守卫补 Class.forName 加载校验，防「声明在、dex 缺类」点按钮崩溃
 
 - 变更概述：真机实测（2026-09-30）发现此前宿主守卫挡不住"清单在、dex 缺类"的安装包：捕获宿主 `ExcerptCaptureHostActivity` 的声明写在模块 Manifest、无条件合并进每个包，`getActivityInfo` 只能证明"声明过"，漏跑 prebuild 的包编译正常但 dex 缺类，点「保存剪贴板」按钮仍 `ClassNotFoundException` 崩进程。现 `captureHostResolvable` 在清单校验通过后追加 `Class.forName(CAPTURE_HOST_CLASS, false, context.classLoader)` 用宿主 ClassLoader 实际加载宿主类（initialize=false 不触发静态初始化），任一失败即降级为主应用启动入口、不提供捕获按钮；停止按钮与倒计时不受影响。无默认值变化、无开关反转。

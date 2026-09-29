@@ -357,45 +357,14 @@ test("夏令时切换后的“昨天”按日历日判断", () => {
     }
 });
 
-test("检测候选保存只在用户确认后写本地，失败不标记处理，重复内容复用原摘录", async (t) => {
+test("检测候选按编辑后的最终正文手动保存，失败仍可重试", async (t) => {
     const { repo } = await setup(t);
-    const offer = {
-        ownerKey: owner,
-        generation: repo.generation,
-        content: "检测候选",
-        hash: "offer-hash",
-    };
-    const handled = [];
-    const mark = async (hash) => {
-        handled.push(hash);
-    };
-    const receipt = await saveDetectedOffer(repo, offer, mark);
-    assert.equal(receipt.entity.source, "auto");
-    assert.equal(repo.list(owner).length, 1);
-    assert.deepEqual(handled, [offer.hash]);
-    const duplicated = await saveDetectedOffer(repo, offer, mark);
+    const offer = { ownerKey: owner, generation: repo.generation, content: "检测候选", hash: "offer-hash" };
+    const receipt = await saveDetectedOffer(repo, offer, "编辑后正文");
+    assert.equal(receipt.entity.source, "manual");
+    assert.equal(receipt.entity.content, "编辑后正文");
+    const duplicated = await saveDetectedOffer(repo, offer, "编辑后正文");
     assert.equal(duplicated.duplicated, true);
-    assert.equal(duplicated.entity.clientId, receipt.entity.clientId);
-    await assert.rejects(
-        saveDetectedOffer(
-            repo,
-            { ...offer, generation: offer.generation - 1 },
-            mark,
-        ),
-    );
-    assert.equal(handled.length, 2);
-    await assert.rejects(
-        saveDetectedOffer(
-            {
-                assertSession() {},
-                save: async () => {
-                    throw new Error("disk");
-                },
-            },
-            offer,
-            mark,
-        ),
-        /disk/,
-    );
-    assert.equal(handled.length, 2);
+    await assert.rejects(saveDetectedOffer(repo, { ...offer, generation: offer.generation - 1 }, "另一正文"));
+    await assert.rejects(saveDetectedOffer({ assertSession() {}, save: async () => { throw new Error("disk"); } }, offer, "正文"), /disk/);
 });

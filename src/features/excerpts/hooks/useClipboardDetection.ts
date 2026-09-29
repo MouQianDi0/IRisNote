@@ -7,7 +7,6 @@ import {
 } from "react";
 import { AppState, Platform } from "react-native";
 import { useApplicationDatabase } from "@/core/database";
-import { banner } from "@/core/notifications";
 import { useOverlay } from "@/shared/ui/Overlay/overlay-context";
 import { detectClipboard } from "../domain/clipboard-detection";
 import {
@@ -16,9 +15,8 @@ import {
     PAGE_FOCUS_DELAY_MS,
 } from "../domain/clipboard-detection-trigger";
 import { sessionIsActive } from "../domain/excerpt-session";
-import { clipboardHandledStoreFor } from "../services/clipboard-handled";
+import { ExcerptStashRepository } from "../data/excerpt-stash.repository";
 import { clipboardService } from "../services/clipboard.service";
-import { saveDetectedOffer } from "../services/excerpt-service";
 import { excerptCaptureOpen } from "../services/excerpt-capture";
 import { useClipboardOfferStore } from "../state/clipboard-offer-store";
 import { excerptRepository } from "../state/excerpt-store";
@@ -84,14 +82,6 @@ export function useClipboardDetectionController({
             return session?.sessionId ?? null;
         return current.excerptPage && current.enabled ? "page" : null;
     }, []);
-    const markHandled = useCallback(
-        (hash: string) =>
-            clipboardHandledStoreFor(database)
-                .markHandled(hash)
-                .catch(() => undefined),
-        [database],
-    );
-
     const detectOnce = useCallback(async () => {
         if (!eligibility()) return;
         try {
@@ -109,11 +99,8 @@ export function useClipboardDetectionController({
                 enabled: async () => valid() && !(await excerptCaptureOpen()) && valid(),
                 hasText: clipboardService.hasText,
                 readText: clipboardService.readText,
-                isHandled: (hash) =>
-                    clipboardHandledStoreFor(database)
-                        .isHandled(hash)
-                        .catch(() => false),
                 lastWrittenHash: clipboardService.lastWrittenHash,
+                stashedHashes: () => new ExcerptStashRepository(database, excerptRepository).hashes(start.ownerKey),
                 savedHashes: () =>
                     new Set(
                         latest.current.entities.map((item) => item.contentHash),
@@ -122,7 +109,7 @@ export function useClipboardDetectionController({
             if (!valid() || (await excerptCaptureOpen())) return;
             if (result.kind === "offer") {
                 const existing = useClipboardOfferStore.getState().offer;
-                // 导航到摘录页时展示已有候选；它只由明确保存/忽略或下一次剪贴板变化替换。
+                // 导航到摘录页时展示已有候选；保存或下一次剪贴板变化会替换。
                 if (
                     existing?.ownerKey === start.ownerKey &&
                     existing.hash === result.hash
@@ -136,11 +123,11 @@ export function useClipboardDetectionController({
                         hash: result.hash,
                     },
                 });
-            } else if (result.hash) await markHandled(result.hash);
+            }
         } catch {
             /* 检测失败下次触发再试，不泄露正文到日志。 */
         }
-    }, [beforeDetect, eligibility, database, markHandled]);
+    }, [beforeDetect, eligibility, database]);
     const [runSerially] = useState(createSerialRunner);
     const cancel = useCallback(() => {
         if (timer.current) clearTimeout(timer.current);
@@ -214,55 +201,4 @@ export function useClipboardDetectionController({
         }
     }, [ready, ownerKey, generation, entities, enabled, sessionId]);
 
-    useEffect(() => {
-        const ignore = () => {
-            const offer = useClipboardOfferStore.getState().offer;
-            if (!offer || useClipboardOfferStore.getState().saving) return;
-            useClipboardOfferStore.setState({ offer: null });
-            void markHandled(offer.hash);
-        };
-        const save = async () => {
-            const state = useClipboardOfferStore.getState();
-            const offer = state.offer;
-            if (!offer || state.saving) return;
-            useClipboardOfferStore.setState({ saving: true });
-            try {
-                const receipt = await saveDetectedOffer(
-                    excerptRepository,
-                    offer,
-                    markHandled,
-                );
-                if (useClipboardOfferStore.getState().offer === offer)
-                    useClipboardOfferStore.setState({ offer: null });
-                if (
-                    latest.current.ownerKey !== offer.ownerKey ||
-                    latest.current.generation !== offer.generation
-                )
-                    return;
-                banner.show(
-                    receipt.duplicated
-                        ? {
-                              title: "已存在相同摘录",
-                              message: "已移到最前",
-                              type: "neutral",
-                          }
-                        : { title: "已保存为摘录", type: "success" },
-                );
-            } catch (cause) {
-                if (
-                    latest.current.ownerKey === offer.ownerKey &&
-                    latest.current.generation === offer.generation
-                )
-                    banner.show({
-                        title: "保存失败",
-                        message:
-                            cause instanceof Error ? cause.message : "请重试",
-                        type: "important",
-                    });
-            } finally {
-                useClipboardOfferStore.setState({ saving: false });
-            }
-        };
-        useClipboardOfferStore.setState({ ignore, save });
-    }, [markHandled]);
 }

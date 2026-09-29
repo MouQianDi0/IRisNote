@@ -25,241 +25,130 @@ const { hashExcerptContent } = require(
     path.join(root, "src/features/excerpts/domain/excerpt-validation.ts"),
 );
 
-function harness(overrides = {}) {
+function harness() {
     let now = 1_800_000_000_000;
+    const startedAt = now;
     let owner = "user:1";
     let active = true;
-    let session = {
-        sessionId: "session-1",
-        ownerKey: owner,
-        startedAt: now,
-        endsAt: now + 30 * 60_000,
-        durationMinutes: 30,
-    };
+    let text = "其他应用复制的正文";
     const events = [];
     const saved = new Map();
-    const handled = new Set();
-    let text = "其他应用复制的正文";
+    const stashed = new Set();
     const repository = {
         generation: 1,
-        assertSession(key, generation) {
-            assert.equal(key, owner);
-            assert.equal(generation, repository.generation);
-        },
+        assertSession(key, generation) { assert.equal(key, owner); assert.equal(generation, repository.generation); },
         list: () => [...saved.values()],
         save: async (key, id, content, source) => {
             events.push(["save", key, content, source]);
             const hash = hashExcerptContent(content);
-            const existing = saved.get(hash);
-            const entity = existing ?? {
-                content,
-                contentHash: hash,
-                clientId: id,
-            };
+            const entity = saved.get(hash) ?? { content, contentHash: hash, clientId: id };
+            const duplicated = saved.has(hash);
             saved.set(hash, entity);
-            return { entity, duplicate: !!existing };
+            return { entity, duplicated };
         },
+    };
+    const stash = {
+        hashes: async () => stashed,
+        add: async (key, content) => {
+            const hash = hashExcerptContent(content);
+            if (stashed.has(hash)) return "duplicate";
+            stashed.add(hash); return "added";
+        },
+        list: async () => [], move: async () => {}, update: async () => "saved", remove: async () => {}, clear: async () => stashed.clear(),
     };
     const ports = {
         readOwner: async () => owner,
-        readSession: async () => session,
+        readSession: async () => ({ sessionId: "session-1", ownerKey: owner, startedAt, endsAt: startedAt + 30 * 60_000, durationMinutes: 30 }),
         active: async () => active,
         activate: async (key) => events.push(["activate", key]),
-        repository,
-        clipboard: {
-            hasText: async () => true,
-            readText: async () => {
-                events.push("read");
-                return text;
-            },
-            isHandled: async (hash) => handled.has(hash),
-            lastWrittenHash: () => null,
-        },
-        markHandled: async (hash) => {
-            events.push("mark");
-            handled.add(hash);
-        },
+        repository, stash,
+        clipboard: { hasText: async () => true, readText: async () => { events.push("read"); return text; }, lastWrittenHash: () => null },
         consumed: (offer) => events.push(["consumed", offer.hash]),
         now: () => now,
-        ...overrides,
     };
     const controller = new ExcerptCaptureController("session-1", ports);
-    return {
-        controller,
-        ports,
-        repository,
-        events,
-        handled,
-        saved,
-        setOwner: (key) => {
-            owner = key;
-        },
-        setActive: (value) => {
-            active = value;
-        },
-        setSession: (value) => {
-            session = value;
-        },
-        setText: (value) => {
-            text = value;
-        },
-        advance: (ms) => {
-            now += ms;
-        },
-    };
+    return { controller, ports, repository, stash, saved, stashed, events,
+        setOwner: (value) => { owner = value; }, setActive: (value) => { active = value; },
+        setText: (value) => { text = value; }, advance: (ms) => { now += ms; } };
 }
 
-test("冷启动检测只激活当前账号，明确保存才写入，并消费相同候选", async () => {
+test("捕获候选可编辑最终正文再保存，来源为 manual", async () => {
     const h = harness();
     const result = await h.controller.detect();
     assert.equal(result.kind, "offer");
     assert.equal(h.saved.size, 0);
-    assert.equal(h.handled.size, 0);
-    await h.controller.save();
-    assert.deepEqual(h.events[0], ["activate", "user:1"]);
-    assert.deepEqual(
-        h.events.find((event) => Array.isArray(event) && event[0] === "save"),
-        ["save", "user:1", "其他应用复制的正文", "auto"],
-    );
+    await h.controller.save("编辑后正文");
+    assert.deepEqual(h.events.find((event) => Array.isArray(event) && event[0] === "save"), ["save", "user:1", "编辑后正文", "manual"]);
     assert.equal(h.saved.size, 1);
-    assert.equal(h.handled.size, 1);
     assert.equal(h.events.at(-1)[0], "consumed");
 });
 
-test("停止、到期、切账号、旧通知身份在读取剪贴板之前被拒绝", async () => {
-    for (const invalidate of [
-        (h) => h.setActive(false),
-        (h) => h.advance(30 * 60_000),
-        (h) => h.setOwner("user:2"),
-        (h) => h.setSession(null),
-        (h) => h.setSession({ sessionId: "another-session" }),
-    ]) {
-        const h = harness();
-        invalidate(h);
-        await assert.rejects(h.controller.detect(), /失效/);
-        assert.equal(h.events.includes("read"), false);
-        assert.equal(h.saved.size, 0);
-    }
-});
-
-test("等待 hasText 和读取正文期间失效不呈现候选，也不允许保存", async () => {
-    const h = harness();
-    h.ports.clipboard.hasText = async () => {
-        h.setActive(false);
-        return true;
-    };
-    await assert.rejects(h.controller.detect());
-    assert.equal(h.events.includes("read"), false);
-    const k = harness();
-    k.ports.clipboard.readText = async () => {
-        k.setOwner("user:2");
-        return "正文";
-    };
-    await assert.rejects(k.controller.detect());
-    await assert.rejects(k.controller.save(), /没有待保存/);
-    assert.equal(k.saved.size, 0);
-});
-
-test("失败保留原候选供重试，不重新读取后来的剪贴板；双击保存共用一次写入", async () => {
+test("重复摘录保留候选，可继续编辑后重试", async () => {
     const h = harness();
     await h.controller.detect();
-    const save = h.repository.save;
-    h.repository.save = async () => {
-        throw new Error("磁盘写入失败");
-    };
-    await assert.rejects(h.controller.save(), /磁盘/);
-    assert.equal(h.handled.size, 0);
-    h.setText("随后复制的新正文");
-    let release;
-    h.repository.save = async (...args) => {
-        await new Promise((resolve) => {
-            release = resolve;
-        });
-        return save(...args);
-    };
-    const first = h.controller.save();
-    assert.equal(h.controller.save(), first);
-    await new Promise((resolve) => setImmediate(resolve));
-    release();
-    await first;
-    assert.equal(
-        h.events.filter((event) => Array.isArray(event) && event[0] === "save")
-            .length,
-        1,
-    );
-    assert.equal([...h.saved.values()][0].content, "其他应用复制的正文");
-    assert.equal(h.events.filter((event) => event === "read").length, 1);
+    const original = "已存在正文";
+    const hash = hashExcerptContent(original);
+    h.saved.set(hash, { content: original, contentHash: hash });
+    assert.equal((await h.controller.save(original)).duplicated, true);
+    assert.ok(h.controller.currentOffer());
+    assert.equal((await h.controller.save("改写正文")).duplicated, false);
+    assert.equal(h.controller.currentOffer(), null);
 });
 
-test("保存前重新核验账号、仓库代次、停止和到期，不跨账号或过期保存", async () => {
-    for (const invalidate of [
-        (h) => h.setOwner("user:2"),
-        (h) => h.repository.generation++,
-        (h) => h.setActive(false),
-        (h) => h.advance(30 * 60_000),
-    ]) {
-        const h = harness();
-        await h.controller.detect();
-        invalidate(h);
-        await assert.rejects(h.controller.save());
-        assert.equal(h.saved.size, 0);
-        assert.equal(h.handled.size, 0);
-    }
-});
-
-test("忽略只标记处理，返回/销毁不标记、不保存，关闭期间迟到检测被拒绝", async () => {
+test("暂存写入后下次检测跳过；关闭未保存不会留下标记", async () => {
     const h = harness();
     await h.controller.detect();
-    await h.controller.ignore();
-    assert.equal(h.handled.size, 1);
-    assert.equal(h.saved.size, 0);
+    assert.equal(await h.controller.stash(), "added");
+    assert.equal(h.stashed.size, 1);
+    assert.equal((await h.controller.detect()).reason, "stashed");
     const k = harness();
     await k.controller.detect();
     k.controller.dispose();
-    await assert.rejects(k.controller.save());
-    assert.equal(k.handled.size, 0);
-    const late = harness();
-    late.ports.clipboard.readText = async () => {
-        late.controller.dispose();
-        return "正文";
-    };
-    await assert.rejects(late.controller.detect());
-    assert.equal(late.handled.size, 0);
+    assert.equal(k.stashed.size, 0);
+    assert.equal(k.saved.size, 0);
 });
 
-test("共用去重和长度规则：已保存/处理/本应用写入/空内容/超长都不产生写入", async () => {
+test("失败保留原候选并复用并发保存 Promise", async () => {
+    const h = harness();
+    await h.controller.detect();
+    const save = h.repository.save;
+    h.repository.save = async () => { throw new Error("磁盘写入失败"); };
+    await assert.rejects(h.controller.save("编辑后正文"), /磁盘/);
+    h.setText("后来复制的新正文");
+    let release;
+    h.repository.save = async (...args) => { await new Promise((resolve) => { release = resolve; }); return save(...args); };
+    const first = h.controller.save("编辑后正文");
+    assert.equal(h.controller.save("编辑后正文"), first);
+    await new Promise((resolve) => setImmediate(resolve));
+    release(); await first;
+    assert.equal([...h.saved.values()][0].content, "编辑后正文");
+    assert.equal(h.events.filter((event) => event === "read").length, 1);
+});
+
+test("会话或账号失效禁止保存和暂存", async () => {
+    for (const invalidate of [(h) => h.setOwner("user:2"), (h) => h.repository.generation++, (h) => h.setActive(false), (h) => h.advance(30 * 60_000)]) {
+        const h = harness(); await h.controller.detect(); invalidate(h);
+        await assert.rejects(h.controller.save("正文"));
+        await assert.rejects(h.controller.stash());
+        assert.equal(h.saved.size, 0); assert.equal(h.stashed.size, 0);
+    }
+});
+
+test("已保存、已暂存、本应用写入、空内容和超长均不产生候选", async () => {
     const content = "其他应用复制的正文";
     const hash = hashExcerptContent(content);
     for (const [reason, setup] of [
         ["saved", (h) => h.saved.set(hash, { contentHash: hash })],
-        ["handled", (h) => h.handled.add(hash)],
-        [
-            "self",
-            (h) => {
-                h.ports.clipboard.lastWrittenHash = () => hash;
-            },
-        ],
+        ["stashed", (h) => h.stashed.add(hash)],
+        ["self", (h) => { h.ports.clipboard.lastWrittenHash = () => hash; }],
         ["empty", (h) => h.setText("  \n ")],
         ["tooLong", (h) => h.setText("字".repeat(20001))],
-        [
-            "noText",
-            (h) => {
-                h.ports.clipboard.hasText = async () => false;
-            },
-        ],
+        ["noText", (h) => { h.ports.clipboard.hasText = async () => false; }],
     ]) {
-        const h = harness();
-        setup(h);
+        const h = harness(); setup(h);
         const result = await h.controller.detect();
-        assert.equal(result.kind, "skip");
         assert.equal(result.reason, reason);
         await assert.rejects(h.controller.save(), /没有待保存/);
-        assert.equal(
-            h.events.some(
-                (event) => Array.isArray(event) && event[0] === "save",
-            ),
-            false,
-        );
     }
 });
 

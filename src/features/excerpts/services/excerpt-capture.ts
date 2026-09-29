@@ -7,7 +7,7 @@ import { ExcerptSessionRepository } from "../data/excerpt-session.repository";
 import { EXCERPT_GUEST_OWNER_KEY } from "../data/excerpt-local.repository";
 import { excerptRepository } from "../state/excerpt-store";
 import { useClipboardOfferStore } from "../state/clipboard-offer-store";
-import { clipboardHandledStoreFor } from "./clipboard-handled";
+import { ExcerptStashRepository } from "../data/excerpt-stash.repository";
 import { clipboardService } from "./clipboard.service";
 import { ExcerptCaptureController } from "./excerpt-capture-controller";
 
@@ -47,7 +47,7 @@ export function createExcerptCapture(
     if (!native || typeof native.getExcerptCaptureState !== "function")
         throw new Error("当前安装包不支持通知快速摘录");
     const sessions = new ExcerptSessionRepository(database);
-    const handled = clipboardHandledStoreFor(database);
+    const stash = new ExcerptStashRepository(database, excerptRepository);
     return new ExcerptCaptureController(sessionId, {
         readSession: async () => (await sessions.read()).session,
         readOwner,
@@ -69,6 +69,7 @@ export function createExcerptCapture(
             await excerptRepository.activate(ownerKey, database);
         },
         repository: excerptRepository,
+        stash,
         clipboard: {
             hasText: async () => {
                 const deadline = Date.now() + 5000;
@@ -88,10 +89,8 @@ export function createExcerptCapture(
                 throw new Error("未能取得窗口焦点，请重新点通知");
             },
             readText: () => native.readExcerptCaptureText(captureId),
-            isHandled: handled.isHandled,
             lastWrittenHash: clipboardService.lastWrittenHash,
         },
-        markHandled: handled.markHandled,
         consumed: (offer) => {
             const current = useClipboardOfferStore.getState().offer;
             if (

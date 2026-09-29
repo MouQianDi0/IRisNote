@@ -1,21 +1,25 @@
-import { Text, View } from "react-native";
+import { useMemo } from "react";
+import { PanResponder, Pressable, Text, View } from "react-native";
 import { radii, semanticColors } from "@/shared/theme";
 import { AppButton } from "@/shared/ui";
 
 /** 检测到新内容：浅蓝底、1dp 主题蓝边框、16 圆角、内边距 16；标题 → 8 → 预览 3 行 → 12 → 按钮。 */
 export function ClipboardDetectedCard({
     content,
-    saving,
-    onIgnore,
+    onDismiss,
     onSave,
 }: {
     content: string;
-    saving: boolean;
-    onIgnore: () => void;
+    onDismiss: () => void;
     onSave: () => void;
 }) {
+    const swipe = useMemo(() => PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 20 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderRelease: (_, gesture) => { if (Math.abs(gesture.dx) > 80) onDismiss(); },
+    }), [onDismiss]);
     return (
         <View
+            {...swipe.panHandlers}
             accessibilityRole="alert"
             style={{
                 padding: 16,
@@ -40,21 +44,12 @@ export function ClipboardDetectedCard({
             >
                 {content}
             </Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="关闭提示" onPress={onDismiss} style={{ position: "absolute", right: 12, top: 10 }}><Text>✕</Text></Pressable>
             <View style={{ marginTop: 12, flexDirection: "row", gap: 10 }}>
                 <AppButton
                     className="flex-1"
                     size="compact"
-                    variant="secondary"
-                    label="忽略"
-                    disabled={saving}
-                    onPress={onIgnore}
-                />
-                <AppButton
-                    className="flex-1"
-                    size="compact"
                     label="保存"
-                    loading={saving}
-                    loadingLabel="保存中…"
                     onPress={onSave}
                 />
             </View>

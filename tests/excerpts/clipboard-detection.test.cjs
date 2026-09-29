@@ -56,7 +56,7 @@ function sources(overrides = {}) {
             enabled: step("enabled", overrides.enabled ?? true),
             hasText: step("hasText", overrides.hasText ?? true),
             readText: step("readText", overrides.text ?? "新内容"),
-            isHandled: step("isHandled", overrides.handled ?? false),
+            stashedHashes: step("stashedHashes", overrides.stashed ?? empty),
             lastWrittenHash: () => overrides.lastWritten ?? null,
             savedHashes: () => overrides.saved ?? empty,
         },
@@ -91,7 +91,7 @@ test("新内容规范化后提示，并返回内容哈希", async () => {
         "hasText",
         "enabled",
         "readText",
-        "isHandled",
+        "stashedHashes",
     ]);
 });
 
@@ -112,9 +112,9 @@ test("判断有无文字期间离开页面或关闭开关时，不再读取剪�
     assert.deepEqual(calls, ["enabled", "hasText", "enabled"]);
 });
 
-test("空白、已处理、超长、本应用复制、已存为摘录时不提示", () => {
+test("空白、已暂存、超长、本应用复制、已存为摘录时不提示", () => {
     const context = {
-        handled: false,
+        stashedHashes: empty,
         lastWrittenHash: null,
         savedHashes: empty,
     };
@@ -126,9 +126,9 @@ test("空白、已处理、超长、本应用复制、已存为摘录时不提�
     assert.deepEqual(
         evaluateClipboardText("甲", {
             ...context,
-            handled: true,
+            stashedHashes: new Set([hash("甲")]),
         }),
-        { kind: "skip", reason: "handled", hash: null },
+        { kind: "skip", reason: "stashed", hash: hash("甲") },
     );
     const long = "字".repeat(EXCERPT_CONTENT_LIMIT + 1);
     assert.deepEqual(evaluateClipboardText(long, context), {
@@ -152,55 +152,23 @@ test("空白、已处理、超长、本应用复制、已存为摘录时不提�
     );
 });
 
-test("剪贴板偏好默认关闭，只保存标记，写入标记时删除旧版哈希，非法标记按未处理读取", async (t) => {
+test("剪贴板偏好默认关闭，只保留开关和提示条状态", async (t) => {
     const sqlite = new DatabaseSync(":memory:");
     t.after(() => sqlite.close());
-    await createSystemPreferences.up({
-        execAsync: async (sql) => sqlite.exec(sql),
-    });
+    await createSystemPreferences.up({ execAsync: async (sql) => sqlite.exec(sql) });
     const database = {
-        async run(sql, params = []) {
-            const result = sqlite.prepare(sql).run(...params);
-            return { changes: Number(result.changes) };
-        },
-        async getFirst(sql, params = []) {
-            return sqlite.prepare(sql).get(...params) ?? null;
-        },
+        async run(sql, params = []) { const result = sqlite.prepare(sql).run(...params); return { changes: Number(result.changes) }; },
+        async getFirst(sql, params = []) { return sqlite.prepare(sql).get(...params) ?? null; },
     };
     const repo = new SystemPreferencesRepository(database);
     assert.equal(await repo.clipboardAutoDetectEnabled(), false);
     assert.equal(await repo.clipboardHintDismissed(), false);
-    assert.equal(await repo.clipboardLastHandledMark(), null);
-
-    sqlite
-        .prepare("INSERT INTO system_preferences (key, value, updated_at) VALUES (?, ?, ?)")
-        .run("clipboard_last_handled_hash", hash("旧版"), "x");
-    const mark = "a".repeat(64);
     await repo.setClipboardAutoDetectEnabled(true);
     await repo.setClipboardHintDismissed();
-    await repo.setClipboardLastHandledMark(mark);
     assert.equal(await repo.clipboardAutoDetectEnabled(), true);
     assert.equal(await repo.clipboardHintDismissed(), true);
-    assert.equal(await repo.clipboardLastHandledMark(), mark);
-    assert.equal(
-        sqlite
-            .prepare("SELECT COUNT(*) AS n FROM system_preferences WHERE key = 'clipboard_last_handled_hash'")
-            .get().n,
-        0,
-    );
     await repo.setClipboardAutoDetectEnabled(false);
     assert.equal(await repo.clipboardAutoDetectEnabled(), false);
-
-    const stored = sqlite
-        .prepare("SELECT key, value FROM system_preferences ORDER BY key")
-        .all()
-        .map((row) => [row.key, row.value]);
-    assert.ok(stored.every(([, value]) => !value.includes("内容")));
-
-    sqlite
-        .prepare("UPDATE system_preferences SET value = ? WHERE key = ?")
-        .run("不是标记", "clipboard_last_handled_mark");
-    assert.equal(await repo.clipboardLastHandledMark(), null);
 });
 
 const {
