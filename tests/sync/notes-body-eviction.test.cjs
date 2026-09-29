@@ -296,7 +296,7 @@ test("a new device downloads bodies only within the keep window, newest first; p
     assert.equal(cloud.batches.flat().length, downloaded.length);
 });
 
-test("the trash shows an evicted note's preview and refuses a restore without the cloud copy", async (t) => {
+test("the trash restores an evicted note as a preview without inventing an empty body", async (t) => {
     const { port, sql } = await database(t);
     const cloud = server([note(1, "回收站里的正文")]);
     await sync(port, cloud);
@@ -305,7 +305,12 @@ test("the trash shows an evicted note's preview and refuses a restore without th
     await port.transaction((tx) => trash.archiveLocalNote(tx, 1, clientId));
     const trashed = sql.prepare("SELECT * FROM note_trash WHERE client_id=?").get(clientId);
     assert.equal(trash.trashPreview(trashed).content, "回收站里的正文");
-    await assert.rejects(port.transaction((tx) => trash.restoreArchivedNote(tx, 1, trashed)), /请联网恢复/);
+    await port.transaction((tx) => trash.restoreArchivedNote(tx, 1, trashed));
+    const restored=await notes.getLocalNoteByClientId(port,1,trashed.client_id);
+    assert.equal(restored.body_state,"evicted");
+    assert.equal(restored.content,null);
+    assert.equal(restored.content_preview,"回收站里的正文");
+    assert.equal(restored.sync_status,"synced");
 });
 
 test("the content hash trigger keeps the cloud hash on eviction and resets it once the body returns", async (t) => {

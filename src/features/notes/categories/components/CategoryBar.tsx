@@ -1,8 +1,7 @@
-import { getCategories } from "../api/categories.api";
+import { loadCategories } from "../data/category-cache";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import {
-    assertCloudStorageAllowed,
-    captureCloudStorageAccess,
+    captureLocalStorageAccess,
     getCloudStorageSnapshot,
     isCloudStoragePermissionError,
 } from "@/core/cloud-storage/cloud-storage-policy";
@@ -44,18 +43,18 @@ export default function FloatingBar({
 }: FloatingBarProps) {
     const database = useApplicationDatabase();
     const { user } = useAuth();
-    const { enabled: cloudEnabled, generation: cloudGeneration } =
-        useCloudStorage();
+    const { generation: cloudGeneration } = useCloudStorage();
     const allowCloudAction = () => {
         try {
-            assertCloudStorageAllowed(user?.id);
+            if (!user) throw new Error("请先登录");
+            captureLocalStorageAccess(user.id)();
             return true;
         } catch (error) {
             Alert.alert(
-                "需要开启云存储",
+                "无法操作",
                 error instanceof Error
                     ? error.message
-                    : "请在设置中开启云存储后再操作",
+                    : "请重新打开页面后再操作",
             );
             return false;
         }
@@ -90,7 +89,6 @@ export default function FloatingBar({
         function fetchCategoriesRequest() {
             if (
                 !user ||
-                !cloudEnabled ||
                 getCloudStorageSnapshot().generation !== cloudGeneration
             )
                 return Promise.resolve();
@@ -101,8 +99,11 @@ export default function FloatingBar({
                 return categoriesRequestRef.current;
 
             const request = (async () => {
-                const checkAccess = captureCloudStorageAccess(user.id);
-                const data = await getCategories();
+                const checkAccess = captureLocalStorageAccess(user.id);
+                const { categories: data } = await loadCategories(
+                    database,
+                    user.id,
+                );
                 checkAccess();
                 const nextCategories = await applyQueuedCategoryChanges(
                     database,
@@ -131,7 +132,7 @@ export default function FloatingBar({
             categoriesRequestGenerationRef.current = cloudGeneration;
             return request;
         },
-        [cloudEnabled, cloudGeneration, database, user],
+        [cloudGeneration, database, user],
     );
 
     useEffect(() => {
@@ -194,7 +195,6 @@ export default function FloatingBar({
     const pinnedCategories = categories.filter((item) => item.is_pinned);
     const normalCategories = categories.filter((item) => !item.is_pinned);
 
-
     return (
         <View className="flex-col items-center justify-center">
             <View className="w-[50px]">
@@ -212,19 +212,19 @@ export default function FloatingBar({
                                 }}
                                 className="border-[2px] border-floating-accent"
                                 fallback={
-                                <View
-                                    style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        borderRadius: radius.control,
-                                    }}
-                                    className="flex items-center justify-center border-[2px] border-floating-accent"
-                                >
-                                    <UserIcon
-                                        size={36}
-                                        color={colors.surface}
-                                    />
-                                </View>
+                                    <View
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            borderRadius: radius.control,
+                                        }}
+                                        className="flex items-center justify-center border-[2px] border-floating-accent"
+                                    >
+                                        <UserIcon
+                                            size={36}
+                                            color={colors.surface}
+                                        />
+                                    </View>
                                 }
                             />
                         </Pressable>
@@ -281,7 +281,7 @@ export default function FloatingBar({
 
                 {longPressVisible && (
                     <CategoryActionModal
-                        visible={categoryModelVisible && cloudEnabled}
+                        visible={categoryModelVisible}
                         onClose={() => {
                             setCategoryModelVisible(false);
                             setLongPressVisible(null);

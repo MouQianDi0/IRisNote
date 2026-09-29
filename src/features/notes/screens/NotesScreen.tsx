@@ -2,6 +2,7 @@ import { useApplicationDatabase } from "@/core/database";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import {
     assertCloudStorageAllowed,
+    captureLocalStorageAccess,
     captureCloudStorageAccess,
     getCloudStorageSnapshot,
     isCloudStoragePermissionError,
@@ -22,7 +23,6 @@ import { router, useLocalSearchParams, type Href } from "expo-router";
 import { Archive, ChevronUp } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
     FlatList,
     Pressable,
     Text,
@@ -296,11 +296,7 @@ export default function NotesScreen() {
     }, [applyNotes, cloudEnabled, cloudGeneration, database, user]);
 
     const fetchCategories = useCallback(() => {
-        if (
-            !user ||
-            !cloudEnabled ||
-            getCloudStorageSnapshot().generation !== cloudGeneration
-        )
+        if (!user || getCloudStorageSnapshot().generation !== cloudGeneration)
             return Promise.resolve();
         if (
             categoriesRequestRef.current &&
@@ -311,7 +307,7 @@ export default function NotesScreen() {
         let request: Promise<void> | undefined;
         request = (async () => {
             try {
-                const checkAccess = captureCloudStorageAccess(user.id);
+                const checkAccess = captureLocalStorageAccess(user.id);
                 // 列表为空时先显示本地副本，避免离线或慢网时分类栏空白。
                 const cached = await readCachedCategories(
                     database,
@@ -355,7 +351,7 @@ export default function NotesScreen() {
         categoriesRequestRef.current = request;
         categoriesRequestGenerationRef.current = cloudGeneration;
         return request;
-    }, [cloudEnabled, cloudGeneration, database, user]);
+    }, [cloudGeneration, database, user]);
 
     useEffect(() => {
         notesRef.current = notes;
@@ -496,19 +492,16 @@ export default function NotesScreen() {
     }, [database, deleteTarget, updateNotesLocally, user]);
 
     const { togglePin: handleTogglePin } = useNotePin(
-        notesRef,
-        pinnedOrderRef,
         updateNotesLocally,
         setOpenedNoteId,
     );
 
     const { toggleStar: handleToggleStar } = useNoteStar(
-        notesRef,
         updateNotesLocally,
         setOpenedNoteId,
     );
 
-    // Existing hooks roll back a list snapshot, so serialize menu status writes.
+    // Serialize menu actions while each local transaction commits.
     const toggleContextStatus = async (
         toggle: (note: Note) => Promise<void>,
     ) => {
@@ -580,20 +573,12 @@ export default function NotesScreen() {
 
     const handleAddCategory = useCallback(
         async (name: string, icon: string) => {
-            if (!user) return;
-            try {
-                const checkAccess = captureCloudStorageAccess(user.id);
-                await enqueueCategoryCreate(database, user.id, { name, icon });
-                checkAccess();
-                notifyCategoriesChanged();
-                setNoteClassMenu(false);
-            } catch (err: any) {
-                if (isCloudStoragePermissionError(err)) {
-                    Alert.alert("需要开启云存储", err.message);
-                    return;
-                }
-                console.error("创建分类失败:", err.message);
-            }
+            if (!user) throw new Error("请先登录");
+            const check = captureLocalStorageAccess(user.id);
+            await enqueueCategoryCreate(database, user.id, { name, icon });
+            check();
+            notifyCategoriesChanged();
+            setNoteClassMenu(false);
         },
         [database, user],
     );

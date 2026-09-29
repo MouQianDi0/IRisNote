@@ -24,12 +24,7 @@ import { syncNotes } from "../services/note-sync-coordinator";
 import { holdNoteBody } from "../services/note-sync.service";
 
 type LoadState =
-    | "loading"
-    | "ready"
-    | "error"
-    | "not-found"
-    | "local-only"
-    | "body-missing";
+    "loading" | "ready" | "error" | "not-found" | "local-only" | "body-missing";
 
 export default function NoteDetailScreen() {
     const database = useApplicationDatabase();
@@ -90,7 +85,8 @@ export default function NoteDetailScreen() {
                 if (error instanceof NoteBodyUnavailableError) {
                     setErrorMessage(error.message);
                     setLoadState(
-                        error.reason === "offline"
+                        error.reason === "offline" ||
+                            error.reason === "local-only"
                             ? "body-missing"
                             : error.reason,
                     );
@@ -158,8 +154,7 @@ export default function NoteDetailScreen() {
 
     // The open note keeps its body even if a sync would otherwise evict it.
     useEffect(
-        () =>
-            numericNoteId == null ? undefined : holdNoteBody(numericNoteId),
+        () => (numericNoteId == null ? undefined : holdNoteBody(numericNoteId)),
         [numericNoteId],
     );
 

@@ -1,6 +1,7 @@
 import type { ApplicationDatabase } from "@/core/database";
 import {
     captureCloudStorageAccess,
+    captureLocalStorageAccess,
     getCloudStorageSnapshot,
 } from "@/core/cloud-storage/cloud-storage-policy";
 import { getApiErrorMessage } from "@/shared/http/errors";
@@ -17,6 +18,7 @@ import {
     listNoteTrash,
     purgeLocalTrash,
     readTrash,
+    readTrashIntent,
     recordRemoteDeletion,
     restoreArchivedNote,
     trashReceipt,
@@ -51,16 +53,7 @@ function serialize<T>(
     return promise;
 }
 function sessionCheck(owner: number) {
-    const snapshot = getCloudStorageSnapshot();
-    return () => {
-        const now = getCloudStorageSnapshot();
-        if (
-            snapshot.ownerUserId !== owner ||
-            now.ownerUserId !== owner ||
-            now.generation !== snapshot.generation
-        )
-            throw new Error("账号或云存储权限已变化，请重试");
-    };
+    return captureLocalStorageAccess(owner);
 }
 function removed(owner: number, clientId: number) {
     removeCachedNoteById(clientId, owner);
@@ -255,6 +248,11 @@ export function trashNote(
         try {
             const pending = await readTrash(db, owner, clientId);
             if (pending) {
+                if (
+                    !getCloudStorageSnapshot().enabled ||
+                    (await readTrashIntent(db, owner, clientId))
+                )
+                    return;
                 if (pending.state === "deleting")
                     await finishDelete(
                         db,
@@ -266,6 +264,79 @@ export function trashNote(
             }
             const note = await getLocalNoteByClientId(db, owner, clientId);
             if (!note) throw new Error("笔记状态已变化，请刷新后重试");
+            const restoreIntent = await readTrashIntent(db, owner, clientId);
+            if (restoreIntent?.intent === "restore") {
+                const receipt = JSON.parse(
+                    restoreIntent.receipt_json,
+                ) as TrashRow;
+                await db.transaction(async (tx) => {
+                    check();
+                    await tx.run(
+                        "DELETE FROM note_trash_intents WHERE owner_user_id=? AND client_id=?",
+                        [owner, clientId],
+                    );
+                    await archiveLocalNote(
+                        tx,
+                        owner,
+                        clientId,
+                        "local",
+                        undefined,
+                        true,
+                    );
+                    await tx.run(
+                        "UPDATE note_trash SET state=?,cloud_id=?,version=?,deleted_at=?,expires_at=?,cloud_json=? WHERE owner_user_id=? AND client_id=?",
+                        [
+                            receipt.state,
+                            receipt.cloud_id,
+                            receipt.version,
+                            receipt.deleted_at,
+                            receipt.expires_at,
+                            receipt.cloud_json,
+                            owner,
+                            clientId,
+                        ],
+                    );
+                    check();
+                });
+                removed(owner, clientId);
+                return;
+            }
+            if (!getCloudStorageSnapshot().enabled && note.server_id != null) {
+                await db.transaction(async (tx) => {
+                    check();
+                    const mirror = await tx.getFirst<{
+                        cloud_id: string;
+                        version: number;
+                    }>(
+                        "SELECT cloud_id,version FROM note_sync_mirror WHERE owner_user_id=? AND server_id=?",
+                        [owner, note.server_id!],
+                    );
+                    await archiveLocalNote(
+                        tx,
+                        owner,
+                        clientId,
+                        "local",
+                        undefined,
+                        true,
+                    );
+                    await tx.run(
+                        "INSERT INTO note_trash_intents(owner_user_id,client_id,intent,receipt_json) VALUES(?,?,'delete',?) ON CONFLICT(owner_user_id,client_id) DO UPDATE SET intent='delete',receipt_json=excluded.receipt_json",
+                        [
+                            owner,
+                            clientId,
+                            JSON.stringify({
+                                server_id: note.server_id,
+                                cloud_id: mirror?.cloud_id ?? null,
+                                version: mirror?.version ?? 0,
+                                updated_at: note.server_updated_at ?? null,
+                            }),
+                        ],
+                    );
+                    check();
+                });
+                removed(owner, clientId);
+                return;
+            }
             let active: CloudNote | undefined;
             let cloudCheck = check;
             if (note.server_id != null) {
@@ -326,6 +397,68 @@ export function restoreTrashedNote(
         check();
         const row = await readTrash(db, owner, clientId);
         if (!row) throw new Error("笔记已恢复或清理，请刷新列表");
+        const localIntent = await readTrashIntent(db, owner, clientId);
+        const deletionAttempt =
+            localIntent?.intent === "delete"
+                ? (JSON.parse(localIntent.receipt_json) as {
+                      dispatched?: boolean;
+                      cloud_id: string | null;
+                      version: number;
+                  })
+                : null;
+        if (
+            !getCloudStorageSnapshot().enabled ||
+            localIntent?.intent === "delete"
+        ) {
+            if (row.expires_at && Date.now() >= Date.parse(row.expires_at))
+                throw new Error("笔记已超过 15 天保留期限，无法恢复");
+            await db.transaction(async (tx) => {
+                check();
+                if (
+                    (localIntent?.intent === "delete" &&
+                        !deletionAttempt?.dispatched) ||
+                    row.server_id === null
+                ) {
+                    await tx.run(
+                        "DELETE FROM note_trash_intents WHERE owner_user_id=? AND client_id=?",
+                        [owner, clientId],
+                    );
+                } else {
+                    await tx.run(
+                        "INSERT INTO note_trash_intents(owner_user_id,client_id,intent,receipt_json) VALUES(?,?,'restore',?) ON CONFLICT(owner_user_id,client_id) DO UPDATE SET intent='restore',receipt_json=excluded.receipt_json",
+                        [
+                            owner,
+                            clientId,
+                            JSON.stringify(
+                                deletionAttempt?.dispatched
+                                    ? {
+                                          ...row,
+                                          ...deletionAttempt,
+                                          state: "deleting",
+                                      }
+                                    : row,
+                            ),
+                        ],
+                    );
+                }
+                await restoreArchivedNote(
+                    tx,
+                    owner,
+                    row,
+                    row.local_json || !row.cloud_json
+                        ? undefined
+                        : (JSON.parse(row.cloud_json) as CloudNote),
+                );
+                check();
+            });
+            const note = await getLocalNoteByClientId(db, owner, clientId);
+            check();
+            if (note) {
+                setCachedNote(note);
+                notifyNotesChanged({ type: "upsert", note });
+            }
+            return;
+        }
         if (row.state === "local") {
             if (!row.expires_at || Date.now() >= Date.parse(row.expires_at))
                 throw new Error("笔记已超过 15 天保留期限，无法恢复");
@@ -397,6 +530,7 @@ export function synchronizeNoteTrash(db: ApplicationDatabase, owner: number) {
         const access = getCloudStorageSnapshot();
         if (!access.enabled) return;
         const checkCloud = captureCloudStorageAccess(owner);
+        await synchronizeLocalTrashIntents(db, owner, checkCloud);
         const page = await notesTrashApi.list(owner);
         checkCloud();
         await db.run(
@@ -412,7 +546,11 @@ export function synchronizeNoteTrash(db: ApplicationDatabase, owner: number) {
             await rememberDeletion(db, owner, receipt, checkCloud);
         for (const row of await listNoteTrash(db, owner)) {
             checkCloud();
-            if (row.server_id === null) continue;
+            if (
+                row.server_id === null ||
+                (await readTrashIntent(db, owner, row.client_id))
+            )
+                continue;
             try {
                 if (row.state === "deleting") {
                     try {
@@ -450,4 +588,140 @@ export function synchronizeNoteTrash(db: ApplicationDatabase, owner: number) {
             }
         }
     });
+}
+
+/** Replay local intent only against its recorded cloud identity/version. */
+async function synchronizeLocalTrashIntents(
+    db: ApplicationDatabase,
+    owner: number,
+    check: () => void,
+) {
+    if (
+        !(await db.getFirst(
+            "SELECT 1 FROM sqlite_master WHERE name='note_trash_intents'",
+        ))
+    )
+        return;
+    const intents = await db.getAll<{
+        client_id: number;
+        intent: "delete" | "restore";
+        receipt_json: string;
+    }>("SELECT * FROM note_trash_intents WHERE owner_user_id=?", [owner]);
+    for (const intent of intents) {
+        check();
+        const receipt = JSON.parse(intent.receipt_json) as {
+            server_id: number;
+            cloud_id: string | null;
+            version: number;
+            updated_at?: string | null;
+            deleted_at?: string | null;
+            state?: string;
+        };
+        try {
+            const state = await notesTrashApi.status(owner, receipt.server_id);
+            check();
+            const identity =
+                state.state === "active" || state.state === "deleted"
+                    ? state.note
+                    : state.deletion;
+            if (receipt.cloud_id && identity.client_id !== receipt.cloud_id)
+                throw new Error("云端身份已变化，本机操作已保留");
+            if (intent.intent === "delete") {
+                if (state.state === "active") {
+                    if (
+                        receipt.version
+                            ? state.note.version !== receipt.version
+                            : !receipt.updated_at ||
+                              state.note.updated_at !== receipt.updated_at
+                    )
+                        throw new Error(
+                            "云端笔记已有其他修改，本机删除已保留，请核对后重试",
+                        );
+                    const dispatchedReceipt = JSON.stringify({
+                        ...receipt,
+                        cloud_id: state.note.client_id,
+                        version: state.note.version,
+                        dispatched: true,
+                    });
+                    await db.run(
+                        "UPDATE note_trash_intents SET receipt_json=? WHERE owner_user_id=? AND client_id=? AND receipt_json=?",
+                        [
+                            dispatchedReceipt,
+                            owner,
+                            intent.client_id,
+                            intent.receipt_json,
+                        ],
+                    );
+                    intent.receipt_json = dispatchedReceipt;
+                    check();
+                    const deleted = await notesTrashApi.remove(
+                        owner,
+                        state.note.id,
+                        state.note.client_id,
+                        state.note.version,
+                    );
+                    check();
+                    await rememberDeletion(db, owner, deleted, check, deleted);
+                } else {
+                    await rememberDeletion(
+                        db,
+                        owner,
+                        state.state === "deleted" ? state.note : state.deletion,
+                        check,
+                        state.state === "deleted" ? state.note : undefined,
+                    );
+                }
+            } else {
+                if (state.state === "deleted") {
+                    if (
+                        receipt.state === "deleting"
+                            ? state.note.version !== receipt.version + 1
+                            : state.note.version !== receipt.version ||
+                              state.note.deleted_at !== receipt.deleted_at
+                    )
+                        throw new Error(
+                            "云端删除状态已变化，已保留本机恢复内容，请核对后重试",
+                        );
+                    await notesTrashApi.restore(owner, state.note);
+                    check();
+                } else if (
+                    state.state === "active" &&
+                    receipt.state === "deleting" &&
+                    state.note.version === receipt.version
+                ) {
+                    // Fence a delayed delete before completing the local restore intent.
+                    const deleted = await notesTrashApi.remove(
+                        owner,
+                        state.note.id,
+                        state.note.client_id,
+                        state.note.version,
+                    );
+                    check();
+                    await notesTrashApi.restore(owner, deleted);
+                    check();
+                } else if (state.state !== "active") {
+                    throw new Error("云端笔记已清理，恢复内容仍保存在本机");
+                }
+            }
+            await db.run(
+                "DELETE FROM note_trash_intents WHERE owner_user_id=? AND client_id=? AND receipt_json=?",
+                [owner, intent.client_id, intent.receipt_json],
+            );
+        } catch (error) {
+            check();
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "同步未完成，本机操作已保留";
+            await db.run(
+                "UPDATE note_trash SET last_error=? WHERE owner_user_id=? AND client_id=?",
+                [message, owner, intent.client_id],
+            );
+            if (intent.intent === "restore")
+                await db.run(
+                    "UPDATE local_notes SET last_sync_error=? WHERE owner_user_id=? AND client_id=?",
+                    [message, owner, intent.client_id],
+                );
+        }
+    }
 }

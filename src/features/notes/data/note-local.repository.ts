@@ -1,3 +1,4 @@
+import { localCategoryMap } from "../categories/data/category-local.repository";
 import type {
     ApplicationDatabase,
     ApplicationDatabaseTransaction,
@@ -30,6 +31,7 @@ import {
     archiveLocalNote,
     isRemovedLocalNote,
     removedServerIds,
+    readTrashIntent,
 } from "./note-trash.repository";
 import { readEvictedPreviews } from "./note-body.repository";
 import { deleteNoteCreateOperation } from "./note-create-operation.repository";
@@ -110,7 +112,10 @@ function nextEditTime(previous?: string | null) {
 }
 
 /** 已淘汰正文的笔记带上正文状态与摘要；列定义保持不变，旧结构数据库照常可读。 */
-function withBodyState(note: Note, previews: ReadonlyMap<number, string | null>) {
+function withBodyState(
+    note: Note,
+    previews: ReadonlyMap<number, string | null>,
+) {
     return previews.has(note.id)
         ? {
               ...note,
@@ -564,8 +569,17 @@ export async function reconcileNotesInTransaction(
     let added = 0;
     const serverIds = new Set<number>();
     const removedIds = await removedServerIds(transaction, ownerUserId);
+    const categoryIds = await localCategoryMap(transaction, ownerUserId);
 
-    for (const [index, note] of serverNotes.entries()) {
+    for (const [index, incoming] of serverNotes.entries()) {
+        const note = {
+            ...incoming,
+            category_id:
+                incoming.category_id === null
+                    ? null
+                    : (categoryIds.get(incoming.category_id) ??
+                      incoming.category_id),
+        };
         const serverId = note.server_id ?? note.id;
         serverIds.add(serverId);
         // A stale full list/conflict response cannot recreate a note archived locally.
@@ -848,6 +862,11 @@ export async function reconcileNotesInTransaction(
     for (const row of syncedRows) {
         if (guard || mirror) break;
         if (row.server_id != null && !serverIds.has(row.server_id)) {
+            if (
+                (await readTrashIntent(transaction, ownerUserId, row.client_id))
+                    ?.intent === "restore"
+            )
+                continue;
             if (await archiveLocalNote(transaction, ownerUserId, row.client_id))
                 continue;
             // 服务器删除传播：版本随笔记清理，未提交草稿仍保留。

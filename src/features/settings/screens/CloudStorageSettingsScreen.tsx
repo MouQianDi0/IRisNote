@@ -42,7 +42,7 @@ export default function CloudStorageSettingsScreen() {
           ? "登录后可为当前账号开启云存储授权。"
           : cloudStorage.enabled
             ? "已允许本设备同步笔记、待办等内容；后续云存储功能也受此授权控制。"
-            : "尚未允许云端传输，笔记和待办继续保存在本机。";
+            : "云同步已关闭，仅本机保存。笔记、分类和待办可继续在本机使用；重新开启后，本机改动将按同步规则处理。";
 
     const changeConsent = async (enabled: boolean) => {
         if (busy || (enabled && !cloudStorage.available)) return;

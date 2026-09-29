@@ -25,6 +25,18 @@ let snapshot: CloudStorageSnapshot = {
 };
 const listeners = new Set<() => void>();
 const controllers = new Set<AbortController>();
+let localSession = 0;
+
+/** 本地操作只校验账号会话，不依赖云传输授权。 */
+export function captureLocalStorageAccess(ownerUserId: number) {
+    const session = localSession;
+    const check = () => {
+        if (snapshot.ownerUserId !== ownerUserId || session !== localSession)
+            throw new Error("账号已变化，请重新操作");
+    };
+    check();
+    return check;
+}
 
 export const getCloudStorageSnapshot = () => snapshot;
 export function subscribeCloudStorage(listener: () => void) {
@@ -45,6 +57,7 @@ export function setCloudStorageSession(
         snapshot.consented === consented
     )
         return;
+    if (snapshot.ownerUserId !== ownerUserId) localSession++;
     snapshot = {
         ...snapshot,
         ownerUserId,
