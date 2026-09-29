@@ -1,11 +1,22 @@
+import {
+    hasLocalCategories,
+    listLocalCategories,
+    mergeRemoteCategories,
+    importCachedCategories,
+} from "./category-local.repository";
 import type { ApplicationDatabase } from "@/core/database";
-import { isCloudStoragePermissionError } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    getCloudStorageSnapshot,
+    captureLocalStorageAccess,
+    captureCloudStorageAccess,
+    isCloudStoragePermissionError,
+} from "@/core/cloud-storage/cloud-storage-policy";
 import { getCategories } from "../api/categories.api";
 import type { Category } from "../categories.types";
 
 /**
  * 分类列表的本地副本：只保存服务端返回的原始列表，未上传的改动由调用方照常用上传队列叠加。
- * 仅在云存储已开启、但请求失败（如离线）时兜底，不改变云存储关闭时不显示分类的行为。
+ * 本机分类独立于云授权；授权后刷新远端副本，保留本地待同步改动。
  */
 const cacheKey = (ownerUserId: number) => `category-cache:user:${ownerUserId}`;
 
@@ -47,7 +58,11 @@ export async function writeCachedCategories(
     await database.run(
         `INSERT INTO system_preferences (key, value, updated_at) VALUES (?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-        [cacheKey(ownerUserId), JSON.stringify(categories), new Date().toISOString()],
+        [
+            cacheKey(ownerUserId),
+            JSON.stringify(categories),
+            new Date().toISOString(),
+        ],
     );
 }
 
@@ -59,16 +74,60 @@ export async function loadCategories(
     database: ApplicationDatabase,
     ownerUserId: number,
 ): Promise<{ categories: Category[]; stale: boolean }> {
+    const local = await hasLocalCategories(database);
+    const cloud = getCloudStorageSnapshot();
+    if (local && !cloud.enabled) {
+        const check = captureLocalStorageAccess(ownerUserId);
+        const categories = await listLocalCategories(database, ownerUserId);
+        check();
+        return { categories, stale: true };
+    }
+    const check = local ? captureCloudStorageAccess(ownerUserId) : () => {};
+    if (local) await importCachedCategories(database, ownerUserId);
+    const versions = local
+        ? new Map(
+              (
+                  await database.getAll<{ server_id: number; version: number }>(
+                      "SELECT server_id,version FROM local_categories WHERE owner_user_id=? AND server_id IS NOT NULL",
+                      [ownerUserId],
+                  )
+              ).map((row) => [row.server_id, row.version]),
+          )
+        : undefined;
     try {
         const categories = await getCategories();
+        check();
+        if (local)
+            await database.transaction(async (tx) => {
+                check();
+                await mergeRemoteCategories(
+                    tx,
+                    ownerUserId,
+                    categories,
+                    versions,
+                );
+                check();
+            });
         try {
             await writeCachedCategories(database, ownerUserId, categories);
         } catch {
             // 副本写入失败只影响下次离线兜底，不影响本次展示。
         }
-        return { categories, stale: false };
+        return {
+            categories: local
+                ? await listLocalCategories(database, ownerUserId)
+                : categories,
+            stale: false,
+        };
     } catch (error) {
         if (isCloudStoragePermissionError(error)) throw error;
+        if (local) {
+            captureLocalStorageAccess(ownerUserId)();
+            return {
+                categories: await listLocalCategories(database, ownerUserId),
+                stale: true,
+            };
+        }
         const cached = await readCachedCategories(database, ownerUserId).catch(
             () => null,
         );

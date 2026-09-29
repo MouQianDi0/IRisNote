@@ -4,11 +4,7 @@ import { Button } from "@/shared/ui";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 export type NoteDetailState =
-    | "loading"
-    | "error"
-    | "not-found"
-    | "local-only"
-    | "body-missing";
+    "loading" | "error" | "not-found" | "local-only" | "body-missing";
 
 type NoteDetailStateViewProps = {
     loadState: NoteDetailState;
@@ -61,7 +57,8 @@ export default function NoteDetailStateView({
                                 : loadState === "not-found"
                                   ? "当前笔记可能已被删除或链接无效"
                                   : loadState === "body-missing"
-                                    ? "这篇笔记的正文不在本机，联网后可以查看"
+                                    ? errorMessage ||
+                                      "本机保留了这篇笔记的摘要，开启云同步并联网后可下载正文"
                                     : errorMessage}
                         </Text>
                         {loadState !== "local-only" && (
