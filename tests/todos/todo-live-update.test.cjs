@@ -234,6 +234,9 @@ test("60 秒模拟待办走真实卡片与原生时间线，且不占三张真�
     startAt: start,
     endAt: start + 60_000,
     promoted: true,
+    // 模拟卡无身份字段：原生据此不下发动作按钮。
+    ownerKey: null,
+    clientId: null,
   });
 
   now = new Date(start + 60_001);
