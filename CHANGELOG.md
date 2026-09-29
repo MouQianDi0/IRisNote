@@ -1,3 +1,12 @@
+## 2026-09-29 22:12:44 | 优化代码：合并 codex-a 分支（快速摘录限时会话等）进入 kroos_todo
+
+- 变更概述：按用户指令先快进本地 codex-a（83a114f→ffe8828，54 个提交、216 文件 +17039/−911，纯快进），再合入 kroos_todo（db054be）。merge-base 18fde51，自动合并去重后净带入 37 个文件（+2434/−181）：快速摘录限时会话与 Android 通知入口、剪贴板回流检测重构、笔记星标/置顶写入合并与尾部防抖、4 篇功能线全链路日志与架构/UI 文档同步。冲突 2 处已解决：CHANGELOG.md 按时间倒序交织双方条目；modules/irisnote-system/index.ts 的 NativeProgressNotification 类型并存双方身份字段（待办 ownerKey/clientId + 摘录 excerptSessionId/expiresAt）。
+- 修改文件：净带入 37 文件逐文件清单与链路见 docs/logs/2026-09-29-merge-codex-a-into-kroos-todo.md（新增）；本分支侧另新增该日志与本条目。
+- 具体内容：① 摘录会话（一期 A 档）：工具栏 Timer 开启 15/30/60/120 分钟会话，原生独立 HIGH 静默状态卡倒计时、到期撤卡、ExcerptSessionActionReceiver 停止标记跨进程回流，剪贴板检测改为焦点/前后台事件驱动加串行锁，偏好默认关闭不改变既有默认行为；② note-sync-coordinator 融合星标/置顶连续切换合并为一次请求与写入后 1.5 秒尾部防抖；③ 冲突解决保持 kroos_todo 侧待办动作按钮与 422 回环修复逻辑不变（LiveTodoNotifier.kt 仅一行适配）。未改动任何既有开关默认值，未推送远端。
+- 验证：合并前基线 npm run typecheck 0 错误；git diff --cached --check 通过，源码树冲突标记扫描无残留；合并后 npm run check 全过（typecheck 0 错误、lint 0 错误 1 既有警告 liveUpdateCapable、theme:check 通过、node --test 675/675）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（2 个既有风格弃用警告）。真机验证与完整 APK 构建未做，合并提交 378052c 未推送。
+
+---
+
 ## 2026-09-29 19:21:29 | 修复问题：快速切换完成状态回环不再触发云端 422 校验失败
 
 - 变更概述：已完成的待办在一秒内被快速点击（完成→取消→完成、最终仍为已完成）后，同步只发出含 `completed_at` 的 patch，被服务端以 422 INVALID_COMPLETED_AT（"完成时间必须和完成状态一起提交"）拒绝并常驻失败横幅。修复为：完成时间差异缺少完成状态翻转伴随时视为切换回环噪声，按基线对齐、不发请求。
