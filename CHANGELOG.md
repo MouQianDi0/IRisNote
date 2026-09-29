@@ -1,3 +1,25 @@
+## 2026-09-29 04:36:41 | 优化代码：合并 origin/Timmi（b566523），星标/置顶采用本地优先方案并保留写入后同步防抖
+
+- 变更概述：
+  - 合入远端 4 个提交：0.7.0 更新说明、本地云解耦与迁移 0019、更新说明 Markdown 排版、PR #129。
+  - 远端已经把星标/置顶改为本地优先（`toggleLocalNoteFlag` 写 SQLite 和待发送表，`syncLocalNoteFlags` 统一发送），和本侧 04:08:42 的请求调度器冲突。按用户选择采用远端方案，删除调度器，保留本侧"写入后同步 1.5 秒尾部防抖"。
+  - 两者配合后，连续切换停止 1.5 秒后，每条笔记只发 1 个 PUT。
+  - 本侧"最终值与服务端一致时不发请求"没有保留：切回原值仍会发 1 个 PUT。
+- 修改文件：src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/screens/NotesScreen.tsx（冲突取远端）、src/features/notes/services/note-status-writer.ts（删除）、src/features/notes/services/note-sync-coordinator.ts（自动合并）、tests/sync/note-write-coalescing.test.cjs（只保留协调器防抖测试）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-merge-origin-timmi-b566523.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① 冲突：两个 hooks 和 NotesScreen 取远端版本；CHANGELOG 两边条目按时间倒序交叉排列，共 293 条，与并集一致。
+  - ② 删除已无调用方的 `note-status-writer` 和它的 9 条测试。
+  - ③ 三份架构文档改为合并后的真实链路：本地事务 → 待发送表 → 1.5 秒防抖 → syncNotes → syncLocalNoteFlags → 按 version 确认。
+  - 本侧 04:08:42 条目和前一篇日志保留原样，差异在新日志里说明。
+- 验证：
+  - 在临时工作区里对合并结果跑 `npm run check`：typecheck 0 个错误；lint 0 个错误、1 个既有警告；测试 646 项，642 通过、2 跳过、2 失败。
+    - 发布归档 ENAMETOOLONG：既有环境问题。
+    - gradle-env「Windows fix…」：临时工作区路径过长导致 socket 路径超限，主仓库路径下 2/2 通过，合并也没有改动它。
+  - 冲突标记扫描通过。
+  - 未做真机验证，未与真实服务端联调。
+
+---
+
 ## 2026-09-29 05:03:13 | 优化代码：将 Markdown 解析与渲染抽为 Utils 公共组件
 
 - 变更概述：公共组件统一放在 src/shared/utils/markdown，更新说明通过统一入口引用。
@@ -13,6 +35,30 @@
 - 修改文件：src/features/updates/release-notes.ts；src/features/updates/ReleaseNotes.tsx；src/features/updates/UpdateDialog.tsx；tests/releases/release-notes.test.cjs；tests/releases/releases.test.cjs；docs/构建发布/更新说明编写规范.md；docs/构建发布/android-releases.md；docs/logs/2026-09-29-update-notes-markdown.md；CHANGELOG.md。
 - 具体内容：分组标题、列表换行对齐及段落间距；普通段落与未支持语法保留；空内容占位；沿用滚动容器和更新操作链路，不新增依赖及网络请求；同步文档支持范围和旧客户端兼容约定。
 - 验证：修改前后类型检查通过，新增解析测试 5 项通过；npm run check 首次发现原弹窗测试缺少新增组件依赖替身，补齐后重新完整运行通过（644/644）；Lint 0 错误、1 条既有 PermissionSettingsScreen 未使用变量警告，theme:check 通过；git diff --check 和冲突标记扫描通过。Android 构建、真机验证未做。
+
+---
+
+## 2026-09-29 04:08:42 | 优化代码：笔记星标/置顶连续切换合并为一次请求，写入后同步改为尾部防抖
+
+- 变更概述：
+  - 快速连续切换笔记星标/置顶时，原来每点一次就发一个 `PUT /notes/:id`，每个请求结束后还会再拉一轮同步，最坏会有十几个请求。
+  - 现在界面仍立即变化；网络请求按笔记做 1 秒尾部防抖（与待办一致），只发最后的值，最终值与服务端一致时不发请求，同一笔记的请求一个一个发。
+  - 失败时只在"之后没有新操作"时回滚，而且只回滚这一条笔记的这一个字段。
+  - 写请求结束后触发的同步改为最后一次写入结束 1.5 秒后只拉取一轮；回到前台、定时、网络恢复的同步时机不变。
+  - 待办、笔记正文、分类原本已经合并，本次未改。
+- 修改文件：src/features/notes/services/note-status-writer.ts（新增）、src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx（仅注释）、tests/sync/note-write-coalescing.test.cjs（新增）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-note-status-write-coalescing.md（新增）、CHANGELOG.md。
+- 具体内容：
+  - ① `note-status-writer`：按笔记记录服务端确认值、最新值和代次。1 秒内再次点击会重新计时；发送前检查云授权；请求期间有新点击时，返回后接着发最新值；旧请求失败不覆盖新点击；会话变化后丢弃回滚。
+  - ② `useNoteStar` / `useNotePin`：网络部分交给调度器。整表快照回滚改为只回滚单个字段，置顶回滚会恢复原来的 `pinned_order`；去掉 `err: any`。
+  - ③ `note-sync-coordinator`：写入结束的通知改由 `requestAfterWrite`（1.5 秒尾部防抖）处理，其他触发仍是 100ms。
+  - 影响：正文上传、分类写入之后拉取服务端变化会晚约 1.4 秒；长按菜单的状态切换不再等网络返回。
+- 验证：
+  - 改动前后 `npm run typecheck` 都是 0 个错误。
+  - 新增测试 10/10 通过。
+  - `npm run check`：lint 0 个错误、1 个既有警告；测试 632 项，628 通过、2 跳过、2 失败。
+    - 发布归档 ENAMETOOLONG：环境问题，基线同样失败。
+    - storage「startup cleanup is scheduled once per process」：只等真实时间 20ms 的不稳定测试，基线单独跑 20 次失败 5 次，与本次改动无关。
+  - 未做真机验证，未与真实服务端联调。
 
 ---
 
