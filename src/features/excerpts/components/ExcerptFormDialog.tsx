@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CloudOff } from "lucide-react-native";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { banner } from "@/core/notifications";
 import { semanticColors } from "@/shared/theme";
 import { AppButton, BodyInput, InlineHint } from "@/shared/ui";
@@ -92,10 +92,21 @@ export function ExcerptFormDialog({
             <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 2 }}>
                 <BodyInput ref={input} value={text} onChangeText={(value) => { setText(value); setError(""); }} placeholder="输入或粘贴要保存的文字" invalid={!!error || overLimit} disabled={busy} maxLength={EXCERPT_CONTENT_LIMIT} truncate={false} measure={measureExcerpt} accessibilityLabel="摘录正文" />
                 {overLimit && <Text accessibilityRole="alert" style={{ marginTop: 4, color: semanticColors.destructive }}>超出上限，请删减</Text>}
-                {mergeSeparator && <Pressable accessibilityRole="switch" accessibilityState={{ checked: mergeSeparator.enabled }} onPress={() => { const next = !mergeSeparator.enabled; setText(mergeSeparator.regenerate(next)); setError(""); mergeSeparator.onChange(next); }} style={{ marginTop: 12 }}>
-                    <Text style={{ color: semanticColors.textPrimary }}>条目间空行分隔 {mergeSeparator.enabled ? "开" : "关"}</Text>
-                    <Text style={{ marginTop: 4, color: semanticColors.textSecondary }}>切换将按暂存条目重新生成正文</Text>
-                </Pressable>}
+                {mergeSeparator && <View style={{ marginTop: 12 }}>
+                    <View style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <Text style={{ flex: 1, color: semanticColors.textPrimary }}>条目间换行</Text>
+                        <Switch
+                            accessibilityLabel="条目间换行"
+                            accessibilityHint="关闭后条目将直接拼接"
+                            value={mergeSeparator.enabled}
+                            disabled={busy}
+                            trackColor={{ false: semanticColors.divider, true: semanticColors.brandPrimary }}
+                            thumbColor={semanticColors.surface}
+                            onValueChange={(enabled) => { setText(mergeSeparator.regenerate(enabled)); setError(""); mergeSeparator.onChange(enabled); }}
+                        />
+                    </View>
+                    <Text style={{ marginTop: 2, color: semanticColors.textSecondary }}>关闭后条目将直接拼接</Text>
+                </View>}
                 <InlineHint icon={CloudOff} message="摘录仅保存在本机，暂不同步到云端" className="mt-3" />
                 {!!error && <Text selectable accessibilityRole="alert" style={{ marginTop: 8, fontSize: 14, color: semanticColors.destructive }}>{error}</Text>}
             </ScrollView>

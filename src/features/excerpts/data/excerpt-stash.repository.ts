@@ -89,6 +89,28 @@ export class ExcerptStashRepository {
         }));
     }
 
+    /** 一次事务提交完整排列；拒绝过期、重复或跨账号的 ID 列表。 */
+    reorder(ownerKey: string, orderedClientIds: readonly string[]): Promise<void> {
+        return this.checked(ownerKey, () => this.database.transaction(async (tx) => {
+            const rows = await tx.getAll<{ client_id: string }>(
+                "SELECT client_id FROM local_excerpt_stash WHERE owner_key = ? ORDER BY local_order ASC, created_at ASC, client_id ASC", [ownerKey],
+            );
+            const current = new Set(rows.map((row) => row.client_id));
+            if (orderedClientIds.length !== current.size ||
+                new Set(orderedClientIds).size !== current.size ||
+                orderedClientIds.some((id) => !current.has(id))) {
+                throw new ExcerptError("missing", "暂存内容已变化，请刷新后重试");
+            }
+            for (const [index, id] of orderedClientIds.entries()) {
+                const result = await tx.run(
+                    "UPDATE local_excerpt_stash SET local_order = ? WHERE owner_key = ? AND client_id = ?",
+                    [index, ownerKey, id],
+                );
+                if (result.changes !== 1) throw new ExcerptError("missing", "暂存内容已变化，请刷新后重试");
+            }
+        }));
+    }
+
     update(ownerKey: string, clientId: string, text: string): Promise<"saved" | "duplicate"> {
         const content = prepareExcerptContent(text);
         const hash = hashExcerptContent(content);

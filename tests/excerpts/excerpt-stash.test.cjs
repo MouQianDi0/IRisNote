@@ -20,6 +20,7 @@ require.extensions[".ts"] = (module, filename) => {
 const { createExcerptStash } = require("@/core/database/migrations/0020-create-excerpt-stash.ts");
 const { ExcerptStashRepository } = require("@/features/excerpts/data/excerpt-stash.repository.ts");
 const { mergeStashContents } = require("@/features/excerpts/domain/excerpt-stash-merge.ts");
+const { stashDragTarget } = require("@/features/excerpts/domain/excerpt-stash-drag.ts");
 
 function port(sqlite) {
     const tx = {
@@ -44,15 +45,60 @@ async function setup(t) {
         if (key !== owner || gen !== generation) throw new Error("owner changed");
     } };
     const repository = new ExcerptStashRepository(port(sqlite), scope);
-    return { sqlite, repository, setOwner(value) { owner = value; generation++; } };
+    return { sqlite, repository, scope, setOwner(value) { owner = value; generation++; } };
 }
 
-test("合并按顺序拼接，空行开关和空列表", () => {
+test("合并按顺序拼接，开关默认换行、关闭直接拼接", () => {
     const items = [{ content: "乙", localOrder: 2 }, { content: "甲", localOrder: 0 }];
-    assert.equal(mergeStashContents(items, true), "甲\n\n乙");
-    assert.equal(mergeStashContents(items, false), "甲\n乙");
+    assert.equal(mergeStashContents(items, true), "甲\n乙");
+    assert.equal(mergeStashContents(items, false), "甲乙");
     assert.equal(mergeStashContents([], true), "");
     assert.equal(items[0].content, "乙");
+});
+
+test("拖拽中心越过条目半高才换位，单次移动可跨过多条", () => {
+    const centers = [32, 100, 168, 236];
+    assert.equal(stashDragTarget(centers, 0, 100), 0);
+    assert.equal(stashDragTarget(centers, 0, 101), 1);
+    assert.equal(stashDragTarget(centers, 0, 237), 3);
+    assert.equal(stashDragTarget(centers, 3, 31), 0);
+    assert.equal(stashDragTarget(centers, 2, 100), 2);
+});
+
+test("完整拖拽顺序一次事务写入，拒绝过期或重复排列且不改旧顺序", async (t) => {
+    const h = await setup(t);
+    const repo = h.repository;
+    for (const text of ["甲", "乙", "丙", "丁"]) await repo.add("user:1", text);
+    const original = await repo.list("user:1");
+    const ids = original.map((item) => item.clientId);
+    await repo.reorder("user:1", [ids[3], ids[0], ids[1], ids[2]]);
+    assert.deepEqual((await repo.list("user:1")).map((item) => [item.content, item.localOrder]),
+        [["丁", 0], ["甲", 1], ["乙", 2], ["丙", 3]]);
+    assert.equal(mergeStashContents(await repo.list("user:1"), true), "丁\n甲\n乙\n丙");
+    for (const invalid of [[ids[0], ids[0], ids[1], ids[2]], [ids[0], ids[1]], [ids[0], ids[1], ids[2], "other-account"]]) {
+        await assert.rejects(repo.reorder("user:1", invalid), /暂存内容已变化/);
+        assert.deepEqual((await repo.list("user:1")).map((item) => item.clientId), [ids[3], ids[0], ids[1], ids[2]]);
+    }
+    h.setOwner("user:2");
+    await assert.rejects(repo.reorder("user:1", ids), /owner changed/);
+    assert.deepEqual(await repo.list("user:2"), []);
+});
+
+test("排序事务中途失败时回滚全部 local_order", async (t) => {
+    const h = await setup(t);
+    for (const text of ["甲", "乙", "丙"]) await h.repository.add("user:1", text);
+    const original = await h.repository.list("user:1");
+    const database = port(h.sqlite);
+    const failing = new ExcerptStashRepository({ ...database, transaction: (task) => database.transaction(async (tx) => {
+        let writes = 0;
+        return task({ ...tx, run: async (...args) => {
+            if (++writes === 2) throw new Error("simulated disk failure");
+            return tx.run(...args);
+        } });
+    }) }, h.scope);
+    await assert.rejects(failing.reorder("user:1", original.map((item) => item.clientId).reverse()), /simulated disk failure/);
+    assert.deepEqual((await h.repository.list("user:1")).map((item) => [item.clientId, item.localOrder]),
+        original.map((item) => [item.clientId, item.localOrder]));
 });
 
 test("暂存增删改移、重复冲突与账号隔离", async (t) => {

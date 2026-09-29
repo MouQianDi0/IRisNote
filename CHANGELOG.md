@@ -1,3 +1,12 @@
+## 2026-09-30 04:17:18 | 优化代码：快速摘录暂存留窗、拖拽排序与合并换行开关
+
+- 变更概述：透明捕获窗暂存成功后就地切为无新内容并显示 2 秒提示；暂存区改为限高滚动列表、整行编辑、垃圾桶删除与长按拖拽；合并表单使用默认开启的「条目间换行」系统开关。
+- 修改文件：src/features/excerpts/components/ExcerptFormDialog.tsx、ExcerptStashPanel.tsx，data/excerpt-stash.repository.ts，domain/excerpt-stash-drag.ts、excerpt-stash-merge.ts，screens/ExcerptCaptureScreen.tsx、ExcerptsScreen.tsx，services/excerpt-capture-controller.ts；tests/excerpts/excerpt-capture.test.cjs、excerpt-stash.test.cjs，tests/releases/source.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/logs/2026-09-30-clipboard-stash-merge-2.md；CHANGELOG.md。
+- 具体内容：移除暂存后的 650ms 自动关窗和暂存区左上返回箭头；长按 250ms 进入拖拽、越过半高即时换位，松手一次 SQLite 事务重写当前账号顺序，失败恢复显示；合并开为单换行、关为直接拼接，切换重生成正文。同步修正发布归档测试超长中文文件名；没有改发布或待办业务逻辑。
+- 验证：修改前后 `npm run typecheck` 通过；摘录定向测试通过；获准环境运行 `npm run check` 通过（682 通过、2 跳过、0 失败；Lint 有既有设置页未使用变量警告）。沙箱内测试因本地监听/子进程 EPERM 无法全过，已在获准环境复核。真机拖拽手感与透明窗口暂存留窗未执行。
+
+---
+
 ## 2026-09-30 03:13:47 | 新增功能：剪贴板摘录支持编辑保存与暂存合并
 
 - 变更概述：通知快速摘录和应用内检测卡改为预填表单后保存；新增按账号隔离的本机暂存区，可排序、编辑、删除、清空并合并为一条摘录。关闭未保存提示不再写已处理标记。

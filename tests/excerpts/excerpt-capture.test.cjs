@@ -54,7 +54,7 @@ function harness() {
             if (stashed.has(hash)) return "duplicate";
             stashed.add(hash); return "added";
         },
-        list: async () => [], move: async () => {}, update: async () => "saved", remove: async () => {}, clear: async () => stashed.clear(),
+        list: async () => [], reorder: async () => {}, update: async () => "saved", remove: async () => {}, clear: async () => stashed.clear(),
     };
     const ports = {
         readOwner: async () => owner,
@@ -106,6 +106,16 @@ test("暂存写入后下次检测跳过；关闭未保存不会留下标记", as
     k.controller.dispose();
     assert.equal(k.stashed.size, 0);
     assert.equal(k.saved.size, 0);
+});
+
+test("重复暂存也消耗当前候选，刷新暂存不再次读取剪贴板", async () => {
+    const h = harness();
+    await h.controller.detect();
+    h.stash.add = async () => "duplicate";
+    assert.equal(await h.controller.stash(), "duplicate");
+    assert.equal(h.controller.currentOffer(), null);
+    await h.controller.listStash();
+    assert.equal(h.events.filter((event) => event === "read").length, 1);
 });
 
 test("失败保留原候选并复用并发保存 Promise", async () => {
@@ -200,4 +210,8 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
         screen,
         /recordDiagnostic\("excerpt_capture", "window_opened", \{\s*entry: captureEntry \?\? "card_body",\s*\}\)/,
     );
+    const stashHandler = screen.match(/const stash = \(\) => void run\(async \(\) => \{([\s\S]*?)\n    \}\);/)?.[1];
+    assert.ok(stashHandler);
+    assert.match(stashHandler, /setState\(\{ kind: "result", result: \{ kind: "skip", reason: "stashed"/);
+    assert.doesNotMatch(stashHandler, /(?:close|finishExcerptCapture|detect)\(/);
 });

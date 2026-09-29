@@ -23,7 +23,7 @@ export type ExcerptCapturePorts = {
     readOwner: () => Promise<string>;
     active: () => Promise<boolean>;
     activate: (ownerKey: string) => Promise<void>;
-    stash: Pick<ExcerptStashRepository, "list" | "hashes" | "add" | "move" | "update" | "remove" | "clear">;
+    stash: Pick<ExcerptStashRepository, "list" | "hashes" | "add" | "reorder" | "update" | "remove" | "clear">;
     repository: Pick<
         ExcerptLocalRepository,
         "generation" | "assertSession" | "save" | "list"
@@ -115,9 +115,9 @@ export class ExcerptCaptureController {
         return result;
     }
 
-    async moveStash(clientId: string, direction: "up" | "down") {
+    async reorderStash(orderedClientIds: readonly string[]) {
         const ownerKey = await this.owner();
-        await this.ports.stash.move(ownerKey, clientId, direction);
+        await this.ports.stash.reorder(ownerKey, orderedClientIds);
     }
 
     async updateStash(clientId: string, text: string) {

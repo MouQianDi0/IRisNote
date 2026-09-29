@@ -38,6 +38,7 @@ export function ExcerptCaptureScreen({ sessionId, captureId, captureEntry }: {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     useEffect(() => { modeRef.current = form ? "form" : panel ? "panel" : "main"; }, [form, panel]);
     const close = (saved = false) => NativeSystem?.finishExcerptCapture(captureId, saved);
     const refresh = async () => {
@@ -84,6 +85,7 @@ export function ExcerptCaptureScreen({ sessionId, captureId, captureEntry }: {
         })();
         return () => {
             mounted.current = false;
+            if (noticeTimer.current) clearTimeout(noticeTimer.current);
             back.remove();
             capture?.dispose();
             if (controller.current === capture) controller.current = null;
@@ -91,20 +93,27 @@ export function ExcerptCaptureScreen({ sessionId, captureId, captureEntry }: {
         };
     }, [sessionId, captureId, captureEntry]);
 
-    const run = async (action: () => Promise<void>) => {
-        if (busyRef.current) return;
+    const run = async (action: () => Promise<void>): Promise<boolean> => {
+        if (busyRef.current) return false;
         busyRef.current = true; setBusy(true); setError(null);
-        try { await action(); }
-        catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败，请重试"); }
+        try { await action(); return true; }
+        catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败，请重试"); return false; }
         finally { busyRef.current = false; if (mounted.current) setBusy(false); }
+    };
+    const showNotice = (value: string) => {
+        if (noticeTimer.current) clearTimeout(noticeTimer.current);
+        setNotice(value);
+        noticeTimer.current = setTimeout(() => { if (mounted.current) setNotice(null); noticeTimer.current = null; }, 2000);
     };
     const stash = () => void run(async () => {
         const result = await controller.current?.stash();
-        setNotice(result === "duplicate" ? "已在暂存中" : "已暂存");
-        await new Promise<void>((resolve) => setTimeout(resolve, 650));
-        await close(false);
+        if (!result) throw new Error("捕获窗口已关闭");
+        setState({ kind: "result", result: { kind: "skip", reason: "stashed", hash: null } });
+        showNotice(result === "duplicate" ? "已在暂存中" : "已暂存");
+        try { await refresh(); }
+        catch { setError("已暂存，但暂存区数量刷新失败；请重新打开暂存区查看"); }
     });
-    const changeStash = (action: () => Promise<void>) => void run(async () => { await action(); await refresh(); });
+    const changeStash = (action: () => Promise<void>) => run(async () => { await action(); await refresh(); });
     const offer = state.kind === "result" && state.result.kind === "offer" ? state.result : null;
     const message = state.kind === "result" && state.result.kind === "skip"
         ? state.result.reason === "tooLong" ? "内容超过 20000 字，建议回到 IRisNote 保存为笔记"
@@ -116,17 +125,17 @@ export function ExcerptCaptureScreen({ sessionId, captureId, captureEntry }: {
 
     return <GestureHandlerRootView className="flex-1 bg-transparent">
         {state.kind === "loading" ? <View className="flex-1 items-center justify-center"><ActivityIndicator color={semanticColors.brandPrimary} accessibilityLabel="正在检测剪贴板" /></View> : !form && (
-            <DraftDialog visible title={panel ? `暂存区（${items.length} 条）` : "快速摘录"} onClose={() => { if (panel) setPanel(false); else void close(false); }} closeOnScrimTap={!busy} leading={panel ? <Pressable accessibilityRole="button" accessibilityLabel="返回快速摘录" onPress={() => setPanel(false)}><Text>←</Text></Pressable> : undefined} headerExtra={<Pressable accessibilityRole="button" accessibilityLabel="关闭快速摘录" disabled={busy} onPress={() => void close(false)}><Text>✕</Text></Pressable>}>
+            <DraftDialog visible title={panel ? `暂存区（${items.length} 条）` : "快速摘录"} onClose={() => { if (panel) setPanel(false); else void close(false); }} closeOnScrimTap={!busy} headerExtra={<Pressable accessibilityRole="button" accessibilityLabel="关闭快速摘录" disabled={busy} onPress={() => void close(false)}><Text>✕</Text></Pressable>}>
                 {panel ? <>
-                    <ExcerptStashPanel items={items} busy={busy} onMove={(id, direction) => changeStash(() => controller.current!.moveStash(id, direction))} onEdit={(item) => setForm({ kind: "edit", item })} onRemove={(id) => changeStash(() => controller.current!.removeStash(id))} onClear={() => changeStash(() => controller.current!.clearStash())} onMerge={() => { setSeparator(true); setForm({ kind: "merge" }); }} />
+                    <ExcerptStashPanel items={items} busy={busy} onReorder={(ids) => changeStash(() => controller.current!.reorderStash(ids))} onEdit={(item) => setForm({ kind: "edit", item })} onRemove={(id) => void changeStash(() => controller.current!.removeStash(id))} onClear={() => void changeStash(() => controller.current!.clearStash())} onMerge={() => { setSeparator(true); setForm({ kind: "merge" }); }} />
                     <AppButton className="mt-2" variant="secondary" label="返回" disabled={busy} onPress={() => setPanel(false)} />
                 </> : <>
+                    {notice && <Text accessibilityRole="alert" className="mb-2 text-sm text-primary">{notice}</Text>}
                     {offer ? <><Text className="text-sm leading-5 text-primary">检测到剪贴板新内容</Text><Text numberOfLines={3} className="mt-2 text-[15px] leading-[21px] text-black">{offer.content}</Text><Text className="mt-3 text-sm leading-5 text-hyper-text-secondary">摘录仅保存在本机，暂不同步到云端</Text></> : <Text className="text-sm leading-5 text-hyper-text-secondary">{message}</Text>}
                     {items.length > 0 && <Text className="mt-3 text-sm text-primary" onPress={() => setPanel(true)}>暂存区有 {items.length} 条 · 查看</Text>}
                     {!offer && <View className="mt-3 flex-row gap-2.5"><AppButton className="flex-1" variant="secondary" label="返回原应用" onPress={() => void close(false)} /><AppButton className="flex-1" label="查看暂存区" disabled={items.length === 0} onPress={() => setPanel(true)} /></View>}
                     {offer && <View className="mt-3 flex-row gap-2.5"><AppButton className="flex-1" variant="secondary" label="暂存" disabled={busy} onPress={stash} /><AppButton className="flex-1" label="保存" disabled={busy} onPress={() => setForm({ kind: "offer" })} /></View>}
                 </>}
-                {notice && <Text accessibilityRole="alert" className="mt-2 text-sm text-primary">{notice}</Text>}
                 {error && <Text accessibilityRole="alert" className="mt-3 text-sm text-hyper-error">{error}</Text>}
             </DraftDialog>
         )}

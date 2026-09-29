@@ -114,10 +114,10 @@ export default function ExcerptsScreen() {
             useClipboardOfferStore.setState({ offer: null });
     }, [ownerKey, stash.items]);
     const stashAction = async (action: () => Promise<void>) => {
-        if (stashBusy) return;
+        if (stashBusy) return false;
         setStashBusy(true); setStashError("");
-        try { await action(); await stash.refresh(); }
-        catch (cause) { setStashError(errorMessage(cause)); }
+        try { await action(); await stash.refresh(); return true; }
+        catch (cause) { setStashError(errorMessage(cause)); return false; }
         finally { setStashBusy(false); }
     };
     const showHint =
@@ -356,7 +356,7 @@ export default function ExcerptsScreen() {
                 />
             )}
             {stashPanel && !stashForm && <DraftDialog visible title={`暂存区（${stash.items.length} 条）`} onClose={() => setStashPanel(false)} closeOnScrimTap={!stashBusy}>
-                <ExcerptStashPanel items={stash.items} busy={stashBusy} onMove={(id, direction) => void stashAction(() => stash.repository.move(ownerKey, id, direction))} onEdit={(item) => setStashForm({ kind: "edit", item })} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={() => { setSeparator(true); setStashForm({ kind: "merge" }); }} />
+                <ExcerptStashPanel items={stash.items} busy={stashBusy} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onEdit={(item) => setStashForm({ kind: "edit", item })} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={() => { setSeparator(true); setStashForm({ kind: "merge" }); }} />
                 {stashError && <Text accessibilityRole="alert" style={{ color: semanticColors.destructive }}>{stashError}</Text>}
             </DraftDialog>}
             {stashForm && ready && <ExcerptFormDialog key={stashForm.kind === "edit" ? stashForm.item.clientId : stashForm.kind} ownerKey={ownerKey} generation={generation} duplicateMessage={stashForm.kind === "edit" ? "已在暂存中" : undefined} initialText={stashForm.kind === "offer" ? stashForm.offer.content : stashForm.kind === "edit" ? stashForm.item.content : mergeStashContents(stash.items, separator)} mergeSeparator={stashForm.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(stash.items, enabled) } : undefined} onClose={() => setStashForm(null)} onSaved={() => {
