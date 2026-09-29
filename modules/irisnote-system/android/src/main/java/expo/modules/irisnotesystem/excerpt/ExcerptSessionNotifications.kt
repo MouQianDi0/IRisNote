@@ -3,6 +3,7 @@ package expo.modules.irisnotesystem.excerpt
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -11,7 +12,12 @@ import expo.modules.irisnotesystem.live.LiveTodoNotifier
 
 /** 只持久化随机会话 ID、到期时间与入口版本；不接触剪贴板正文、账号或数据库。 */
 object ExcerptSessionNotifications {
-  const val ID = 7003
+  // 保留段：7001 演示通知、7002 待办聚合卡、7003 前台服务停机占位
+  // （LiveTodoForegroundService.PLACEHOLDER_NOTIFICATION_ID，仅停机瞬间存在）。
+  // 曾用 7003 与停机占位双占，占位会把本卡顶掉并连带移除，故迁移到 7004。
+  const val ID = 7004
+  /** 迁移前旧版本的通知 ID；发新卡时顺手清理残留，系统 setTimeoutAfter 也兜底撤卡。 */
+  private const val LEGACY_ID = 7003
   const val CHANNEL = "irisnote.excerpt-session.v1"
   const val STOP = "irisnote.excerpt-session.STOP"
   const val DISMISS = "irisnote.excerpt-session.DISMISS"
@@ -19,6 +25,17 @@ object ExcerptSessionNotifications {
   const val ENTRY_EXTRA = "captureEntry"
   const val ENTRY_CARD_BUTTON = "card_button"
   private const val CAPTURE_REQUEST_CODE = ID + 1
+  private const val CAPTURE_HOST_CLASS =
+    "expo.modules.irisnotesystem.excerpt.ExcerptCaptureHostActivity"
+
+  /** 宿主 Activity 由 config plugin 在 prebuild 时生成到 app 源集（不入库）；
+   *  漏跑 prebuild 的旧工程编译照常通过，但运行时缺类，显式 Intent 点开会崩。 */
+  private fun captureHostResolvable(context: Context): Boolean = try {
+    context.packageManager.getActivityInfo(ComponentName(context, CAPTURE_HOST_CLASS), 0)
+    true
+  } catch (_: Exception) {
+    false
+  }
   private fun preferences(context: Context) =
     context.getSharedPreferences("irisnote.excerpt-session", Context.MODE_PRIVATE)
 
@@ -31,6 +48,8 @@ object ExcerptSessionNotifications {
     check(prefs.getString("stopped", null) != sessionId) { "摘录会话已停止" }
     check(prefs.getString("dismissed", null) != sessionId) { "摘录通知已被用户关闭" }
     val manager = context.getSystemService(NotificationManager::class.java)
+    // 清理迁移前旧 ID（7003）的残留卡；若恰逢前台停机占位短暂存在，取消是幂等的，不影响服务停机。
+    manager.cancel(LEGACY_ID)
     // 已存在则保留系统展示状态，不重复请求用户已降级的提升式通知。
     // 升级前仍在展示的 A 档卡保留原入口至本会话结束；新会话才使用 B 档。
     if (prefs.getString("active", null) == sessionId &&
@@ -38,18 +57,31 @@ object ExcerptSessionNotifications {
     check(prefs.edit().putString("active", sessionId).putLong("endsAt", endsAt)
       .putInt("entryVersion", 2).commit()) { "无法登记摘录会话" }
     // Activity PendingIntent 直接启动焦点窗口，不经过广播/服务通知 trampoline。
-    val launch = Intent().setClassName(context,
-      "expo.modules.irisnotesystem.excerpt.ExcerptCaptureHostActivity")
+    val launch = Intent().setClassName(context, CAPTURE_HOST_CLASS)
       .setData(Uri.parse("irisnote://excerpt-session/capture/$sessionId"))
       .putExtra(SESSION_EXTRA, sessionId)
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-    val contentIntent = PendingIntent.getActivity(context, ID, launch,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    // 宿主缺失时主体降级为主应用入口（等同 A 档深链可用性），不提供捕获按钮，避免点开即崩。
+    val captureReady = captureHostResolvable(context)
+    val contentIntent: PendingIntent = if (captureReady) {
+      PendingIntent.getActivity(context, ID, launch,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    } else {
+      val mainLaunch = requireNotNull(
+        context.packageManager.getLaunchIntentForPackage(context.packageName),
+      ) { "主应用启动入口缺失" }
+      PendingIntent.getActivity(context, ID, mainLaunch,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
     // 通知按钮与卡主体进入同一捕获窗口；独立请求码防止 PendingIntent 合并，
     // entry 仅用于诊断入口计数，不接触剪贴板正文、账号或会话状态。
-    val saveIntent = Intent(launch).putExtra(ENTRY_EXTRA, ENTRY_CARD_BUTTON)
-    val savePendingIntent = PendingIntent.getActivity(context, CAPTURE_REQUEST_CODE, saveIntent,
-      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    val savePendingIntent: PendingIntent? = if (captureReady) {
+      val saveIntent = Intent(launch).putExtra(ENTRY_EXTRA, ENTRY_CARD_BUTTON)
+      PendingIntent.getActivity(context, CAPTURE_REQUEST_CODE, saveIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    } else {
+      null
+    }
     val stopIntent = Intent(context, ExcerptSessionActionReceiver::class.java)
       .setAction(STOP).setData(Uri.parse("irisnote://excerpt-session/stop/$sessionId"))
       .putExtra(SESSION_EXTRA, sessionId)
@@ -69,8 +101,12 @@ object ExcerptSessionNotifications {
       .setContentIntent(contentIntent)
       .setDeleteIntent(dismissPendingIntent)
       .setTimeoutAfter(remaining)
-      .addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "保存剪贴板", savePendingIntent).build())
-      .addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "停止", stopPendingIntent).build())
+      .apply {
+        if (savePendingIntent != null) {
+          addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "保存剪贴板", savePendingIntent).build())
+        }
+        addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "停止", stopPendingIntent).build())
+      }
       .build()
     manager.notify(ID, notification)
   }
@@ -78,6 +114,8 @@ object ExcerptSessionNotifications {
   @Synchronized
   fun captureRemaining(context: Context, sessionId: String): Long {
     val prefs = preferences(context)
+    // entryVersion==2 与 B 档捕获宿主入口绑定；120 分钟上限必须与 JS 侧
+    // EXCERPT_SESSION_DURATIONS 最大档（120）一致，调大档位须同步此处，否则捕获窗口会静默失效。
     if (sessionId.isBlank() || prefs.getInt("entryVersion", 0) != 2 || prefs.getString("active", null) != sessionId ||
       prefs.getString("stopped", null) == sessionId || prefs.getString("dismissed", null) == sessionId) return 0
     val remaining = prefs.getLong("endsAt", 0) - System.currentTimeMillis()

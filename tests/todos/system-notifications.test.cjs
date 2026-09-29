@@ -479,7 +479,7 @@ test("快速摘录独立 HIGH 静默渠道不受待办渠道关闭影响，权�
 
 test("摘录状态卡透传会话身份、到期和倒计时，原有聚合卡默认不携带摘录动作", async () => {
   const s = service("android", { granted: true, canAskAgain: true });
-  await s.postStateCard({ id: 7003, channelId: "irisnote.excerpt-session.v1", title: "快速摘录进行中",
+  await s.postStateCard({ id: 7004, channelId: "irisnote.excerpt-session.v1", title: "快速摘录进行中",
     text: "复制内容后回到 IRisNote 即可保存", iconResourceName: "ic_excerpt_session",
     chronoAt: 12345, chronoCountdown: true, excerptSessionId: "session-test", expiresAt: 12345 });
   const payload = s.calls.find(([kind]) => kind === "native-post")[1];

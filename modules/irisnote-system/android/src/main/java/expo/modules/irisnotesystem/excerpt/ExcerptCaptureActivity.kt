@@ -59,6 +59,7 @@ open class ExcerptCaptureActivity : ReactActivity() {
       val clipboard = active(captureId, true).getSystemService(ClipboardManager::class.java)
       val clip = clipboard.primaryClip ?: return ""
       if (clip.itemCount == 0) return ""
+      // 域上限 20000 字（excerpt-validation）→ 至多 40000 个 UTF-16 单元，+2 余量防代理对截断误判；
       // 不解引用 URI，不把大剪贴板内容无限量送入 JS；正文只经过当前内存调用。
       return clip.getItemAt(0).text?.take(40_002)?.toString() ?: ""
     }

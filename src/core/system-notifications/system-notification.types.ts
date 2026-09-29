@@ -36,7 +36,10 @@ export const RUNTIME_NOTIFICATION_ID = "irisnote.runtime.status";
 export const LIVE_TEST_NOTIFICATION_ID = 7001;
 export const LIVE_TODO_SUMMARY_NOTIFICATION_ID = 7002;
 export const EXCERPT_SESSION_CHANNEL = "irisnote.excerpt-session.v1";
-export const EXCERPT_SESSION_NOTIFICATION_ID = 7003;
+// 7004：保留段 7001 演示 / 7002 聚合卡 / 7003 前台服务停机占位（LiveTodoForegroundService）。
+// 摘录会话卡曾用 7003 与停机占位冲突（占位会顶掉本卡），迁移到 7004；
+// 原生侧 ExcerptSessionNotifications.ID 同步为 7004，并在发卡时清理旧 7003 残留。
+export const EXCERPT_SESSION_NOTIFICATION_ID = 7004;
 // Reserved semantic only; no unused Android channel is created.
 export type SystemNotificationPurpose =
     | "reminder"

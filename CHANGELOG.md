@@ -1,3 +1,12 @@
+## 2026-09-30 00:24:07 | 修复问题：摘录卡通知 ID 迁移 7004 消除停机占位冲突，捕获宿主缺失时降级不再崩溃
+
+- 变更概述：按两次独立代码审查的确认项修复。①摘录会话卡通知 ID 7003 → 7004：原与前台服务停机占位（LiveTodoForegroundService）双占，停机瞬间占位会把摘录卡顶掉并连带移除，用户丢失「点通知确认保存」入口；现停机占位独占 7003，摘录卡用 7004，发卡时清理旧 7003 残留。②捕获宿主 `ExcerptCaptureHostActivity` 由 prebuild 生成、漏跑 prebuild 的安装包点通知会 ClassNotFoundException 崩溃：发卡前校验宿主可解析，缺失时卡主体降级为主应用入口、不提供「保存剪贴板」按钮，停止与倒计时不受影响。附带 4 项审查 Minor：注释补齐（40_002 魔数、entryVersion/120min 耦合、保留段路由、停机占位勿复用 7004）与被推翻日志的推翻指引。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt、ExcerptCaptureActivity.kt、live/LiveTodoForegroundService.kt、IrisNoteSystemModule.kt；src/core/system-notifications/system-notification.types.ts；tests/excerpts/excerpt-capture.test.cjs、tests/todos/system-notifications.test.cjs；docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-30-review-fixes-notification-id-host-guard.md（新增）、docs/logs/2026-09-29-note-status-write-coalescing.md（加推翻指引）、CHANGELOG.md。
+- 具体内容：保留段定为 7001 演示/7002 聚合卡/7003 停机占位/7004 摘录卡（待办动态卡 ≥10000 无交集）；`captureHostResolvable` 以 `getActivityInfo(ComponentName, 0)` 校验，captureReady=true 路径与改前逐字节等价，降级仅在宿主缺失环境生效；无默认值/开关反转。审查一（合并 378052c）结论 Yes 无 Critical/Important；审查二（合并 7285493）两条 Important 均为存量问题、本次一并修复，其余 Minor 中 TOCTOU（自愈型）、分屏边缘（真机项）、CHANGELOG 既有乱序（继承）按审查意见不修。
+- 验证：目标测试 node --test 三文件 35/35；`npm run typecheck` 0 错误；`npm run check` 全过（node --test 684/684，typecheck/lint/theme:check 通过）；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL（1m 15s，2 个既有风格弃用警告）。审查建议的两项真机复现（漏 prebuild 构建点通知表现、会话期间停机占位不再顶卡）与完整 APK 构建未做，需 staging 包验收。
+
+---
+
 ## 2026-09-30 00:13:05 | 新增功能：摘录会话卡新增「保存剪贴板」按钮进入透明确认窗口
 
 - 变更概述：按用户确认的方案，在摘录会话状态卡（ID 7003）上增加「保存剪贴板」动作按钮：与点卡片主体进入同一 B 档透明捕获窗口（独立请求码 Activity PendingIntent，附 `captureEntry=card_button` 入口标记），取焦检测、确认保存后返回原应用；「随时可存」按「卡在即可存」落地，保存不依赖应用内检测器状态；不新增权限、表、后端接口，不改停止/划除/到期语义。

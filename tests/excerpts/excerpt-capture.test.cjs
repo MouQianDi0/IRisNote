@@ -271,6 +271,10 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
         ),
         "utf8",
     );
+    // 摘录卡通知 ID 迁移到 7004：7001 演示、7002 聚合、7003 前台停机占位（勿双占），旧 7003 残留发卡时清理。
+    assert.match(notifications, /const val ID = 7004/);
+    assert.match(notifications, /private const val LEGACY_ID = 7003/);
+    assert.match(notifications, /manager\.cancel\(LEGACY_ID\)/);
     // 按钮与卡主体同一捕获宿主，独立请求码防止 PendingIntent 合并。
     assert.match(notifications, /"保存剪贴板", savePendingIntent/);
     assert.match(notifications, /CAPTURE_REQUEST_CODE = ID \+ 1/);
@@ -281,6 +285,11 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
     assert.match(notifications, /Intent\(launch\)\.putExtra\(ENTRY_EXTRA, ENTRY_CARD_BUTTON\)/);
     // 停止动作与既有广播链路保持不变。
     assert.match(notifications, /"停止", stopPendingIntent/);
+    // 宿主类由 prebuild 生成：发卡前校验可解析性，缺失时主体降级为主应用入口且不提供捕获按钮。
+    assert.match(notifications, /captureHostResolvable\(context\)/);
+    assert.match(notifications, /getActivityInfo\(ComponentName\(context, CAPTURE_HOST_CLASS\), 0\)/);
+    assert.match(notifications, /getLaunchIntentForPackage\(context\.packageName\)/);
+    assert.match(notifications, /if \(savePendingIntent != null\)/);
     const activity = fs.readFileSync(
         path.join(
             root,

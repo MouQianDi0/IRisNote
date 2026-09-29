@@ -223,6 +223,9 @@ class IrisNoteSystemModule : Module() {
       notificationManager().notify(requireInt("id"), notification)
     }
 
+    // 保留段 7001–7004：7001 演示、7002 待办聚合卡、7003 前台停机占位、7004 摘录会话卡。
+    // 摘录卡取消按常量路由（连带清原生 active 身份），其余 ID 走通用取消；
+    // 待办动态卡 ID 从 10000 起，与保留段无交集。
     AsyncFunction("cancelProgressNotification") { id: Int ->
       if (id == ExcerptSessionNotifications.ID) ExcerptSessionNotifications.cancel(context())
       else notificationManager().cancel(id)
