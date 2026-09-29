@@ -30,6 +30,9 @@ export type NativeProgressNotification = {
   chronoCountdown?: boolean;
   iconResourceName?: string | null;
   hideProgress?: boolean;
+  /** 逐条待办卡动作按钮身份：齐备时下发「取消通知/+30分钟/完成」按钮（+30分钟需有结束时间）。 */
+  ownerKey?: string | null;
+  clientId?: string | null;
 };
 
 /**
@@ -47,6 +50,9 @@ export type NativeLiveTodoTimelineCard = {
   promoted: boolean;
   summaryItems?: NativeTodoSummaryItem[];
   summarySeenActivity?: boolean;
+  /** 逐条卡动作按钮身份；聚合卡与旧快照缺省。 */
+  ownerKey?: string | null;
+  clientId?: string | null;
 };
 
 export type NativeTodoSummaryItem = {
@@ -57,9 +63,29 @@ export type NativeTodoSummaryItem = {
   /** 创建时选择的重要度；high 视为「重要」。 */
   priority: "low" | "normal" | "high";
   completedAt: number | null;
+  /** 动作按钮定位身份；旧快照缺省。 */
+  ownerKey?: string | null;
+  clientId?: string | null;
 };
 
-declare class IrisNoteSystemModule extends NativeModule {
+/** 动态卡动作标记（原生 LiveTodoActionStore 的 JSON 反序列化形态）。 */
+export type NativePendingCardAction = {
+  id: string;
+  action: "cancel" | "snooze" | "complete";
+  ownerKey: string;
+  clientId: string;
+  at: number;
+};
+
+export type NativeCardActionEvent = {
+  action: "cancel" | "snooze" | "complete";
+  ownerKey: string | null;
+  clientId: string;
+};
+
+declare class IrisNoteSystemModule extends NativeModule<{
+  onDynamicCardAction: (event: NativeCardActionEvent) => void;
+}> {
   getExactAlarmAccess(): Promise<NativeExactAlarmAccess>;
   saveDiagnosticLog(
     sourceUri: string,
@@ -82,6 +108,10 @@ declare class IrisNoteSystemModule extends NativeModule {
   startLiveTodoForegroundService(): Promise<void>;
   /** 停止前台服务。 */
   stopLiveTodoForegroundService(): Promise<void>;
+  /** 动态卡动作标记快照（JSON 字符串）；读取不消费，成功应用后须调 clear。 */
+  consumePendingTodoActions(): Promise<string>;
+  /** 消费成功后按 id 清除动作标记（入参为 id JSON 数组字符串）。 */
+  clearPendingTodoActions(payload: string): Promise<void>;
 }
 
 export default requireOptionalNativeModule<IrisNoteSystemModule>(

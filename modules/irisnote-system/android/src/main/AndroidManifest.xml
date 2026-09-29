@@ -15,6 +15,11 @@
       android:name=".live.LiveTodoAlarmReceiver"
       android:exported="false" />
 
+    <!-- 动态卡动作接收器（取消通知/延迟30分钟/完成；进程死亡也会被拉起）。 -->
+    <receiver
+      android:name=".live.LiveTodoActionReceiver"
+      android:exported="false" />
+
     <!-- 方案 B：秒级刷新前台服务；FGS 通知即进度卡片本身。 -->
     <service
       android:name=".live.LiveTodoForegroundService"

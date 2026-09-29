@@ -13,6 +13,8 @@ private const val FIELD_END_AT = "endAt"
 private const val FIELD_PROMOTED = "promoted"
 private const val FIELD_SUMMARY_ITEMS = "summaryItems"
 private const val FIELD_SUMMARY_SEEN = "summarySeenActivity"
+private const val FIELD_OWNER_KEY = "ownerKey"
+private const val FIELD_CLIENT_ID = "clientId"
 
 data class LiveTodoSummaryItem(
   val title: String,
@@ -22,6 +24,9 @@ data class LiveTodoSummaryItem(
   /** 创建时选择的重要度；high 视为「重要」。 */
   val priority: String,
   val completedAt: Long?,
+  /** 动作按钮定位身份；旧快照缺省为 null（不下发按钮）。 */
+  val ownerKey: String? = null,
+  val clientId: String? = null,
 )
 
 /**
@@ -39,6 +44,9 @@ data class LiveTodoTimelineCard(
   val promoted: Boolean,
   val summaryItems: List<LiveTodoSummaryItem>? = null,
   val summarySeenActivity: Boolean = false,
+  /** 逐条卡动作按钮身份（owner+待办）；聚合卡与旧快照为 null（不下发按钮）。 */
+  val ownerKey: String? = null,
+  val clientId: String? = null,
 ) {
   /** 是否处于进行中窗口（已到开始且未过结束；恰好结束不算）。 */
   fun isActiveAt(nowMs: Long): Boolean =
@@ -60,6 +68,8 @@ data class LiveTodoTimelineCard(
         startAt = obj.optLong(FIELD_START_AT),
         endAt = endAt,
         promoted = obj.optBoolean(FIELD_PROMOTED, true),
+        ownerKey = if (obj.isNull(FIELD_OWNER_KEY)) null else obj.optString(FIELD_OWNER_KEY),
+        clientId = if (obj.isNull(FIELD_CLIENT_ID)) null else obj.optString(FIELD_CLIENT_ID),
         summaryItems = obj.optJSONArray(FIELD_SUMMARY_ITEMS)?.let { items ->
           (0 until items.length()).mapNotNull { itemIndex ->
             val item = items.optJSONObject(itemIndex) ?: return@mapNotNull null
@@ -70,6 +80,8 @@ data class LiveTodoTimelineCard(
               completed = item.optBoolean("completed"),
               priority = item.optString("priority").ifEmpty { "normal" },
               completedAt = if (item.isNull("completedAt")) null else item.optLong("completedAt"),
+              ownerKey = if (item.isNull(FIELD_OWNER_KEY)) null else item.optString(FIELD_OWNER_KEY),
+              clientId = if (item.isNull(FIELD_CLIENT_ID)) null else item.optString(FIELD_CLIENT_ID),
             )
           }
         },
@@ -125,6 +137,16 @@ class LiveTodoTimelineStore(context: Context) {
       } else {
         obj.put(FIELD_TEXT_STARTED, card.textStarted)
       }
+      if (card.ownerKey == null) {
+        obj.put(FIELD_OWNER_KEY, JSONObject.NULL)
+      } else {
+        obj.put(FIELD_OWNER_KEY, card.ownerKey)
+      }
+      if (card.clientId == null) {
+        obj.put(FIELD_CLIENT_ID, JSONObject.NULL)
+      } else {
+        obj.put(FIELD_CLIENT_ID, card.clientId)
+      }
       card.summaryItems?.let { items ->
         val arrayItems = JSONArray()
         for (item in items) {
@@ -134,7 +156,9 @@ class LiveTodoTimelineStore(context: Context) {
             .put("endAt", item.endAt ?: JSONObject.NULL)
             .put("completed", item.completed)
             .put("priority", item.priority)
-            .put("completedAt", item.completedAt ?: JSONObject.NULL))
+            .put("completedAt", item.completedAt ?: JSONObject.NULL)
+            .put(FIELD_OWNER_KEY, item.ownerKey ?: JSONObject.NULL)
+            .put(FIELD_CLIENT_ID, item.clientId ?: JSONObject.NULL))
         }
         obj.put(FIELD_SUMMARY_ITEMS, arrayItems)
         obj.put(FIELD_SUMMARY_SEEN, card.summarySeenActivity)

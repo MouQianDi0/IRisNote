@@ -10,6 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.irisnotesystem.live.LiveTodoActionStore
 import expo.modules.irisnotesystem.live.LiveTodoForegroundService
 import expo.modules.irisnotesystem.live.LiveTodoNotifier
 import expo.modules.irisnotesystem.live.LiveTodoScheduler
@@ -17,6 +18,7 @@ import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
 import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
 import java.io.File
 import org.json.JSONArray
+import org.json.JSONObject
 
 class IrisNoteSystemModule : Module() {
   private fun context() = requireNotNull(appContext.reactContext) { "应用尚未就绪" }
@@ -128,6 +130,31 @@ class IrisNoteSystemModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("IrisNoteSystem")
 
+    Events("onDynamicCardAction")
+
+    OnCreate {
+      // 动作接收器（BroadcastReceiver，无模块实例）→ JS 的事件桥：
+      // 仅 React 上下文存活时可达；进程死亡时静默失败，标记由下次前台消费兜底。
+      cardActionSink = { action, ownerKey, clientId ->
+        try {
+          sendEvent(
+            "onDynamicCardAction",
+            mapOf(
+              "action" to action,
+              "ownerKey" to ownerKey,
+              "clientId" to clientId,
+            ),
+          )
+        } catch (_: Throwable) {
+          // JS 上下文不可达：LiveTodoActionStore 标记留存，前台刷新时消费。
+        }
+      }
+    }
+
+    OnDestroy {
+      cardActionSink = null
+    }
+
     AsyncFunction("getExactAlarmAccess") {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
         "not-required"
@@ -175,6 +202,9 @@ class IrisNoteSystemModule : Module() {
         chronoCountdown = input["chronoCountdown"] == true,
         iconResourceName = input["iconResourceName"] as? String,
         hideProgress = input["hideProgress"] == true,
+        notificationId = requireInt("id"),
+        ownerKey = input["ownerKey"] as? String,
+        clientId = input["clientId"] as? String,
       )
       notificationManager().notify(requireInt("id"), notification)
     }
@@ -239,6 +269,46 @@ class IrisNoteSystemModule : Module() {
     AsyncFunction("stopLiveTodoForegroundService") {
       requireProgressNotificationSupport()
       LiveTodoForegroundService.stop(context())
+    }
+
+    /**
+     * 动态卡动作标记快照（JSON 字符串，含 id/action/ownerKey/clientId/at）。
+     * JS 消费例程读取后逐条落库（完成/延迟）或记抑制（取消），成功才调
+     * clearPendingTodoActions 按 id 清除——读取不消费，避免 JS 中途崩溃丢标记。
+     */
+    AsyncFunction("consumePendingTodoActions") {
+      val array = JSONArray()
+      for (entry in LiveTodoActionStore.load(context())) {
+        array.put(
+          JSONObject()
+            .put("id", entry.id)
+            .put("action", entry.action)
+            .put("ownerKey", entry.ownerKey)
+            .put("clientId", entry.clientId)
+            .put("at", entry.at),
+        )
+      }
+      array.toString()
+    }
+
+    /** 消费成功后按 id 清除动作标记（入参为 id JSON 数组字符串）。 */
+    AsyncFunction("clearPendingTodoActions") { payload: String ->
+      val array = JSONArray(payload)
+      val ids = (0 until array.length())
+        .mapNotNull { index -> array.optJSONObject(index)?.optString("id") }
+        .filter { it.isNotEmpty() }
+        .toSet()
+      LiveTodoActionStore.removeAll(context(), ids)
+    }
+  }
+
+  companion object {
+    @Volatile
+    private var cardActionSink: ((action: String, ownerKey: String?, clientId: String) -> Unit)? = null
+
+    /** LiveTodoActionReceiver 入口：模块存活则把动作推给 JS，否则静默（标记兜底）。 */
+    fun emitCardAction(action: String, ownerKey: String?, clientId: String) {
+      cardActionSink?.invoke(action, ownerKey, clientId)
     }
   }
 }
