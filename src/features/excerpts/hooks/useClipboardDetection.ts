@@ -19,6 +19,7 @@ import { sessionIsActive } from "../domain/excerpt-session";
 import { clipboardHandledStoreFor } from "../services/clipboard-handled";
 import { clipboardService } from "../services/clipboard.service";
 import { saveDetectedOffer } from "../services/excerpt-service";
+import { excerptCaptureOpen } from "../services/excerpt-capture";
 import { useClipboardOfferStore } from "../state/clipboard-offer-store";
 import { excerptRepository } from "../state/excerpt-store";
 import { useExcerptSessionStore } from "../state/excerpt-session-store";
@@ -95,6 +96,8 @@ export function useClipboardDetectionController({
         if (!eligibility()) return;
         try {
             await beforeDetect();
+            // 两个原生 Surface 共用 JS runtime，透明窗口期间只由它读取剪贴板。
+            if (await excerptCaptureOpen()) return;
             const start = latest.current;
             const token = eligibility();
             if (!token) return;
@@ -103,7 +106,7 @@ export function useClipboardDetectionController({
                 latest.current.ownerKey === start.ownerKey &&
                 latest.current.generation === start.generation;
             const result = await detectClipboard({
-                enabled: async () => valid(),
+                enabled: async () => valid() && !(await excerptCaptureOpen()) && valid(),
                 hasText: clipboardService.hasText,
                 readText: clipboardService.readText,
                 isHandled: (hash) =>
@@ -116,7 +119,7 @@ export function useClipboardDetectionController({
                         latest.current.entities.map((item) => item.contentHash),
                     ),
             });
-            if (!valid()) return;
+            if (!valid() || (await excerptCaptureOpen())) return;
             if (result.kind === "offer") {
                 const existing = useClipboardOfferStore.getState().offer;
                 // 导航到摘录页时展示已有候选；它只由明确保存/忽略或下一次剪贴板变化替换。

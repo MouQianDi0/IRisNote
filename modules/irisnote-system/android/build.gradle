@@ -6,6 +6,10 @@ plugins {
 group = 'expo.modules.irisnotesystem'
 version = '1.0.0'
 
+dependencies {
+  implementation 'com.facebook.react:react-android'
+}
+
 android {
   namespace 'expo.modules.irisnotesystem'
   defaultConfig {

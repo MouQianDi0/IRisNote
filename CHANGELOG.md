@@ -1,3 +1,12 @@
+## 2026-09-29 14:54:26 | 新增功能：快速摘录通知透明确认保存（二期 B 档）
+
+- 变更概述：快速摘录通知主体打开独立透明捕获窗口，取得焦点后检测并由用户确认保存，关闭后返回原应用；应用内检测继续保留。
+- 修改文件：package.json、index.js、app.json；src/features/excerpts/excerpt-capture-entry.ts、screens/ExcerptCaptureScreen.tsx、services/excerpt-capture-controller.ts、services/excerpt-capture.ts、services/excerpt-session-notifications.ts、hooks/useClipboardDetection.ts、components/ExcerptSessionDialog.tsx；modules/irisnote-system/index.ts、android/build.gradle、android/src/main/AndroidManifest.xml、java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、excerpt/ExcerptSessionNotifications.kt、excerpt/ExcerptCaptureActivity.kt、res/values/excerpt-capture-styles.xml；plugins/with-excerpt-capture.js、plugins/android/ExcerptCaptureHostActivity.kt；tests/excerpts/excerpt-capture.test.cjs、excerpt-capture-build.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、docs/构建发布/本地测试包构建.md、docs/logs/2026-09-29-excerpt-capture.md、CHANGELOG.md。完整路径与各层职责见全链路日志。
+- 具体内容：通知 Activity PendingIntent 直接进入非导出独立任务；sessionId/ownerKey/捕获窗口 captureId 共同隔离，原生读取严格要求焦点。冷启动复用数据库租约和本机账号核验，保存复用 detectClipboard/saveDetectedOffer/本机 SQLite，失败保留原候选、重复保存去重；主应用检测器让出捕获窗口检测权。确认卡复用公共弹窗和主题 Token；保存/忽略关闭，返回仅取消；停止、到期、Home 与启动超时退出。config plugin 自动生成 Expo 宿主，避免原生模块反向依赖 Expo。不新增权限、表、后端接口或摘录上传；既有 A 档通知保持到会话结束，新会话用 B 档。
+- 验证：修改前 typecheck 通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误/1 个既有警告；667 项测试 664 通过、2 跳过、1 个既有发布归档 ENAMETOOLONG 失败，新增 8 项均通过。最终 Android JS export 成功；模块 XML/权限清单、差异空白与冲突标记检查通过。Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动，未生成 APK；真机冷/热启动、返回原应用、双 Surface 和 dp 实测未做。需要重新 prebuild 并构建原生安装包，JS 打包通过不等同原生可发布。
+
+---
+
 ## 2026-09-29 13:30:20 | 新增功能：快速摘录限时会话与 Android 通知入口（一期 A 档）
 
 - 变更概述：摘录工具栏新增 Timer，会话支持 15/30/60/120 分钟；应用内任意页面回流检测剪贴板，摘录页内嵌卡、其他页横幅跳转，由用户确认保存。

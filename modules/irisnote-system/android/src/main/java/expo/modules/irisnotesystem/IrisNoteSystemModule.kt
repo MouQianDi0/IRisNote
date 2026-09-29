@@ -10,12 +10,14 @@ import android.os.Environment
 import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.functions.Queues
 import expo.modules.irisnotesystem.live.LiveTodoForegroundService
 import expo.modules.irisnotesystem.live.LiveTodoNotifier
 import expo.modules.irisnotesystem.live.LiveTodoScheduler
 import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
 import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
 import expo.modules.irisnotesystem.excerpt.ExcerptSessionNotifications
+import expo.modules.irisnotesystem.excerpt.ExcerptCaptureActivity
 import java.io.File
 import org.json.JSONArray
 
@@ -203,6 +205,18 @@ class IrisNoteSystemModule : Module() {
     AsyncFunction("acknowledgeStoppedExcerptSession") { sessionId: String ->
       ExcerptSessionNotifications.acknowledge(context(), sessionId)
     }
+    AsyncFunction("getExcerptCaptureState") { captureId: String? ->
+      ExcerptCaptureActivity.state(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("hasExcerptCaptureText") { captureId: String ->
+      ExcerptCaptureActivity.hasText(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("readExcerptCaptureText") { captureId: String ->
+      ExcerptCaptureActivity.readText(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("finishExcerptCapture") { captureId: String, saved: Boolean ->
+      ExcerptCaptureActivity.close(captureId, saved)
+    }.runOnQueue(Queues.MAIN)
 
     /**
      * 按渠道清理本应用当前展示的全部通知：冷启动 reconcile 被杀残留的动态卡片

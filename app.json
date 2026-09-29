@@ -29,6 +29,7 @@
             "favicon": "./assets/images/IRisNote_iris.png"
         },
         "plugins": [
+            "./plugins/with-excerpt-capture",
             "./plugins/with-local-notification-entitlements",
             ["expo-notifications", { "icon": "./assets/images/notification-icon.png" }],
             [

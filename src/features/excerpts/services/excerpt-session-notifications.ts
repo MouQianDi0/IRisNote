@@ -18,6 +18,14 @@ export function excerptSessionSupported(): boolean {
     );
 }
 
+export function excerptCaptureSupported(): boolean {
+    return excerptSessionSupported() &&
+        typeof NativeSystem?.getExcerptCaptureState === "function" &&
+        typeof NativeSystem?.hasExcerptCaptureText === "function" &&
+        typeof NativeSystem?.readExcerptCaptureText === "function" &&
+        typeof NativeSystem?.finishExcerptCapture === "function";
+}
+
 export async function excerptSessionNotificationPermission(
     request: boolean,
 ): Promise<boolean> {
@@ -38,7 +46,9 @@ export async function postExcerptSessionNotification(
         id: EXCERPT_SESSION_NOTIFICATION_ID,
         channelId: EXCERPT_SESSION_CHANNEL,
         title: "快速摘录进行中",
-        text: "复制内容后回到 IRisNote 即可保存",
+        text: excerptCaptureSupported()
+            ? "复制内容后点通知，确认保存后返回原应用"
+            : "复制内容后回到 IRisNote 即可保存",
         iconResourceName: "ic_excerpt_session",
         chronoAt: session.endsAt,
         chronoCountdown: true,
