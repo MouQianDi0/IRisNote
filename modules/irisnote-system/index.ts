@@ -30,6 +30,9 @@ export type NativeProgressNotification = {
   chronoCountdown?: boolean;
   iconResourceName?: string | null;
   hideProgress?: boolean;
+  /** 摘录会话专用；深链、停止动作与到期撤卡共用会话身份。 */
+  excerptSessionId?: string | null;
+  expiresAt?: number | null;
 };
 
 /**
@@ -69,6 +72,9 @@ declare class IrisNoteSystemModule extends NativeModule {
     content: NativeProgressNotification,
   ): Promise<void>;
   cancelProgressNotification(id: number): Promise<void>;
+  getStoppedExcerptSession(): Promise<string | null>;
+  stopExcerptSession(sessionId: string): Promise<void>;
+  acknowledgeStoppedExcerptSession(sessionId: string): Promise<void>;
   /** 按渠道清理本应用当前展示的全部通知（冷启动 reconcile 被杀残留的动态卡片）。 */
   cancelProgressNotificationsByChannel(channelId: string): Promise<void>;
   /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。

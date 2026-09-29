@@ -3,6 +3,7 @@ import { useFocusEffect } from "expo-router";
 import { Clipboard } from "lucide-react-native";
 import { ActivityIndicator, FlatList, Text, View } from "react-native";
 import { banner } from "@/core/notifications";
+import { excerptSessionSupported } from "../services/excerpt-session-notifications";
 import { semanticColors } from "@/shared/theme";
 import { Input } from "@/shared/ui";
 import DeleteConfirmDialog from "@/shared/ui/Dialog/DeleteConfirmDialog";
@@ -13,6 +14,7 @@ import { ClipboardDetectedCard } from "../components/ClipboardDetectedCard";
 import { ClipboardHintBar } from "../components/ClipboardHintBar";
 import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
 import { ExcerptToolbar } from "../components/ExcerptToolbar";
+import { ExcerptSessionDialog } from "../components/ExcerptSessionDialog";
 import { filterExcerpts } from "../domain/excerpt-validation";
 import { useClipboardDetection } from "../hooks/useClipboardDetection";
 import { useClipboardPreferences } from "../hooks/useClipboardPreferences";
@@ -23,6 +25,7 @@ import {
     pasteClipboardAsExcerpt,
 } from "../services/excerpt-service";
 import { excerptRepository } from "../state/excerpt-store";
+import { useExcerptSessionStore } from "../state/excerpt-session-store";
 import { ExcerptError, type ExcerptEntity } from "../excerpts.types";
 
 const NO_EXCERPTS: readonly ExcerptEntity[] = [];
@@ -79,6 +82,8 @@ export default function ExcerptsScreen() {
     const [now, setNow] = useState(() => new Date());
     const [confirmingDetect, setConfirmingDetect] = useState(false);
     const clipboardPreferences = useClipboardPreferences();
+    const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+    const sessionState = useExcerptSessionStore();
 
     // 回到页面时刷新「今天/昨天」的判断基准。
     useFocusEffect(useCallback(() => setNow(new Date()), []));
@@ -88,17 +93,12 @@ export default function ExcerptsScreen() {
         () => filterExcerpts(entities, keyword),
         [entities, keyword],
     );
-    const detection = useClipboardDetection({
-        enabled: clipboardPreferences.autoDetectEnabled,
-        ready,
-        ownerKey,
-        generation,
-        entities,
-    });
+    const detection = useClipboardDetection();
     const showHint =
         clipboardPreferences.ready &&
         !clipboardPreferences.autoDetectEnabled &&
-        !clipboardPreferences.hintDismissed;
+        !clipboardPreferences.hintDismissed &&
+        !sessionState.session;
 
     const enableDetection = async () => {
         try {
@@ -210,6 +210,17 @@ export default function ExcerptsScreen() {
                         searchOpen={searchOpen}
                         pasting={pasting}
                         disabled={!ready}
+                        sessionSupported={excerptSessionSupported()}
+                        sessionActive={
+                            !!sessionState.session &&
+                            sessionState.session.ownerKey === ownerKey
+                        }
+                        sessionDisabled={
+                            !ready ||
+                            !sessionState.ready ||
+                            sessionState.pending
+                        }
+                        onSession={() => setSessionDialogOpen(true)}
                         onSearch={() => {
                             setSearchOpen(!searchOpen);
                             setKeyword("");
@@ -229,7 +240,10 @@ export default function ExcerptsScreen() {
                             />
                         </View>
                     )}
-                    {detection.offer ? (
+                    {detection.offer &&
+                    ready &&
+                    detection.offer.ownerKey === ownerKey &&
+                    detection.offer.generation === generation ? (
                         <View style={{ marginTop: 12 }}>
                             <ClipboardDetectedCard
                                 content={detection.offer.content}
@@ -318,6 +332,12 @@ export default function ExcerptsScreen() {
                 onCancel={() => setConfirmingDetect(false)}
                 onConfirm={() => void enableDetection()}
             />
+            {excerptSessionSupported() && sessionDialogOpen && (
+                <ExcerptSessionDialog
+                    visible
+                    onClose={() => setSessionDialogOpen(false)}
+                />
+            )}
             <DeleteConfirmDialog
                 visible={!!deleting}
                 description={"删除后无法找回\n该摘录将被永久删除"}

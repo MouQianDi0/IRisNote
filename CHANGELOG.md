@@ -1,3 +1,12 @@
+## 2026-09-29 13:30:20 | 新增功能：快速摘录限时会话与 Android 通知入口（一期 A 档）
+
+- 变更概述：摘录工具栏新增 Timer，会话支持 15/30/60/120 分钟；应用内任意页面回流检测剪贴板，摘录页内嵌卡、其他页横幅跳转，由用户确认保存。
+- 修改文件：src/features/excerpts/domain/excerpt-session.ts、src/features/excerpts/data/excerpt-session.repository.ts、src/features/excerpts/services/excerpt-session-coordinator.ts、src/features/excerpts/services/excerpt-session-notifications.ts、src/features/excerpts/services/excerpt-service.ts、src/features/excerpts/state/clipboard-offer-store.ts、src/features/excerpts/state/excerpt-session-store.ts、src/features/excerpts/hooks/useExcerptSession.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/components/ExcerptSessionDialog.tsx、src/features/excerpts/components/ExcerptToolbar.tsx、src/features/excerpts/screens/ExcerptsScreen.tsx、src/app/_layout.tsx、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionActionReceiver.kt、modules/irisnote-system/android/src/main/res/drawable/ic_excerpt_session.xml、tests/excerpts/excerpt-session.test.cjs、tests/excerpts/excerpt-local.test.cjs、tests/todos/system-notifications.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、CHANGELOG.md、docs/logs/2026-09-29-excerpt-session.md。
+- 具体内容：会话复用 system_preferences，记忆上次时长并绑定账号/随机 sessionId；根布局统一检测入口与共享候选保存服务；独立 HIGH 静默通知 ID 7003、promoted 请求、系统倒计时/超时撤卡、摘录深链和原生停止标记。通知权限拒绝或发卡失败降级为应用内；旧动作/旧异步返回隔离；UI 按公共组件与视觉文档实现。未新增表、API 或权限，当前摘录保存仍为本机 SQLite。
+- 验证：修改前类型检查通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误、1 个既有警告；659 项测试 656 通过、2 跳过、1 既有发布归档 ENAMETOOLONG 失败，新增 13 项均通过。差异空白/冲突标记检查通过；模块 XML/权限清单静态检查通过。Android Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动；原生打包和真机 UI/通知实测未做，不宣称可发布。
+
+---
+
 ## 2026-09-29 12:49:26 | 优化代码：合并 origin/master（5864c31）到本地开发分支
 
 - 变更概述：按用户要求拉取主分支并合入 kroos_vps/codex-a；合并前 HEAD 557ee29，merge-base 9cfe27c，带入远端 8 个提交，自动合并无冲突。

@@ -47,6 +47,7 @@ const {
     copyExcerptText,
     newExcerptId,
     pasteClipboardAsExcerpt,
+    saveDetectedOffer,
 } = require("@/features/excerpts/services/excerpt-service.ts");
 
 const owner = "user:one";
@@ -223,7 +224,10 @@ test("输入计数按规范化正文：开头空行不占上限，满额正文�
     const receipt = await repo.save(owner, id(1), raw, "manual", t0);
     assert.equal(receipt.entity.content, body);
     assert.equal(measureExcerpt(`\n\n${body}多`), EXCERPT_CONTENT_LIMIT + 1);
-    await expectCode(repo.save(owner, id(2), `${body}多`, "manual", t0), "tooLong");
+    await expectCode(
+        repo.save(owner, id(2), `${body}多`, "manual", t0),
+        "tooLong",
+    );
 });
 
 test("切换账号前已受理的写入照常提交，不发布到新账号的列表", async (t) => {
@@ -321,7 +325,10 @@ test("夏令时切换后的“昨天”按日历日判断", () => {
         // 2026-03-08 只有 23 小时：前天 23:30 不是昨天。
         const spring = new Date(2026, 2, 9, 12, 0);
         assert.equal(
-            excerptTimeLabel(new Date(2026, 2, 7, 23, 30).toISOString(), spring),
+            excerptTimeLabel(
+                new Date(2026, 2, 7, 23, 30).toISOString(),
+                spring,
+            ),
             "3月7日 23:30",
         );
         assert.equal(
@@ -331,15 +338,64 @@ test("夏令时切换后的“昨天”按日历日判断", () => {
         // 2026-11-01 有 25 小时：昨天 00:30 仍是昨天。
         const autumn = new Date(2026, 10, 2, 12, 0);
         assert.equal(
-            excerptTimeLabel(new Date(2026, 10, 1, 0, 30).toISOString(), autumn),
+            excerptTimeLabel(
+                new Date(2026, 10, 1, 0, 30).toISOString(),
+                autumn,
+            ),
             "昨天 00:30",
         );
         assert.equal(
-            excerptTimeLabel(new Date(2026, 10, 2, 23, 59).toISOString(), autumn),
+            excerptTimeLabel(
+                new Date(2026, 10, 2, 23, 59).toISOString(),
+                autumn,
+            ),
             "今天 23:59",
         );
     } finally {
         if (previous === undefined) delete process.env.TZ;
         else process.env.TZ = previous;
     }
+});
+
+test("检测候选保存只在用户确认后写本地，失败不标记处理，重复内容复用原摘录", async (t) => {
+    const { repo } = await setup(t);
+    const offer = {
+        ownerKey: owner,
+        generation: repo.generation,
+        content: "检测候选",
+        hash: "offer-hash",
+    };
+    const handled = [];
+    const mark = async (hash) => {
+        handled.push(hash);
+    };
+    const receipt = await saveDetectedOffer(repo, offer, mark);
+    assert.equal(receipt.entity.source, "auto");
+    assert.equal(repo.list(owner).length, 1);
+    assert.deepEqual(handled, [offer.hash]);
+    const duplicated = await saveDetectedOffer(repo, offer, mark);
+    assert.equal(duplicated.duplicated, true);
+    assert.equal(duplicated.entity.clientId, receipt.entity.clientId);
+    await assert.rejects(
+        saveDetectedOffer(
+            repo,
+            { ...offer, generation: offer.generation - 1 },
+            mark,
+        ),
+    );
+    assert.equal(handled.length, 2);
+    await assert.rejects(
+        saveDetectedOffer(
+            {
+                assertSession() {},
+                save: async () => {
+                    throw new Error("disk");
+                },
+            },
+            offer,
+            mark,
+        ),
+        /disk/,
+    );
+    assert.equal(handled.length, 2);
 });

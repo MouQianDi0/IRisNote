@@ -15,6 +15,7 @@ import expo.modules.irisnotesystem.live.LiveTodoNotifier
 import expo.modules.irisnotesystem.live.LiveTodoScheduler
 import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
 import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
+import expo.modules.irisnotesystem.excerpt.ExcerptSessionNotifications
 import java.io.File
 import org.json.JSONArray
 
@@ -159,6 +160,17 @@ class IrisNoteSystemModule : Module() {
         val value = input[key] as? Number ?: throw IllegalArgumentException("缺少 $key")
         return value.toInt()
       }
+      val excerptSessionId = input["excerptSessionId"] as? String
+      if (excerptSessionId != null) {
+        require(requireInt("id") == ExcerptSessionNotifications.ID &&
+          input["channelId"] == ExcerptSessionNotifications.CHANNEL) { "摘录通知身份无效" }
+        ExcerptSessionNotifications.post(context(), excerptSessionId,
+          (input["expiresAt"] as? Number)?.toLong()
+            ?: throw IllegalArgumentException("缺少 expiresAt"),
+          input["title"] as? String ?: throw IllegalArgumentException("缺少 title"),
+          input["text"] as? String)
+        return@AsyncFunction
+      }
       val notification = LiveTodoNotifier.buildExplicitNotification(
         context = context(),
         channelId = input["channelId"] as? String
@@ -180,7 +192,16 @@ class IrisNoteSystemModule : Module() {
     }
 
     AsyncFunction("cancelProgressNotification") { id: Int ->
-      notificationManager().cancel(id)
+      if (id == ExcerptSessionNotifications.ID) ExcerptSessionNotifications.cancel(context())
+      else notificationManager().cancel(id)
+    }
+
+    AsyncFunction("getStoppedExcerptSession") { ExcerptSessionNotifications.stopped(context()) }
+    AsyncFunction("stopExcerptSession") { sessionId: String ->
+      ExcerptSessionNotifications.finish(context(), sessionId)
+    }
+    AsyncFunction("acknowledgeStoppedExcerptSession") { sessionId: String ->
+      ExcerptSessionNotifications.acknowledge(context(), sessionId)
     }
 
     /**

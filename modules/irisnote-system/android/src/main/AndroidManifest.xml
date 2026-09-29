@@ -10,6 +10,9 @@
     android:maxSdkVersion="28" />
 
   <application>
+    <receiver
+      android:name=".excerpt.ExcerptSessionActionReceiver"
+      android:exported="false" />
     <!-- 方案 A：闹钟节拍接收器（进程死亡也会被系统拉起续算）。 -->
     <receiver
       android:name=".live.LiveTodoAlarmReceiver"
