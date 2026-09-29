@@ -262,3 +262,41 @@ test("共用去重和长度规则：已保存/处理/本应用写入/空内容/�
         );
     }
 });
+
+test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默渠道且入口标记只进诊断", () => {
+    const notifications = fs.readFileSync(
+        path.join(
+            root,
+            "modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt",
+        ),
+        "utf8",
+    );
+    // 按钮与卡主体同一捕获宿主，独立请求码防止 PendingIntent 合并。
+    assert.match(notifications, /"保存剪贴板", savePendingIntent/);
+    assert.match(notifications, /CAPTURE_REQUEST_CODE = ID \+ 1/);
+    assert.match(
+        notifications,
+        /PendingIntent\.getActivity\(context, CAPTURE_REQUEST_CODE, saveIntent,\s*PendingIntent\.FLAG_UPDATE_CURRENT or PendingIntent\.FLAG_IMMUTABLE\)/,
+    );
+    assert.match(notifications, /Intent\(launch\)\.putExtra\(ENTRY_EXTRA, ENTRY_CARD_BUTTON\)/);
+    // 停止动作与既有广播链路保持不变。
+    assert.match(notifications, /"停止", stopPendingIntent/);
+    const activity = fs.readFileSync(
+        path.join(
+            root,
+            "modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptCaptureActivity.kt",
+        ),
+        "utf8",
+    );
+    assert.match(activity, /putString\("captureEntry", captureEntry\)/);
+    const screen = fs.readFileSync(
+        path.join(root, "src/features/excerpts/screens/ExcerptCaptureScreen.tsx"),
+        "utf8",
+    );
+    // 诊断只允许入口枚举值，不接触剪贴板正文、账号或令牌。
+    assert.match(screen, /captureEntry\?: string/);
+    assert.match(
+        screen,
+        /recordDiagnostic\("excerpt_capture", "window_opened", \{\s*entry: captureEntry \?\? "card_body",\s*\}\)/,
+    );
+});

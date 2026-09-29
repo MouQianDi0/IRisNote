@@ -15,6 +15,9 @@ import java.util.UUID
 /** 通知直接打开的独立任务；只有这个窗口取得焦点后才能读取剪贴板。 */
 open class ExcerptCaptureActivity : ReactActivity() {
   val sessionId: String get() = intent.getStringExtra(ExcerptSessionNotifications.SESSION_EXTRA) ?: ""
+  /** 通知入口来源（卡主体/卡按钮），仅用于诊断计数。 */
+  val captureEntry: String
+    get() = intent.getStringExtra(ExcerptSessionNotifications.ENTRY_EXTRA) ?: "card_body"
   val captureId: String = UUID.randomUUID().toString()
   private val handler = Handler(Looper.getMainLooper())
   private val expire = Runnable { finishAndRemoveTask() }
@@ -94,6 +97,7 @@ open class ExcerptCaptureActivity : ReactActivity() {
         override fun getLaunchOptions() = Bundle().apply {
           putString("sessionId", sessionId)
           putString("captureId", captureId)
+          putString("captureEntry", captureEntry)
         }
       }
 

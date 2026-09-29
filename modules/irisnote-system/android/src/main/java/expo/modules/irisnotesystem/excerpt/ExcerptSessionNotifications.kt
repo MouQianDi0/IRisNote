@@ -16,6 +16,9 @@ object ExcerptSessionNotifications {
   const val STOP = "irisnote.excerpt-session.STOP"
   const val DISMISS = "irisnote.excerpt-session.DISMISS"
   const val SESSION_EXTRA = "sessionId"
+  const val ENTRY_EXTRA = "captureEntry"
+  const val ENTRY_CARD_BUTTON = "card_button"
+  private const val CAPTURE_REQUEST_CODE = ID + 1
   private fun preferences(context: Context) =
     context.getSharedPreferences("irisnote.excerpt-session", Context.MODE_PRIVATE)
 
@@ -42,6 +45,11 @@ object ExcerptSessionNotifications {
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     val contentIntent = PendingIntent.getActivity(context, ID, launch,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    // 通知按钮与卡主体进入同一捕获窗口；独立请求码防止 PendingIntent 合并，
+    // entry 仅用于诊断入口计数，不接触剪贴板正文、账号或会话状态。
+    val saveIntent = Intent(launch).putExtra(ENTRY_EXTRA, ENTRY_CARD_BUTTON)
+    val savePendingIntent = PendingIntent.getActivity(context, CAPTURE_REQUEST_CODE, saveIntent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val stopIntent = Intent(context, ExcerptSessionActionReceiver::class.java)
       .setAction(STOP).setData(Uri.parse("irisnote://excerpt-session/stop/$sessionId"))
       .putExtra(SESSION_EXTRA, sessionId)
@@ -61,6 +69,7 @@ object ExcerptSessionNotifications {
       .setContentIntent(contentIntent)
       .setDeleteIntent(dismissPendingIntent)
       .setTimeoutAfter(remaining)
+      .addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "保存剪贴板", savePendingIntent).build())
       .addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "停止", stopPendingIntent).build())
       .build()
     manager.notify(ID, notification)

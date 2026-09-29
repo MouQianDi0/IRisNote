@@ -3,6 +3,7 @@ import { ActivityIndicator, BackHandler, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import NativeSystem from "@modules/irisnote-system";
 import { applicationDatabaseResource } from "@/core/database/application-database-resource";
+import { recordDiagnostic } from "@/core/diagnostics/diagnostic-log";
 import { semanticColors } from "@/shared/theme";
 import { AppButton } from "@/shared/ui";
 import { DraftDialog } from "@/shared/ui/Dialog/dialog";
@@ -20,9 +21,12 @@ type CaptureState =
 export function ExcerptCaptureScreen({
     sessionId,
     captureId,
+    captureEntry,
 }: {
     sessionId: string;
     captureId: string;
+    /** 通知入口来源（卡主体/卡按钮），仅用于脱敏诊断计数。 */
+    captureEntry?: string;
 }) {
     const controller = useRef<ExcerptCaptureController | null>(null);
     const mounted = useRef(true);
@@ -37,6 +41,10 @@ export function ExcerptCaptureScreen({
 
     useEffect(() => {
         mounted.current = true;
+        // 只记录入口来源（固定枚举值），不接触剪贴板正文、账号或令牌。
+        void recordDiagnostic("excerpt_capture", "window_opened", {
+            entry: captureEntry ?? "card_body",
+        });
         // JS runtime 可能还有主应用的导航返回监听；捕获窗口优先消费返回。
         const back = BackHandler.addEventListener("hardwareBackPress", () => {
             if (!busy.current)
@@ -75,7 +83,7 @@ export function ExcerptCaptureScreen({
             if (controller.current === capture) controller.current = null;
             void lease.release().catch(() => undefined);
         };
-    }, [sessionId, captureId]);
+    }, [sessionId, captureId, captureEntry]);
 
     const submit = async (save: boolean) => {
         if (busy.current || !controller.current) return;

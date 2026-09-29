@@ -1,3 +1,12 @@
+## 2026-09-30 00:13:05 | 新增功能：摘录会话卡新增「保存剪贴板」按钮进入透明确认窗口
+
+- 变更概述：按用户确认的方案，在摘录会话状态卡（ID 7003）上增加「保存剪贴板」动作按钮：与点卡片主体进入同一 B 档透明捕获窗口（独立请求码 Activity PendingIntent，附 `captureEntry=card_button` 入口标记），取焦检测、确认保存后返回原应用；「随时可存」按「卡在即可存」落地，保存不依赖应用内检测器状态；不新增权限、表、后端接口，不改停止/划除/到期语义。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt、ExcerptCaptureActivity.kt；src/features/excerpts/screens/ExcerptCaptureScreen.tsx；tests/excerpts/excerpt-capture.test.cjs；docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-30-excerpt-card-save-button.md（新增）、docs/logs/2026-09-29-merge-codex-a-be7d88c-into-kroos-todo.md（修正宿主类措辞）、CHANGELOG.md。
+- 具体内容：原生侧第二.addAction「保存剪贴板」（请求码 ID+1 防 PendingIntent 合并，IMMUTABLE），窗口透传 captureEntry 给 JS，屏幕挂载记录 `excerpt_capture/window_opened` 诊断事件（仅入口枚举，不含正文/账号/令牌）；评估否决「无会话可存」——需重写捕获身份校验模型且无常驻通知面承载，已在日志留档。无默认值/开关反转，postProgressNotification 签名零变化。
+- 验证：修改前 typecheck 基线 0 错误；新增源码契约用例首轮 CRLF 断言失败、修正正则后通过；npm run check 全过（node --test 684/684，typecheck/lint/theme:check 通过）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 08s）。staging 包真机验证（按钮渲染、点按到保存 E2E）与完整 APK 构建未做，需重新 prebuild 构建原生包验收。
+
+---
+
 ## 2026-09-29 23:42:29 | 优化代码：合并 codex-a（be7d88c，摘录通知透明确认保存 B 档）进入 kroos_todo
 
 - 变更概述：按用户指令把 origin/kroos_vps/codex-a 合并进 kroos_todo。merge-base ffe8828，净带入 1 个提交 be7d88c（26 文件 +1146/−17）：快速摘录通知透明确认保存（二期 B 档）——通知主体打开独立透明捕获窗口，取焦检测、确认保存后返回原应用。冲突 2 处已解决：CHANGELOG.md 双方条目按时间倒序交织；IrisNoteSystemModule.kt import 区保留双方（LiveTodoActionStore + Queues），双方其余代码自动合并、使用点实测均在。

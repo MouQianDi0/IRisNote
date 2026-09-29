@@ -21,7 +21,7 @@
 ### modules/irisnote-system（8 个文件）
 
 - `android/build.gradle`（+4）：补充摘录捕获 Activity 所需构建配置。
-- `android/src/main/AndroidManifest.xml`（+8）：声明非导出的 `ExcerptCaptureActivity`（独立任务、不建历史），权限清单无新增。
+- `android/src/main/AndroidManifest.xml`（+8）：声明非导出的 `ExcerptCaptureHostActivity`（宿主子类，独立任务、不建历史；实现类 `ExcerptCaptureActivity` 在模块内），权限清单无新增。
 - `IrisNoteSystemModule.kt`（+14，冲突解决文件）：新增摘录捕获窗口身份/焦点校验与保存确认回传方法，宿主回调走 `Queues.MAIN`。
 - `excerpt/ExcerptCaptureActivity.kt`（新增 112 行）：透明捕获 Activity——冷启动复用数据库租约、本机账号核验、读取剪贴板候选并呈现确认。
 - `excerpt/ExcerptSessionNotifications.kt`（+25/−6）：通知主体 PendingIntent 改为打开捕获窗口（B 档），停止/到期路径保持既有 A 档语义。
