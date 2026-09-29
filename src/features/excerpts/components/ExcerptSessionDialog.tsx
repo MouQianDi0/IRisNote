@@ -8,6 +8,7 @@ import {
     type ExcerptSessionDuration,
 } from "../domain/excerpt-session";
 import { useExcerptSessionStore } from "../state/excerpt-session-store";
+import { excerptCaptureSupported } from "../services/excerpt-session-notifications";
 
 const durationStyle = tv({
     base: "min-h-11 min-w-[60px] flex-1 items-center justify-center rounded-hyper-control px-1",
@@ -75,7 +76,9 @@ export function ExcerptSessionDialog({
                 <Text className="text-sm leading-5 text-hyper-text-secondary">
                     {active && state.session
                         ? `剩余约 ${Math.ceil((state.session.endsAt - now) / 60_000)} 分钟（至 ${endTime}）`
-                        : "在设定时间内，从其他应用复制的内容回到 IRisNote 时会自动提示保存，不会自动保存或上传。"}
+                        : excerptCaptureSupported()
+                          ? "在设定时间内，从其他应用复制内容后点通知，即可确认保存并返回原应用；回到 IRisNote 也会自动提示保存。不会自动保存或上传。"
+                          : "在设定时间内，从其他应用复制的内容回到 IRisNote 时会自动提示保存，不会自动保存或上传。"}
                 </Text>
                 {!active && (
                     <View

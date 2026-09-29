@@ -9,7 +9,7 @@ import android.net.Uri
 import expo.modules.irisnotesystem.R
 import expo.modules.irisnotesystem.live.LiveTodoNotifier
 
-/** 只持久化随机会话 ID；不接触剪贴板、账号或数据库。 */
+/** 只持久化随机会话 ID、到期时间与入口版本；不接触剪贴板正文、账号或数据库。 */
 object ExcerptSessionNotifications {
   const val ID = 7003
   const val CHANNEL = "irisnote.excerpt-session.v1"
@@ -29,13 +29,17 @@ object ExcerptSessionNotifications {
     check(prefs.getString("dismissed", null) != sessionId) { "摘录通知已被用户关闭" }
     val manager = context.getSystemService(NotificationManager::class.java)
     // 已存在则保留系统展示状态，不重复请求用户已降级的提升式通知。
+    // 升级前仍在展示的 A 档卡保留原入口至本会话结束；新会话才使用 B 档。
     if (prefs.getString("active", null) == sessionId &&
       manager.activeNotifications.any { it.id == ID && it.notification.channelId == CHANNEL }) return
-    check(prefs.edit().putString("active", sessionId).commit()) { "无法登记摘录会话" }
-    val launch = requireNotNull(context.packageManager.getLaunchIntentForPackage(context.packageName))
-      .setAction(Intent.ACTION_VIEW)
-      .setData(Uri.parse("irisnote://excerpt"))
-      .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    check(prefs.edit().putString("active", sessionId).putLong("endsAt", endsAt)
+      .putInt("entryVersion", 2).commit()) { "无法登记摘录会话" }
+    // Activity PendingIntent 直接启动焦点窗口，不经过广播/服务通知 trampoline。
+    val launch = Intent().setClassName(context,
+      "expo.modules.irisnotesystem.excerpt.ExcerptCaptureHostActivity")
+      .setData(Uri.parse("irisnote://excerpt-session/capture/$sessionId"))
+      .putExtra(SESSION_EXTRA, sessionId)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     val contentIntent = PendingIntent.getActivity(context, ID, launch,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val stopIntent = Intent(context, ExcerptSessionActionReceiver::class.java)
@@ -63,6 +67,17 @@ object ExcerptSessionNotifications {
   }
 
   @Synchronized
+  fun captureRemaining(context: Context, sessionId: String): Long {
+    val prefs = preferences(context)
+    if (sessionId.isBlank() || prefs.getInt("entryVersion", 0) != 2 || prefs.getString("active", null) != sessionId ||
+      prefs.getString("stopped", null) == sessionId || prefs.getString("dismissed", null) == sessionId) return 0
+    val remaining = prefs.getLong("endsAt", 0) - System.currentTimeMillis()
+    return if (remaining in 1..120 * 60_000L) remaining else 0
+  }
+
+  fun captureAllowed(context: Context, sessionId: String) = captureRemaining(context, sessionId) > 0
+
+  @Synchronized
   fun stop(context: Context, sessionId: String) {
     val prefs = preferences(context)
     if (prefs.getString("active", null) != sessionId) return
@@ -77,6 +92,7 @@ object ExcerptSessionNotifications {
     check(prefs.edit().putString("dismissed", sessionId).remove("active").commit()) {
       "无法登记摘录通知关闭状态"
     }
+    ExcerptCaptureActivity.invalidate(sessionId)
   }
 
   /** JS 主动停止也先写终止标记；SQLite 清理中断后不可恢复已停止会话。 */
@@ -88,12 +104,15 @@ object ExcerptSessionNotifications {
       "无法保存摘录停止标记"
     }
     context.getSystemService(NotificationManager::class.java).cancel(ID)
+    ExcerptCaptureActivity.invalidate(sessionId)
   }
 
   @Synchronized
   fun cancel(context: Context) {
+    val sessionId = preferences(context).getString("active", null)
     context.getSystemService(NotificationManager::class.java).cancel(ID)
     check(preferences(context).edit().remove("active").commit()) { "无法清理摘录会话" }
+    if (sessionId != null) ExcerptCaptureActivity.invalidate(sessionId)
   }
 
   @Synchronized

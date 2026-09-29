@@ -1,3 +1,12 @@
+## 2026-09-29 23:42:29 | 优化代码：合并 codex-a（be7d88c，摘录通知透明确认保存 B 档）进入 kroos_todo
+
+- 变更概述：按用户指令把 origin/kroos_vps/codex-a 合并进 kroos_todo。merge-base ffe8828，净带入 1 个提交 be7d88c（26 文件 +1146/−17）：快速摘录通知透明确认保存（二期 B 档）——通知主体打开独立透明捕获窗口，取焦检测、确认保存后返回原应用。冲突 2 处已解决：CHANGELOG.md 双方条目按时间倒序交织；IrisNoteSystemModule.kt import 区保留双方（LiveTodoActionStore + Queues），双方其余代码自动合并、使用点实测均在。
+- 修改文件：带入 26 文件逐文件清单与链路见 docs/logs/2026-09-29-merge-codex-a-be7d88c-into-kroos-todo.md（新增，含冲突解决细节）；B 档功能全链路见随合并带入的 docs/logs/2026-09-29-excerpt-capture.md；本分支侧另新增合并日志与本条目。
+- 具体内容：① B 档捕获链路：非导出 ExcerptCaptureActivity（独立任务、原生严格校验焦点）+ with-excerpt-capture config plugin 自动生成 Expo 宿主 + JS 侧 capture-entry/ExcerptCaptureScreen/excerpt-capture-controller/excerpt-capture 复用既有 detectClipboard/saveDetectedOffer 与本机 SQLite，失败保留候选、重复保存去重；主应用检测器在窗口存在时让出检测权；不新增权限、表、后端接口。② 待办动态卡动作按钮链路（本地侧）与摘录捕获链路在 IrisNoteSystemModule.kt 中共存，互不改写对方路径；无默认值或开关反转。
+- 验证：合并前基线为上次合并记录的 npm run check 全过（675/675）且工作区干净；试合并 git merge-tree 预判冲突与实际一致；解决后 git diff --check 通过、冲突标记扫描仅命中合并前已存在的教程示例与二进制误报；合并后 npm run check 全过（node --test 683/683，typecheck/lint/theme:check 均通过；codex 侧报告的 1 个发布归档 ENAMETOOLONG 失败本机未复现）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 20s，仅 2 个既有风格弃用警告）。完整 APK 构建与真机验证未做（B 档冷/热启动、返回原应用、双 Surface 需 staging 包实测）；合并结果未推送。
+
+---
+
 ## 2026-09-29 22:12:44 | 优化代码：合并 codex-a 分支（快速摘录限时会话等）进入 kroos_todo
 
 - 变更概述：按用户指令先快进本地 codex-a（83a114f→ffe8828，54 个提交、216 文件 +17039/−911，纯快进），再合入 kroos_todo（db054be）。merge-base 18fde51，自动合并去重后净带入 37 个文件（+2434/−181）：快速摘录限时会话与 Android 通知入口、剪贴板回流检测重构、笔记星标/置顶写入合并与尾部防抖、4 篇功能线全链路日志与架构/UI 文档同步。冲突 2 处已解决：CHANGELOG.md 按时间倒序交织双方条目；modules/irisnote-system/index.ts 的 NativeProgressNotification 类型并存双方身份字段（待办 ownerKey/clientId + 摘录 excerptSessionId/expiresAt）。
@@ -22,6 +31,15 @@
 - 修改文件：全部来自 master 侧带入（45 个文件，+2537/−437），详见 docs/logs/2026-09-29-merge-master-local-cloud-markdown.md 与合并自带的三篇全链路日志；本分支侧仅解决 CHANGELOG.md 冲突并新增本条与合并日志。
 - 具体内容：① 4432edc（PR #130）：迁移 0019 新增本地分类表、笔记本机标志、垃圾桶意图；本机分类仓储与云/本地 ID 映射；note-flags.service 标星/置顶无需正文即可同步；回收站支持恢复已淘汰正文的笔记；本机操作只查账号会话、云请求守原授权门控；上传队列修复重复上传并支持取消。② b566523（PR #131）：新增 src/shared/utils/markdown 公共组件，更新弹窗改用其排版。③ 38e307d：0.7.0 版本更新说明（releases/notes-0.7.0.txt）。
 - 验证：合并前基线 npm run typecheck 0 错误；git diff --check 通过、无遗留冲突标记；合并后 npm run check 退出码 0（typecheck、lint、theme:check 通过，测试 660/660，含带入 local-only 17 项与 markdown 用例）。Android 原生构建与真机验证未执行（合并未触碰 modules/ 原生代码；迁移 0019 待真机首启验证）。未推送，待用户授权。
+
+---
+
+## 2026-09-29 14:54:26 | 新增功能：快速摘录通知透明确认保存（二期 B 档）
+
+- 变更概述：快速摘录通知主体打开独立透明捕获窗口，取得焦点后检测并由用户确认保存，关闭后返回原应用；应用内检测继续保留。
+- 修改文件：package.json、index.js、app.json；src/features/excerpts/excerpt-capture-entry.ts、screens/ExcerptCaptureScreen.tsx、services/excerpt-capture-controller.ts、services/excerpt-capture.ts、services/excerpt-session-notifications.ts、hooks/useClipboardDetection.ts、components/ExcerptSessionDialog.tsx；modules/irisnote-system/index.ts、android/build.gradle、android/src/main/AndroidManifest.xml、java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、excerpt/ExcerptSessionNotifications.kt、excerpt/ExcerptCaptureActivity.kt、res/values/excerpt-capture-styles.xml；plugins/with-excerpt-capture.js、plugins/android/ExcerptCaptureHostActivity.kt；tests/excerpts/excerpt-capture.test.cjs、excerpt-capture-build.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、docs/构建发布/本地测试包构建.md、docs/logs/2026-09-29-excerpt-capture.md、CHANGELOG.md。完整路径与各层职责见全链路日志。
+- 具体内容：通知 Activity PendingIntent 直接进入非导出独立任务；sessionId/ownerKey/捕获窗口 captureId 共同隔离，原生读取严格要求焦点。冷启动复用数据库租约和本机账号核验，保存复用 detectClipboard/saveDetectedOffer/本机 SQLite，失败保留原候选、重复保存去重；主应用检测器让出捕获窗口检测权。确认卡复用公共弹窗和主题 Token；保存/忽略关闭，返回仅取消；停止、到期、Home 与启动超时退出。config plugin 自动生成 Expo 宿主，避免原生模块反向依赖 Expo。不新增权限、表、后端接口或摘录上传；既有 A 档通知保持到会话结束，新会话用 B 档。
+- 验证：修改前 typecheck 通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误/1 个既有警告；667 项测试 664 通过、2 跳过、1 个既有发布归档 ENAMETOOLONG 失败，新增 8 项均通过。最终 Android JS export 成功；模块 XML/权限清单、差异空白与冲突标记检查通过。Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动，未生成 APK；真机冷/热启动、返回原应用、双 Surface 和 dp 实测未做。需要重新 prebuild 并构建原生安装包，JS 打包通过不等同原生可发布。
 
 ---
 

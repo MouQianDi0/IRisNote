@@ -10,6 +10,14 @@
     android:maxSdkVersion="28" />
 
   <application>
+    <activity
+      android:name=".excerpt.ExcerptCaptureHostActivity"
+      android:exported="false"
+      android:taskAffinity=""
+      android:excludeFromRecents="true"
+      android:launchMode="singleTask"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode"
+      android:theme="@style/IrisNoteExcerptCaptureTheme" />
     <receiver
       android:name=".excerpt.ExcerptSessionActionReceiver"
       android:exported="false" />

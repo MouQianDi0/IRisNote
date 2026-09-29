@@ -7,6 +7,12 @@ export type SavedDiagnosticLog = {
   displayPath: string;
 };
 
+export type ExcerptCaptureState = {
+  sessionId: string;
+  captureId: string;
+  focused: boolean;
+};
+
 /**
  * Android 16（API 36）ProgressStyle 进度式动态通知的原生入参。
  * 进度按 progress/max 折算为百分比；indeterminate 时显示不定进度条。
@@ -101,6 +107,11 @@ declare class IrisNoteSystemModule extends NativeModule<{
   getStoppedExcerptSession(): Promise<string | null>;
   stopExcerptSession(sessionId: string): Promise<void>;
   acknowledgeStoppedExcerptSession(sessionId: string): Promise<void>;
+  /** 通知专用透明 Activity；不启动主应用或后台服务，不持久化剪贴板正文。 */
+  getExcerptCaptureState(captureId: string | null): Promise<ExcerptCaptureState | null>;
+  hasExcerptCaptureText(captureId: string): Promise<boolean>;
+  readExcerptCaptureText(captureId: string): Promise<string>;
+  finishExcerptCapture(captureId: string, saved: boolean): Promise<void>;
   /** 按渠道清理本应用当前展示的全部通知（冷启动 reconcile 被杀残留的动态卡片）。 */
   cancelProgressNotificationsByChannel(channelId: string): Promise<void>;
   /** 方案 A：退后台移交时间线快照，原生闹钟节拍按墙钟差量刷新。
