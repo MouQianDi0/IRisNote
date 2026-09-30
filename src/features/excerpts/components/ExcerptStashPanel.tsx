@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Check, Trash2, X } from "lucide-react-native";
 import { Keyboard, Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { semanticColors } from "@/shared/theme";
 import { AppButton, IconButton, Input } from "@/shared/ui";
@@ -65,7 +65,7 @@ function StashRow({ item, index, canDrag, disabled, editor, centers, onHeight, o
             active.set(false);
             lifted.set(false);
             liftProgress.set(withTiming(0, { duration: 120 }));
-            visualY.set(withSpring(0, { damping: 20, stiffness: 220 }));
+            visualY.set(withTiming(0, { duration: 180 }));
             scheduleOnRN(onDrop, id, targetIndex.get(), success);
         }), [active, canDrag, centers, currentIndex, currentY, id, lifted, liftProgress, onBegin, onDrop, onTarget, originCenter, originY, targetIndex, translationY, visualY]);
     const dragStyle = useAnimatedStyle(() => ({

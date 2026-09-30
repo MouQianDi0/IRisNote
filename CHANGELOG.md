@@ -1,3 +1,12 @@
+## 2026-09-30 21:47:17 | 修复问题：暂存列表拖拽松手只回位一次
+
+- 变更概述：按用户反馈减少暂存条目松手后的反复回弹，改为一次 180ms 平滑回位。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-single-settle.md；CHANGELOG.md。
+- 具体内容：位移回位从欠阻尼 withSpring 改为 withTiming，到落点停止；保留抬起/缩放、排序事务、编辑及失败回滚链路。
+- 验证：修改前 npm run typecheck 通过；暂存组件回归 7/7 通过；修改后获准环境 npm run check 通过（709 项，707 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。真机动画验收及 APK 构建未执行。
+
+---
+
 ## 2026-09-30 21:26:18 | 修复问题：暂存区图标取消常驻高亮，列表上移并支持行内编辑
 
 - 变更概述：按确认方案修正暂存区入口选中态，列表参考草稿箱统一容器，粘贴按钮移至列表下方，单击条目使用公共多行 Input 行内编辑。
