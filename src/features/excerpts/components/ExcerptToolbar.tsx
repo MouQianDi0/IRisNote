@@ -65,7 +65,6 @@ export function ExcerptToolbar({
                 accessibilityLabel={`查看暂存区，${stashCount} 条`}
                 size="compact"
                 iconSize={20}
-                selected={stashCount > 0}
                 disabled={disabled}
                 onPress={onStash}
             />

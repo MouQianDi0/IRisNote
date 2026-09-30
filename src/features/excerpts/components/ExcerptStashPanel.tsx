@@ -1,21 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react-native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, Trash2, X } from "lucide-react-native";
+import { Keyboard, Pressable, ScrollView, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { semanticColors } from "@/shared/theme";
-import { AppButton } from "@/shared/ui";
+import { AppButton, IconButton, Input } from "@/shared/ui";
 import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
 import { stashDragTarget } from "../domain/excerpt-stash-drag";
 
-const ROW_GAP = 12;
-
-function StashRow({ item, index, canDrag, disabled, centers, onHeight, onBegin, onTarget, onDrop, onEdit, onRemove }: {
+function StashRow({ item, index, canDrag, disabled, editor, centers, onHeight, onBegin, onTarget, onDrop, onEdit, onRemove }: {
     item: ExcerptStashItem;
     index: number;
     canDrag: boolean;
     disabled: boolean;
+    editor?: ReactNode;
     centers: SharedValue<number[]>;
     onHeight: (id: string, height: number) => void;
     onBegin: (id: string) => void;
@@ -76,7 +75,7 @@ function StashRow({ item, index, canDrag, disabled, centers, onHeight, onBegin, 
         shadowOpacity: liftProgress.get() * 0.18,
     }));
     return <Animated.View
-        className="mb-3 flex-row items-center rounded-xl bg-hyper-card"
+        className="flex-row items-center bg-hyper-list"
         style={[{ shadowColor: semanticColors.textPrimary, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }, dragStyle]}
         onLayout={(event) => {
             const { y, height } = event.nativeEvent.layout;
@@ -85,16 +84,16 @@ function StashRow({ item, index, canDrag, disabled, centers, onHeight, onBegin, 
             onHeight(item.clientId, height);
         }}
     >
-        <GestureDetector gesture={gesture}>
+        {editor ? <View className="flex-1 px-4 py-3">{editor}</View> : <><GestureDetector gesture={gesture}>
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`编辑第 ${index + 1} 条暂存内容`}
                 accessibilityHint={canDrag ? "长按并拖动可调整顺序" : undefined}
                 disabled={disabled}
                 onPress={() => onEdit(item)}
-                style={{ flex: 1, minHeight: 56, justifyContent: "center", padding: 12 }}
+                style={{ flex: 1, minHeight: 56, justifyContent: "center", paddingHorizontal: 16, paddingVertical: 12 }}
             >
-                <Text numberOfLines={2} className="text-sm text-hyper-text-primary">{index + 1}　{item.content}</Text>
+                <Text numberOfLines={2} className="text-[17px] text-hyper-text-primary">{item.content}</Text>
             </Pressable>
         </GestureDetector>
         <Pressable
@@ -102,19 +101,19 @@ function StashRow({ item, index, canDrag, disabled, centers, onHeight, onBegin, 
             accessibilityLabel={`删除第 ${index + 1} 条暂存内容`}
             disabled={disabled}
             onPress={() => onRemove(item.clientId)}
-            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: 6 }}
+            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: 8 }}
         >
             <Trash2 size={20} color={semanticColors.destructive} />
-        </Pressable>
+        </Pressable></>}
     </Animated.View>;
 }
 
-/** 捕获窗口与摘录页共用同一暂存面板；拖拽只在落点提交一次排序事务。 */
-export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, onClear, onMerge, onPaste }: {
+/** 摘录页暂存列表：行内编辑；拖拽只在落点提交一次排序事务。 */
+export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, onClear, onMerge, onPaste }: {
     items: readonly ExcerptStashItem[];
     busy: boolean;
     onReorder: (orderedClientIds: readonly string[]) => Promise<boolean>;
-    onEdit: (item: ExcerptStashItem) => void;
+    onUpdate: (id: string, text: string) => Promise<"saved" | "duplicate">;
     onRemove: (id: string) => void;
     onClear: () => void;
     onMerge: () => void;
@@ -127,13 +126,22 @@ export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, on
     const pendingRef = useRef(false);
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
+    const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+    const [editError, setEditError] = useState("");
+    const [saving, setSaving] = useState(false);
+    const savingRef = useRef(false);
+    const mounted = useRef(true);
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
     const centers = useSharedValue<number[]>([]);
     const updateCenters = useCallback((next: readonly ExcerptStashItem[]) => {
         let top = 0;
         centers.set(next.map((item) => {
             const height = heights.current.get(item.clientId) ?? 56;
             const center = top + height / 2;
-            top += height + ROW_GAP;
+            top += height;
             return center;
         }));
     }, [centers]);
@@ -187,17 +195,60 @@ export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, on
             updateCenters(original);
         }).finally(() => { pendingRef.current = false; setPending(false); });
     }, [items, onReorder, target, updateCenters]);
-    const disabled = busy || pending || draggingId !== null;
+    const disabled = busy || pending || saving || draggingId !== null;
+    const actionsDisabled = disabled || editing !== null;
+    const cancelEdit = () => {
+        if (savingRef.current) return;
+        setEditing(null);
+        setEditError("");
+        Keyboard.dismiss();
+    };
+    const saveEdit = async () => {
+        if (!editing || disabled || savingRef.current) return;
+        savingRef.current = true;
+        setSaving(true);
+        setEditError("");
+        try {
+            const result = await onUpdate(editing.id, editing.text);
+            if (!mounted.current) return;
+            if (result === "duplicate") setEditError("已在暂存中，请修改内容后保存");
+            else {
+                setEditing(null);
+                Keyboard.dismiss();
+            }
+        } catch (cause) {
+            if (mounted.current) setEditError(cause instanceof Error ? cause.message : "保存失败，请重试");
+        } finally {
+            savingRef.current = false;
+            if (mounted.current) setSaving(false);
+        }
+    };
     return <>
-        <AppButton variant="secondary" label="粘贴到暂存区" disabled={disabled} onPress={onPaste} />
-        {items.length === 0 && <Text style={{ marginTop: 12, fontSize: 14, color: semanticColors.textSecondary }}>暂存区还没有内容</Text>}
-        <ScrollView style={{ marginTop: 12, maxHeight: 320, flexShrink: 1 }} keyboardShouldPersistTaps="handled" scrollEnabled={!disabled} nestedScrollEnabled>
+        {items.length === 0 ? <Text style={{ fontSize: 14, color: semanticColors.textSecondary }}>暂存区还没有内容</Text> : <View className="overflow-hidden rounded-hyper-card bg-hyper-list" style={{ flexShrink: 1 }}>
+        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" scrollEnabled={!disabled} nestedScrollEnabled>
             {ordered.map((item, index) => <StashRow
                 key={item.clientId}
                 item={item}
                 index={index}
-                canDrag={!busy && !pending && ordered.length > 1}
-                disabled={disabled}
+                canDrag={!busy && !pending && !saving && !editing && ordered.length > 1}
+                disabled={actionsDisabled}
+                editor={editing?.id === item.clientId ? <>
+                    <Input
+                        size="body"
+                        multiline
+                        autoFocus
+                        accessibilityLabel={`编辑第 ${index + 1} 条暂存内容`}
+                        value={editing.text}
+                        disabled={disabled}
+                        invalid={!!editError}
+                        onChangeText={(text) => { setEditing({ id: item.clientId, text }); setEditError(""); }}
+                        trailing={<View>
+                            <IconButton icon={Check} iconSize={20} accessibilityLabel="保存暂存内容" loading={saving} disabled={disabled} onPress={() => void saveEdit()} />
+                            <IconButton icon={X} iconSize={20} accessibilityLabel="取消编辑暂存内容" disabled={disabled} onPress={cancelEdit} />
+                        </View>}
+                    />
+                    {!!editError && <Text accessibilityRole="alert" className="mt-1 text-sm text-hyper-error">{editError}</Text>}
+                </> : undefined}
                 centers={centers}
                 onHeight={(id, height) => {
                     if (heights.current.get(id) === height) return;
@@ -207,13 +258,15 @@ export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, on
                 onBegin={begin}
                 onTarget={target}
                 onDrop={drop}
-                onEdit={onEdit}
+                onEdit={(entry) => { if (actionsDisabled) return; setEditError(""); setEditing({ id: entry.clientId, text: entry.content }); }}
                 onRemove={onRemove}
             />)}
         </ScrollView>
+        </View>}
+        <AppButton className="mt-3" variant="secondary" label="粘贴到暂存区" disabled={actionsDisabled} onPress={onPaste} />
         <View className="mt-3 flex-row gap-2.5">
-            <AppButton className="flex-1" variant="secondary" label="清空" disabled={disabled || items.length === 0} onPress={onClear} />
-            <AppButton className="flex-1" label="合并保存" disabled={disabled || items.length === 0} onPress={onMerge} />
+            <AppButton className="flex-1" variant="secondary" label="清空" disabled={actionsDisabled || items.length === 0} onPress={onClear} />
+            <AppButton className="flex-1" label="合并保存" disabled={actionsDisabled || items.length === 0} onPress={onMerge} />
         </View>
     </>;
 }

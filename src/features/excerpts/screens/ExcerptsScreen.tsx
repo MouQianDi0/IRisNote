@@ -100,7 +100,7 @@ export default function ExcerptsScreen() {
         const timer = setTimeout(() => setStashNotice(""), 2000);
         return () => clearTimeout(timer);
     }, [stashNotice]);
-    const [stashForm, setStashForm] = useState<{ kind: "offer"; offer: ClipboardOffer } | { kind: "edit"; item: ExcerptStashItem } | { kind: "merge"; items: readonly ExcerptStashItem[] } | null>(null);
+    const [stashForm, setStashForm] = useState<{ kind: "offer"; offer: ClipboardOffer } | { kind: "merge"; items: readonly ExcerptStashItem[] } | null>(null);
     const [separator, setSeparator] = useState(true);
     const [stashScope, setStashScope] = useState({ ownerKey, generation });
     // 账号/仓库换代时同步重置弹窗，避免先提交一次旧账号界面再由 Effect 清理。
@@ -127,18 +127,24 @@ export default function ExcerptsScreen() {
         if (offer?.ownerKey === ownerKey && stash.items.some((item) => item.contentHash === offer.hash))
             useClipboardOfferStore.setState({ offer: null });
     }, [ownerKey, stash.items]);
-    const stashAction = async (action: () => Promise<void>) => {
-        if (stashBusyRef.current || !ready) return false;
+    const runStashAction = async <T,>(action: () => Promise<T>): Promise<T> => {
+        if (stashBusyRef.current || !ready) throw new Error("暂存区正在处理，请稍后再试");
+        excerptRepository.assertSession(ownerKey, generation);
         stashBusyRef.current = true;
         setStashBusy(true); setStashError(""); setStashNotice("");
         try {
-            await action();
+            const result = await action();
+            excerptRepository.assertSession(ownerKey, generation);
             try { await stash.refresh(); }
             catch { setStashError("操作已完成，但暂存列表刷新失败，请重新打开暂存区"); }
-            return true;
+            return result;
         }
-        catch (cause) { setStashError(errorMessage(cause)); return false; }
         finally { stashBusyRef.current = false; setStashBusy(false); }
+    };
+    const stashAction = async (action: () => Promise<void>) => {
+        if (stashBusyRef.current || !ready) return false;
+        try { await runStashAction(action); return true; }
+        catch (cause) { setStashError(errorMessage(cause)); return false; }
     };
     const pasteToStash = () => void stashAction(async () => {
         const result = await pasteClipboardToStash(stash.repository, excerptRepository, clipboardService.readText, ownerKey, generation);
@@ -380,10 +386,10 @@ export default function ExcerptsScreen() {
             )}
             {stashPanel && !stashForm && <DraftDialog visible title={`暂存区（${stash.items.length} 条）`} onClose={() => { if (!stashBusyRef.current) setStashPanel(false); }} closeOnScrimTap={!stashBusy} headerExtra={<IconButton icon={X} accessibilityLabel="关闭暂存区" size="compact" iconSize={20} disabled={stashBusy} onPress={() => { if (!stashBusyRef.current) setStashPanel(false); }} />}>
                 {!!stashNotice && <Text accessibilityRole="alert" style={{ marginBottom: 8, fontSize: 14, color: semanticColors.brandPrimary }}>{stashNotice}</Text>}
-                <ExcerptStashPanel items={stash.items} busy={stashBusy} onPaste={pasteToStash} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onEdit={(item) => setStashForm({ kind: "edit", item })} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={() => { mergeCleanupFailed.current = false; setSeparator(true); setStashForm({ kind: "merge", items: [...stash.items] }); }} />
+                <ExcerptStashPanel items={stash.items} busy={stashBusy} onPaste={pasteToStash} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onUpdate={(id, text) => runStashAction(() => stash.repository.update(ownerKey, id, text))} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={() => { mergeCleanupFailed.current = false; setSeparator(true); setStashForm({ kind: "merge", items: [...stash.items] }); }} />
                 {stashError && <Text accessibilityRole="alert" style={{ color: semanticColors.destructive }}>{stashError}</Text>}
             </DraftDialog>}
-            {stashForm && ready && <ExcerptFormDialog key={stashForm.kind === "edit" ? stashForm.item.clientId : stashForm.kind} ownerKey={ownerKey} generation={generation} duplicateMessage={stashForm.kind === "edit" ? "已在暂存中" : undefined} initialText={stashForm.kind === "offer" ? stashForm.offer.content : stashForm.kind === "edit" ? stashForm.item.content : mergeStashContents(stashForm.kind === "merge" ? stashForm.items : [], separator)} mergeSeparator={stashForm.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(stashForm.items, enabled) } : undefined} onClose={() => setStashForm(null)} onSaved={() => {
+            {stashForm && ready && <ExcerptFormDialog key={stashForm.kind} ownerKey={ownerKey} generation={generation} initialText={stashForm.kind === "offer" ? stashForm.offer.content : mergeStashContents(stashForm.items, separator)} mergeSeparator={stashForm.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(stashForm.items, enabled) } : undefined} onClose={() => setStashForm(null)} onSaved={() => {
                 if (stashForm.kind === "offer" && useClipboardOfferStore.getState().offer === stashForm.offer) useClipboardOfferStore.setState({ offer: null });
                 else void stash.refresh().catch(() => setStashError("暂存列表刷新失败，请重新打开"));
                 setStashForm(null);
@@ -394,7 +400,6 @@ export default function ExcerptsScreen() {
                     } else setStashPanel(false);
                 }
             }} submitText={async (text) => {
-                if (stashForm.kind === "edit") return stash.repository.update(ownerKey, stashForm.item.clientId, text);
                 if (stashForm.kind === "merge") {
                     const result = await saveMergedStash(excerptRepository, stash.repository, stashForm.items, ownerKey, generation, text);
                     if (result.kind === "duplicate") return "duplicate";

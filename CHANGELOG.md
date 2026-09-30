@@ -1,3 +1,12 @@
+## 2026-09-30 21:26:18 | 修复问题：暂存区图标取消常驻高亮，列表上移并支持行内编辑
+
+- 变更概述：按确认方案修正暂存区入口选中态，列表参考草稿箱统一容器，粘贴按钮移至列表下方，单击条目使用公共多行 Input 行内编辑。
+- 修改文件：src/features/excerpts/components/ExcerptToolbar.tsx、ExcerptStashPanel.tsx，screens/ExcerptsScreen.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-inline-edit.md；CHANGELOG.md。
+- 具体内容：取消因条数而高亮的 Inbox；统一浅灰圆角滚动容器，无草稿箱选中态；行内显式保存/取消，失败保留输入，编辑期间暂停拖拽及列表修改；复用本机仓储更新，无表结构/API/原生改动。
+- 验证：修改前后 npm run typecheck 通过；组件交互 7/7、仓储测试 9/9 通过；获准环境 npm run check 通过（709 项，707 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。沙箱 4 个测试文件受本地监听/子进程 EPERM 限制，已在获准环境复核。真机键盘、滚动、拖拽、视觉验收与 APK 构建未执行。
+
+---
+
 ## 2026-10-01 04:41:49 | 优化代码：快速摘录反馈胶囊改锚状态栏下方 30dp
 
 - 变更概述：捕获窗反馈胶囊从透明窗口正中央改为顶部对齐、状态栏下方 30dp，水平仍居中，贴近通知来源的视线位置。
