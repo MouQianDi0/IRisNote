@@ -47,7 +47,7 @@ export async function postExcerptSessionNotification(
         channelId: EXCERPT_SESSION_CHANNEL,
         title: "快速摘录进行中",
         text: excerptCaptureSupported()
-            ? "复制内容后点通知，确认保存后返回原应用"
+            ? "复制内容后点通知，直接摘录并返回原应用"
             : "复制内容后回到 IRisNote 即可保存",
         iconResourceName: "ic_excerpt_session",
         chronoAt: session.endsAt,

@@ -72,81 +72,77 @@ function harness() {
         setText: (value) => { text = value; }, advance: (ms) => { now += ms; } };
 }
 
-test("捕获候选可编辑最终正文再保存，来源为 manual", async () => {
+test("一次通知捕获直接保存原正文，来源为 paste，并发与重复调用只读写一次", async () => {
     const h = harness();
-    const result = await h.controller.detect();
-    assert.equal(result.kind, "offer");
-    assert.equal(h.saved.size, 0);
-    await h.controller.save("编辑后正文");
-    assert.deepEqual(h.events.find((event) => Array.isArray(event) && event[0] === "save"), ["save", "user:1", "编辑后正文", "manual"]);
+    const first = h.controller.capture();
+    assert.equal(h.controller.capture(), first);
+    const result = await first;
+    assert.deepEqual(result, { kind: "saved", duplicated: false });
     assert.equal(h.saved.size, 1);
+    assert.deepEqual(h.events.find((e) => Array.isArray(e) && e[0] === "save"), ["save", "user:1", "其他应用复制的正文", "paste"]);
     assert.equal(h.events.at(-1)[0], "consumed");
+    h.setText("后来复制的正文");
+    assert.equal(h.controller.capture(), first);
+    await h.controller.capture();
+    assert.equal(h.events.filter((e) => e === "read").length, 1);
+    assert.equal(h.events.filter((e) => Array.isArray(e) && e[0] === "save").length, 1);
 });
 
-test("重复摘录保留候选，可继续编辑后重试", async () => {
+test("实际写入结束前不报告成功；受理后关窗仍完成固定账号的保存", async () => {
     const h = harness();
-    await h.controller.detect();
-    const original = "已存在正文";
-    const hash = hashExcerptContent(original);
-    h.saved.set(hash, { content: original, contentHash: hash });
-    assert.equal((await h.controller.save(original)).duplicated, true);
-    assert.ok(h.controller.currentOffer());
-    assert.equal((await h.controller.save("改写正文")).duplicated, false);
-    assert.equal(h.controller.currentOffer(), null);
+    const save = h.repository.save;
+    let release;
+    h.repository.save = async (...args) => {
+        await new Promise((resolve) => { release = resolve; });
+        return save(...args);
+    };
+    let finished = false;
+    const pending = h.controller.capture().then((result) => { finished = true; return result; });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(finished, false);
+    assert.equal(h.saved.size, 0);
+    h.controller.dispose();
+    release();
+    assert.equal((await pending).kind, "saved");
+    assert.equal(h.saved.size, 1);
 });
 
-test("暂存写入后下次检测跳过；关闭未保存不会留下标记", async () => {
+test("保存失败不消费候选、不写已处理标记，同一窗口不重新读取；新窗口可重试", async () => {
     const h = harness();
-    await h.controller.detect();
-    assert.equal(await h.controller.stash(), "added");
-    assert.equal(h.stashed.size, 1);
-    assert.equal((await h.controller.detect()).reason, "stashed");
-    const k = harness();
-    await k.controller.detect();
-    k.controller.dispose();
-    assert.equal(k.stashed.size, 0);
-    assert.equal(k.saved.size, 0);
-});
-
-test("重复暂存也消耗当前候选，刷新暂存不再次读取剪贴板", async () => {
-    const h = harness();
-    await h.controller.detect();
-    h.stash.add = async () => "duplicate";
-    assert.equal(await h.controller.stash(), "duplicate");
-    assert.equal(h.controller.currentOffer(), null);
-    await h.controller.listStash();
-    assert.equal(h.events.filter((event) => event === "read").length, 1);
-});
-
-test("失败保留原候选并复用并发保存 Promise", async () => {
-    const h = harness();
-    await h.controller.detect();
     const save = h.repository.save;
     h.repository.save = async () => { throw new Error("磁盘写入失败"); };
-    await assert.rejects(h.controller.save("编辑后正文"), /磁盘/);
-    h.setText("后来复制的新正文");
-    let release;
-    h.repository.save = async (...args) => { await new Promise((resolve) => { release = resolve; }); return save(...args); };
-    const first = h.controller.save("编辑后正文");
-    assert.equal(h.controller.save("编辑后正文"), first);
-    await new Promise((resolve) => setImmediate(resolve));
-    release(); await first;
-    assert.equal([...h.saved.values()][0].content, "编辑后正文");
-    assert.equal(h.events.filter((event) => event === "read").length, 1);
+    const pending = h.controller.capture();
+    await assert.rejects(pending, /磁盘/);
+    assert.equal(h.saved.size, 0);
+    assert.equal(h.events.some((e) => Array.isArray(e) && e[0] === "consumed"), false);
+    h.repository.save = save;
+    assert.equal(h.controller.capture(), pending);
+    await assert.rejects(h.controller.capture(), /磁盘/);
+    const next = new ExcerptCaptureController("session-1", h.ports);
+    assert.equal((await next.capture()).kind, "saved");
+    assert.equal(h.events.filter((e) => e === "read").length, 2);
 });
 
-test("会话或账号失效禁止保存和暂存", async () => {
-    for (const invalidate of [(h) => h.setOwner("user:2"), (h) => h.repository.generation++, (h) => h.setActive(false), (h) => h.advance(30 * 60_000)]) {
-        const h = harness(); await h.controller.detect(); invalidate(h);
-        await assert.rejects(h.controller.save("正文"));
-        await assert.rejects(h.controller.stash());
-        assert.equal(h.saved.size, 0); assert.equal(h.stashed.size, 0);
+test("读取后至保存受理前会话、账号、窗口或仓库代次变化禁止写入", async () => {
+    for (const invalidate of [(h) => h.setOwner("user:2"), (h) => h.repository.generation++, (h) => h.setActive(false), (h) => h.advance(30 * 60_000), (h) => h.controller.dispose()]) {
+        const h = harness();
+        const hashes = h.stash.hashes;
+        h.stash.hashes = async () => { const result = await hashes(); invalidate(h); return result; };
+        await assert.rejects(h.controller.capture());
+        assert.equal(h.saved.size, 0);
+        assert.equal(h.stashed.size, 0);
     }
 });
 
-test("已保存、已暂存、本应用写入、空内容和超长均不产生候选", async () => {
-    const content = "其他应用复制的正文";
-    const hash = hashExcerptContent(content);
+test("失效会话在读取前终止", async () => {
+    const h = harness();
+    h.setActive(false);
+    await assert.rejects(h.controller.capture(), /失效/);
+    assert.equal(h.events.includes("read"), false);
+});
+
+test("已保存、已暂存、本应用写入、空内容、非文字和超长均不保存", async () => {
+    const hash = hashExcerptContent("其他应用复制的正文");
     for (const [reason, setup] of [
         ["saved", (h) => h.saved.set(hash, { contentHash: hash })],
         ["stashed", (h) => h.stashed.add(hash)],
@@ -156,13 +152,37 @@ test("已保存、已暂存、本应用写入、空内容和超长均不产生�
         ["noText", (h) => { h.ports.clipboard.hasText = async () => false; }],
     ]) {
         const h = harness(); setup(h);
-        const result = await h.controller.detect();
-        assert.equal(result.reason, reason);
-        await assert.rejects(h.controller.save(), /没有待保存/);
+        assert.equal((await h.controller.capture()).reason, reason);
+        assert.equal(h.events.some((e) => Array.isArray(e) && e[0] === "save"), false);
+        assert.equal(h.events.filter((e) => e === "read").length, reason === "noText" ? 0 : 1);
     }
 });
 
-test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默渠道且入口标记只进诊断", () => {
+test("读后新增重复摘录交给保存仓库去重，结果为中性且消费相同候选", async () => {
+    const h = harness();
+    const save = h.repository.save;
+    h.repository.save = (...args) => {
+        h.saved.set(hashExcerptContent(args[2]), { contentHash: hashExcerptContent(args[2]) });
+        return save(...args);
+    };
+    assert.deepEqual(await h.controller.capture(), { kind: "saved", duplicated: true });
+    assert.equal(h.saved.size, 1);
+    assert.equal(h.events.at(-1)[0], "consumed");
+});
+
+test("反馈区分真正成功、重复、暂存与超限，错误有更长显示时间", () => {
+    const { captureFeedback } = require(path.join(root, "src/features/excerpts/domain/excerpt-capture-feedback.ts"));
+    assert.deepEqual(captureFeedback({ kind: "saved", duplicated: false }), { tone: "success", message: "已将剪贴板摘录完成", duration: 1000 });
+    for (const result of [{ kind: "saved", duplicated: true }, { kind: "skip", reason: "saved" }]) {
+        assert.equal(captureFeedback(result).message, "该内容已在摘录中");
+        assert.equal(captureFeedback(result).tone, "neutral");
+    }
+    assert.equal(captureFeedback({ kind: "skip", reason: "stashed" }).message, "该内容已在暂存区");
+    assert.equal(captureFeedback({ kind: "skip", reason: "tooLong" }).duration, 2000);
+    assert.equal(captureFeedback({ kind: "skip", reason: "empty" }).tone, "neutral");
+});
+
+test("会话卡携带「摘录剪贴板」按钮，与停止共用 HIGH 静默渠道且入口标记只进诊断", () => {
     const notifications = fs.readFileSync(
         path.join(
             root,
@@ -175,7 +195,7 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
     assert.match(notifications, /private const val LEGACY_ID = 7003/);
     assert.match(notifications, /manager\.cancel\(LEGACY_ID\)/);
     // 按钮与卡主体同一捕获宿主，独立请求码防止 PendingIntent 合并。
-    assert.match(notifications, /"保存剪贴板", savePendingIntent/);
+    assert.match(notifications, /"摘录剪贴板", savePendingIntent/);
     assert.match(notifications, /CAPTURE_REQUEST_CODE = ID \+ 1/);
     assert.match(
         notifications,
@@ -207,11 +227,10 @@ test("会话卡携带「保存剪贴板」按钮，与停止共用 HIGH 静默�
     // 诊断只允许入口枚举值，不接触剪贴板正文、账号或令牌。
     assert.match(screen, /captureEntry\?: string/);
     assert.match(
-        screen,
-        /recordDiagnostic\("excerpt_capture", "window_opened", \{\s*entry: captureEntry \?\? "card_body",\s*\}\)/,
+        screen.replace(/\s+/g, " "),
+        /recordDiagnostic\("excerpt_capture", "window_opened", \{\s*entry: captureEntry === "card_button" \? "card_button" : "card_body",\s*\}\)/,
     );
-    const stashHandler = screen.match(/const stash = \(\) => void run\(async \(\) => \{([\s\S]*?)\n    \}\);/)?.[1];
-    assert.ok(stashHandler);
-    assert.match(stashHandler, /setState\(\{ kind: "result", result: \{ kind: "skip", reason: "stashed"/);
-    assert.doesNotMatch(stashHandler, /(?:close|finishExcerptCapture|detect)\(/);
+    assert.match(screen, /await capture.capture\(\)/);
+    assert.match(screen, /finishExcerptCapture\(captureId, false\)/);
+    assert.doesNotMatch(screen, /DraftDialog|ExcerptFormDialog|ExcerptStashPanel|listStash/);
 });

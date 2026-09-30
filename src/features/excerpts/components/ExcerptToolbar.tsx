@@ -1,9 +1,9 @@
-import { ClipboardPaste, Search, Timer, X } from "lucide-react-native";
+import { ClipboardPaste, Inbox, Search, Timer, X } from "lucide-react-native";
 import { Text, View } from "react-native";
 import { semanticColors } from "@/shared/theme";
 import { IconButton } from "@/shared/ui";
 
-/** 行高 40；可用环境右侧为快速摘录 / 搜索 / 粘贴三个 compact 图标，间距 4。 */
+/** 右侧固定顺序：暂存区 / 快速摘录（支持环境）/ 粘贴 / 搜索。 */
 export function ExcerptToolbar({
     count,
     searchOpen,
@@ -15,6 +15,8 @@ export function ExcerptToolbar({
     sessionActive,
     sessionDisabled,
     onSession,
+    stashCount,
+    onStash,
 }: {
     count: number;
     searchOpen: boolean;
@@ -26,6 +28,8 @@ export function ExcerptToolbar({
     sessionActive: boolean;
     sessionDisabled: boolean;
     onSession: () => void;
+    stashCount: number;
+    onStash: () => void;
 }) {
     return (
         <View
@@ -41,6 +45,7 @@ export function ExcerptToolbar({
                 numberOfLines={1}
                 style={{
                     flex: 1,
+                    minWidth: 0,
                     fontSize: 17,
                     color: semanticColors.textPrimary,
                 }}
@@ -55,6 +60,15 @@ export function ExcerptToolbar({
                     {` · ${count} 条`}
                 </Text>
             </Text>
+            <IconButton
+                icon={Inbox}
+                accessibilityLabel={`查看暂存区，${stashCount} 条`}
+                size="compact"
+                iconSize={20}
+                selected={stashCount > 0}
+                disabled={disabled}
+                onPress={onStash}
+            />
             {sessionSupported && (
                 <IconButton
                     icon={Timer}
@@ -69,15 +83,6 @@ export function ExcerptToolbar({
                 />
             )}
             <IconButton
-                icon={searchOpen ? X : Search}
-                accessibilityLabel={searchOpen ? "关闭搜索" : "搜索摘录"}
-                size="compact"
-                iconSize={20}
-                selected={searchOpen}
-                disabled={disabled}
-                onPress={onSearch}
-            />
-            <IconButton
                 icon={ClipboardPaste}
                 accessibilityLabel="粘贴剪贴板内容为摘录"
                 size="compact"
@@ -85,6 +90,15 @@ export function ExcerptToolbar({
                 loading={pasting}
                 disabled={disabled}
                 onPress={onPaste}
+            />
+            <IconButton
+                icon={searchOpen ? X : Search}
+                accessibilityLabel={searchOpen ? "关闭搜索" : "搜索摘录"}
+                size="compact"
+                iconSize={20}
+                selected={searchOpen}
+                disabled={disabled}
+                onPress={onSearch}
             />
         </View>
     );

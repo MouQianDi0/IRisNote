@@ -1,150 +1,123 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, BackHandler, Pressable, Text, View } from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BackHandler, Pressable } from "react-native";
 import NativeSystem from "@modules/irisnote-system";
 import { applicationDatabaseResource } from "@/core/database/application-database-resource";
 import { recordDiagnostic } from "@/core/diagnostics/diagnostic-log";
-import { semanticColors } from "@/shared/theme";
-import { AppButton } from "@/shared/ui";
-import { DraftDialog } from "@/shared/ui/Dialog/dialog";
-import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
-import { ExcerptStashPanel } from "../components/ExcerptStashPanel";
-import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
-import { mergeStashContents } from "../domain/excerpt-stash-merge";
-import type { ClipboardDetectionResult } from "../domain/clipboard-detection";
+import { defaultThemePreset } from "@/shared/theme";
+import { ExcerptCaptureFeedback } from "../components/ExcerptCaptureFeedback";
+import {
+    captureFeedback,
+    type CaptureFeedback,
+} from "../domain/excerpt-capture-feedback";
 import type { ExcerptCaptureController } from "../services/excerpt-capture-controller";
 import { createExcerptCapture } from "../services/excerpt-capture";
 import "../../../../global.css";
 
-type CaptureState = { kind: "loading" } | { kind: "result"; result: ClipboardDetectionResult } | { kind: "error" };
-type FormState = { kind: "offer" } | { kind: "edit"; item: ExcerptStashItem } | { kind: "merge" };
-
-/** 独立原生 Surface：只通过 SQLite 与主应用共享摘录和暂存。 */
-export function ExcerptCaptureScreen({ sessionId, captureId, captureEntry }: {
+/** 独立透明 Surface：一次检测后直接保存本机摘录，短反馈后退出独立任务。 */
+export function ExcerptCaptureScreen({
+    sessionId,
+    captureId,
+    captureEntry,
+}: {
     sessionId: string;
     captureId: string;
     captureEntry?: string;
 }) {
+    const [feedback, setFeedback] = useState<CaptureFeedback | null>(null);
+    const [leaving, setLeaving] = useState(false);
+    const dismissible = useRef(false);
+    // Effect 重挂仍共享同一窗口任务，防开发 StrictMode 重读剪贴板。
+    const task = useRef<Promise<CaptureFeedback> | null>(null);
     const controller = useRef<ExcerptCaptureController | null>(null);
-    const mounted = useRef(true);
-    const busyRef = useRef(false);
-    const modeRef = useRef<"main" | "panel" | "form">("main");
-    const [state, setState] = useState<CaptureState>({ kind: "loading" });
-    const [scope, setScope] = useState<{ ownerKey: string; generation: number } | null>(null);
-    const [items, setItems] = useState<ExcerptStashItem[]>([]);
-    const [panel, setPanel] = useState(false);
-    const [form, setForm] = useState<FormState | null>(null);
-    const [separator, setSeparator] = useState(true);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [notice, setNotice] = useState<string | null>(null);
-    const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => { modeRef.current = form ? "form" : panel ? "panel" : "main"; }, [form, panel]);
-    const close = (saved = false) => NativeSystem?.finishExcerptCapture(captureId, saved);
-    const refresh = async () => {
-        const next = await controller.current?.listStash();
-        if (mounted.current && next) {
-            setItems(next);
-            if (next.length === 0) setPanel(false);
-        }
+    const live = useRef(false);
+    const close = () => {
+        if (!dismissible.current) return;
+        // 成功已经在 Surface 显示；false 避免原生再叠加成功 Toast。
+        void NativeSystem?.finishExcerptCapture(captureId, false).catch(
+            () => undefined,
+        );
     };
     useEffect(() => {
-        mounted.current = true;
-        void recordDiagnostic("excerpt_capture", "window_opened", {
-            entry: captureEntry ?? "card_body",
-        });
+        let active = true;
+        live.current = true;
+        let hold: ReturnType<typeof setTimeout> | undefined;
+        let fade: ReturnType<typeof setTimeout> | undefined;
+        dismissible.current = false;
         const back = BackHandler.addEventListener("hardwareBackPress", () => {
-            if (busyRef.current) return true;
-            if (modeRef.current === "form") setForm(null);
-            else if (modeRef.current === "panel") setPanel(false);
-            else void NativeSystem?.finishExcerptCapture(captureId, false).catch(() => undefined);
+            if (dismissible.current)
+                void NativeSystem?.finishExcerptCapture(captureId, false).catch(
+                    () => undefined,
+                );
             return true;
         });
-        const lease = applicationDatabaseResource.acquire();
-        let capture: ExcerptCaptureController | null = null;
-        void (async () => {
-            try {
-                const resource = await lease.ready;
-                if (!lease.active) return;
-                capture = createExcerptCapture(sessionId, captureId, resource.database);
-                controller.current = capture;
-                const result = await capture.detect();
-                const currentScope = await capture.scope();
-                const stash = await capture.listStash();
-                if (lease.active) {
-                    setScope(currentScope);
-                    setItems(stash);
-                    setState({ kind: "result", result });
+        if (!task.current) {
+            const lease = applicationDatabaseResource.acquire();
+            void recordDiagnostic("excerpt_capture", "window_opened", {
+                entry:
+                    captureEntry === "card_button"
+                        ? "card_button"
+                        : "card_body",
+            });
+            task.current = (async () => {
+                try {
+                    const resource = await lease.ready;
+                    if (!live.current) throw new Error("捕获窗口已关闭");
+                    const capture = createExcerptCapture(
+                        sessionId,
+                        captureId,
+                        resource.database,
+                    );
+                    controller.current = capture;
+                    return captureFeedback(await capture.capture());
+                } catch (cause) {
+                    return {
+                        tone: "error",
+                        duration: 2000,
+                        message:
+                            cause instanceof Error
+                                ? cause.message
+                                : "摘录失败，请重新点通知",
+                    } satisfies CaptureFeedback;
+                } finally {
+                    // 已受理的写入完成前保留租约，避免关窗提前关闭数据库。
+                    void lease.release().catch(() => undefined);
                 }
-            } catch {
-                if (lease.active) {
-                    setError("检测失败，请关闭后重新点通知；也可以回到 IRisNote 粘贴保存。");
-                    setState({ kind: "error" });
-                }
-            }
-        })();
+            })();
+        }
+        void task.current.then((result) => {
+            if (!active) return;
+            setFeedback(result);
+            dismissible.current = true;
+            hold = setTimeout(() => {
+                setLeaving(true);
+                fade = setTimeout(() => {
+                    if (active)
+                        void NativeSystem?.finishExcerptCapture(
+                            captureId,
+                            false,
+                        ).catch(() => undefined);
+                }, defaultThemePreset.motion.fastDuration);
+            }, result.duration);
+        });
         return () => {
-            mounted.current = false;
-            if (noticeTimer.current) clearTimeout(noticeTimer.current);
+            active = false;
+            live.current = false;
+            if (hold) clearTimeout(hold);
+            if (fade) clearTimeout(fade);
             back.remove();
-            capture?.dispose();
-            if (controller.current === capture) controller.current = null;
-            void lease.release().catch(() => undefined);
+            // StrictMode 的同步重挂不撤销同一任务，真正卸载后阻止后续读取/保存。
+            queueMicrotask(() => {
+                if (!live.current) controller.current?.dispose();
+            });
         };
     }, [sessionId, captureId, captureEntry]);
-
-    const run = async (action: () => Promise<void>): Promise<boolean> => {
-        if (busyRef.current) return false;
-        busyRef.current = true; setBusy(true); setError(null);
-        try { await action(); return true; }
-        catch (cause) { setError(cause instanceof Error ? cause.message : "操作失败，请重试"); return false; }
-        finally { busyRef.current = false; if (mounted.current) setBusy(false); }
-    };
-    const showNotice = (value: string) => {
-        if (noticeTimer.current) clearTimeout(noticeTimer.current);
-        setNotice(value);
-        noticeTimer.current = setTimeout(() => { if (mounted.current) setNotice(null); noticeTimer.current = null; }, 2000);
-    };
-    const stash = () => void run(async () => {
-        const result = await controller.current?.stash();
-        if (!result) throw new Error("捕获窗口已关闭");
-        setState({ kind: "result", result: { kind: "skip", reason: "stashed", hash: null } });
-        showNotice(result === "duplicate" ? "已在暂存中" : "已暂存");
-        try { await refresh(); }
-        catch { setError("已暂存，但暂存区数量刷新失败；请重新打开暂存区查看"); }
-    });
-    const changeStash = (action: () => Promise<void>) => run(async () => { await action(); await refresh(); });
-    const offer = state.kind === "result" && state.result.kind === "offer" ? state.result : null;
-    const message = state.kind === "result" && state.result.kind === "skip"
-        ? state.result.reason === "tooLong" ? "内容超过 20000 字，建议回到 IRisNote 保存为笔记"
-        : state.result.reason === "noText" || state.result.reason === "empty" ? "剪贴板里没有文字，复制文字后再试"
-        : "没有需要保存的新内容" : null;
-    const formText = form?.kind === "offer" ? offer?.content ?? ""
-        : form?.kind === "edit" ? form.item.content
-        : mergeStashContents(items, separator);
-
-    return <GestureHandlerRootView className="flex-1 bg-transparent">
-        {state.kind === "loading" ? <View className="flex-1 items-center justify-center"><ActivityIndicator color={semanticColors.brandPrimary} accessibilityLabel="正在检测剪贴板" /></View> : !form && (
-            <DraftDialog visible title={panel ? `暂存区（${items.length} 条）` : "快速摘录"} onClose={() => { if (panel) setPanel(false); else void close(false); }} closeOnScrimTap={!busy} headerExtra={<Pressable accessibilityRole="button" accessibilityLabel="关闭快速摘录" disabled={busy} onPress={() => void close(false)}><Text>✕</Text></Pressable>}>
-                {panel ? <>
-                    <ExcerptStashPanel items={items} busy={busy} onReorder={(ids) => changeStash(() => controller.current!.reorderStash(ids))} onEdit={(item) => setForm({ kind: "edit", item })} onRemove={(id) => void changeStash(() => controller.current!.removeStash(id))} onClear={() => void changeStash(() => controller.current!.clearStash())} onMerge={() => { setSeparator(true); setForm({ kind: "merge" }); }} />
-                    <AppButton className="mt-2" variant="secondary" label="返回" disabled={busy} onPress={() => setPanel(false)} />
-                </> : <>
-                    {notice && <Text accessibilityRole="alert" className="mb-2 text-sm text-primary">{notice}</Text>}
-                    {offer ? <><Text className="text-sm leading-5 text-primary">检测到剪贴板新内容</Text><Text numberOfLines={3} className="mt-2 text-[15px] leading-[21px] text-black">{offer.content}</Text><Text className="mt-3 text-sm leading-5 text-hyper-text-secondary">摘录仅保存在本机，暂不同步到云端</Text></> : <Text className="text-sm leading-5 text-hyper-text-secondary">{message}</Text>}
-                    {items.length > 0 && <Text className="mt-3 text-sm text-primary" onPress={() => setPanel(true)}>暂存区有 {items.length} 条 · 查看</Text>}
-                    {!offer && <View className="mt-3 flex-row gap-2.5"><AppButton className="flex-1" variant="secondary" label="返回原应用" onPress={() => void close(false)} /><AppButton className="flex-1" label="查看暂存区" disabled={items.length === 0} onPress={() => setPanel(true)} /></View>}
-                    {offer && <View className="mt-3 flex-row gap-2.5"><AppButton className="flex-1" variant="secondary" label="暂存" disabled={busy} onPress={stash} /><AppButton className="flex-1" label="保存" disabled={busy} onPress={() => setForm({ kind: "offer" })} /></View>}
-                </>}
-                {error && <Text accessibilityRole="alert" className="mt-3 text-sm text-hyper-error">{error}</Text>}
-            </DraftDialog>
-        )}
-        {form && scope && <ExcerptFormDialog key={form.kind === "edit" ? form.item.clientId : form.kind} ownerKey={scope.ownerKey} generation={scope.generation} initialText={formText} duplicateMessage={form.kind === "edit" ? "已在暂存中" : undefined} mergeSeparator={form.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(items, enabled) } : undefined} onClose={() => setForm(null)} onSaved={() => { if (form.kind === "edit") { setForm(null); void refresh(); } else void close(true); }} submitText={async (text) => {
-            if (!controller.current) throw new Error("捕获窗口已关闭");
-            if (form.kind === "edit") return controller.current.updateStash(form.item.clientId, text);
-            if (form.kind === "merge") return controller.current.saveMerged(text);
-            const receipt = await controller.current.save(text);
-            return receipt.duplicated ? "duplicate" : "saved";
-        }} />}
-    </GestureHandlerRootView>;
+    return (
+        <Pressable
+            style={{ flex: 1, backgroundColor: "transparent" }}
+            onPress={close}
+            accessible={false}
+        >
+            <ExcerptCaptureFeedback feedback={feedback} leaving={leaving} />
+        </Pressable>
+    );
 }

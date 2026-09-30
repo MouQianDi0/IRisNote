@@ -125,3 +125,59 @@ test("暂存增删改移、重复冲突与账号隔离", async (t) => {
     assert.deepEqual(await repo.list("user:2"), []);
     assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM local_excerpt_stash WHERE owner_key = 'user:1'").get().n, 1);
 });
+
+const { pasteClipboardToStash, saveMergedStash } = require("@/features/excerpts/services/excerpt-stash-service.ts");
+
+test("应用内粘贴暂存只读一次，正文规范化、重复与空内容由仓库处理", async (t) => {
+    const h = await setup(t);
+    let reads = 0;
+    const read = async () => { reads++; return "甲\n"; };
+    assert.equal(await pasteClipboardToStash(h.repository, h.scope, read, "user:1", 1), "added");
+    assert.equal(reads, 1);
+    assert.equal(await pasteClipboardToStash(h.repository, h.scope, read, "user:1", 1), "duplicate");
+    assert.equal((await h.repository.list("user:1")).length, 1);
+    await assert.rejects(pasteClipboardToStash(h.repository, h.scope, async () => " \n", "user:1", 1), /为空/);
+    assert.equal((await h.repository.list("user:1")).length, 1);
+});
+
+test("粘贴读取期间切账号禁止将旧剪贴板写入新账号", async (t) => {
+    const h = await setup(t);
+    await assert.rejects(pasteClipboardToStash(h.repository, h.scope, async () => {
+        h.setOwner("user:2"); return "旧账号正文";
+    }, "user:1", 1), /owner changed/);
+    assert.equal(h.sqlite.prepare("SELECT COUNT(*) AS n FROM local_excerpt_stash").get().n, 0);
+});
+
+test("合并保存只清理未修改快照，新粘贴和修改条目保留", async (t) => {
+    const h = await setup(t);
+    for (const text of ["甲", "乙"]) await h.repository.add("user:1", text);
+    const snapshot = await h.repository.list("user:1");
+    const saves = [];
+    const writer = { ...h.scope, save: async (owner, id, text, source) => {
+        saves.push([owner, text, source]);
+        await h.repository.add(owner, "新增丙");
+        await h.repository.update(owner, snapshot[1].clientId, "已修改乙");
+        return { duplicated: false };
+    } };
+    assert.deepEqual(await saveMergedStash(writer, h.repository, snapshot, "user:1", 1, "甲\n乙"), { kind: "saved", cleanupFailed: false });
+    assert.deepEqual(saves, [["user:1", "甲\n乙", "manual"]]);
+    assert.deepEqual((await h.repository.list("user:1")).map((item) => item.content), ["已修改乙", "新增丙"]);
+});
+
+test("合并保存失败或重复不清暂存；清理失败明确返回已经保存", async (t) => {
+    const h = await setup(t);
+    await h.repository.add("user:1", "甲");
+    const snapshot = await h.repository.list("user:1");
+    let clears = 0;
+    const stash = { removeMerged: async () => { clears++; throw new Error("cleanup disk failure"); } };
+    const writer = { ...h.scope, save: async () => { throw new Error("save disk failure"); } };
+    await assert.rejects(saveMergedStash(writer, stash, snapshot, "user:1", 1, "甲"), /save disk failure/);
+    assert.equal(clears, 0);
+    writer.save = async () => ({ duplicated: true });
+    assert.deepEqual(await saveMergedStash(writer, stash, snapshot, "user:1", 1, "甲"), { kind: "duplicate" });
+    assert.equal(clears, 0);
+    writer.save = async () => ({ duplicated: false });
+    assert.deepEqual(await saveMergedStash(writer, stash, snapshot, "user:1", 1, "甲"), { kind: "saved", cleanupFailed: true });
+    assert.equal(clears, 1);
+    assert.equal((await h.repository.list("user:1")).length, 1);
+});

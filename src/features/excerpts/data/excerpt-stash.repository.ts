@@ -144,4 +144,14 @@ export class ExcerptStashRepository {
             await this.database.run("DELETE FROM local_excerpt_stash WHERE owner_key = ?", [ownerKey]);
         });
     }
+
+    /** 只清理合并快照中的未修改条目；保存期间新增或编辑的条目必须保留。 */
+    removeMerged(ownerKey: string, items: readonly Pick<ExcerptStashItem, "clientId" | "contentHash">[]): Promise<void> {
+        return this.checked(ownerKey, () => this.database.transaction(async (tx) => {
+            for (const item of items) await tx.run(
+                "DELETE FROM local_excerpt_stash WHERE owner_key = ? AND client_id = ? AND content_hash = ?",
+                [ownerKey, item.clientId, item.contentHash],
+            );
+        }));
+    }
 }

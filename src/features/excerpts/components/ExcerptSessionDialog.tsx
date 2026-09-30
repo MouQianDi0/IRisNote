@@ -77,7 +77,7 @@ export function ExcerptSessionDialog({
                     {active && state.session
                         ? `剩余约 ${Math.ceil((state.session.endsAt - now) / 60_000)} 分钟（至 ${endTime}）`
                         : excerptCaptureSupported()
-                          ? "在设定时间内，从其他应用复制内容后点通知，即可暂存或编辑后保存并返回原应用；回到 IRisNote 也会自动提示保存。不会自动保存或上传。"
+                          ? "在设定时间内，从其他应用复制内容后点通知，即可直接保存为本机摘录；回到 IRisNote 时仍会提示保存。摘录暂不同步到云端。"
                           : "在设定时间内，从其他应用复制的内容回到 IRisNote 时会自动提示保存，不会自动保存或上传。"}
                 </Text>
                 {!active && (

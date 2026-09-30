@@ -110,7 +110,7 @@ function StashRow({ item, index, canDrag, disabled, centers, onHeight, onBegin, 
 }
 
 /** 捕获窗口与摘录页共用同一暂存面板；拖拽只在落点提交一次排序事务。 */
-export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, onClear, onMerge }: {
+export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, onClear, onMerge, onPaste }: {
     items: readonly ExcerptStashItem[];
     busy: boolean;
     onReorder: (orderedClientIds: readonly string[]) => Promise<boolean>;
@@ -118,6 +118,7 @@ export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, on
     onRemove: (id: string) => void;
     onClear: () => void;
     onMerge: () => void;
+    onPaste: () => void;
 }) {
     const [ordered, setOrdered] = useState<ExcerptStashItem[]>(() => [...items]);
     const orderedRef = useRef(ordered);
@@ -188,7 +189,9 @@ export function ExcerptStashPanel({ items, busy, onReorder, onEdit, onRemove, on
     }, [items, onReorder, target, updateCenters]);
     const disabled = busy || pending || draggingId !== null;
     return <>
-        <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" scrollEnabled={!disabled} nestedScrollEnabled>
+        <AppButton variant="secondary" label="粘贴到暂存区" disabled={disabled} onPress={onPaste} />
+        {items.length === 0 && <Text style={{ marginTop: 12, fontSize: 14, color: semanticColors.textSecondary }}>暂存区还没有内容</Text>}
+        <ScrollView style={{ marginTop: 12, maxHeight: 320, flexShrink: 1 }} keyboardShouldPersistTaps="handled" scrollEnabled={!disabled} nestedScrollEnabled>
             {ordered.map((item, index) => <StashRow
                 key={item.clientId}
                 item={item}

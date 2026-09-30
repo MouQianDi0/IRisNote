@@ -8,8 +8,8 @@ import {
     type ExcerptSession,
 } from "../domain/excerpt-session";
 import type { ExcerptLocalRepository } from "../data/excerpt-local.repository";
-import { newExcerptId, saveDetectedOffer } from "./excerpt-service";
 import type { ExcerptStashRepository } from "../data/excerpt-stash.repository";
+import { saveDetectedOffer } from "./excerpt-service";
 
 export type CaptureOffer = {
     ownerKey: string;
@@ -17,13 +17,16 @@ export type CaptureOffer = {
     content: string;
     hash: string;
 };
+export type ExcerptCaptureResult =
+    | Extract<ClipboardDetectionResult, { kind: "skip" }>
+    | { kind: "saved"; duplicated: boolean };
 
 export type ExcerptCapturePorts = {
     readSession: () => Promise<ExcerptSession | null>;
     readOwner: () => Promise<string>;
     active: () => Promise<boolean>;
     activate: (ownerKey: string) => Promise<void>;
-    stash: Pick<ExcerptStashRepository, "list" | "hashes" | "add" | "reorder" | "update" | "remove" | "clear">;
+    stash: Pick<ExcerptStashRepository, "hashes">;
     repository: Pick<
         ExcerptLocalRepository,
         "generation" | "assertSession" | "save" | "list"
@@ -36,11 +39,10 @@ export type ExcerptCapturePorts = {
     now: () => number;
 };
 
-/** 独立窗口只消费当前会话；冷启动与热启动经过同一检测/保存服务。 */
+/** 一次通知点击只有一次检测/保存；同一窗口重复调用共享最终 Promise，包括失败。 */
 export class ExcerptCaptureController {
-    private offer: CaptureOffer | null = null;
     private closed = false;
-    private saving: ReturnType<typeof saveDetectedOffer> | null = null;
+    private pending: Promise<ExcerptCaptureResult> | null = null;
 
     constructor(
         private readonly sessionId: string,
@@ -63,7 +65,12 @@ export class ExcerptCaptureController {
         return ownerKey;
     }
 
-    async detect(): Promise<ClipboardDetectionResult> {
+    capture(): Promise<ExcerptCaptureResult> {
+        if (!this.pending) this.pending = this.captureOnce();
+        return this.pending;
+    }
+
+    private async captureOnce(): Promise<ExcerptCaptureResult> {
         const ownerKey = await this.owner();
         await this.ports.activate(ownerKey);
         const generation = this.ports.repository.generation;
@@ -85,96 +92,20 @@ export class ExcerptCaptureController {
                 ),
         });
         await valid();
-        if (result.kind === "offer")
-            this.offer = { ...result, ownerKey, generation };
-        return result;
-    }
-
-    currentOffer() {
-        return this.offer;
-    }
-
-    async scope() {
-        const ownerKey = await this.owner();
-        return { ownerKey, generation: this.ports.repository.generation };
-    }
-
-    async listStash() {
-        const ownerKey = await this.owner();
-        return this.ports.stash.list(ownerKey);
-    }
-
-    async stash() {
-        const offer = this.offer;
-        if (!offer) throw new Error("没有待暂存的摘录");
-        if ((await this.owner()) !== offer.ownerKey) throw new Error("账号已变化，请重新开启快速摘录");
-        this.ports.repository.assertSession(offer.ownerKey, offer.generation);
-        const result = await this.ports.stash.add(offer.ownerKey, offer.content);
-        this.offer = null;
-        this.ports.consumed(offer);
-        return result;
-    }
-
-    async reorderStash(orderedClientIds: readonly string[]) {
-        const ownerKey = await this.owner();
-        await this.ports.stash.reorder(ownerKey, orderedClientIds);
-    }
-
-    async updateStash(clientId: string, text: string) {
-        const ownerKey = await this.owner();
-        return this.ports.stash.update(ownerKey, clientId, text);
-    }
-
-    async removeStash(clientId: string) {
-        const ownerKey = await this.owner();
-        await this.ports.stash.remove(ownerKey, clientId);
-    }
-
-    async clearStash() {
-        const ownerKey = await this.owner();
-        await this.ports.stash.clear(ownerKey);
-    }
-
-    async saveMerged(text: string): Promise<"saved" | "duplicate"> {
-        const ownerKey = await this.owner();
-        const generation = this.ports.repository.generation;
-        this.ports.repository.assertSession(ownerKey, generation);
-        const receipt = await this.ports.repository.save(ownerKey, newExcerptId(), text, "manual", new Date());
-        if (receipt.duplicated) return "duplicate";
-        await this.ports.stash.clear(ownerKey);
-        return "saved";
-    }
-
-    save(text?: string) {
-        if (this.saving) return this.saving;
-        const pending = this.saveOnce(text);
-        this.saving = pending;
-        const clear = () => {
-            if (this.saving === pending) this.saving = null;
-        };
-        void pending.then(clear, clear);
-        return pending;
-    }
-
-    private async saveOnce(text?: string) {
-        const offer = this.offer;
-        if (!offer) throw new Error("没有待保存的摘录");
-        if ((await this.owner()) !== offer.ownerKey)
-            throw new Error("账号已变化，请重新开启快速摘录");
+        if (result.kind === "skip") return result;
+        const offer = { ...result, ownerKey, generation };
+        // 写入受理后沿用仓库账号租约，不因退出窗口回滚已受理的事务。
         const receipt = await saveDetectedOffer(
             this.ports.repository,
             offer,
-            text,
+            offer.content,
+            "paste",
         );
-        if (!receipt.duplicated) {
-            this.offer = null;
-            this.ports.consumed(offer);
-        }
-        return receipt;
+        this.ports.consumed(offer);
+        return { kind: "saved", duplicated: receipt.duplicated };
     }
 
     dispose() {
         this.closed = true;
-        this.offer = null;
     }
 }

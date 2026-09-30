@@ -1,6 +1,6 @@
 import type { ExcerptLocalRepository } from "../data/excerpt-local.repository";
 import { normalizeExcerptContent } from "../domain/excerpt-validation";
-import { ExcerptError, type ExcerptSaveReceipt } from "../excerpts.types";
+import { ExcerptError, type ExcerptSaveReceipt, type ExcerptSource } from "../excerpts.types";
 
 /** 每次新建生成一次；该标识不参与鉴权。 */
 export function newExcerptId(): string {
@@ -15,7 +15,7 @@ export function newExcerptId(): string {
 
 type ExcerptWriter = Pick<ExcerptLocalRepository, "save" | "assertSession">;
 
-/** 用户明确保存检测候选；受理前核验账号代次，失败保留候选供重试。 */
+/** 用户明确保存检测候选（表单或通知点击）；受理前核验账号代次，默认来源 manual。 */
 export async function saveDetectedOffer(
     repository: ExcerptWriter,
     offer: {
@@ -25,13 +25,14 @@ export async function saveDetectedOffer(
         hash: string;
     },
     text: string = offer.content,
+    source: ExcerptSource = "manual",
 ): Promise<ExcerptSaveReceipt> {
     repository.assertSession(offer.ownerKey, offer.generation);
     const receipt = await repository.save(
         offer.ownerKey,
         newExcerptId(),
         text,
-        "manual",
+        source,
         new Date(),
     );
     return receipt;

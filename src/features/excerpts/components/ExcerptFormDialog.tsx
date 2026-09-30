@@ -14,7 +14,7 @@ import { newExcerptId } from "../services/excerpt-service";
 import { excerptRepository } from "../state/excerpt-store";
 import type { ExcerptEntity } from "../excerpts.types";
 
-/** 原有新建/编辑继续使用仓储；委托模式用于捕获、暂存编辑与合并保存。 */
+/** 原有新建/编辑继续使用仓储；委托模式用于应用内检测候选、暂存编辑与合并保存。 */
 export function ExcerptFormDialog({
     ownerKey,
     generation,

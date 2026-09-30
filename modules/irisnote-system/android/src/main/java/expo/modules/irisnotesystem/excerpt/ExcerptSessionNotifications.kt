@@ -107,7 +107,7 @@ object ExcerptSessionNotifications {
       .setTimeoutAfter(remaining)
       .apply {
         if (savePendingIntent != null) {
-          addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "保存剪贴板", savePendingIntent).build())
+          addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "摘录剪贴板", savePendingIntent).build())
         }
         addAction(Notification.Action.Builder(R.drawable.ic_excerpt_session, "停止", stopPendingIntent).build())
       }

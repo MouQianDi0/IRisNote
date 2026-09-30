@@ -1,3 +1,12 @@
+## 2026-09-30 20:06:08 | 优化代码：通知一键摘录与应用内暂存区入口迁移
+
+- 变更概述：通知捕获改为一次读取直接保存本机摘录，透明动画短反馈后返回原应用；暂存区统一移到摘录页右上角。
+- 修改文件：src/features/excerpts/components/ExcerptCaptureFeedback.tsx、ExcerptToolbar.tsx、ExcerptStashPanel.tsx、ExcerptSessionDialog.tsx、ExcerptFormDialog.tsx；screens/ExcerptCaptureScreen.tsx、ExcerptsScreen.tsx；services/excerpt-capture-controller.ts、excerpt-service.ts、excerpt-stash-service.ts、excerpt-session-notifications.ts；domain/excerpt-capture-feedback.ts；data/excerpt-stash.repository.ts；hooks/useExcerptStash.ts；modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt；tests/excerpts/excerpt-capture.test.cjs、excerpt-capture-screen.test.cjs、excerpt-stash.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、业务模块与运行逻辑.md、docs/logs/2026-09-30-excerpt-direct-capture.md；CHANGELOG.md。
+- 具体内容：移除捕获确认、暂存和表单，仅显示处理中/成功/重复/失败；直接保存来源为粘贴，成功约 1 秒、失败/超限约 2 秒后淡出。工具栏顺序暂存区/快速摘录/粘贴/搜索；暂存区增加粘贴入口与空态，保留拖拽和默认换行开关。合并冻结快照，成功后仅清理未修改条目，清理失败准确提示已保存。Effect 重挂防重复读取、退出后已受理写入保持资源租约；本机保存，没有新增权限、后端或上传链路。
+- 验证：修改前后 typecheck 通过；最终获准环境 npm run check 通过（693 项，691 通过、2 跳过、0 失败；仅既有设置页 lint 警告）；沙箱内四项测试受本地监听/子进程 EPERM 限制，已在获准环境复核。Kotlin 编译已尝试但环境缺 JAVA_HOME/java，未完成；APK 构建、透明焦点/返回/动画/拖拽和 UI dp 真机验收未做。
+
+---
+
 ## 2026-09-30 04:17:18 | 优化代码：快速摘录暂存留窗、拖拽排序与合并换行开关
 
 - 变更概述：透明捕获窗暂存成功后就地切为无新内容并显示 2 秒提示；暂存区改为限高滚动列表、整行编辑、垃圾桶删除与长按拖拽；合并表单使用默认开启的「条目间换行」系统开关。
