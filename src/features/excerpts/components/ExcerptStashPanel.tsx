@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
-import { Trash2 } from "lucide-react-native";
+import { Save, Trash2 } from "lucide-react-native";
 import { Pressable, ScrollView, Text, View, type TextInput } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { semanticColors } from "@/shared/theme";
-import { AppButton, Input } from "@/shared/ui";
+import { AppButton, IconButton, Input } from "@/shared/ui";
 import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
 import { stashDragTarget } from "../domain/excerpt-stash-drag";
 
@@ -296,6 +296,15 @@ export function ExcerptStashPanel({ ref, items, busy, onReorder, onUpdate, onEdi
                         onBlur={() => {
                             if (editingRef.current?.id === item.clientId) void finishEditing();
                         }}
+                        trailing={<IconButton
+                            icon={Save}
+                            iconSize={20}
+                            size="standard"
+                            accessibilityLabel="保存暂存内容"
+                            loading={saving}
+                            disabled={disabled}
+                            onPress={() => { void finishEditing(); }}
+                        />}
                     />
                     {!!editError && <Text accessibilityRole="alert" className="mt-1 text-sm text-hyper-error">{editError}</Text>}
                 </> : undefined}

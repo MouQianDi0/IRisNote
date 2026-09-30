@@ -47,7 +47,7 @@ function harness(file, initialProps) {
         },
         "react/jsx-runtime": { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: "Fragment" },
         "react-native": { View: "View", Text: "Text", Pressable: "Pressable", ScrollView: "ScrollView" },
-        "lucide-react-native": Object.fromEntries(["Check", "Trash2", "X", "Inbox", "Timer", "ClipboardPaste", "Search"].map((name) => [name, name])),
+        "lucide-react-native": Object.fromEntries(["Save", "Trash2", "X", "Inbox", "Timer", "ClipboardPaste", "Search"].map((name) => [name, name])),
         "react-native-gesture-handler": { Gesture: {}, GestureDetector: "GestureDetector" },
         "react-native-reanimated": { __esModule: true, default: { View: "AnimatedView" }, useSharedValue: (value) => memo(() => shared(value), []) },
         "react-native-worklets": {},
@@ -127,19 +127,36 @@ test("列表位于粘贴按钮上方；相邻条目中心按实际高度连续�
     assert.deepEqual(row.props.centers.get(), [28, 96]);
 });
 
-test("编辑与列表同宽且无保存/取消按钮，未改内容离开不写库", async () => {
+test("编辑与列表同宽且仅保留保存按钮，未改内容离开不写库", async () => {
     let writes = 0;
     const h = panel(async () => { writes++; return "saved"; });
     const tree = await edit(h, items[0].content);
     assert.equal(input(tree).props.containerClassName, "w-full");
-    assert.equal(input(tree).props.trailing, undefined);
-    assert.equal(nodes(tree, (node) => node.props?.accessibilityLabel === "保存暂存内容" || node.props?.accessibilityLabel === "取消编辑暂存内容").length, 0);
+    const save = action(tree, "保存暂存内容");
+    assert.equal(save.props.icon, "Save");
+    assert.equal(save.props.size, "standard");
+    assert.equal(nodes(tree, (node) => node.props?.accessibilityLabel === "取消编辑暂存内容").length, 0);
     assert.equal(rows(tree).every((row) => !row.props.canDrag), true);
     for (const label of ["粘贴到暂存区", "清空", "合并保存"]) assert.equal(action(tree, label).props.disabled, false);
     let closed = 0;
     assert.equal(await h.handle.current.leave(() => closed++), true);
     assert.equal(writes, 0);
     assert.equal(closed, 1);
+    assert.equal(nodes(h.render(), (node) => node.type === "Input").length, 0);
+});
+
+test("保存按钮与失焦同帧只写一次，保存中锁定按钮，完成后恢复预览", async () => {
+    let resolve;
+    const writes = [];
+    const h = panel((id, text) => { writes.push([id, text]); return new Promise((done) => { resolve = done; }); });
+    const tree = await edit(h, "显式保存\n完整正文");
+    const save = action(tree, "保存暂存内容").props.onPress;
+    save(); input(tree).props.onBlur(); save(); await tick();
+    assert.deepEqual(writes, [["s0", "显式保存\n完整正文"]]);
+    const pending = action(h.render(), "保存暂存内容");
+    assert.equal(pending.props.loading, true);
+    assert.equal(pending.props.disabled, true);
+    resolve("saved"); await tick();
     assert.equal(nodes(h.render(), (node) => node.type === "Input").length, 0);
 });
 

@@ -1,3 +1,12 @@
+## 2026-09-30 22:10:55 | 优化代码：暂存多行输入保留单个保存按钮
+
+- 变更概述：按用户补充要求，在暂存条目的多行 Input 右侧保留一个 Save 图标按钮，同时继续离开自动保存。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-save-button.md；CHANGELOG.md。
+- 具体内容：复用公共 IconButton（48dp 触控、20dp Save），点击复用 finishEditing；保存中加载/禁用，与失焦同帧只写一次；保持列表同宽和失败保留输入，不增加取消按钮。
+- 验证：修改前后 npm run typecheck 通过；暂存组件回归 13/13 通过；最终获准环境 npm run check 通过（715 项，713 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。真机宽度、Save 点击/加载、键盘体验及 APK 构建未执行。
+
+---
+
 ## 2026-09-30 21:55:00 | 优化代码：暂存行内输入铺满列表，离开自动保存
 
 - 变更概述：暂存条目的多行 Input 与列表同宽，移除保存/取消图标；失焦、切换条目和关窗自动保存后再离开。
