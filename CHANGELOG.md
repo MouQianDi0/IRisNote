@@ -1,3 +1,12 @@
+## 2026-10-01 04:41:49 | 优化代码：快速摘录反馈胶囊改锚状态栏下方 30dp
+
+- 变更概述：捕获窗反馈胶囊从透明窗口正中央改为顶部对齐、状态栏下方 30dp，水平仍居中，贴近通知来源的视线位置。
+- 修改文件：src/features/excerpts/components/ExcerptCaptureFeedback.tsx；CHANGELOG.md；docs/logs/2026-10-01-capture-feedback-top-anchor.md（新增）。
+- 具体内容：外层容器 `justifyContent` center → flex-start，新增 `paddingTop=(StatusBar.currentHeight ?? 0)+30`（主应用为 edge-to-edge，该值即顶部 inset，取法与 use-keyboard-overlap 一致）；`padding: 24` 保留提供水平与底部边距；成功/失败/加载反馈与淡出动画不变，无行为/数据变化。
+- 验证：npm run typecheck 0 错误；node --test tests/excerpts/excerpt-capture-screen.test.cjs 4/4 通过；全量 npm run check 未跑（单文件纯视觉改动）；真机 adb 布局核对未做。
+
+---
+
 ## 2026-10-01 04:18:15 | 优化代码：合并 origin/master（15eca56，开发者模式）进入 kroos_todo
 
 - 变更概述：merge-base 5864c31，净带入 2 个提交：aaf2f37（feat(settings): 开发者模式——连点版本号开启，集中运行环境、诊断日志与通知测试）与 15eca56（PR #133 合并提交）。双方 CHANGELOG 条目自动交织，master 的开发者模式条目完整保留。

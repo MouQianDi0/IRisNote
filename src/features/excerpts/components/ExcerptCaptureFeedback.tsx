@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { CheckCircle2, Info, CircleAlert } from "lucide-react-native";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, StatusBar, Text, View } from "react-native";
 import Animated, {
     useAnimatedStyle,
     useSharedValue,
@@ -54,8 +54,10 @@ export function ExcerptCaptureFeedback({
         <View
             style={{
                 flex: 1,
-                justifyContent: "center",
+                // 反馈胶囊锚在状态栏下方 30dp（主应用为 edge-to-edge，StatusBar.currentHeight 即顶部 inset），水平仍居中。
+                justifyContent: "flex-start",
                 alignItems: "center",
+                paddingTop: (StatusBar.currentHeight ?? 0) + 30,
                 padding: 24,
             }}
             pointerEvents="none"
