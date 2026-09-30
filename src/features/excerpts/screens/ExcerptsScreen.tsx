@@ -13,7 +13,7 @@ import { ClipboardDetectConfirmDialog } from "../components/ClipboardDetectConfi
 import { ClipboardDetectedCard } from "../components/ClipboardDetectedCard";
 import { ClipboardHintBar } from "../components/ClipboardHintBar";
 import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
-import { ExcerptStashPanel } from "../components/ExcerptStashPanel";
+import { ExcerptStashPanel, type ExcerptStashPanelHandle } from "../components/ExcerptStashPanel";
 import { DraftDialog } from "@/shared/ui/Dialog/dialog";
 import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
 import { mergeStashContents } from "../domain/excerpt-stash-merge";
@@ -90,6 +90,8 @@ export default function ExcerptsScreen() {
     const [now, setNow] = useState(() => new Date());
     const [confirmingDetect, setConfirmingDetect] = useState(false);
     const [stashPanel, setStashPanel] = useState(false);
+    const [stashInlineEditing, setStashInlineEditing] = useState(false);
+    const stashPanelRef = useRef<ExcerptStashPanelHandle>(null);
     const [stashBusy, setStashBusy] = useState(false);
     const [stashError, setStashError] = useState("");
     const [stashNotice, setStashNotice] = useState("");
@@ -106,7 +108,7 @@ export default function ExcerptsScreen() {
     // 账号/仓库换代时同步重置弹窗，避免先提交一次旧账号界面再由 Effect 清理。
     if (stashScope.ownerKey !== ownerKey || stashScope.generation !== generation) {
         setStashScope({ ownerKey, generation });
-        setStashPanel(false); setStashForm(null); setStashError(""); setStashNotice("");
+        setStashPanel(false); setStashInlineEditing(false); setStashForm(null); setStashError(""); setStashNotice("");
     }
     const clipboardPreferences = useClipboardPreferences();
     const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
@@ -151,6 +153,25 @@ export default function ExcerptsScreen() {
         excerptRepository.assertSession(ownerKey, generation);
         setStashNotice(result === "duplicate" ? "已在暂存中" : "已暂存");
     });
+    const closeStash = () => {
+        void stashPanelRef.current?.leave(() => {
+            if (stashBusyRef.current) return;
+            try { excerptRepository.assertSession(ownerKey, generation); }
+            catch { return; }
+            setStashPanel(false);
+        });
+    };
+    const openStashMerge = async () => {
+        await stashAction(async () => {
+            // 离开编辑后重新读 SQLite，不能使用保存前闭包里的暂存快照。
+            const items = await stash.repository.list(ownerKey);
+            excerptRepository.assertSession(ownerKey, generation);
+            if (!items.length) return;
+            mergeCleanupFailed.current = false;
+            setSeparator(true);
+            setStashForm({ kind: "merge", items });
+        });
+    };
     const showHint =
         clipboardPreferences.ready &&
         !clipboardPreferences.autoDetectEnabled &&
@@ -384,9 +405,9 @@ export default function ExcerptsScreen() {
                     onClose={() => setEditing(null)}
                 />
             )}
-            {stashPanel && !stashForm && <DraftDialog visible title={`暂存区（${stash.items.length} 条）`} onClose={() => { if (!stashBusyRef.current) setStashPanel(false); }} closeOnScrimTap={!stashBusy} headerExtra={<IconButton icon={X} accessibilityLabel="关闭暂存区" size="compact" iconSize={20} disabled={stashBusy} onPress={() => { if (!stashBusyRef.current) setStashPanel(false); }} />}>
+            {stashPanel && !stashForm && <DraftDialog visible title={`暂存区（${stash.items.length} 条）`} onClose={closeStash} closeOnScrimTap={!stashBusy || stashInlineEditing} headerExtra={<IconButton icon={X} accessibilityLabel="关闭暂存区" size="compact" iconSize={20} disabled={stashBusy && !stashInlineEditing} onPress={closeStash} />}>
                 {!!stashNotice && <Text accessibilityRole="alert" style={{ marginBottom: 8, fontSize: 14, color: semanticColors.brandPrimary }}>{stashNotice}</Text>}
-                <ExcerptStashPanel items={stash.items} busy={stashBusy} onPaste={pasteToStash} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onUpdate={(id, text) => runStashAction(() => stash.repository.update(ownerKey, id, text))} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={() => { mergeCleanupFailed.current = false; setSeparator(true); setStashForm({ kind: "merge", items: [...stash.items] }); }} />
+                <ExcerptStashPanel ref={stashPanelRef} items={stash.items} busy={stashBusy} onEditingChange={setStashInlineEditing} onPaste={pasteToStash} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onUpdate={(id, text) => runStashAction(() => stash.repository.update(ownerKey, id, text))} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={openStashMerge} />
                 {stashError && <Text accessibilityRole="alert" style={{ color: semanticColors.destructive }}>{stashError}</Text>}
             </DraftDialog>}
             {stashForm && ready && <ExcerptFormDialog key={stashForm.kind} ownerKey={ownerKey} generation={generation} initialText={stashForm.kind === "offer" ? stashForm.offer.content : mergeStashContents(stashForm.items, separator)} mergeSeparator={stashForm.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(stashForm.items, enabled) } : undefined} onClose={() => setStashForm(null)} onSaved={() => {

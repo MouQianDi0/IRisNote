@@ -1,3 +1,12 @@
+## 2026-09-30 21:55:00 | 优化代码：暂存行内输入铺满列表，离开自动保存
+
+- 变更概述：暂存条目的多行 Input 与列表同宽，移除保存/取消图标；失焦、切换条目和关窗自动保存后再离开。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx、screens/ExcerptsScreen.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-autosave.md；CHANGELOG.md。
+- 具体内容：单次保存任务去重、未改正文跳过写库、失败保留并重新聚焦；关闭及列表操作等待保存，合并使用落库后的最新快照；保留 180ms 单次回位，无表/API/原生改动。
+- 验证：修改前后 npm run typecheck 通过；组件回归 12/12、仓储测试 9/9 通过；最终获准环境 npm run check 通过（714 项，712 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。首轮本次新增 React ref 渲染规则错误已修复。真机输入宽度、键盘/失焦/关窗体验及 APK 构建未执行。
+
+---
+
 ## 2026-09-30 21:47:17 | 修复问题：暂存列表拖拽松手只回位一次
 
 - 变更概述：按用户反馈减少暂存条目松手后的反复回弹，改为一次 180ms 平滑回位。

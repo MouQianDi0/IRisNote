@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Trash2, X } from "lucide-react-native";
-import { Keyboard, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { Trash2 } from "lucide-react-native";
+import { Pressable, ScrollView, Text, View, type TextInput } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { semanticColors } from "@/shared/theme";
-import { AppButton, IconButton, Input } from "@/shared/ui";
+import { AppButton, Input } from "@/shared/ui";
 import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
 import { stashDragTarget } from "../domain/excerpt-stash-drag";
 
@@ -84,7 +84,7 @@ function StashRow({ item, index, canDrag, disabled, editor, centers, onHeight, o
             onHeight(item.clientId, height);
         }}
     >
-        {editor ? <View className="flex-1 px-4 py-3">{editor}</View> : <><GestureDetector gesture={gesture}>
+        {editor ? <View className="flex-1 py-3">{editor}</View> : <><GestureDetector gesture={gesture}>
             <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`编辑第 ${index + 1} 条暂存内容`}
@@ -109,11 +109,17 @@ function StashRow({ item, index, canDrag, disabled, editor, centers, onHeight, o
 }
 
 /** 摘录页暂存列表：行内编辑；拖拽只在落点提交一次排序事务。 */
-export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, onClear, onMerge, onPaste }: {
+export type ExcerptStashPanelHandle = {
+    leave: (action: () => void | Promise<void>) => Promise<boolean>;
+};
+
+export function ExcerptStashPanel({ ref, items, busy, onReorder, onUpdate, onEditingChange, onRemove, onClear, onMerge, onPaste }: {
+    ref?: Ref<ExcerptStashPanelHandle>;
     items: readonly ExcerptStashItem[];
     busy: boolean;
     onReorder: (orderedClientIds: readonly string[]) => Promise<boolean>;
     onUpdate: (id: string, text: string) => Promise<"saved" | "duplicate">;
+    onEditingChange?: (editing: boolean) => void;
     onRemove: (id: string) => void;
     onClear: () => void;
     onMerge: () => void;
@@ -126,10 +132,14 @@ export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, 
     const pendingRef = useRef(false);
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [pending, setPending] = useState(false);
-    const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+    const [editing, setEditing] = useState<{ id: string; text: string; original: string } | null>(null);
+    const editingRef = useRef(editing);
+    const inputRef = useRef<TextInput>(null);
     const [editError, setEditError] = useState("");
     const [saving, setSaving] = useState(false);
-    const savingRef = useRef(false);
+    const saveTask = useRef<Promise<boolean> | null>(null);
+    const leaveTask = useRef<Promise<boolean> | null>(null);
+    const [leaving, setLeaving] = useState(false);
     const mounted = useRef(true);
     useEffect(() => {
         mounted.current = true;
@@ -195,34 +205,67 @@ export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, 
             updateCenters(original);
         }).finally(() => { pendingRef.current = false; setPending(false); });
     }, [items, onReorder, target, updateCenters]);
-    const disabled = busy || pending || saving || draggingId !== null;
-    const actionsDisabled = disabled || editing !== null;
-    const cancelEdit = () => {
-        if (savingRef.current) return;
-        setEditing(null);
-        setEditError("");
-        Keyboard.dismiss();
-    };
-    const saveEdit = async () => {
-        if (!editing || disabled || savingRef.current) return;
-        savingRef.current = true;
+    const finishEditing = useCallback((): Promise<boolean> => {
+        if (saveTask.current) return saveTask.current;
+        if (!mounted.current) return Promise.resolve(false);
+        const edit = editingRef.current;
+        if (!edit) return Promise.resolve(true);
+        if (busy || pendingRef.current || dragging.current) return Promise.resolve(false);
+        if (edit.text === edit.original) {
+            editingRef.current = null;
+            setEditing(null);
+            setEditError("");
+            onEditingChange?.(false);
+            return Promise.resolve(true);
+        }
         setSaving(true);
         setEditError("");
-        try {
-            const result = await onUpdate(editing.id, editing.text);
-            if (!mounted.current) return;
-            if (result === "duplicate") setEditError("已在暂存中，请修改内容后保存");
-            else {
+        // 先登记任务，再受理写入；失焦、点行与关闭同帧发生时共用一次保存。
+        const task = Promise.resolve().then(async () => {
+            try {
+                const result = await onUpdate(edit.id, edit.text);
+                if (!mounted.current) return false;
+                if (result === "duplicate") {
+                    setEditError("已在暂存中，请修改内容后保存");
+                    return false;
+                }
+                editingRef.current = null;
                 setEditing(null);
-                Keyboard.dismiss();
+                onEditingChange?.(false);
+                return true;
+            } catch (cause) {
+                if (mounted.current) setEditError(cause instanceof Error ? cause.message : "保存失败，请重试");
+                return false;
             }
-        } catch (cause) {
-            if (mounted.current) setEditError(cause instanceof Error ? cause.message : "保存失败，请重试");
-        } finally {
-            savingRef.current = false;
+        }).finally(() => {
+            if (saveTask.current === task) saveTask.current = null;
             if (mounted.current) setSaving(false);
-        }
-    };
+        });
+        saveTask.current = task;
+        return task;
+    }, [busy, onEditingChange, onUpdate]);
+    const leave = useCallback((action: () => void | Promise<void>): Promise<boolean> => {
+        if (leaveTask.current) return leaveTask.current;
+        if (pendingRef.current || dragging.current || !mounted.current || (busy && !saveTask.current)) return Promise.resolve(false);
+        setLeaving(true);
+        const task = Promise.resolve().then(async () => {
+            if (!await finishEditing() || !mounted.current) return false;
+            await action();
+            return true;
+        }).finally(() => {
+            if (leaveTask.current === task) leaveTask.current = null;
+            if (mounted.current) setLeaving(false);
+        });
+        leaveTask.current = task;
+        return task;
+    }, [busy, finishEditing]);
+    useImperativeHandle(ref, () => ({ leave }), [leave]);
+    useEffect(() => {
+        if (editError && !saving && editing) inputRef.current?.focus();
+    }, [editError, editing, saving]);
+    const disabled = busy || pending || saving || leaving || draggingId !== null;
+    // 失焦保存期间保留离开入口，让紧随其后的点击能够等待同一个保存任务。
+    const actionsDisabled = pending || leaving || draggingId !== null || (busy && !saving);
     return <>
         {items.length === 0 ? <Text style={{ fontSize: 14, color: semanticColors.textSecondary }}>暂存区还没有内容</Text> : <View className="overflow-hidden rounded-hyper-card bg-hyper-list" style={{ flexShrink: 1 }}>
         <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" scrollEnabled={!disabled} nestedScrollEnabled>
@@ -230,22 +273,29 @@ export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, 
                 key={item.clientId}
                 item={item}
                 index={index}
-                canDrag={!busy && !pending && !saving && !editing && ordered.length > 1}
+                canDrag={!busy && !pending && !saving && !leaving && !editing && ordered.length > 1}
                 disabled={actionsDisabled}
                 editor={editing?.id === item.clientId ? <>
                     <Input
+                        ref={inputRef}
+                        containerClassName="w-full"
                         size="body"
                         multiline
                         autoFocus
                         accessibilityLabel={`编辑第 ${index + 1} 条暂存内容`}
                         value={editing.text}
-                        disabled={disabled}
+                        readOnly={saving}
                         invalid={!!editError}
-                        onChangeText={(text) => { setEditing({ id: item.clientId, text }); setEditError(""); }}
-                        trailing={<View>
-                            <IconButton icon={Check} iconSize={20} accessibilityLabel="保存暂存内容" loading={saving} disabled={disabled} onPress={() => void saveEdit()} />
-                            <IconButton icon={X} iconSize={20} accessibilityLabel="取消编辑暂存内容" disabled={disabled} onPress={cancelEdit} />
-                        </View>}
+                        onChangeText={(text) => {
+                            if (editingRef.current?.id !== item.clientId || saveTask.current) return;
+                            const next = { ...editingRef.current, text };
+                            editingRef.current = next;
+                            setEditing(next);
+                            setEditError("");
+                        }}
+                        onBlur={() => {
+                            if (editingRef.current?.id === item.clientId) void finishEditing();
+                        }}
                     />
                     {!!editError && <Text accessibilityRole="alert" className="mt-1 text-sm text-hyper-error">{editError}</Text>}
                 </> : undefined}
@@ -258,15 +308,21 @@ export function ExcerptStashPanel({ items, busy, onReorder, onUpdate, onRemove, 
                 onBegin={begin}
                 onTarget={target}
                 onDrop={drop}
-                onEdit={(entry) => { if (actionsDisabled) return; setEditError(""); setEditing({ id: entry.clientId, text: entry.content }); }}
-                onRemove={onRemove}
+                onEdit={(entry) => { void leave(() => {
+                    const latest = orderedRef.current.find((value) => value.clientId === entry.clientId);
+                    if (!latest) return;
+                    const next = { id: latest.clientId, text: latest.content, original: latest.content };
+                    editingRef.current = next;
+                    setEditError(""); setEditing(next); onEditingChange?.(true);
+                }); }}
+                onRemove={(id) => { void leave(() => onRemove(id)); }}
             />)}
         </ScrollView>
         </View>}
-        <AppButton className="mt-3" variant="secondary" label="粘贴到暂存区" disabled={actionsDisabled} onPress={onPaste} />
+        <AppButton className="mt-3" variant="secondary" label="粘贴到暂存区" disabled={actionsDisabled} onPress={() => { void leave(onPaste); }} />
         <View className="mt-3 flex-row gap-2.5">
-            <AppButton className="flex-1" variant="secondary" label="清空" disabled={actionsDisabled || items.length === 0} onPress={onClear} />
-            <AppButton className="flex-1" label="合并保存" disabled={actionsDisabled || items.length === 0} onPress={onMerge} />
+            <AppButton className="flex-1" variant="secondary" label="清空" disabled={actionsDisabled || items.length === 0} onPress={() => { void leave(onClear); }} />
+            <AppButton className="flex-1" label="合并保存" disabled={actionsDisabled || items.length === 0} onPress={() => { void leave(onMerge); }} />
         </View>
     </>;
 }
