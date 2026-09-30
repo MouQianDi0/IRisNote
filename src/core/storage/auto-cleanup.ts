@@ -6,7 +6,7 @@ export const STARTUP_CLEANUP_DELAY_MS = 15_000;
 
 /**
  * 清理已安装版本及更旧的更新包、结束使用满 24 小时的分享文件。
- * 规则与「数据与存储」页的手动清理相同；笔记缓存需要联网核实，不在自动清理之列。
+ * 规则与「数据与存储」页的手动清理相同；笔记正文由笔记同步按保留范围释放，不在文件自动清理之列。
  */
 export async function runCacheCleanup() {
     const scan = scanCacheCleanupCandidates();

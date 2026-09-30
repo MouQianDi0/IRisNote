@@ -16,9 +16,15 @@ import NoteDetailStateView, {
 import NoteViewer from "../components/viewer/NoteViewer";
 import { getLocalNoteByClientId } from "../data/note-local.repository";
 import { getCachedNoteById, setCachedNotes } from "../notes.cache";
+import {
+    ensureNoteBody,
+    NoteBodyUnavailableError,
+} from "../services/note-body.service";
 import { syncNotes } from "../services/note-sync-coordinator";
+import { holdNoteBody } from "../services/note-sync.service";
 
-type LoadState = "loading" | "ready" | "error" | "not-found" | "local-only";
+type LoadState =
+    "loading" | "ready" | "error" | "not-found" | "local-only" | "body-missing";
 
 export default function NoteDetailScreen() {
     const database = useApplicationDatabase();
@@ -58,10 +64,42 @@ export default function NoteDetailScreen() {
             return;
         }
 
+        // Evicted bodies are downloaded before the viewer mounts; opening also records recency.
+        const show = async (found: Note) => {
+            if (found.body_state !== "evicted") {
+                setNote(found);
+                setLoadState("ready");
+                void ensureNoteBody(database, user.id, found).catch(() => {});
+                return;
+            }
+            setLoadState("loading");
+            setErrorMessage("");
+            try {
+                const restored = await ensureNoteBody(database, user.id, found);
+                if (!isCurrent()) return;
+                setNote(restored);
+                setLoadState("ready");
+            } catch (error) {
+                if (!isCurrent()) return;
+                setNote(null);
+                if (error instanceof NoteBodyUnavailableError) {
+                    setErrorMessage(error.message);
+                    setLoadState(
+                        error.reason === "offline" ||
+                            error.reason === "local-only"
+                            ? "body-missing"
+                            : error.reason,
+                    );
+                    return;
+                }
+                setErrorMessage(noteSyncErrorMessage(error));
+                setLoadState("error");
+            }
+        };
+
         const cachedNote = getCachedNoteById(numericNoteId, user.id);
         if (cachedNote) {
-            setNote(cachedNote);
-            setLoadState("ready");
+            await show(cachedNote);
             return;
         }
 
@@ -76,8 +114,7 @@ export default function NoteDetailScreen() {
             );
             if (!isCurrent()) return;
             if (localNote) {
-                setNote(localNote);
-                setLoadState("ready");
+                await show(localNote);
                 return;
             }
 
@@ -102,8 +139,7 @@ export default function NoteDetailScreen() {
                 return;
             }
 
-            setNote(nextNote);
-            setLoadState("ready");
+            await show(nextNote);
         } catch (err: unknown) {
             if (!isCurrent()) return;
             setNote(null);
@@ -115,6 +151,12 @@ export default function NoteDetailScreen() {
             setLoadState("error");
         }
     }, [cloudEnabled, cloudGeneration, database, numericNoteId, user]);
+
+    // The open note keeps its body even if a sync would otherwise evict it.
+    useEffect(
+        () => (numericNoteId == null ? undefined : holdNoteBody(numericNoteId)),
+        [numericNoteId],
+    );
 
     useEffect(() => {
         // 微任务中加载，避免 effect 体内同步 setState 触发级联渲染。
@@ -130,7 +172,7 @@ export default function NoteDetailScreen() {
 
             const frameId = requestAnimationFrame(() => {
                 const cachedNote = getCachedNoteById(numericNoteId, user.id);
-                if (!cachedNote) return;
+                if (!cachedNote || cachedNote.body_state === "evicted") return;
 
                 setNote((currentNote) =>
                     currentNote === cachedNote ? currentNote : cachedNote,

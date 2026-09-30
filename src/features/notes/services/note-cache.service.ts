@@ -1,7 +1,11 @@
 import type { ApplicationDatabase } from "@/core/database";
 import { captureCloudStorageAccess } from "@/core/cloud-storage/cloud-storage-policy";
 import { notesSyncTransport } from "../api/notes-sync.api";
-import { parseCloudNote, type CloudNote } from "../api/notes-sync.types";
+import {
+    isCloudNoteMeta,
+    parseMirrorNote,
+    type CloudNote,
+} from "../api/notes-sync.types";
 import {
     evictNoteCache,
     readNoteCacheCandidates,
@@ -62,6 +66,9 @@ export async function clearNoteCache(
                     throw new Error("云端快照已变化，请重试");
                 token = page.page.snapshot_token;
                 for (const note of page.data) {
+                    // Requested without fields, so every note must carry its content for comparison.
+                    if (isCloudNoteMeta(note))
+                        throw new Error("云端快照缺少正文，已保留笔记缓存");
                     if (cloud.has(note.id))
                         throw new Error("云端快照重复，已保留笔记缓存");
                     cloud.set(note.id, note);
@@ -76,7 +83,7 @@ export async function clearNoteCache(
             const confirmed = before.filter((row) => {
                 if (savedIds.has(row.client_id)) return false;
                 const remote = cloud.get(row.server_id);
-                const cached = parseCloudNote(JSON.parse(row.payload), owner);
+                const cached = parseMirrorNote(JSON.parse(row.payload), owner);
                 return (
                     remote &&
                     remote.client_id === cached.client_id &&

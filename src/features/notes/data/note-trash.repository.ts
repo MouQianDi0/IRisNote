@@ -6,10 +6,26 @@ import {
     type NoteDeletion,
 } from "../api/notes-trash.types";
 import type { NoteDraft } from "./note-draft.repository";
+import { readEvictedPreviews } from "./note-body.repository";
+import { deleteNoteCreateOperation } from "./note-create-operation.repository";
 import { deleteNoteReadingProgress } from "./note-reading-progress.repository";
 import { insertNoteRevision } from "./note-revision.repository";
 import { enqueueNoteUpload } from "@/features/sync/note-upload-queue";
 import type { NoteSyncOperation, NoteSyncStatus } from "../notes.types";
+import { localCategoryId } from "../categories/data/category-local.repository";
+
+export async function readTrashIntent(tx: Tx, owner: number, clientId: number) {
+    if (
+        !(await tx.getFirst(
+            "SELECT 1 FROM sqlite_master WHERE name='note_trash_intents'",
+        ))
+    )
+        return null;
+    return tx.getFirst<{ intent: "delete" | "restore"; receipt_json: string }>(
+        "SELECT intent,receipt_json FROM note_trash_intents WHERE owner_user_id=? AND client_id=?",
+        [owner, clientId],
+    );
+}
 
 export type TrashRow = {
     owner_user_id: number;
@@ -150,7 +166,11 @@ export function trashPreview(row: TrashRow): {
         content:
             "content" in parsed && typeof parsed.content === "string"
                 ? parsed.content
-                : null,
+                : // Evicted bodies and metadata mirrors only carry the preview.
+                  "content_preview" in parsed &&
+                    typeof parsed.content_preview === "string"
+                  ? parsed.content_preview
+                  : null,
     };
 }
 export async function recordRemoteDeletion(
@@ -177,6 +197,12 @@ export async function recordRemoteDeletion(
         "SELECT client_id FROM local_notes WHERE owner_user_id=? AND server_id=?",
         [owner, receipt.id],
     );
+    if (
+        local &&
+        (await readTrashIntent(tx, owner, local.client_id))?.intent ===
+            "restore"
+    )
+        return;
     const identity =
         !old && !local
             ? await tx.getFirst<{ value: string }>(
@@ -229,6 +255,8 @@ export async function archiveLocalNote(
         if (requireIdle) throw new Error("本地笔记已变化，请刷新后再删除");
         return true;
     }
+    if ((await readTrashIntent(tx, owner, clientId))?.intent === "restore")
+        return false;
     const running = await tx.getFirst(
         "SELECT 1 FROM upload_queue_tasks WHERE owner_user_id=? AND dedupe_key=? AND status='running'",
         [owner, `note:${clientId}`],
@@ -245,6 +273,14 @@ export async function archiveLocalNote(
         return false;
     }
     const old = await readTrash(tx, owner, clientId);
+    const previews = await readEvictedPreviews(tx, owner, clientId);
+    const archived = previews.has(clientId)
+        ? {
+              ...local,
+              body_state: "evicted",
+              content_preview: previews.get(clientId) ?? null,
+          }
+        : local;
     const drafts = await tx.getAll<NoteDraft>(
         "SELECT * FROM note_drafts WHERE owner_user_id=? AND note_id=?",
         [owner, clientId],
@@ -265,7 +301,7 @@ export async function archiveLocalNote(
                 ? new Date(Date.parse(now) + NOTE_TRASH_MS).toISOString()
                 : null,
             state,
-            JSON.stringify(local),
+            JSON.stringify(archived),
             JSON.stringify(
                 drafts.length
                     ? drafts
@@ -283,6 +319,8 @@ export async function archiveLocalNote(
         "DELETE FROM note_drafts WHERE owner_user_id=? AND note_id=?",
         [owner, clientId],
     );
+    // 移入垃圾桶即放弃尚未确认的新建；恢复后作为新请求重新固定。
+    await deleteNoteCreateOperation(tx, owner, clientId);
     await tx.run(
         "DELETE FROM local_notes WHERE owner_user_id=? AND client_id=?",
         [owner, clientId],
@@ -327,6 +365,11 @@ export async function restoreArchivedNote(
             (local.owner_user_id !== owner || local.client_id !== row.client_id)
         )
             throw new Error("本地垃圾桶记录损坏");
+        // Restore an evicted note as metadata, preserving its missing-body state and history.
+        const evicted =
+            !cloud &&
+            local &&
+            (local as { body_state?: unknown }).body_state === "evicted";
         const localTime = local
             ? Date.parse(
                   local.sync_status === "synced"
@@ -362,7 +405,7 @@ export async function restoreArchivedNote(
             title: content.title,
             content: content.content,
             category_id: cloud
-                ? cloud.category_id
+                ? await localCategoryId(tx, owner, cloud.category_id)
                 : categoryRemoved
                   ? null
                   : content.category_id,
@@ -377,12 +420,16 @@ export async function restoreArchivedNote(
                     : keepLocal && textDiffers
                       ? "pending"
                       : "synced"
-                : "pending",
+                : evicted
+                  ? "synced"
+                  : "pending",
             sync_operation: cloud
                 ? keepLocal && textDiffers
                     ? "update"
                     : null
-                : "create",
+                : row.server_id === null
+                  ? "create"
+                  : "update",
             last_sync_error: conflict
                 ? "修改时间相同但内容不同，已保留本地内容，请核对后修改并保存。"
                 : null,
@@ -394,10 +441,11 @@ export async function restoreArchivedNote(
             current_revision_id: local?.current_revision_id ?? null,
         };
         if (
-            !next.current_revision_id ||
-            next.title !== local?.title ||
-            next.content !== local?.content ||
-            next.category_id !== local?.category_id
+            !evicted &&
+            (!next.current_revision_id ||
+                next.title !== local?.title ||
+                next.content !== local?.content ||
+                next.category_id !== local?.category_id)
         ) {
             next.current_revision_id = await insertNoteRevision(
                 tx,
@@ -416,6 +464,16 @@ export async function restoreArchivedNote(
             `INSERT INTO local_notes(${localColumns.join(",")}) VALUES(${localColumns.map(() => "?").join(",")})`,
             localColumns.map((key) => next[key]),
         );
+        if (evicted)
+            await tx.run(
+                "UPDATE local_notes SET body_state='evicted',content_preview=? WHERE owner_user_id=? AND client_id=?",
+                [
+                    (local as LocalRow & { content_preview?: string })
+                        .content_preview ?? null,
+                    owner,
+                    row.client_id,
+                ],
+            );
         const drafts: NoteDraft[] = JSON.parse(row.drafts_json ?? "[]");
         if (next.sync_status === "pending")
             await enqueueNoteUpload(tx, owner, {
@@ -470,6 +528,7 @@ export async function restoreFromRemote(
     cloud: CloudNote,
 ) {
     const row = await readServerTrash(tx, owner, cloud.id);
+    if (row && (await readTrashIntent(tx, owner, row.client_id))) return;
     if (!row || row.state === "deleting" || row.version >= cloud.version)
         return;
     await restoreArchivedNote(tx, owner, row, cloud);

@@ -18,6 +18,7 @@ import {
 } from "../notes.events";
 import { runNoteSync } from "./note-sync.service";
 import { synchronizeNoteTrash } from "./note-trash.service";
+import { syncLocalNoteFlags } from "./note-flags.service";
 
 type Result = Awaited<ReturnType<typeof runNoteSync>>;
 const jobs = new WeakMap<
@@ -37,7 +38,7 @@ export async function withNoteCacheMaintenance<T>(
         owners = new Set();
         cacheMaintenance.set(db, owners);
     }
-    if (owners.has(owner)) throw new Error("笔记缓存正在清理，请稍后重试");
+    if (owners.has(owner)) throw new Error("笔记正文正在释放，请稍后重试");
     owners.add(owner);
     try {
         const running = jobs.get(db)?.get(owner);
@@ -71,7 +72,7 @@ export function syncNotes(
     owner: number,
 ): Promise<Result> {
     if (cacheMaintenance.get(db)?.has(owner))
-        return Promise.reject(new Error("笔记缓存正在清理，请稍后同步"));
+        return Promise.reject(new Error("笔记正文正在释放，请稍后同步"));
     // Return a rejected Promise (rather than throwing before callers attach .catch).
     let checkPermission: () => void;
     try {
@@ -107,6 +108,7 @@ export function syncNotes(
         check();
         // Trash has its own durable receipts; an unavailable trash endpoint must not block normal sync.
         await synchronizeNoteTrash(db, owner).catch(() => {});
+        await syncLocalNoteFlags(db, owner).catch(() => {});
         stamp = noteCloudWriteStamp();
         check();
         const before = await getLocalNotes(db, owner);
@@ -145,6 +147,9 @@ export function syncNotes(
     return promise;
 }
 
+/** Consecutive writes restart this wait so a burst of edits pulls once. */
+export const NOTE_SYNC_AFTER_WRITE_MS = 1500;
+
 /** Only runs while the app is active. Concurrent screen requests join the same job. */
 export function startNoteSyncCoordinator(
     db: ApplicationDatabase,
@@ -153,25 +158,31 @@ export function startNoteSyncCoordinator(
     let active = false,
         stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+        timer = undefined;
+        if (!active || stopped) return;
+        if (!getCloudStorageSnapshot().enabled) {
+            void synchronizeNoteTrash(db, owner).catch(() => {});
+            return;
+        }
+        const stamp = noteCloudWriteStamp();
+        const wasRunning = jobs.get(db)?.has(owner);
+        void syncNotes(db, owner).catch(() => {
+            const now = noteCloudWriteStamp();
+            if (!now.busy && (wasRunning || now.version !== stamp.version))
+                request();
+        });
+    };
     const request = () => {
         if (!active || stopped || timer) return;
-        timer = setTimeout(() => {
-            timer = undefined;
-            if (!active || stopped) return;
-            if (!getCloudStorageSnapshot().enabled) {
-                void synchronizeNoteTrash(db, owner).catch(() => {});
-                return;
-            }
-            const stamp = noteCloudWriteStamp();
-            const wasRunning = jobs.get(db)?.has(owner);
-            void syncNotes(db, owner).catch(() => {
-                const now = noteCloudWriteStamp();
-                if (!now.busy && (wasRunning || now.version !== stamp.version))
-                    request();
-            });
-        }, 100);
+        timer = setTimeout(run, 100);
     };
-    const unsubscribe = onNoteCloudWrite(request);
+    const requestAfterWrite = () => {
+        if (!active || stopped) return;
+        clearTimeout(timer);
+        timer = setTimeout(run, NOTE_SYNC_AFTER_WRITE_MS);
+    };
+    const unsubscribe = onNoteCloudWrite(requestAfterWrite);
     const expiryTimer = setInterval(request, 60_000);
     let unavailable = false;
     const unsubscribeConnection = onConnectionEvent((event) => {

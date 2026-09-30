@@ -1,4 +1,5 @@
 import { AppProviders } from "@/core/providers/AppProviders";
+import { useExcerptSession } from "@/features/excerpts/hooks/useExcerptSession";
 import { colors } from "@/shared/theme";
 import { OverlaySlot } from "@/shared/ui/Overlay/overlay-context";
 import { Stack, usePathname } from "expo-router";
@@ -7,6 +8,11 @@ import "../../global.css";
 
 /** 页面自身为白色的路由前缀：安全区需与页面背景保持一致。 */
 const WHITE_SURFACE_ROUTES = ["/auth/", "/pages/note/"];
+
+function ExcerptSessionHost() {
+    useExcerptSession();
+    return null;
+}
 
 export default function RootLayout() {
     const pathname = usePathname();
@@ -18,6 +24,7 @@ export default function RootLayout() {
 
     return (
         <AppProviders>
+            <ExcerptSessionHost />
             <SafeAreaView
                 edges={["top", "left", "right"]}
                 style={{ flex: 1, backgroundColor: safeAreaBackground }}
@@ -99,6 +106,14 @@ export default function RootLayout() {
                     />
                     <Stack.Screen
                         name="pages/user/sync-queue"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/developer/index"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/developer/logs"
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen

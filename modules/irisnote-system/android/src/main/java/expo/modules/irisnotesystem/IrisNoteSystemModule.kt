@@ -10,11 +10,18 @@ import android.os.Environment
 import android.provider.MediaStore
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.irisnotesystem.live.LiveTodoActionStore
+import expo.modules.kotlin.functions.Queues
 import expo.modules.irisnotesystem.live.LiveTodoForegroundService
 import expo.modules.irisnotesystem.live.LiveTodoNotifier
 import expo.modules.irisnotesystem.live.LiveTodoScheduler
 import expo.modules.irisnotesystem.live.LiveTodoTimelineCard
+import expo.modules.irisnotesystem.live.LiveTodoSummaryItem
+import expo.modules.irisnotesystem.excerpt.ExcerptSessionNotifications
+import expo.modules.irisnotesystem.excerpt.ExcerptCaptureActivity
 import java.io.File
+import org.json.JSONArray
+import org.json.JSONObject
 
 class IrisNoteSystemModule : Module() {
   private fun context() = requireNotNull(appContext.reactContext) { "应用尚未就绪" }
@@ -89,37 +96,67 @@ class IrisNoteSystemModule : Module() {
     )
   }
 
-  /** ProgressStyle 属于 Android 16（API 36）；低版本设备在 JS 层已禁用，此处兜底拒绝。 */
+  /** ProgressStyle/提升式展示属于 Android 16（API 36）；前台服务秒级刷新仍按此门禁。 */
   private fun requireProgressNotificationSupport() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.BAKLAVA) {
       throw IllegalStateException("动态通知需要 Android 16 及以上系统")
     }
   }
 
+  /**
+   * 动态通知卡片基础能力门禁：Android 8.0（API 26，通知渠道时代）即可。
+   * 低版本由 Notifier 内部退化为普通进度条通知（不请求提升式），退后台仍可
+   * 由闹钟链保留卡片；ProgressStyle/提升式与前台服务仅在 36+ 开启。
+   */
+  private fun requireLiveUpdateSupport() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      throw IllegalStateException("动态通知需要 Android 8.0 及以上系统")
+    }
+  }
+
   private fun notificationManager() =
     context().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-  /** 时间线快照入参解析（scheduleLiveTodoCards / updateLiveTodoCards 共用）。 */
-  private fun parseLiveTodoCards(input: List<Map<String, Any?>>): List<LiveTodoTimelineCard> =
-    input.map { card ->
-      val id = (card["id"] as? Number)?.toInt()
-        ?: throw IllegalArgumentException("缺少 id")
-      LiveTodoTimelineCard(
-        id = id,
-        channelId = card["channelId"] as? String
-          ?: throw IllegalArgumentException("缺少 channelId"),
-        title = card["title"] as? String
-          ?: throw IllegalArgumentException("缺少 title"),
-        textStarted = card["textStarted"] as? String,
-        startAt = (card["startAt"] as? Number)?.toLong()
-          ?: throw IllegalArgumentException("缺少 startAt"),
-        endAt = (card["endAt"] as? Number)?.toLong(),
-        promoted = card["promoted"] == true,
-      )
+  /** 时间线快照入参解析（scheduleLiveTodoCards / updateLiveTodoCards 共用）。
+   *  Expo Modules 无法可靠转换 JS 嵌套对象数组（真机实测 List<Map> 与单 Map
+   *  包装均报 "Cannot convert ... to a Kotlin type"），因此入参为 JSON 字符串，
+   *  与 LiveTodoTimelineStore 共用 org.json 解析。 */
+  private fun parseLiveTodoCards(payload: String): List<LiveTodoTimelineCard> {
+    val array = JSONArray(payload)
+    return (0 until array.length()).map { index ->
+      val obj = array.optJSONObject(index)
+        ?: throw IllegalArgumentException("无效 cards 元素")
+      LiveTodoTimelineCard.fromJson(obj)
     }
+  }
 
   override fun definition() = ModuleDefinition {
     Name("IrisNoteSystem")
+
+    Events("onDynamicCardAction")
+
+    OnCreate {
+      // 动作接收器（BroadcastReceiver，无模块实例）→ JS 的事件桥：
+      // 仅 React 上下文存活时可达；进程死亡时静默失败，标记由下次前台消费兜底。
+      cardActionSink = { action, ownerKey, clientId ->
+        try {
+          sendEvent(
+            "onDynamicCardAction",
+            mapOf(
+              "action" to action,
+              "ownerKey" to ownerKey,
+              "clientId" to clientId,
+            ),
+          )
+        } catch (_: Throwable) {
+          // JS 上下文不可达：LiveTodoActionStore 标记留存，前台刷新时消费。
+        }
+      }
+    }
+
+    OnDestroy {
+      cardActionSink = null
+    }
 
     AsyncFunction("getExactAlarmAccess") {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -147,10 +184,21 @@ class IrisNoteSystemModule : Module() {
      * chronoAt/chronoCountdown 为方案 C：系统 chronometer 秒级计时锚点。
      */
     AsyncFunction("postProgressNotification") { input: Map<String, Any?> ->
-      requireProgressNotificationSupport()
+      requireLiveUpdateSupport()
       fun requireInt(key: String): Int {
         val value = input[key] as? Number ?: throw IllegalArgumentException("缺少 $key")
         return value.toInt()
+      }
+      val excerptSessionId = input["excerptSessionId"] as? String
+      if (excerptSessionId != null) {
+        require(requireInt("id") == ExcerptSessionNotifications.ID &&
+          input["channelId"] == ExcerptSessionNotifications.CHANNEL) { "摘录通知身份无效" }
+        ExcerptSessionNotifications.post(context(), excerptSessionId,
+          (input["expiresAt"] as? Number)?.toLong()
+            ?: throw IllegalArgumentException("缺少 expiresAt"),
+          input["title"] as? String ?: throw IllegalArgumentException("缺少 title"),
+          input["text"] as? String)
+        return@AsyncFunction
       }
       val notification = LiveTodoNotifier.buildExplicitNotification(
         context = context(),
@@ -166,13 +214,42 @@ class IrisNoteSystemModule : Module() {
         promoted = input["promoted"] == true,
         chronoAt = (input["chronoAt"] as? Number)?.toLong(),
         chronoCountdown = input["chronoCountdown"] == true,
+        iconResourceName = input["iconResourceName"] as? String,
+        hideProgress = input["hideProgress"] == true,
+        notificationId = requireInt("id"),
+        ownerKey = input["ownerKey"] as? String,
+        clientId = input["clientId"] as? String,
       )
       notificationManager().notify(requireInt("id"), notification)
     }
 
+    // 保留段 7001–7004：7001 演示、7002 待办聚合卡、7003 前台停机占位、7004 摘录会话卡。
+    // 摘录卡取消按常量路由（连带清原生 active 身份），其余 ID 走通用取消；
+    // 待办动态卡 ID 从 10000 起，与保留段无交集。
     AsyncFunction("cancelProgressNotification") { id: Int ->
-      notificationManager().cancel(id)
+      if (id == ExcerptSessionNotifications.ID) ExcerptSessionNotifications.cancel(context())
+      else notificationManager().cancel(id)
     }
+
+    AsyncFunction("getStoppedExcerptSession") { ExcerptSessionNotifications.stopped(context()) }
+    AsyncFunction("stopExcerptSession") { sessionId: String ->
+      ExcerptSessionNotifications.finish(context(), sessionId)
+    }
+    AsyncFunction("acknowledgeStoppedExcerptSession") { sessionId: String ->
+      ExcerptSessionNotifications.acknowledge(context(), sessionId)
+    }
+    AsyncFunction("getExcerptCaptureState") { captureId: String? ->
+      ExcerptCaptureActivity.state(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("hasExcerptCaptureText") { captureId: String ->
+      ExcerptCaptureActivity.hasText(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("readExcerptCaptureText") { captureId: String ->
+      ExcerptCaptureActivity.readText(captureId)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("finishExcerptCapture") { captureId: String, saved: Boolean ->
+      ExcerptCaptureActivity.close(captureId, saved)
+    }.runOnQueue(Queues.MAIN)
 
     /**
      * 按渠道清理本应用当前展示的全部通知：冷启动 reconcile 被杀残留的动态卡片
@@ -193,9 +270,9 @@ class IrisNoteSystemModule : Module() {
      * 按墙钟差量刷新，进程被杀后从 SharedPreferences 恢复续算；卡片全部
      * 结束自动停摆。空数组等价于取消原生接管。
      */
-    AsyncFunction("scheduleLiveTodoCards") { input: List<Map<String, Any?>> ->
-      requireProgressNotificationSupport()
-      LiveTodoScheduler.schedule(context(), parseLiveTodoCards(input))
+    AsyncFunction("scheduleLiveTodoCards") { payload: String ->
+      requireLiveUpdateSupport()
+      LiveTodoScheduler.schedule(context(), parseLiveTodoCards(payload))
     }
 
     /**
@@ -203,9 +280,9 @@ class IrisNoteSystemModule : Module() {
      * 前台服务前调用，FGS 每秒从快照重算；JS run() 每轮刷新使编辑/完成
      * 及时反映。退后台的完整移交仍走 scheduleLiveTodoCards。
      */
-    AsyncFunction("updateLiveTodoCards") { input: List<Map<String, Any?>> ->
-      requireProgressNotificationSupport()
-      LiveTodoScheduler.persist(context(), parseLiveTodoCards(input))
+    AsyncFunction("updateLiveTodoCards") { payload: String ->
+      requireLiveUpdateSupport()
+      LiveTodoScheduler.persist(context(), parseLiveTodoCards(payload))
     }
 
     /**
@@ -213,7 +290,7 @@ class IrisNoteSystemModule : Module() {
      * 刷新按同 ID 原位覆盖对账）。
      */
     AsyncFunction("cancelScheduledLiveTodoCards") {
-      requireProgressNotificationSupport()
+      requireLiveUpdateSupport()
       LiveTodoScheduler.reclaim(context())
     }
 
@@ -230,6 +307,46 @@ class IrisNoteSystemModule : Module() {
     AsyncFunction("stopLiveTodoForegroundService") {
       requireProgressNotificationSupport()
       LiveTodoForegroundService.stop(context())
+    }
+
+    /**
+     * 动态卡动作标记快照（JSON 字符串，含 id/action/ownerKey/clientId/at）。
+     * JS 消费例程读取后逐条落库（完成/延迟）或记抑制（取消），成功才调
+     * clearPendingTodoActions 按 id 清除——读取不消费，避免 JS 中途崩溃丢标记。
+     */
+    AsyncFunction("consumePendingTodoActions") {
+      val array = JSONArray()
+      for (entry in LiveTodoActionStore.load(context())) {
+        array.put(
+          JSONObject()
+            .put("id", entry.id)
+            .put("action", entry.action)
+            .put("ownerKey", entry.ownerKey)
+            .put("clientId", entry.clientId)
+            .put("at", entry.at),
+        )
+      }
+      array.toString()
+    }
+
+    /** 消费成功后按 id 清除动作标记（入参为 id JSON 数组字符串）。 */
+    AsyncFunction("clearPendingTodoActions") { payload: String ->
+      val array = JSONArray(payload)
+      val ids = (0 until array.length())
+        .mapNotNull { index -> array.optJSONObject(index)?.optString("id") }
+        .filter { it.isNotEmpty() }
+        .toSet()
+      LiveTodoActionStore.removeAll(context(), ids)
+    }
+  }
+
+  companion object {
+    @Volatile
+    private var cardActionSink: ((action: String, ownerKey: String?, clientId: String) -> Unit)? = null
+
+    /** LiveTodoActionReceiver 入口：模块存活则把动作推给 JS，否则静默（标记兜底）。 */
+    fun emitCardAction(action: String, ownerKey: String?, clientId: String) {
+      cardActionSink?.invoke(action, ownerKey, clientId)
     }
   }
 }

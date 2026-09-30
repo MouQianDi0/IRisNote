@@ -1,6 +1,6 @@
 import type { ExcerptLocalRepository } from "../data/excerpt-local.repository";
 import { normalizeExcerptContent } from "../domain/excerpt-validation";
-import { ExcerptError, type ExcerptSaveReceipt } from "../excerpts.types";
+import { ExcerptError, type ExcerptSaveReceipt, type ExcerptSource } from "../excerpts.types";
 
 /** 每次新建生成一次；该标识不参与鉴权。 */
 export function newExcerptId(): string {
@@ -14,6 +14,29 @@ export function newExcerptId(): string {
 }
 
 type ExcerptWriter = Pick<ExcerptLocalRepository, "save" | "assertSession">;
+
+/** 用户明确保存检测候选（表单或通知点击）；受理前核验账号代次，默认来源 manual。 */
+export async function saveDetectedOffer(
+    repository: ExcerptWriter,
+    offer: {
+        ownerKey: string;
+        generation: number;
+        content: string;
+        hash: string;
+    },
+    text: string = offer.content,
+    source: ExcerptSource = "manual",
+): Promise<ExcerptSaveReceipt> {
+    repository.assertSession(offer.ownerKey, offer.generation);
+    const receipt = await repository.save(
+        offer.ownerKey,
+        newExcerptId(),
+        text,
+        source,
+        new Date(),
+    );
+    return receipt;
+}
 
 /** 「粘贴一次」：由用户点击触发，读取一次剪贴板并保存为摘录。 */
 export async function pasteClipboardAsExcerpt(

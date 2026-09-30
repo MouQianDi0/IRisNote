@@ -2,7 +2,8 @@ import type {
     ApplicationDatabase,
     ApplicationDatabaseTransaction as Tx,
 } from "@/core/database";
-import { parseCloudNote } from "../api/notes-sync.types";
+import { isCloudNoteMeta, parseMirrorNote } from "../api/notes-sync.types";
+import { noteContentHash } from "./note-content-hash";
 
 export type EvictedNoteIdentity = {
     client_id: number;
@@ -98,11 +99,13 @@ export async function readNoteCacheCandidates(
     );
     return rows.filter((row) => {
         try {
-            const cloud = parseCloudNote(JSON.parse(row.payload), owner);
+            const cloud = parseMirrorNote(JSON.parse(row.payload), owner);
             return (
                 cloud.id === row.server_id &&
                 cloud.title === row.title &&
-                cloud.content === row.content &&
+                (isCloudNoteMeta(cloud)
+                    ? cloud.content_hash === noteContentHash(row.content)
+                    : cloud.content === row.content) &&
                 cloud.category_id === row.category_id &&
                 cloud.updated_at === row.server_updated_at &&
                 Boolean(cloud.is_pinned) === Boolean(row.is_pinned) &&

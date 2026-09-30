@@ -625,6 +625,42 @@ test("SQLite 关闭重开保留冻结请求、候选和游标", async (t) => {
     "durable",
   );
 });
+test("快速完成切换回环只产生完成时间差异时不出请求，按基线对齐", async (t) => {
+  const c = await setup(t);
+  const base = await synced(c);
+  const t1 = new Date(now.getTime() + 60_000);
+  const t2 = new Date(now.getTime() + 120_000);
+  // 云端基线置为已完成：服务端已有完成态与完成时间。
+  await c.tx((tx) =>
+    data.applyRemote(tx, owner, {
+      ...base,
+      version: 2,
+      is_completed: true,
+      completed_at: t1.toISOString(),
+    }),
+  );
+  // 一秒内完成→取消→完成：最终候选相对基线只剩完成时间差异。
+  let e = c.repo.get(owner, id(1));
+  e = await c.repo.complete(owner, e, false, t1);
+  e = await c.repo.complete(owner, e, true, t2);
+  assert.equal((await operations(c)).length, 0);
+  const s = await state(c);
+  assert.equal(s.dirty, false);
+  assert.equal(s.status, "synced");
+  assert.equal(s.candidate.completedAt, t1.toISOString());
+  // 真实的完成状态翻转仍成对携带 completed_at，维持服务端仲裁契约。
+  await c.repo.complete(owner, c.repo.get(owner, id(1)), false, t2);
+  const [flip] = await operations(c);
+  assert.deepEqual(flip.request, {
+    kind: "patch",
+    id: 1,
+    body: {
+      is_completed: false,
+      completed_at: null,
+      expected_version: 2,
+    },
+  });
+});
 test("后端 UUID 契约不限 v4，迁移保留旧待办并能导入其他 UUID", async (t) => {
   const c = await setup(t);
   const remote = {

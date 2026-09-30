@@ -11,6 +11,7 @@ function service(
   platform,
   initial = { granted: false, canAskAgain: true },
   exactAlarm = "denied",
+  version = platform === "android" ? 36 : 0,
 ) {
   let permissions = initial;
   const calls = [];
@@ -64,7 +65,7 @@ function service(
       },
     },
     "react-native": {
-      Platform: { OS: platform },
+      Platform: { OS: platform, Version: version },
       Linking: {
         async openURL(url) {
           calls.push(["settings", url]);
@@ -79,6 +80,18 @@ function service(
     "@modules/irisnote-system": {
       async getExactAlarmAccess() {
         return exactAlarm;
+      },
+      async postProgressNotification(payload) {
+        calls.push(["native-post", payload]);
+      },
+      async scheduleLiveTodoCards(cards) {
+        calls.push(["handoff", cards]);
+      },
+      async startLiveTodoForegroundService() {
+        calls.push(["fgs-start"]);
+      },
+      async stopLiveTodoForegroundService() {
+        calls.push(["fgs-stop"]);
       },
     },
   };
@@ -280,6 +293,78 @@ test("测试通知使用 DEFAULT 独立渠道并发送可自动关闭的普通�
   assert.deepEqual(request.trigger, { channelId: "irisnote.diagnostics.v1" });
 });
 
+test("待办动态通知测试复用 LOW 渠道，渠道关闭时不视为可展示", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  assert.equal(await s.liveTodoNotificationPermission(), true);
+  assert.equal(s.calls.some(([call, id]) =>
+    call === "channel" && id === "irisnote.live-todo.v1"), true);
+  assert.equal(s.calls.some(([call, id]) =>
+    call === "channel" && id === "irisnote.live-test.v1"), false);
+  s.native.getNotificationChannelAsync = async () => ({ importance: 0 });
+  assert.equal(await s.liveTodoNotificationPermission(), false);
+});
+
+test("聚合渠道独立关闭且只有状态卡请求提升", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  s.native.getNotificationChannelAsync = async (id) => ({
+    importance: id === "irisnote.live-todo.v1" ? 0 : 2,
+  });
+  assert.equal(await s.liveTodoNotificationPermission(), false);
+  assert.equal(await s.liveTodoSummaryNotificationPermission(), true);
+  const channels = s.calls.filter(([kind]) => kind === "channel");
+  assert.equal(channels.find(([, id]) => id === "irisnote.live-todo-summary.v1")[2].importance, 2);
+  await s.postStateCard({
+    id: 7002, channelId: "irisnote.live-todo-summary.v1", title: "待办 2·临近 1",
+    text: "脱敏标题", iconResourceName: "ic_live_todo_near",
+  });
+  const payload = s.calls.find(([kind]) => kind === "native-post")[1];
+  assert.equal(payload.promoted, true);
+  // 聚合卡为纯计数文案，不携带进度形态。
+  assert.equal(payload.hideProgress, true);
+  assert.equal(payload.ongoing, true);
+  assert.equal(payload.iconResourceName, "ic_live_todo_near");
+  assert.equal(payload.channelId, "irisnote.live-todo-summary.v1");
+});
+
+test("兼容档位 Android 8.0 可发卡/移交，前台服务仍要求 Android 16", async () => {
+  const compat = service(
+    "android",
+    { granted: true, canAskAgain: true },
+    "denied",
+    26,
+  );
+  assert.equal(await compat.liveTodoNotificationPermission(), true);
+  assert.equal(await compat.liveTodoSummaryNotificationPermission(), true);
+  await compat.postLiveUpdate({
+    id: 7001, channelId: "irisnote.live-todo.v1", title: "t", text: "x",
+    progress: 1, max: 2, indeterminate: false, ongoing: true,
+  });
+  assert.equal(compat.calls.some(([kind]) => kind === "native-post"), true);
+  await compat.handoffLiveTodoTimelines([]);
+  assert.equal(compat.calls.some(([kind, payload]) => {
+    if (kind !== "handoff") return false;
+    try { return JSON.parse(payload).length === 0; } catch { return false; }
+  }), true);
+  assert.equal(await compat.startLiveTodoForegroundService(), false);
+  await compat.stopLiveTodoForegroundService();
+  assert.equal(compat.calls.some(([kind]) => kind === "fgs-start" || kind === "fgs-stop"), false);
+
+  const below = service(
+    "android",
+    { granted: true, canAskAgain: true },
+    "denied",
+    25,
+  );
+  assert.equal(await below.liveTodoNotificationPermission(), false);
+  await assert.rejects(
+    () => below.postLiveUpdate({
+      id: 7001, channelId: "irisnote.live-todo.v1", title: "t", text: "x",
+      progress: 1, max: 2, indeterminate: false, ongoing: true,
+    }),
+    /Android 8\.0/,
+  );
+});
+
 test("最终 Expo 原生配置移除 APNs entitlement 与远程后台通知，精确闹钟权限只由本地模块声明", () => {
   const config = JSON.parse(
     execFileSync(
@@ -375,4 +460,37 @@ test("Expo Go 安全入口不静态加载通知原生模块，原生实现单独
   assert.doesNotMatch(provider, /from "expo-notifications"/);
   assert.doesNotMatch(provider, /from "\.\/system-notification\.service"/);
   assert.match(nativeProvider, /from "expo-notifications"/);
+});
+
+test("快速摘录独立 HIGH 静默渠道不受待办渠道关闭影响，权限拒绝不被误报为可发卡", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  s.native.getNotificationChannelAsync = async (id) => ({ importance: id === "irisnote.excerpt-session.v1" ? 4 : 0 });
+  assert.equal(await s.excerptSessionNotificationPermission(), true);
+  const channel = s.calls.find(([kind, id]) => kind === "channel" && id === "irisnote.excerpt-session.v1")[2];
+  assert.equal(channel.importance, 4);
+  assert.equal(channel.sound, null);
+  assert.equal(channel.enableVibrate, false);
+  assert.equal(await s.liveTodoSummaryNotificationPermission(), false);
+  const denied = service("android", { granted: false, canAskAgain: false });
+  assert.equal(await denied.excerptSessionNotificationPermission(true), false);
+  for (const platform of ["ios", "web"]) assert.equal(await service(platform).excerptSessionNotificationPermission(), false);
+  assert.equal(await service("android", undefined, "denied", 25).excerptSessionNotificationPermission(), false);
+});
+
+test("摘录状态卡透传会话身份、到期和倒计时，原有聚合卡默认不携带摘录动作", async () => {
+  const s = service("android", { granted: true, canAskAgain: true });
+  await s.postStateCard({ id: 7004, channelId: "irisnote.excerpt-session.v1", title: "快速摘录进行中",
+    text: "复制内容后回到 IRisNote 即可保存", iconResourceName: "ic_excerpt_session",
+    chronoAt: 12345, chronoCountdown: true, excerptSessionId: "session-test", expiresAt: 12345 });
+  const payload = s.calls.find(([kind]) => kind === "native-post")[1];
+  assert.equal(payload.promoted, true);
+  assert.equal(payload.excerptSessionId, "session-test");
+  assert.equal(payload.expiresAt, 12345);
+  assert.equal(payload.chronoAt, 12345);
+  assert.equal(payload.chronoCountdown, true);
+  s.calls.length = 0;
+  await s.postStateCard({ id: 7002, channelId: "irisnote.live-todo-summary.v1", title: "待办", text: "计数", iconResourceName: "ic_live_todo_today" });
+  const legacy = s.calls.find(([kind]) => kind === "native-post")[1];
+  assert.equal(legacy.excerptSessionId, null);
+  assert.equal(legacy.expiresAt, null);
 });

@@ -34,6 +34,11 @@ export async function getUploadTaskCancellationAvailability(
     if (task.status === "running") {
         return { allowed: false, reason: "任务正在上传，暂时无法回滚" };
     }
+    if (typeof task.payload.localCategoryId === "number")
+        return {
+            allowed: false,
+            reason: "分类改动已保存在本机，请在分类管理中修改或删除",
+        };
     if (task.kind !== "note-sync") return { allowed: true };
 
     try {
@@ -64,6 +69,10 @@ export async function cancelUploadTaskWithLocalRollback(
         ownerUserId,
         taskId,
         async (transaction, currentTask) => {
+            if (typeof currentTask.payload.localCategoryId === "number")
+                throw new Error(
+                    "分类改动已保存在本机，请在分类管理中修改或删除",
+                );
             if (currentTask.kind !== "note-sync") return;
             const { clientId, revisionId } = noteTaskIdentity(currentTask);
             outcome.restoredNote =

@@ -5,9 +5,8 @@ const EXACT_ALARM_ACCESS_KEY = "exact_alarm_access";
 const LIVE_TODO_REALTIME_KEY = "live_todo_realtime_enabled";
 const CLIPBOARD_AUTO_DETECT_KEY = "clipboard_auto_detect_enabled";
 const CLIPBOARD_HINT_DISMISSED_KEY = "clipboard_hint_dismissed";
-/** 旧版存的是不带密钥的内容哈希，短验证码可被枚举还原；写入新标记时删除。 */
-const CLIPBOARD_LEGACY_HANDLED_HASH_KEY = "clipboard_last_handled_hash";
-const CLIPBOARD_LAST_HANDLED_MARK_KEY = "clipboard_last_handled_mark";
+/** 开发者模式为设备级开关，默认关闭，不随账号切换。 */
+const DEVELOPER_MODE_KEY = "developer_mode_enabled";
 
 export type StoredExactAlarmAccess = "not-required" | "granted" | "denied";
 
@@ -97,21 +96,13 @@ export class SystemPreferencesRepository {
         await this.write(CLIPBOARD_HINT_DISMISSED_KEY, "1");
     }
 
-    /** 最近一次已提示或已处理的剪贴板内容标记（带密钥的摘要，不存原文）。 */
-    async clipboardLastHandledMark(): Promise<string | null> {
-        const value = await this.read(CLIPBOARD_LAST_HANDLED_MARK_KEY);
-        return value && /^[0-9a-f]{64}$/.test(value) ? value : null;
+    /** 开发者模式为设备级开关，默认关闭，不随账号切换。 */
+    async developerModeEnabled(): Promise<boolean> {
+        return (await this.read(DEVELOPER_MODE_KEY)) === "1";
     }
 
-    async setClipboardLastHandledMark(mark: string) {
-        await this.write(CLIPBOARD_LAST_HANDLED_MARK_KEY, mark);
-        await this.clearLegacyClipboardHash();
-    }
-
-    async clearLegacyClipboardHash() {
-        await this.database.run("DELETE FROM system_preferences WHERE key = ?", [
-            CLIPBOARD_LEGACY_HANDLED_HASH_KEY,
-        ]);
+    async setDeveloperModeEnabled(enabled: boolean) {
+        await this.write(DEVELOPER_MODE_KEY, enabled ? "1" : "0");
     }
 
     private async read(key: string) {

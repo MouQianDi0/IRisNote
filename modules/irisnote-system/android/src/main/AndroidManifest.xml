@@ -10,9 +10,25 @@
     android:maxSdkVersion="28" />
 
   <application>
+    <activity
+      android:name=".excerpt.ExcerptCaptureHostActivity"
+      android:exported="false"
+      android:taskAffinity=""
+      android:excludeFromRecents="true"
+      android:launchMode="singleTask"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode"
+      android:theme="@style/IrisNoteExcerptCaptureTheme" />
+    <receiver
+      android:name=".excerpt.ExcerptSessionActionReceiver"
+      android:exported="false" />
     <!-- 方案 A：闹钟节拍接收器（进程死亡也会被系统拉起续算）。 -->
     <receiver
       android:name=".live.LiveTodoAlarmReceiver"
+      android:exported="false" />
+
+    <!-- 动态卡动作接收器（取消通知/延迟30分钟/完成；进程死亡也会被拉起）。 -->
+    <receiver
+      android:name=".live.LiveTodoActionReceiver"
       android:exported="false" />
 
     <!-- 方案 B：秒级刷新前台服务；FGS 通知即进度卡片本身。 -->
