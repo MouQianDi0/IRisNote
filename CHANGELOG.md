@@ -1,3 +1,12 @@
+## 2026-10-01 12:54:29 | 新增功能：笔记历史默认行级对比与加载反馈
+
+- 变更概述：历史详情默认对比实时草稿，保留历史全文；增加正文行数统计、标题/分类变化、未改动上下文展开与读取/计算/恢复加载动画。
+- 修改文件：src/features/notes/components/viewer/note-history-popover.tsx; src/features/notes/components/viewer/note-history-diff.tsx; src/features/notes/components/viewer/note-history-loading.tsx; src/shared/utils/text-diff.ts; tests/editor/history-diff.test.cjs; tests/editor/history-ui.test.cjs; tests/editor/history-test-host.cjs; docs/进度与验证/项目编辑器进度.md; docs/进度与验证/IRisNote编辑器核心架构与实施计划.md; docs/进度与验证/IRisNote编辑器阶段3保存版本边界验证清单.md; docs/logs/2026-10-01-note-history-diff-loading.md; CHANGELOG.md。
+- 具体内容：零新依赖 Myers 生成器，公共前后缀与无共享行优化，2048 工作步分批调度、输入/工作量/块数限界，超预算提示全文且不显示局部统计；NULL 按空串，仅统一 CRLF/LF，保留空白/末尾换行。差异与版本指针判断独立；关闭/输入变化取消任务，全文切换保留结果与展开状态。150ms 延迟转圈与加载占位，恢复按钮复用 leading 插槽；读取中禁用恢复，既有恢复事务/草稿锁/上传队列不变。
+- 验证：修改前 typecheck 通过；算法/差异组件 14/14、历史 UI/Hook 12/12、SQLite/恢复服务 24/24 通过（算法含 961 组独立 LCS/双向重建核对）；最终获准环境 npm run check 通过：765 项中 763 通过、2 跳过、0 失败，类型/主题通过，Lint 仅既有设置页 1 个警告；git diff --check 通过。初轮测试夹具问题修复后重跑；沙箱四个测试文件受环境限制，最终完整获准检查已通过。未执行真机视觉/动画/手势/朗读、Android/iOS/Web 构建或真实云端恢复同步。
+
+---
+
 ## 2026-10-01 00:09:00 | 新增功能：完成笔记编辑器 3B 历史版本气泡与安全恢复
 
 - 变更概述：详情页新增历史入口，复用公共气泡完成版本列表、全文查看/当前未提交编辑对比和恢复确认；恢复不会丢失当前有变化的输入。
