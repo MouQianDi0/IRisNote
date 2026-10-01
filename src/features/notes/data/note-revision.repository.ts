@@ -35,6 +35,8 @@ type InsertRevisionInput = {
     content: string | null;
     categoryId: number | null;
     origin: NoteRevisionOrigin;
+    /** 恢复事务临时保护被选中的历史节点，避免保存当前草稿时把它裁剪掉。 */
+    keepRevisionIds?: readonly string[];
 };
 
 /**
@@ -71,6 +73,7 @@ export async function insertNoteRevision(
     await pruneNoteRevisions(tx, ownerUserId, clientId, undefined, [
         revisionId,
         input.parentId,
+        ...(input.keepRevisionIds ?? []),
     ]);
     return revisionId;
 }
@@ -121,6 +124,27 @@ export async function listNoteRevisions(
          WHERE owner_user_id = $ownerUserId AND client_id = $clientId
          ORDER BY created_at DESC, revision_id DESC`,
         { $ownerUserId: ownerUserId, $clientId: clientId },
+    );
+}
+
+export type NoteRevisionSummary = Omit<NoteRevision, "content"> & {
+    content_length: number;
+};
+
+/** 历史列表不传输整篇正文；用户选择某个版本后再读取其快照。 */
+export async function listNoteRevisionSummaries(
+    db: ApplicationDatabaseTransaction,
+    ownerUserId: number,
+    clientId: number,
+) {
+    return db.getAll<NoteRevisionSummary>(
+        `SELECT revision_id, owner_user_id, client_id, parent_revision_id,
+                title, category_id, origin, created_at, schema_version,
+                LENGTH(COALESCE(content, '')) AS content_length
+         FROM note_revisions
+         WHERE owner_user_id = ? AND client_id = ?
+         ORDER BY created_at DESC, revision_id DESC`,
+        [ownerUserId, clientId],
     );
 }
 

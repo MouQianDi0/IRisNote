@@ -1,3 +1,21 @@
+## 2026-10-01 08:29:55 | 优化代码：合并 origin/kroos_todo（25c98c9，3B 历史版本气泡与安全恢复）进入 kroos_todo
+
+- 变更概述：完成此前中断的拉取合并；远端 3B 历史版本气泡与安全恢复实现进入本地分支，并解决其与本地文档现状刷新（364a981）在三份文档上的冲突。
+- 修改文件：CHANGELOG.md；docs/进度与验证/项目编辑器进度.md、IRisNote编辑器核心架构与实施计划.md（冲突解决）；随合并带入 src/features/notes（NoteViewer、NoteViewerHeader、note-history-popover、use-note-history、note-history.service、note-local.repository、note-revision.repository）、tests/editor/history*.test.cjs、docs/logs/2026-10-01-note-history-3b.md、阶段 3 验证清单。
+- 具体内容：代码文件由 Git 自动合并；三份文档手工解决——CHANGELOG 保留双方三条记录并按时间排序；进度文档头部/第 1 节并线（0.4.21 与 0.5.0 并为 0.5.1，3B 记录在前、原 06:28 记录加时点注记）、架构树补历史链路、文件表合入 3B 行与 history 测试行、阶段表阶段 3 合入 3B、新增 0.5.1 合并版本记录、自动合入的「3.4 历史查看与恢复」保留并将原 3.4 改号 3.5；实施计划 0.4.2 与 0.5.0 并为 0.5.1（保留 13 处分叉标注与 SDK 57 链接，§3.1 现状合入 3B、历史基线保留），§26 勾选项同步 3B 已实现。
+- 验证：合并后实测 `npm run check` 通过——TypeScript/Lint/theme 通过，748 项测试 748 通过、0 失败 0 跳过（较远端记录 746+2 跳更优，跳过项在本机环境亦通过）；`git grep` 确认本次合并文件无冲突标记残留（docs/架构指南/GitHub团队开发指南.md 存在历史遗留的已提交冲突标记，不属本次合并范围，另行处理）。
+
+---
+
+## 2026-10-01 00:09:00 | 新增功能：完成笔记编辑器 3B 历史版本气泡与安全恢复
+
+- 变更概述：详情页新增历史入口，复用公共气泡完成版本列表、全文查看/当前未提交编辑对比和恢复确认；恢复不会丢失当前有变化的输入。
+- 修改文件：src/features/notes/components/viewer/NoteViewer.tsx、NoteViewerHeader.tsx、note-history-popover.tsx；hooks/use-note-history.ts；services/note-history.service.ts；data/note-local.repository.ts、note-revision.repository.ts；tests/editor/history.test.cjs、history-ui.test.cjs；docs/进度与验证/项目编辑器进度.md、IRisNote编辑器阶段3保存版本边界验证清单.md、IRisNote编辑器核心架构与实施计划.md；docs/logs/2026-10-01-note-history-3b.md；CHANGELOG.md。
+- 具体内容：列表只取摘要、选中才读全文；恢复复用草稿保存锁，在同一事务校验账号/当前版本/草稿会话与序号/基础版本，先为有变化的输入创建 local-save，再创建 restore、条件清理旧草稿并替换持久上传任务，成功后重建会话。保护被选中版本不被裁剪，旧分类失效回退默认，保留星标/置顶/排序/server_id、云端删除与 unknown 新建防重复保护；拒绝同步中/正文淘汰/垃圾桶等危险状态。新增关闭冷却、迟到读取失效和恢复去重；提交后订阅异常不冒充事务失败。无新页面、依赖、迁移、原生或 API 改动。详细日志将易出 bug 的边界置于顶部。
+- 验证：修改前 typecheck 通过；新增 SQLite/服务回归 24/24、组件/Hook 回归 9/9 通过；最终获准环境 npm run check 通过（748 项，746 通过、2 跳过、0 失败；类型/主题通过，Lint 仅既有设置页 1 个警告），git diff --check 通过。本次引入的类型引用和测试夹具问题已修复后重跑。Web 包按用户要求未做；Android JS export 仅较早源码快照成功，最终源码未重导出；APK/iOS 构建、真机视觉/手势/键盘/冷启动和真实服务器恢复同步未执行。阶段 4 未开始。
+
+---
+
 ## 2026-10-01 06:43:02 | 优化代码：编辑器实施计划按代码现状同步分叉标注与状态（文档 0.5.0）
 
 - 变更概述：将 docs/进度与验证/IRisNote编辑器核心架构与实施计划.md 自 2026-09-08 停更的状态同步到当前代码现实，在目标设计与实际实现分叉处加「2026-10 现状」标注；本次无代码改动。
