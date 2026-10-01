@@ -25,6 +25,7 @@
 - 验证：原工作区及预留提交独立导出源码中的 npm run check 均通过（645/645 测试，类型与主题检查通过，Lint 0 错误、1 条既有 PermissionSettingsScreen 未使用变量警告）。独立目录重新 npm ci、prebuild，Gradle assembleRelease 成功（16 分 34 秒）；APK 身份、签名、实测大小与摘要核对通过；服务器与 COS/CDN 上传校验通过；差量包实际还原摘要校验通过后上传。发布前确认构建提交包含 b566523，源码冲突标记检查通过。无连接设备，Android 真机安装、覆盖升级及真实业务联调未执行。构建日志保留于 .expo/release-0.7.1-build-23.log。
 
 ---
+
 ## 2026-09-29 05:53:46 | 优化代码：补充 GitHub Release 发布约定
 
 - 变更概述：将已确认的 GitHub Release 发布流程整合进项目 AGENTS.md 第 19 节。
@@ -42,6 +43,29 @@
 - 验证：保存前 npm run typecheck 通过；已核对文案与用户确认稿、实际提交范围及最新更新说明规范。保存后 npm run typecheck 与 git diff --check 通过，回读文案与确认稿一致；完整应用检查、Android 构建、真机验证未做（本次仅文档改动）。
 
 ---
+
+## 2026-09-29 04:36:41 | 优化代码：合并 origin/Timmi（b566523），星标/置顶采用本地优先方案并保留写入后同步防抖
+
+- 变更概述：
+    - 合入远端 4 个提交：0.7.0 更新说明、本地云解耦与迁移 0019、更新说明 Markdown 排版、PR #129。
+    - 远端已经把星标/置顶改为本地优先（`toggleLocalNoteFlag` 写 SQLite 和待发送表，`syncLocalNoteFlags` 统一发送），和本侧 04:08:42 的请求调度器冲突。按用户选择采用远端方案，删除调度器，保留本侧"写入后同步 1.5 秒尾部防抖"。
+    - 两者配合后，连续切换停止 1.5 秒后，每条笔记只发 1 个 PUT。
+    - 本侧"最终值与服务端一致时不发请求"没有保留：切回原值仍会发 1 个 PUT。
+- 修改文件：src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/screens/NotesScreen.tsx（冲突取远端）、src/features/notes/services/note-status-writer.ts（删除）、src/features/notes/services/note-sync-coordinator.ts（自动合并）、tests/sync/note-write-coalescing.test.cjs（只保留协调器防抖测试）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-merge-origin-timmi-b566523.md（新增）、CHANGELOG.md。
+- 具体内容：
+    - ① 冲突：两个 hooks 和 NotesScreen 取远端版本；CHANGELOG 两边条目按时间倒序交叉排列，共 293 条，与并集一致。
+    - ② 删除已无调用方的 `note-status-writer` 和它的 9 条测试。
+    - ③ 三份架构文档改为合并后的真实链路：本地事务 → 待发送表 → 1.5 秒防抖 → syncNotes → syncLocalNoteFlags → 按 version 确认。
+    - 本侧 04:08:42 条目和前一篇日志保留原样，差异在新日志里说明。
+- 验证：
+    - 在临时工作区里对合并结果跑 `npm run check`：typecheck 0 个错误；lint 0 个错误、1 个既有警告；测试 646 项，642 通过、2 跳过、2 失败。
+        - 发布归档 ENAMETOOLONG：既有环境问题。
+        - gradle-env「Windows fix…」：临时工作区路径过长导致 socket 路径超限，主仓库路径下 2/2 通过，合并也没有改动它。
+    - 冲突标记扫描通过。
+    - 未做真机验证，未与真实服务端联调。
+
+---
+
 ## 2026-09-29 05:03:13 | 优化代码：将 Markdown 解析与渲染抽为 Utils 公共组件
 
 - 变更概述：公共组件统一放在 src/shared/utils/markdown，更新说明通过统一入口引用。
@@ -60,6 +84,8 @@
 
 ---
 
+<<<<<<< HEAD
+
 ## 2026-09-29 04:43:41 | 优化代码：删除旧版 AGENTS 备份
 
 - 变更概述：按用户明确要求清理项目根目录的旧版规则备份。
@@ -75,6 +101,55 @@
 - 修改文件：AGENTS.md；CHANGELOG.md。
 - 具体内容：在现有版本更新说明条款中补充“文件保存、确认和日志记录遵循本文件现有流程”；其他要求已存在，不重复添加；保留 AGENTS.backup-20260924.md。
 - 验证：修改前已逐项对照备份第 10 节与现行条款；仅修改文档，应用类型检查、测试及构建未执行。
+  \=======
+
+## 2026-09-29 04:32:49 | 新增功能：开发者模式（连点版本号开启，集中运行环境、诊断日志查看与通知测试）
+
+- 变更概述：
+    - 在「关于 IRisNote」连点版本号 7 次开启开发者模式（剩 3 次起在版本号下方提示），开启后设置页出现「开发者」分组；在开发者选项页底部关闭。开关为设备级，存 `system_preferences`，默认关闭，不需要密码。
+    - 开发者选项页：运行环境信息（可一键复制，不含账号标识和令牌）、诊断日志查看器、发送测试通知、测试待办动态通知。
+    - 「发送测试通知」「测试待办动态通知」从帮助与反馈页移入开发者选项；「导出诊断日志」保留在帮助与反馈页。
+    - 不新增 SQLite 迁移，不发网络请求，不改笔记与待办数据。
+- 修改文件：src/features/settings/data/system-preferences.repository.ts、src/features/settings/state/developer-mode-store.ts（新增）、src/features/settings/hooks/use-developer-mode.ts（新增）、src/features/settings/hooks/use-notification-test-tools.ts（新增）、src/features/settings/services/developer-environment.ts（新增）、src/features/settings/utils/developer-unlock.ts（新增）、src/features/settings/utils/developer-environment-report.ts（新增）、src/features/settings/utils/diagnostic-log-view.ts（新增）、src/features/settings/screens/DeveloperOptionsScreen.tsx（新增）、src/features/settings/screens/DiagnosticLogScreen.tsx（新增）、src/features/settings/screens/AboutScreen.tsx、src/features/settings/screens/SettingsScreen.tsx、src/features/settings/screens/HelpFeedbackScreen.tsx、src/core/diagnostics/diagnostic-log.ts、src/core/diagnostics/index.ts、src/app/_layout.tsx、src/app/pages/user/developer/index.tsx（新增）、src/app/pages/user/developer/logs.tsx（新增）、tests/settings/developer-mode.test.cjs（新增）、docs/架构指南/系统通知模块负责说明.md、docs/架构指南/项目架构与文件索引.md、docs/UI/通知渠道适配.md、docs/UI/IRisNote视觉设计规范.md、docs/logs/2026-09-29-developer-mode.md（新增）、CHANGELOG.md。
+- 具体内容：
+    - ① 开关：`SystemPreferencesRepository` 新增 `developer_mode_enabled`；`developer-mode-store` 供关于页、设置页、开发者页共用，先写库成功再改状态；`useDeveloperModeGuard` 在未开启时（含直接访问路由）退回设置页，关闭按钮只改状态、由守卫统一返回。
+    - ② 连点：纯函数 `tapDeveloperUnlock`，7 次开启，两次间隔超过 1.5 秒重新计数；提示用版本号下方的页内文字（横幅会排队堆积）。
+    - ③ 运行环境：版本/构建号、包名、运行模式、API 与更新服务地址、云存储状态、系统与机型、原生模块链接、通知权限、精确闹钟、动态通知能力、已排程提醒数；通知类读数按 `systemNotificationsAvailable` 动态加载，Expo Go 下显示「不可用」；页面获得焦点时刷新。
+    - ④ 诊断日志：`core/diagnostics` 新增 `parseDiagnosticLines`（跳过损坏行，最新在前）与 `readDiagnosticEvents`（等待写入队列）；查看器支持全部/信息/警告/错误筛选，清空前确认，复用 `clearDiagnosticLog`（同时删除已导出副本）。
+    - ⑤ 测试工具：两个按钮的逻辑原样迁入 `useNotificationTestTools`，诊断 scope 与事件名不变。
+    - 与计划差异：日志列表使用 FlatList（`src/` 目前没有 FlashList 用例，同类列表用 FlatList）。
+- 验证：
+    - 改动前后 `npm run typecheck` 都是 0 个错误。
+    - 新增测试 9/9 通过。
+    - `npm run check`：lint 0 个错误、1 个既有警告（`PermissionSettingsScreen.tsx:171`）；theme:check 通过；测试 641 项，638 通过、2 跳过、1 失败——发布归档 ENAMETOOLONG，为环境问题，已在基点干净代码上复跑确认同样失败。
+    - 提交前先把改动 stash，本地快进到 `origin/Timmi`（`f361cb8`，含迁移 0019），再 pop 回来，只有 CHANGELOG 冲突，已手动合并。在合并后的代码上重跑 `npm run check`：typecheck 0 个错误；lint 0 个错误、1 个既有警告；theme:check 通过；测试 655 项，652 通过、2 跳过、1 失败（同一个 ENAMETOOLONG）。冲突标记扫描通过。
+    - 未做 Android 构建（纯 JS 改动）；未做真机验证。
+
+---
+
+## 2026-09-29 04:08:42 | 优化代码：笔记星标/置顶连续切换合并为一次请求，写入后同步改为尾部防抖
+
+- 变更概述：
+    - 快速连续切换笔记星标/置顶时，原来每点一次就发一个 `PUT /notes/:id`，每个请求结束后还会再拉一轮同步，最坏会有十几个请求。
+    - 现在界面仍立即变化；网络请求按笔记做 1 秒尾部防抖（与待办一致），只发最后的值，最终值与服务端一致时不发请求，同一笔记的请求一个一个发。
+    - 失败时只在"之后没有新操作"时回滚，而且只回滚这一条笔记的这一个字段。
+    - 写请求结束后触发的同步改为最后一次写入结束 1.5 秒后只拉取一轮；回到前台、定时、网络恢复的同步时机不变。
+    - 待办、笔记正文、分类原本已经合并，本次未改。
+- 修改文件：src/features/notes/services/note-status-writer.ts（新增）、src/features/notes/hooks/useNoteStar.ts、src/features/notes/hooks/useNotePin.ts、src/features/notes/services/note-sync-coordinator.ts、src/features/notes/screens/NotesScreen.tsx（仅注释）、tests/sync/note-write-coalescing.test.cjs（新增）、docs/架构指南/业务模块与运行逻辑.md、docs/架构指南/项目架构与文件索引.md、docs/架构指南/后续开发指南.md、docs/logs/2026-09-29-note-status-write-coalescing.md（新增）、CHANGELOG.md。
+- 具体内容：
+    - ① `note-status-writer`：按笔记记录服务端确认值、最新值和代次。1 秒内再次点击会重新计时；发送前检查云授权；请求期间有新点击时，返回后接着发最新值；旧请求失败不覆盖新点击；会话变化后丢弃回滚。
+    - ② `useNoteStar` / `useNotePin`：网络部分交给调度器。整表快照回滚改为只回滚单个字段，置顶回滚会恢复原来的 `pinned_order`；去掉 `err: any`。
+    - ③ `note-sync-coordinator`：写入结束的通知改由 `requestAfterWrite`（1.5 秒尾部防抖）处理，其他触发仍是 100ms。
+    - 影响：正文上传、分类写入之后拉取服务端变化会晚约 1.4 秒；长按菜单的状态切换不再等网络返回。
+- 验证：
+    - 改动前后 `npm run typecheck` 都是 0 个错误。
+    - 新增测试 10/10 通过。
+    - `npm run check`：lint 0 个错误、1 个既有警告；测试 632 项，628 通过、2 跳过、2 失败。
+        - 发布归档 ENAMETOOLONG：环境问题，基线同样失败。
+        - storage「startup cleanup is scheduled once per process」：只等真实时间 20ms 的不稳定测试，基线单独跑 20 次失败 5 次，与本次改动无关。
+    - 未做真机验证，未与真实服务端联调。
+
+> > > > > > > aaf2f3722689a586fb9cfe80da823af812a16d77
 
 ---
 

@@ -102,6 +102,14 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/developer/index"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
+                        name="pages/user/developer/logs"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/profile/index"
                         options={{ headerShown: false }}
                     />

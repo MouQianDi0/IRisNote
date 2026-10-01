@@ -1,10 +1,11 @@
+import { banner } from "@/core/notifications";
 import { colors } from "@/shared/theme";
 import { AppBrandIcon, Card, ListRow, PageHeader, Screen } from "@/shared/ui";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Pressable,
@@ -16,7 +17,84 @@ import {
     compareVersions,
     type ReleaseHistoryItem,
 } from "../data/release-history";
+import { useDeveloperMode } from "../hooks/use-developer-mode";
 import { useReleaseHistory } from "../hooks/use-release-history";
+import { setDeveloperMode } from "../state/developer-mode-store";
+import {
+    DEVELOPER_UNLOCK_TAP_GAP_MS,
+    developerUnlockHint,
+    initialDeveloperUnlockCounter,
+    tapDeveloperUnlock,
+} from "../utils/developer-unlock";
+
+const developerRoute = "/pages/user/developer" as Href;
+
+/** 连点版本号开启开发者模式；提示显示在版本号下方，停止点击后自动消失。 */
+function useDeveloperUnlock() {
+    const { database, enabled } = useDeveloperMode();
+    const [hint, setHint] = useState<string | null>(null);
+    const counter = useRef(initialDeveloperUnlockCounter);
+    const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const unlocking = useRef(false);
+
+    useEffect(
+        () => () => {
+            if (hintTimer.current) clearTimeout(hintTimer.current);
+        },
+        [],
+    );
+
+    const flashHint = (text: string | null) => {
+        if (hintTimer.current) clearTimeout(hintTimer.current);
+        setHint(text);
+        hintTimer.current = text
+            ? setTimeout(() => setHint(null), DEVELOPER_UNLOCK_TAP_GAP_MS)
+            : null;
+    };
+
+    const unlock = async () => {
+        unlocking.current = true;
+        try {
+            await setDeveloperMode(database, true);
+            banner.show({
+                title: "开发者模式已开启",
+                message: "可在设置中进入开发者选项",
+                type: "success",
+                action: {
+                    label: "前往",
+                    onPress: () => router.push(developerRoute),
+                },
+            });
+        } catch {
+            banner.show({
+                title: "开发者模式开启失败",
+                message: "请稍后重试",
+                type: "important",
+            });
+        } finally {
+            unlocking.current = false;
+        }
+    };
+
+    const tap = () => {
+        if (unlocking.current) return;
+        if (enabled) {
+            counter.current = initialDeveloperUnlockCounter;
+            flashHint("开发者模式已开启");
+            return;
+        }
+        const result = tapDeveloperUnlock(counter.current, Date.now());
+        counter.current = result.counter;
+        if (result.unlocked) {
+            flashHint(null);
+            void unlock();
+            return;
+        }
+        flashHint(developerUnlockHint(result.remaining));
+    };
+
+    return { hint, tap };
+}
 
 function ReleaseContent({
     release,
@@ -61,6 +139,7 @@ export default function AboutScreen() {
         "—";
     const buildCode = Application.nativeBuildVersion;
     const { state: historyState, retry: retryHistory } = useReleaseHistory();
+    const developerUnlock = useDeveloperUnlock();
     const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
     const releases = useMemo(() => {
         if (historyState.kind !== "ready") return [];
@@ -111,9 +190,22 @@ export default function AboutScreen() {
                         <Text className="text-text-primary mt-3 text-[22px]">
                             IRisNote
                         </Text>
-                        <Text className="mt-1 text-sm text-hyper-text-secondary">
-                            当前版本 v{version}
-                            {buildCode ? `（构建 ${buildCode}）` : ""}
+                        <Pressable
+                            accessibilityHint="连点可开启开发者模式"
+                            accessibilityRole="button"
+                            className="mt-1 rounded-hyper-control px-2 py-1"
+                            onPress={developerUnlock.tap}
+                        >
+                            <Text className="text-sm text-hyper-text-secondary">
+                                当前版本 v{version}
+                                {buildCode ? `（构建 ${buildCode}）` : ""}
+                            </Text>
+                        </Pressable>
+                        <Text
+                            accessibilityLiveRegion="polite"
+                            className="mt-1 h-5 text-[13px] text-primary"
+                        >
+                            {developerUnlock.hint ?? ""}
                         </Text>
                     </View>
 
