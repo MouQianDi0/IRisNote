@@ -1,3 +1,13 @@
+## 2026-10-02 04:40:39 | 新增功能：IRisNote 0.8.0 正式发布
+
+- 变更概述：按用户全权授权完成自有 Android / 应用内 0.8.0 发布，包含快速摘录、暂存编辑合并、待办通知操作、开发者选项及待办同步修复。
+- 修改文件：releases/notes-0.8.0.txt（发布说明，已在准备提交入库）；docs/logs/2026-10-02-release-0.8.0.md（发布核验记录）；CHANGELOG.md。本次未追加业务代码修改。
+- 具体内容：上一版本 0.7.1 / 23（254560f）至目标业务提交 0c90546；发布准备及构建 24 绑定提交 f88540b88b261c18f009f1fb17db0a36a48c79bf。执行 reserve、build、inspect、草稿核对、publish；实际发布时间 2026-10-02 04:38:26（Asia/Shanghai），发布后管理记录、公开 history/latest 均确认最新 0.8.0 / 24。未加 --full-package；22、23 两个差量包均完成。仅应用内发布，GitHub Release、Git push 未执行。
+- 产物：dist/releases/0.8.0/IRisNote-0.8.0-24.apk；127870930 字节；SHA-256 afb6a306144db905a433f9a80b086df9a2d12627e2d99ea23bccdba4cdba7a22；正式证书 7319b25667535231abaed933fbccea285df134d1cb29c81e33df57adc3ec0f86；CDN https://download.tech-mou.top/IRisNote-0.8.0-24.apk。23 → 24 差量 17,559,354 字节；22 → 24 差量 17,575,843 字节，均为完整包约 13.7%。
+- 验证：原工作区及预留提交独立导出源码 npm run check 均通过（715/715；类型、主题通过；Lint 0 错误、1 条既有警告）；npm ci/prebuild 后 Gradle assembleRelease 成功（10m 31s），APK 身份签名、DEX 宿主与合并权限通过；服务器及 COS/CDN 整包回读摘要、两个差量包实际还原校验通过；公开更新策略及 CDN HEAD 200 复核通过。npm ci 审计仍提示 24 项（21 中、3 高），本次未逐项核实或升级依赖。ADB 无设备，真机安装、覆盖升级及业务验收未执行。完整证据见发布日志及 .expo/release-0.8.0-*.log/json。
+
+---
+
 ## 2026-10-02 04:06:01 | 新增功能：准备 IRisNote 0.8.0 正式版本
 
 - 变更概述：按用户全权发布授权，核对上一已发布 0.7.1 / 构建 23 与当前代码差异，按功能更新准备 0.8.0 应用内正式发布。
