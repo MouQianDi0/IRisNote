@@ -1,3 +1,12 @@
+## 2026-10-01 14:57:29 | 优化代码：笔记历史对比精确到字符
+
+- 变更概述：历史正文和标题由整行标色改为只突出实际增删字符，同一行多个修改点分别高亮，统计改为字符数。
+- 修改文件：src/shared/utils/text-diff.ts；src/features/notes/components/viewer/note-history-diff.tsx；tests/editor/history-diff.test.cjs；docs/进度与验证/项目编辑器进度.md；docs/进度与验证/IRisNote编辑器核心架构与实施计划.md；docs/进度与验证/IRisNote编辑器阶段3保存版本边界验证清单.md；docs/logs/2026-10-01-note-history-character-diff.md；CHANGELOG.md。
+- 具体内容：复用 Myers 搜索，先行定位再对连续变更段按 Unicode 码点精化；共有字普通显示，增删字带语义色和下划线/删除线，空白/换行可见且计入统计。标题独立分批与缓存；保持实时草稿基准、折叠、150ms 加载、取消与失败重试，行定位/字符拆分/搜索共享预算，超限提示全文且无局部统计。无新依赖。
+- 验证：修改前/后 typecheck 通过；直接相关回归 23 + 12 + 24 = 59 项全部通过，行/字符算法各含 961 组独立 LCS 核对；最终获准环境 npm run check 通过（774 项：772 通过、2 跳过、0 失败；类型/主题通过，Lint 仅既有设置页 1 个警告）；git diff --check 通过。真机视觉/动画/复制/朗读、Android/iOS/Web 构建和真实云端恢复同步未执行。
+
+---
+
 ## 2026-10-01 13:26:41 | 优化代码：todo 快进同步到 codex 并固定后续工作分支
 
 - 变更概述：按用户要求将 `origin/kroos_todo` 合入 `kroos_vps/codex-a`，恢复并提交历史 diff/加载工作；后续 Codex 默认在 codex 分支开发。
