@@ -1,9 +1,6 @@
 // 实际执行历史组件和 Hook 的事件代码；只替换 React/原生宿主和读取端口，不验证原生布局。
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const ts = require("typescript");
 const tick = () => new Promise((done) => setImmediate(done));
 const deferred = () => {
     let resolve, reject;
@@ -14,114 +11,7 @@ const deferred = () => {
     return { promise, resolve, reject };
 };
 
-function host(relativePath, imports) {
-    const slots = [];
-    const cleanups = [];
-    const timers = new Map();
-    let cursor = 0,
-        writes = 0,
-        timerId = 0;
-    const react = {
-        useState(initial) {
-            const index = cursor++;
-            if (!(index in slots))
-                slots[index] =
-                    typeof initial === "function" ? initial() : initial;
-            return [
-                slots[index],
-                (value) => {
-                    writes++;
-                    slots[index] =
-                        typeof value === "function"
-                            ? value(slots[index])
-                            : value;
-                },
-            ];
-        },
-        useRef(initial) {
-            const index = cursor++;
-            return (slots[index] ??= { current: initial });
-        },
-        useCallback(callback) {
-            return callback;
-        },
-        useEffect(callback) {
-            const index = cursor++;
-            if (!(index in slots)) {
-                slots[index] = true;
-                cleanups.push(callback());
-            }
-        },
-    };
-    const filename = path.resolve(__dirname, "../..", relativePath);
-    const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-        compilerOptions: {
-            module: ts.ModuleKind.CommonJS,
-            target: ts.ScriptTarget.ES2022,
-            jsx: ts.JsxEmit.ReactJSX,
-        },
-        fileName: filename,
-    }).outputText;
-    const output = { exports: {} };
-    const modules = {
-        react,
-        "react/jsx-runtime": {
-            jsx: (type, props) => ({ type, props }),
-            jsxs: (type, props) => ({ type, props }),
-        },
-        ...imports,
-    };
-    new Function(
-        "require",
-        "module",
-        "exports",
-        "setTimeout",
-        "clearTimeout",
-        compiled,
-    )(
-        (name) => {
-            assert.ok(name in modules, `未注入的宿主端口：${name}`);
-            return modules[name];
-        },
-        output,
-        output.exports,
-        (callback, duration) => {
-            const id = ++timerId;
-            timers.set(id, { callback, duration });
-            return id;
-        },
-        (id) => timers.delete(id),
-    );
-    return {
-        exports: output.exports,
-        render(callback) {
-            cursor = 0;
-            return callback(output.exports);
-        },
-        cleanup() {
-            for (const cleanup of cleanups) cleanup?.();
-        },
-        timers,
-        get writes() {
-            return writes;
-        },
-    };
-}
-function find(node, predicate) {
-    if (Array.isArray(node))
-        return node.map((item) => find(item, predicate)).find(Boolean);
-    if (!node || typeof node !== "object") return undefined;
-    if (predicate(node)) return node;
-    return find(node.props?.children, predicate);
-}
-const byLabel = (view, label) =>
-    find(
-        view,
-        (node) =>
-            node.props?.accessibilityLabel === label ||
-            node.props?.label === label,
-    );
-const panel = (view) => find(view, (node) => node.type === "Popover");
+const { host, find, byLabel, panel } = require("./history-test-host.cjs");
 
 function popover(onRestore = async () => {}) {
     const selected = {
@@ -184,6 +74,8 @@ function popover(onRestore = async () => {}) {
                 View: "View",
             },
             "../../hooks/use-note-history": { useNoteHistory: () => history },
+            "./note-history-diff": { default: "HistoryDiff" },
+            "./note-history-loading": { default: "HistoryLoading" },
         },
     );
     const props = {
@@ -231,18 +123,27 @@ test("历史气泡防重复打开、返回与外部关闭，关闭后等待动�
     h.cleanup();
 });
 
-test("详情可切换当前未保存内容，取消恢复只回详情且不提交", () => {
+test("详情默认对比实时草稿，历史全文可复制，取消恢复只回详情", () => {
     let restores = 0;
     const { h, render, openDetail } = popover(async () => {
         restores++;
     });
     let view = openDetail();
-    byLabel(view, "查看当前编辑内容").props.onPress();
+    assert.equal(
+        byLabel(view, "查看与当前对比").props.accessibilityState.selected,
+        true,
+    );
+    assert.equal(byLabel(view, "查看当前编辑内容"), undefined);
+    const diff = find(view, (node) => node.type === "HistoryDiff");
+    assert.equal(diff.props.currentValue.content, "未保存正文");
+    byLabel(view, "查看历史全文").props.onPress();
     assert.ok(
         find(
             render(),
             (node) =>
-                node.type === "Text" && node.props.children === "未保存正文",
+                node.type === "Text" &&
+                node.props.children === "旧正文" &&
+                node.props.selectable,
         ),
     );
     byLabel(render(), "恢复此版本").props.onPress();
@@ -270,6 +171,7 @@ test("恢复进行中拒绝重复点击和关闭，失败后保留气泡并允�
     panel(render()).props.onClose();
     assert.equal(panel(render()).props.visible, true);
     assert.equal(byLabel(render(), "正在恢复").props.disabled, true);
+    assert.equal(byLabel(render(), "正在恢复").props.leading.type, "Spinner");
     pending.reject(new Error("磁盘写入失败"));
     await tick();
     assert.equal(panel(render()).props.visible, true);
@@ -277,6 +179,7 @@ test("恢复进行中拒绝重复点击和关闭，失败后保留气泡并允�
         find(render(), (node) => node.props?.children === "磁盘写入失败"),
     );
     assert.equal(byLabel(render(), "确认恢复").props.disabled, false);
+    assert.equal(byLabel(render(), "确认恢复").props.leading, undefined);
     h.cleanup();
 });
 
@@ -287,6 +190,94 @@ test("草稿冲突禁用恢复，当前版本也不能重复恢复", () => {
     props.restoreBlockedReason = undefined;
     history.selected.revision_id = "当前版本";
     assert.equal(byLabel(render(), "已是当前版本").props.disabled, true);
+    h.cleanup();
+});
+
+test("内容相同的旧版本仍可恢复，当前版本与未保存草稿有差异仍禁用恢复", () => {
+    const { h, history, props, render, openDetail } = popover();
+    openDetail();
+    props.currentValue = {
+        title: history.selected.title,
+        content: history.selected.content,
+        categoryId: history.selected.category_id,
+    };
+    assert.equal(byLabel(render(), "恢复此版本").props.disabled, false);
+    history.selected.revision_id = "当前版本";
+    props.currentValue.content = "尚未保存的新内容";
+    const view = render();
+    assert.equal(byLabel(view, "已是当前版本").props.disabled, true);
+    assert.equal(
+        find(view, (node) => node.type === "HistoryDiff").props.currentValue
+            .content,
+        "尚未保存的新内容",
+    );
+    h.cleanup();
+});
+
+test("详情读取中保留两 Tab、禁用恢复，读取失败结束加载并允许刷新", () => {
+    const { h, history, render, openDetail } = popover();
+    history.select = function () {
+        this.loading = true;
+        this.selected = null;
+        return Promise.resolve();
+    };
+    let view = openDetail();
+    assert.ok(byLabel(view, "查看与当前对比"));
+    assert.ok(byLabel(view, "查看历史全文"));
+    assert.equal(
+        find(view, (node) => node.type === "HistoryLoading").props.label,
+        "正在读取版本内容…",
+    );
+    const restore = byLabel(view, "恢复此版本");
+    assert.equal(restore.props.disabled, true);
+    restore.props.onPress();
+    assert.ok(byLabel(render(), "返回上一级历史"));
+    assert.equal(byLabel(render(), "确认恢复"), undefined);
+    history.loading = false;
+    history.error = "读取失败";
+    view = render();
+    assert.equal(
+        find(view, (node) => node.type === "HistoryLoading"),
+        undefined,
+    );
+    assert.ok(byLabel(view, "刷新历史列表"));
+    panel(view).props.onClose();
+    assert.equal(panel(render()).props.visible, false);
+    h.cleanup();
+});
+
+test("全文切换保持对比组件，关闭或返回列表后移除计算组件，再选版本默认对比", () => {
+    const { h, render, openDetail } = popover();
+    let view = openDetail();
+    const diff = find(view, (node) => node.type === "HistoryDiff");
+    byLabel(view, "查看历史全文").props.onPress();
+    view = render();
+    assert.equal(
+        find(view, (node) => node.type === "HistoryDiff").key,
+        diff.key,
+    );
+    assert.ok(
+        find(
+            view,
+            (node) =>
+                node.props?.importantForAccessibility === "no-hide-descendants",
+        ),
+    );
+    byLabel(view, "返回上一级历史").props.onPress();
+    assert.equal(
+        find(render(), (node) => node.type === "HistoryDiff"),
+        undefined,
+    );
+    view = openDetail();
+    assert.equal(
+        byLabel(view, "查看与当前对比").props.accessibilityState.selected,
+        true,
+    );
+    panel(view).props.onClose();
+    assert.equal(
+        find(render(), (node) => node.type === "HistoryDiff"),
+        undefined,
+    );
     h.cleanup();
 });
 

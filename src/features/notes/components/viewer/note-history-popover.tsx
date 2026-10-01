@@ -13,6 +13,8 @@ import {
 import type { NoteDraftValue } from "../../data/note-draft.repository";
 import type { NoteRevisionOrigin } from "../../data/note-revision.repository";
 import { useNoteHistory } from "../../hooks/use-note-history";
+import NoteHistoryDiff from "./note-history-diff";
+import NoteHistoryLoading from "./note-history-loading";
 
 type HistoryLevel = "list" | "detail" | "confirm";
 type Props = {
@@ -59,7 +61,7 @@ export default function NoteHistoryPopover({
     const openingLocked = useRef(false);
     const [visible, setVisible] = useState(false);
     const [level, setLevel] = useState<HistoryLevel>("list");
-    const [compareCurrent, setCompareCurrent] = useState(false);
+    const [detailTab, setDetailTab] = useState<"diff" | "full">("diff");
     const [restoring, setRestoring] = useState(false);
     const [restoreError, setRestoreError] = useState("");
 
@@ -86,7 +88,7 @@ export default function NoteHistoryPopover({
         openingLocked.current = true;
         onOpen();
         setLevel("list");
-        setCompareCurrent(false);
+        setDetailTab("diff");
         setRestoreError("");
         setVisible(true);
         void history.refresh();
@@ -142,15 +144,6 @@ export default function NoteHistoryPopover({
             ? "默认分类"
             : (history.snapshot?.categories.find((item) => item.id === id)
                   ?.name ?? "分类已不可用");
-    const showing = compareCurrent
-        ? currentValue
-        : selected
-          ? {
-                title: selected.title,
-                content: selected.content ?? "",
-                categoryId: selected.category_id,
-            }
-          : null;
     const error = restoreError || history.error;
 
     return (
@@ -204,33 +197,35 @@ export default function NoteHistoryPopover({
                             onPress={close}
                         />
                     </View>
-                    {level === "detail" && selected && (
+                    {level === "detail" && (
                         <View className="mx-4 mt-2 flex-row gap-2">
-                            {([false, true] as const).map((current) => (
+                            {(["diff", "full"] as const).map((tab) => (
                                 <Pressable
-                                    key={String(current)}
+                                    key={tab}
                                     accessibilityRole="button"
                                     accessibilityLabel={
-                                        current
-                                            ? "查看当前编辑内容"
-                                            : "查看历史内容"
+                                        tab === "diff"
+                                            ? "查看与当前对比"
+                                            : "查看历史全文"
                                     }
                                     accessibilityState={{
-                                        selected: compareCurrent === current,
+                                        selected: detailTab === tab,
                                     }}
-                                    onPress={() => setCompareCurrent(current)}
+                                    onPress={() => setDetailTab(tab)}
                                     className="min-h-11 flex-1 items-center justify-center rounded-control"
                                     style={{
                                         backgroundColor:
-                                            compareCurrent === current
+                                            detailTab === tab
                                                 ? semanticColors.surfaceListSelected
                                                 : semanticColors.surfaceControl,
                                     }}
                                 >
                                     <Text
-                                        className={`text-sm ${compareCurrent === current ? "text-primary" : "text-text-secondary"}`}
+                                        className={`text-sm ${detailTab === tab ? "text-primary" : "text-text-secondary"}`}
                                     >
-                                        {current ? "当前编辑" : "历史内容"}
+                                        {tab === "diff"
+                                            ? "与当前对比"
+                                            : "历史全文"}
                                     </Text>
                                 </Pressable>
                             ))}
@@ -238,14 +233,22 @@ export default function NoteHistoryPopover({
                     )}
                     <ScrollView
                         style={{ flexGrow: 0, flexShrink: 1 }}
-                        contentContainerStyle={{ padding: 16, gap: 12 }}
+                        contentContainerStyle={{
+                            padding: 16,
+                            gap: 12,
+                            minHeight: 192,
+                        }}
                         showsVerticalScrollIndicator
                         nestedScrollEnabled
                     >
-                        {history.loading && (
-                            <ActivityIndicator
-                                accessibilityLabel="正在读取历史版本"
-                                color={colors.primary}
+                        {visible && history.loading && (
+                            <NoteHistoryLoading
+                                key={level}
+                                label={
+                                    level === "list"
+                                        ? "正在读取历史版本…"
+                                        : "正在读取版本内容…"
+                                }
                             />
                         )}
                         {!!error && (
@@ -273,7 +276,7 @@ export default function NoteHistoryPopover({
                                         accessibilityLabel={`${revision.title}，${formatTime(revision.created_at)}，${ORIGIN_LABELS[revision.origin]}${revision.revision_id === history.snapshot?.note.current_revision_id ? "，当前版本" : ""}`}
                                         onPress={() => {
                                             setLevel("detail");
-                                            setCompareCurrent(false);
+                                            setDetailTab("diff");
                                             setRestoreError("");
                                             void history.select(
                                                 revision.revision_id,
@@ -311,30 +314,61 @@ export default function NoteHistoryPopover({
                                 ))}
                             </>
                         )}
-                        {level === "detail" && showing && selected && (
-                            <>
-                                <Text className="text-xs text-text-secondary">
-                                    {compareCurrent
-                                        ? "含当前尚未正式保存的改动"
-                                        : `${formatTime(selected.created_at)} · ${ORIGIN_LABELS[selected.origin]}`}
-                                </Text>
-                                <Text
-                                    selectable
-                                    className="text-text-primary text-lg font-semibold"
-                                >
-                                    {showing.title || "未命名笔记"}
-                                </Text>
-                                <Text className="text-xs text-text-secondary">
-                                    {categoryName(showing.categoryId)}
-                                </Text>
-                                <Text
-                                    selectable
-                                    className="text-text-primary text-sm leading-6"
-                                >
-                                    {showing.content || "（空正文）"}
-                                </Text>
-                            </>
-                        )}
+                        {visible &&
+                            level === "detail" &&
+                            !history.loading &&
+                            selected && (
+                                <>
+                                    <Text className="text-xs text-text-secondary">
+                                        {`${formatTime(selected.created_at)} · ${ORIGIN_LABELS[selected.origin]}`}
+                                    </Text>
+                                    <View
+                                        style={{
+                                            display:
+                                                detailTab === "diff"
+                                                    ? "flex"
+                                                    : "none",
+                                        }}
+                                        accessibilityElementsHidden={
+                                            detailTab !== "diff"
+                                        }
+                                        importantForAccessibility={
+                                            detailTab === "diff"
+                                                ? "auto"
+                                                : "no-hide-descendants"
+                                        }
+                                    >
+                                        <NoteHistoryDiff
+                                            key={selected.revision_id}
+                                            selected={selected}
+                                            currentValue={currentValue}
+                                            categoryName={categoryName}
+                                        />
+                                    </View>
+                                    {detailTab === "full" && (
+                                        <>
+                                            <Text
+                                                selectable
+                                                className="text-text-primary text-lg font-semibold"
+                                            >
+                                                {selected.title || "未命名笔记"}
+                                            </Text>
+                                            <Text className="text-xs text-text-secondary">
+                                                {categoryName(
+                                                    selected.category_id,
+                                                )}
+                                            </Text>
+                                            <Text
+                                                selectable
+                                                className="text-text-primary text-sm leading-6"
+                                            >
+                                                {selected.content ||
+                                                    "（空正文）"}
+                                            </Text>
+                                        </>
+                                    )}
+                                </>
+                            )}
                         {level === "confirm" && selected && (
                             <>
                                 <Text className="text-text-primary text-sm leading-6">
@@ -365,13 +399,26 @@ export default function NoteHistoryPopover({
                                 }}
                             />
                         )}
-                        {level === "detail" && selected && (
+                        {level === "detail" && (
                             <DialogButton
                                 label={
                                     isCurrent ? "已是当前版本" : "恢复此版本"
                                 }
-                                disabled={isCurrent || !!restoreBlockedReason}
-                                onPress={() => setLevel("confirm")}
+                                disabled={
+                                    history.loading ||
+                                    !selected ||
+                                    isCurrent ||
+                                    !!restoreBlockedReason
+                                }
+                                onPress={() => {
+                                    if (
+                                        selected &&
+                                        !history.loading &&
+                                        !isCurrent &&
+                                        !restoreBlockedReason
+                                    )
+                                        setLevel("confirm");
+                                }}
                             />
                         )}
                         {level === "confirm" && (
@@ -385,6 +432,17 @@ export default function NoteHistoryPopover({
                                 />
                                 <DialogButton
                                     label={restoring ? "正在恢复" : "确认恢复"}
+                                    leading={
+                                        restoring ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={
+                                                    semanticColors.onBrandPrimary
+                                                }
+                                                accessibilityLabel="正在恢复历史版本"
+                                            />
+                                        ) : undefined
+                                    }
                                     className="flex-1"
                                     disabled={
                                         restoring || !!restoreBlockedReason
