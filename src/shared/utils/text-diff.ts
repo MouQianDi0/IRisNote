@@ -1,6 +1,12 @@
+export type TextDiffSpan = {
+    type: "equal" | "delete" | "insert";
+    text: string;
+};
 export type TextDiffChunk = {
     type: "equal" | "delete" | "insert";
     lines: string[];
+    /** 变更段内的字符投影；未改变的字符仍为 equal。 */
+    spans?: TextDiffSpan[];
 };
 export type TextDiffResult =
     | {
@@ -19,29 +25,26 @@ export type TextDiffSection =
       };
 type Options = { maxWork?: number; batchSize?: number };
 const TOO_LARGE: TextDiffResult = { status: "too-large" };
+type Work = { used: number; limit: number; batch: number };
+const createWork = ({
+    maxWork = 200_000,
+    batchSize = 2_048,
+}: Options): Work => ({
+    used: 0,
+    limit: Math.max(1, Math.min(200_000, maxWork || 1)),
+    batch: Math.max(1, Math.min(2_048, batchSize || 1)),
+});
 
 /** 空正文为零行；保留空格、空行与末尾换行，仅统一 CRLF/LF。 */
 const splitLines = (text: string | null) =>
     !text ? [] : text.replace(/\r\n/g, "\n").split("\n");
 
-/**
- * 历史 → 当前的 Myers 行级差异。每个批次 yield，由调用方安排下一批；
- * 输入、搜索工作量及渲染块数均有上限，不返回部分统计或不完整的差异。
- */
-export function* diffTextLines(
-    before: string | null,
-    after: string | null,
-    { maxWork = 200_000, batchSize = 2_048 }: Options = {},
+/** 同一个 Myers 搜索用于行和 Unicode 码点，所有阶段共享工作预算。 */
+function* diffSequence(
+    oldLines: string[],
+    newLines: string[],
+    work: Work,
 ): Generator<void, TextDiffResult, void> {
-    if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
-        return TOO_LARGE;
-    const oldLines = splitLines(before);
-    const newLines = splitLines(after);
-    if (oldLines.length + newLines.length > 12_000) return TOO_LARGE;
-    // 参数限界，避免调用方传入零批次或无限预算使任务失去限流。
-    const budget = Math.max(1, Math.min(200_000, maxWork || 1));
-    const batch = Math.max(1, Math.min(2_048, batchSize || 1));
-    let work = 0;
     let prefix = 0;
     let suffix = 0;
     while (
@@ -50,8 +53,8 @@ export function* diffTextLines(
         oldLines[prefix] === newLines[prefix]
     ) {
         prefix++;
-        if (++work > budget) return TOO_LARGE;
-        if (work % batch === 0) yield;
+        if (++work.used > work.limit) return TOO_LARGE;
+        if (work.used % work.batch === 0) yield;
     }
     while (
         suffix < oldLines.length - prefix &&
@@ -60,8 +63,8 @@ export function* diffTextLines(
             newLines[newLines.length - 1 - suffix]
     ) {
         suffix++;
-        if (++work > budget) return TOO_LARGE;
-        if (work % batch === 0) yield;
+        if (++work.used > work.limit) return TOO_LARGE;
+        if (work.used % work.batch === 0) yield;
     }
     const oldMiddle = oldLines.slice(prefix, oldLines.length - suffix);
     const newMiddle = newLines.slice(prefix, newLines.length - suffix);
@@ -74,12 +77,12 @@ export function* diffTextLines(
     };
     append("equal", oldLines.slice(0, prefix));
 
-    // 完全重写且没有共享行时直接展示整段，避免无意义的二次方搜索。
+    // 没有共享单元时直接展示整段，避免无意义的二次方搜索。
     const oldSet = new Set<string>();
     for (const line of oldMiddle) {
         oldSet.add(line);
-        if (++work > budget) return TOO_LARGE;
-        if (work % batch === 0) yield;
+        if (++work.used > work.limit) return TOO_LARGE;
+        if (work.used % work.batch === 0) yield;
     }
     let shared = false;
     for (const line of newMiddle) {
@@ -87,8 +90,8 @@ export function* diffTextLines(
             shared = true;
             break;
         }
-        if (++work > budget) return TOO_LARGE;
-        if (work % batch === 0) yield;
+        if (++work.used > work.limit) return TOO_LARGE;
+        if (work.used % work.batch === 0) yield;
     }
     if (!shared) {
         append("delete", oldMiddle);
@@ -107,8 +110,8 @@ export function* diffTextLines(
                 diagonal <= distance;
                 diagonal += 2
             ) {
-                if (++work > budget) return TOO_LARGE;
-                if (work % batch === 0) yield;
+                if (++work.used > work.limit) return TOO_LARGE;
+                if (work.used % work.batch === 0) yield;
                 let x =
                     diagonal === -distance ||
                     (diagonal !== distance &&
@@ -124,8 +127,8 @@ export function* diffTextLines(
                 ) {
                     x++;
                     y++;
-                    if (++work > budget) return TOO_LARGE;
-                    if (work % batch === 0) yield;
+                    if (++work.used > work.limit) return TOO_LARGE;
+                    if (work.used % work.batch === 0) yield;
                 }
                 frontier.set(diagonal, x);
                 if (x >= oldMiddle.length && y >= newMiddle.length)
@@ -150,8 +153,8 @@ export function* diffTextLines(
             while (x > previousX && y > previousY) {
                 reversed.push({ type: "equal", line: oldMiddle[--x] });
                 y--;
-                if (++work > budget) return TOO_LARGE;
-                if (work % batch === 0) yield;
+                if (++work.used > work.limit) return TOO_LARGE;
+                if (work.used % work.batch === 0) yield;
             }
             if (distance === 0) break;
             reversed.push(
@@ -159,15 +162,15 @@ export function* diffTextLines(
                     ? { type: "insert", line: newMiddle[--y] }
                     : { type: "delete", line: oldMiddle[--x] },
             );
-            if (++work > budget) return TOO_LARGE;
-            if (work % batch === 0) yield;
+            if (++work.used > work.limit) return TOO_LARGE;
+            if (work.used % work.batch === 0) yield;
         }
         for (let index = reversed.length - 1; index >= 0; index--) {
             const { type, line } = reversed[index];
             append(type, [line]);
             if (chunks.length > 400) return TOO_LARGE;
-            if (++work > budget) return TOO_LARGE;
-            if (work % batch === 0) yield;
+            if (++work.used > work.limit) return TOO_LARGE;
+            if (work.used % work.batch === 0) yield;
         }
     }
     append("equal", oldLines.slice(oldLines.length - suffix));
@@ -185,6 +188,120 @@ export function* diffTextLines(
             0,
         ),
     };
+}
+
+/** 历史 → 当前的行级差异，保留原有行数语义。 */
+export function* diffTextLines(
+    before: string | null,
+    after: string | null,
+    options: Options = {},
+): Generator<void, TextDiffResult, void> {
+    if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
+        return TOO_LARGE;
+    const oldLines = splitLines(before);
+    const newLines = splitLines(after);
+    if (oldLines.length + newLines.length > 12_000) return TOO_LARGE;
+    return yield* diffSequence(oldLines, newLines, createWork(options));
+}
+
+function* characters(
+    text: string,
+    work: Work,
+): Generator<void, string[] | null, void> {
+    const units: string[] = [];
+    // 字符串迭代按 Unicode 码点，不拆开 emoji/增补汉字的 UTF-16 代理对。
+    for (const unit of text) {
+        units.push(unit);
+        if (++work.used > work.limit) return null;
+        if (work.used % work.batch === 0) yield;
+    }
+    return units;
+}
+
+/**
+ * 行级定位后精化连续变更段；added/removed 为字符数（空格、换行各计一）。
+ * 相邻删除/新增作为整体比较，避免按行号硬配对扩大高亮；不返回局部统计。
+ */
+export function* diffTextWithCharacters(
+    before: string | null,
+    after: string | null,
+    options: Options = {},
+): Generator<void, TextDiffResult, void> {
+    if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
+        return TOO_LARGE;
+    const oldLines = splitLines(before);
+    const newLines = splitLines(after);
+    if (oldLines.length + newLines.length > 12_000) return TOO_LARGE;
+    const work = createWork(options);
+    const located = yield* diffSequence(oldLines, newLines, work);
+    if (located.status !== "complete") return TOO_LARGE;
+    const chunks: TextDiffChunk[] = [];
+    let added = 0;
+    let removed = 0;
+    let spansCount = 0;
+    for (let index = 0; index < located.chunks.length;) {
+        const chunk = located.chunks[index];
+        if (chunk.type === "equal") {
+            chunks.push(chunk);
+            index++;
+            continue;
+        }
+        const first = index;
+        const deleted: string[] = [];
+        const inserted: string[] = [];
+        while (
+            index < located.chunks.length &&
+            located.chunks[index].type !== "equal"
+        ) {
+            const next = located.chunks[index++];
+            (next.type === "delete" ? deleted : inserted).push(...next.lines);
+        }
+        // 分隔符归入变更段：有后文时带尾换行，只有前文时带首换行。
+        // 空行/末尾换行的增删因此不会误判成零字符变化。
+        const trailing = index < located.chunks.length;
+        const leading = !trailing && first > 0;
+        const text = (lines: string[]) =>
+            !lines.length
+                ? ""
+                : `${leading ? "\n" : ""}${lines.join("\n")}${trailing ? "\n" : ""}`;
+        const oldUnits = yield* characters(text(deleted), work);
+        if (!oldUnits) return TOO_LARGE;
+        const newUnits = yield* characters(text(inserted), work);
+        if (!newUnits) return TOO_LARGE;
+        const refined = yield* diffSequence(oldUnits, newUnits, work);
+        if (refined.status !== "complete") return TOO_LARGE;
+        added += refined.added;
+        removed += refined.removed;
+        spansCount += refined.chunks.length;
+        if (spansCount > 1_200) return TOO_LARGE;
+        for (const type of ["delete", "insert"] as const) {
+            const lines = type === "delete" ? deleted : inserted;
+            if (!lines.length) continue;
+            const spans = refined.chunks
+                .filter(
+                    (part) =>
+                        part.type !== (type === "delete" ? "insert" : "delete"),
+                )
+                .map((part) => ({
+                    type: part.type,
+                    text: part.lines.join(""),
+                }));
+            // 两侧都有正文时，共有的边界换行是展示外的上下文。
+            if (leading && spans[0]?.type === "equal")
+                spans[0].text = spans[0].text.slice(1);
+            const last = spans[spans.length - 1];
+            if (trailing && last?.type === "equal")
+                last.text = last.text.slice(0, -1);
+            chunks.push({
+                type,
+                lines,
+                spans: spans.filter((part) => part.text.length > 0),
+            });
+        }
+        if (++work.used > work.limit) return TOO_LARGE;
+        if (work.used % work.batch === 0) yield;
+    }
+    return { status: "complete", chunks, added, removed };
 }
 
 /** 差异前后各保留两行；相邻差异的上下文合并，长段可展开。 */

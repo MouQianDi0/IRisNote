@@ -1,6 +1,6 @@
 import { semanticColors } from "@/shared/theme";
 import {
-    diffTextLines,
+    diffTextWithCharacters,
     textDiffSections,
     type TextDiffChunk,
     type TextDiffResult,
@@ -19,12 +19,15 @@ type Props = {
 type Input = { revisionId: string; before: string; after: string };
 type Completion = {
     input: Input;
+    retry: number;
     result: TextDiffResult | null;
     error: boolean;
 };
 
-function DiffChunk({ type, lines }: TextDiffChunk) {
-    const changed = type !== "equal";
+function DiffChunk({ type, lines, spans }: TextDiffChunk) {
+    const changed =
+        type !== "equal" &&
+        (!spans || spans.some((span) => span.type !== "equal"));
     const label = type === "delete" ? "删除" : "新增";
     const prefix = type === "delete" ? "− " : type === "insert" ? "+ " : "  ";
     const color =
@@ -34,15 +37,27 @@ function DiffChunk({ type, lines }: TextDiffChunk) {
             selectable
             accessibilityLabel={
                 changed
-                    ? `${label}：${lines.map((line) => line || "空行").join("\n")}`
-                    : undefined
+                    ? `${label}：${
+                          spans
+                              ? spans
+                                    .filter((span) => span.type !== "equal")
+                                    .map((span) =>
+                                        describeCharacters(span.text),
+                                    )
+                                    .join("；")
+                              : lines.map((line) => line || "空行").join("\n")
+                      }`
+                    : type === "equal"
+                      ? undefined
+                      : `${type === "delete" ? "历史" : "当前"}：${lines.join("\n")}`
             }
             className="text-text-primary text-sm leading-6"
             style={
                 changed
                     ? {
-                          color,
-                          backgroundColor: `${color}12`,
+                          ...(!spans
+                              ? { color, backgroundColor: `${color}12` }
+                              : {}),
                           borderLeftWidth: 3,
                           borderLeftColor: color,
                           paddingHorizontal: 6,
@@ -51,12 +66,89 @@ function DiffChunk({ type, lines }: TextDiffChunk) {
                     : undefined
             }
         >
-            {lines.map((line) => `${prefix}${line || "（空行）"}`).join("\n")}
+            {spans ? (
+                <>
+                    <Text style={changed ? { color } : undefined}>
+                        {changed ? prefix : "  "}
+                    </Text>
+                    {spans.map((span, index) => (
+                        <Text
+                            key={index}
+                            style={
+                                span.type === "equal"
+                                    ? undefined
+                                    : {
+                                          color,
+                                          backgroundColor: `${color}20`,
+                                          textDecorationLine:
+                                              type === "delete"
+                                                  ? "line-through"
+                                                  : "underline",
+                                      }
+                            }
+                        >
+                            {span.type === "equal"
+                                ? span.text
+                                : visibleCharacters(span.text)}
+                        </Text>
+                    ))}
+                </>
+            ) : (
+                lines.map((line) => `${prefix}${line || "（空行）"}`).join("\n")
+            )}
         </Text>
     );
 }
 
-/** 计算在 effect 后分批推进；缓存本次结果，卸载/输入变化后旧任务不回写。 */
+const visibleCharacters = (text: string) =>
+    text
+        .replace(/ /g, "·")
+        .replace(/\t/g, "⇥")
+        .replace(/\n/g, "↵\n")
+        .replace(/\r/g, "␍");
+const describeCharacters = (text: string) =>
+    text
+        .replace(/ /g, " 空格 ")
+        .replace(/\t/g, " 制表符 ")
+        .replace(/\n/g, " 换行 ")
+        .replace(/\r/g, " 回车 ");
+
+/** 正文、标题各自缓存和分批推进；输入变化/卸载后旧任务不回写。 */
+function useCharacterComparison(input: Input, retry: number) {
+    const [completion, setCompletion] = useState<Completion | null>(null);
+    useEffect(() => {
+        let cancelled = false;
+        const task = diffTextWithCharacters(input.before, input.after);
+        let timer: ReturnType<typeof setTimeout>;
+        const advance = () => {
+            if (cancelled) return;
+            try {
+                const step = task.next();
+                if (step.done)
+                    setCompletion({
+                        input,
+                        retry,
+                        result: step.value,
+                        error: false,
+                    });
+                else timer = setTimeout(advance, 0);
+            } catch {
+                setCompletion({ input, retry, result: null, error: true });
+            }
+        };
+        // 初次绘制先显示占位；批次间让出 JS 线程供动画、关闭等交互使用。
+        timer = setTimeout(advance, 0);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            task.return({ status: "too-large" });
+        };
+    }, [input, retry]);
+    return completion?.input === input && completion.retry === retry
+        ? completion
+        : null;
+}
+
 export default function NoteHistoryDiff({
     selected,
     currentValue,
@@ -70,36 +162,21 @@ export default function NoteHistoryDiff({
         }),
         [selected.revision_id, selected.content, currentValue.content],
     );
-    const [completion, setCompletion] = useState<Completion | null>(null);
+    const titleInput = useMemo(
+        () => ({
+            revisionId: selected.revision_id,
+            before: selected.title,
+            after: currentValue.title,
+        }),
+        [selected.revision_id, selected.title, currentValue.title],
+    );
     const [retry, setRetry] = useState(0);
     const [expanded, setExpanded] = useState<{
         input: Input;
         ids: number[];
     } | null>(null);
-    useEffect(() => {
-        let cancelled = false;
-        const task = diffTextLines(input.before, input.after);
-        let timer: ReturnType<typeof setTimeout>;
-        const advance = () => {
-            if (cancelled) return;
-            try {
-                const step = task.next();
-                if (step.done)
-                    setCompletion({ input, result: step.value, error: false });
-                else timer = setTimeout(advance, 0);
-            } catch {
-                setCompletion({ input, result: null, error: true });
-            }
-        };
-        // 初次绘制先显示占位；批次间让出 JS 线程供动画、关闭等交互使用。
-        timer = setTimeout(advance, 0);
-        return () => {
-            cancelled = true;
-            clearTimeout(timer);
-            task.return({ status: "too-large" });
-        };
-    }, [input, retry]);
-    const ready = completion?.input === input ? completion : null;
+    const ready = useCharacterComparison(input, retry);
+    const titleReady = useCharacterComparison(titleInput, retry);
     const result = ready?.result;
     const sections = useMemo(
         () =>
@@ -110,16 +187,24 @@ export default function NoteHistoryDiff({
     );
     const titleChanged = selected.title !== currentValue.title;
     const categoryChanged = selected.category_id !== currentValue.categoryId;
-    if (!ready) return <NoteHistoryLoading key={retry} label="正在生成对比…" />;
+    if (!ready || !titleReady)
+        return <NoteHistoryLoading key={retry} label="正在生成对比…" />;
     return (
         <View style={{ minHeight: 160 }} className="gap-3">
             <Text className="text-xs text-text-secondary">
                 对比当前编辑，包含未保存改动
             </Text>
             {result?.status === "complete" && (
-                <Text className="text-xs text-text-secondary">{`正文变化：新增 ${result.added} 行，删除 ${result.removed} 行`}</Text>
+                <>
+                    <Text className="text-xs text-text-secondary">{`正文变化：新增 ${result.added} 字符，删除 ${result.removed} 字符`}</Text>
+                    {(result.added > 0 || result.removed > 0) && (
+                        <Text className="text-xs text-text-secondary">
+                            空格、换行也计入；· 空格，⇥ 制表符，↵ 换行
+                        </Text>
+                    )}
+                </>
             )}
-            {ready.error && (
+            {(ready.error || titleReady.error) && (
                 <>
                     <Text
                         accessibilityRole="alert"
@@ -132,7 +217,6 @@ export default function NoteHistoryDiff({
                         accessibilityLabel="重新生成对比"
                         className="bg-surface-control min-h-11 items-center justify-center rounded-control"
                         onPress={() => {
-                            setCompletion(null);
                             setRetry((value) => value + 1);
                         }}
                     >
@@ -145,14 +229,15 @@ export default function NoteHistoryDiff({
             {titleChanged && (
                 <View className="gap-1">
                     <Text className="text-xs text-text-secondary">标题</Text>
-                    <DiffChunk
-                        type="delete"
-                        lines={[selected.title || "（空标题）"]}
-                    />
-                    <DiffChunk
-                        type="insert"
-                        lines={[currentValue.title || "（空标题）"]}
-                    />
+                    {titleReady.result?.status === "complete" &&
+                        titleReady.result.chunks.map((chunk, index) => (
+                            <DiffChunk key={index} {...chunk} />
+                        ))}
+                    {titleReady.result?.status === "too-large" && (
+                        <Text className="text-sm text-text-secondary">
+                            标题差异较大，请切换历史全文查看
+                        </Text>
+                    )}
                 </View>
             )}
             {categoryChanged && (
