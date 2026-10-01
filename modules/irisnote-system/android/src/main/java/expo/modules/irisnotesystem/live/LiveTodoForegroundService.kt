@@ -150,7 +150,8 @@ class LiveTodoForegroundService : Service() {
     /** 与 JS 侧 LIVE_TODO_CHANNEL 一致（system-notification.types.ts）。 */
     private const val LIVE_TODO_CHANNEL_ID = "irisnote.live-todo.v1"
 
-    /** 安全停机占位通知 ID（保留段，紧邻演示 7001；仅在停机瞬间存在后即移除）。 */
+    /** 安全停机占位通知 ID（保留段：7001 演示、7002 待办聚合卡、7003 本占位；仅在停机瞬间存在后即移除）。
+     *  勿复用 7004——那是摘录会话卡（ExcerptSessionNotifications.ID），曾因与本占位同号被停机顶掉并连带移除。 */
     private const val PLACEHOLDER_NOTIFICATION_ID = 7003
 
     fun start(context: Context) {

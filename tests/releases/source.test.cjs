@@ -16,7 +16,7 @@ test('release archive excludes audited material while preserving committed Unico
   const kept = ['package.json', 'package-lock.json', 'LICENSE', '.gitignore', 'app.config.ts',
     'src/中文 功能.ts', 'assets/中文 图片.bin', 'modules/example/LICENSE.md',
     'scripts/check.cjs', 'tests/fixture.md', 'plugins/example.js', 'new-input/config.json',
-    `assets/${'中文长名称'.repeat(22)}.txt`];
+    `assets/${'中文长名称'.repeat(16)}.txt`];
   const removed = ['docs/开发说明.md', 'releases/notes-1.0.0.txt', 'README.md',
     '.codegraph/index.db', '.claude/settings.json', '.vscode/settings.json', '待办事项.md', 'debug.log'];
   for (const name of [...kept, ...removed]) {

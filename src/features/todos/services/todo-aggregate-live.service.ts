@@ -19,6 +19,9 @@ export type TodoSummaryItem = {
     /** 创建时选择的重要度：high 视为「重要」。 */
     priority: "low" | "normal" | "high";
     completedAt: number | null;
+    /** 动作定位身份：原生「完成/延迟」按钮按 clientId 命中聚合 item。 */
+    ownerKey: string;
+    clientId: string;
 };
 export type TodoSummaryTimeline = {
     id: number;
@@ -61,6 +64,8 @@ export function todoSummaryTimeline(
             completed: todo.isCompleted,
             priority: todo.priority,
             completedAt: todo.completedAt ? Date.parse(todo.completedAt) || null : null,
+            ownerKey: todo.ownerKey,
+            clientId: todo.clientId,
         })),
     };
 }

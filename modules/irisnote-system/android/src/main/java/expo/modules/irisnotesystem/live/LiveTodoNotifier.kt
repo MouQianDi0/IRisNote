@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import expo.modules.irisnotesystem.R
 
@@ -47,7 +48,7 @@ object LiveTodoNotifier {
         ongoing = true, promoted = true, chronoAt = scene.chronoAt,
         chronoCountdown = scene.chronoAt != null,
         iconResourceName = scene.iconResourceName,
-        // 聚合卡为纯计数文案，不展示进度条。
+        // 聚合卡为纯计数文案，不展示进度条；不下发动作按钮。
         hideProgress = true,
       )
     }
@@ -78,6 +79,9 @@ object LiveTodoNotifier {
       promoted = card.promoted,
       chronoAt = chronoAt,
       chronoCountdown = endAt != null,
+      notificationId = card.id,
+      ownerKey = card.ownerKey,
+      clientId = card.clientId,
     )
   }
 
@@ -86,6 +90,9 @@ object LiveTodoNotifier {
    * progress/max 由调用方给定（演示为秒值、前台 JS 为分钟值）。
    * ProgressStyle 仅 API 36+ 构建使用；低版本内部退化为普通进度条，
    * 提升式请求经反射兼容（方法不存在时静默退化为普通卡片）。
+   * notificationId + ownerKey/clientId 齐备时下发逐条卡动作按钮
+   * （取消通知/+30分钟/完成，PendingIntent 指向 LiveTodoActionReceiver）；
+   * +30分钟 仅在非 indeterminate（有结束时间）时下发。
    */
   fun buildExplicitNotification(
     context: Context,
@@ -101,6 +108,9 @@ object LiveTodoNotifier {
     chronoCountdown: Boolean,
     iconResourceName: String? = null,
     hideProgress: Boolean = false,
+    notificationId: Int = 0,
+    ownerKey: String? = null,
+    clientId: String? = null,
   ): Notification {
     val style = if (hideProgress) {
       // 纯文本状态卡（聚合卡）：不设置任何进度形态。
@@ -127,6 +137,7 @@ object LiveTodoNotifier {
       "ic_live_todo_near" -> R.drawable.ic_live_todo_near
       "ic_live_todo_active" -> R.drawable.ic_live_todo_active
       "ic_live_todo_ended" -> R.drawable.ic_live_todo_ended
+      "ic_excerpt_session" -> R.drawable.ic_excerpt_session
       null -> context.applicationInfo.icon.takeIf { it != 0 }
         ?: android.R.drawable.sym_def_app_icon
       else -> throw IllegalArgumentException("不支持的动态通知图标")
@@ -154,7 +165,60 @@ object LiveTodoNotifier {
     }
 
     if (promoted) builder.requestPromotedOngoingCompat()
+    if (clientId != null && notificationId > 0) {
+      // indeterminate ⇔ 无结束时间：+30分钟 只对有结束的卡生效（无则不下发）。
+      addTodoActions(builder, context, ownerKey, clientId, notificationId, !indeterminate)
+    }
     return builder.build()
+  }
+
+  /**
+   * 逐条动态卡动作按钮：取消通知 / +30分钟 / 完成。
+   * 全部指向 LiveTodoActionReceiver 广播（进程死亡也会被拉起）；
+   * extras 携带 ownerKey/clientId/notificationId，接收器据此改时间线快照。
+   * +30分钟 仅把结束时间后移（开始不动），无结束时间（hasEnd=false）不下发。
+   * 请求码混入通知 ID 与动作名，避免同卡按键与跨卡 PendingIntent 相互覆盖。
+   */
+  private fun addTodoActions(
+    builder: Notification.Builder,
+    context: Context,
+    ownerKey: String?,
+    clientId: String,
+    notificationId: Int,
+    hasEnd: Boolean,
+  ) {
+    val actions = buildList {
+      add(Triple(R.drawable.ic_action_todo_cancel, "取消通知", LiveTodoActionReceiver.ACTION_CANCEL))
+      if (hasEnd) {
+        add(Triple(R.drawable.ic_action_todo_snooze, "+30分钟", LiveTodoActionReceiver.ACTION_SNOOZE))
+      }
+      add(Triple(R.drawable.ic_action_todo_complete, "完成", LiveTodoActionReceiver.ACTION_COMPLETE))
+    }
+    for ((iconRes, label, action) in actions) {
+      builder.addAction(iconRes, label, todoActionPendingIntent(context, action, ownerKey, clientId, notificationId))
+    }
+  }
+
+  private fun todoActionPendingIntent(
+    context: Context,
+    action: String,
+    ownerKey: String?,
+    clientId: String,
+    notificationId: Int,
+  ): PendingIntent {
+    val intent = Intent(context, LiveTodoActionReceiver::class.java).apply {
+      this.action = "${LiveTodoActionReceiver.ACTION_PREFIX}$action"
+      putExtra(LiveTodoActionReceiver.EXTRA_ACTION, action)
+      putExtra(LiveTodoActionReceiver.EXTRA_OWNER_KEY, ownerKey)
+      putExtra(LiveTodoActionReceiver.EXTRA_CLIENT_ID, clientId)
+      putExtra(LiveTodoActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+    }
+    return PendingIntent.getBroadcast(
+      context,
+      ("$notificationId:$action:$clientId").hashCode(),
+      intent,
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
   }
 
   /**

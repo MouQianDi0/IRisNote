@@ -277,6 +277,16 @@ export async function prepareOperations(
                 // Completion timestamp always participates in the patch so the server
                 // arbitrates it, never silently dropped locally.
                 const fields = Object.fromEntries(changed);
+                // A completed_at diff without an is_completed flip is completion-toggle
+                // round-trip noise (rapid complete→uncomplete→complete). The server
+                // pairs completion state with its timestamp and rejects a lone
+                // completed_at with 422 INVALID_COMPLETED_AT, so drop it and let the
+                // empty-diff no-op below re-publish against the unchanged base.
+                if (
+                    fields.completed_at !== undefined &&
+                    fields.is_completed === undefined
+                )
+                    delete fields.completed_at;
                 if (fields.is_completed === true)
                     fields.completed_at = next.completed_at;
                 if (!Object.keys(fields).length) {

@@ -42,6 +42,212 @@
 - 具体内容：对比上一已发布 0.7.0（构建 22，提交 38e307d）至 b566523 的实际差异，判定为补丁更新；采用普通标题与列表兼容旧客户端。不包含公共组件抽取、规则文档等纯开发变更；默认不加 --full-package。此次仅保存说明与日志，未预留构建号、未提交或推送 Git、未构建、上传或发布。保留工作区原有文档及编辑器配置改动。
 - 验证：保存前 npm run typecheck 通过；已核对文案与用户确认稿、实际提交范围及最新更新说明规范。保存后 npm run typecheck 与 git diff --check 通过，回读文案与确认稿一致；完整应用检查、Android 构建、真机验证未做（本次仅文档改动）。
 
+## 2026-10-01 06:43:02 | 优化代码：编辑器实施计划按代码现状同步分叉标注与状态（文档 0.5.0）
+
+- 变更概述：将 docs/进度与验证/IRisNote编辑器核心架构与实施计划.md 自 2026-09-08 停更的状态同步到当前代码现实，在目标设计与实际实现分叉处加「2026-10 现状」标注；本次无代码改动。
+- 修改文件：docs/进度与验证/IRisNote编辑器核心架构与实施计划.md；CHANGELOG.md。
+- 具体内容：头部状态与版本（0.4.1→0.5.0，适用项目改为 Expo SDK 57）；§3.1 拆分为「历史基线（原文保留）+ 现状」；§4.1 新增 D-017（退出上传走持久队列）、D-018（历史版本每篇 50 上限）、D-019（快照+游标同步与幂等新建），O-005 标注部分决策；§7.2/§7.7/§9.5/§11.2/§12.1/§13.3/§16.2 增加现状与分叉标注（快照式版本、业务任务队列、整篇正文哈希、镜像墓碑、edit_sessions 未建表等）；§16.1/§13.6/§30 的 SDK 引用与文档链接更新为 SDK 57（v57 链接已实测 HTTP 200）；阶段 1/2/3/6/7/11 增加「2026-10 现状」注记；§26 待办总表按实际进度勾选并注明残留项。目标设计（块模型、画布、附件、容量）与历史条目未改写。
+- 验证：纯文档改动，未运行 typecheck/lint/构建（按约定豁免）；docs/logs 全链路日志按规则豁免；Expo v57 文档链接经 web_fetch 实测可访问。
+
+---
+
+## 2026-10-01 06:28:42 | 优化代码：编辑器进度文档按当前代码现状刷新（文档 0.5.0 / 实施 0.7.0）
+
+- 变更概述：将 docs/进度与验证/项目编辑器进度.md 自 2026-09-14 停更的状态同步到当前代码现实，补记 9 月中下旬缓存重构与本地云解耦对编辑器周边数据层的影响；本次无代码改动。
+- 修改文件：docs/进度与验证/项目编辑器进度.md；CHANGELOG.md。
+- 具体内容：头部状态块更新（文档 0.5.0、实施 0.7.0、当前阶段与状态说明）；第 1 节新增 2026-10-01 补记；第 2 节架构图补 StartupMaintenance、features/sync 上传队列与迁移 0001～0020；第 3.3 节退出保存改为入队持久上传队列并补幂等新建；新增 3.4 节（元数据同步、正文淘汰 300 篇保留、版本 50 上限、回收站与本地标记链路）；第 4 节文件表修正过时「待验证」状态并新增 9 月中下旬关键文件；第 5 节阶段表按实际证据更新并注明缓存重构不计入阶段编号；第 6 节新增版本记录；第 8 节待决策标注 v2 接口已接入。阶段结论不变：3A 完成、3B 历史 UI 未开始（listNoteRevisions/restoreLocalNoteToRevision 无 UI 调用方）。
+- 验证：2026-10-01 实测 node --test 五个编辑器测试文件 84/84 通过；迁移登记实测 0001～0020；最近全量 npm run check 为 2026-09-30 记录 715 项（713 通过、2 跳过）。本次纯文档改动未运行 typecheck/lint/构建（按约定豁免）；docs/logs 全链路日志按规则豁免。
+
+---
+
+## 2026-09-30 22:10:55 | 优化代码：暂存多行输入保留单个保存按钮
+
+- 变更概述：按用户补充要求，在暂存条目的多行 Input 右侧保留一个 Save 图标按钮，同时继续离开自动保存。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-save-button.md；CHANGELOG.md。
+- 具体内容：复用公共 IconButton（48dp 触控、20dp Save），点击复用 finishEditing；保存中加载/禁用，与失焦同帧只写一次；保持列表同宽和失败保留输入，不增加取消按钮。
+- 验证：修改前后 npm run typecheck 通过；暂存组件回归 13/13 通过；最终获准环境 npm run check 通过（715 项，713 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。真机宽度、Save 点击/加载、键盘体验及 APK 构建未执行。
+
+---
+
+## 2026-09-30 21:55:00 | 优化代码：暂存行内输入铺满列表，离开自动保存
+
+- 变更概述：暂存条目的多行 Input 与列表同宽，移除保存/取消图标；失焦、切换条目和关窗自动保存后再离开。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx、screens/ExcerptsScreen.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-autosave.md；CHANGELOG.md。
+- 具体内容：单次保存任务去重、未改正文跳过写库、失败保留并重新聚焦；关闭及列表操作等待保存，合并使用落库后的最新快照；保留 180ms 单次回位，无表/API/原生改动。
+- 验证：修改前后 npm run typecheck 通过；组件回归 12/12、仓储测试 9/9 通过；最终获准环境 npm run check 通过（714 项，712 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。首轮本次新增 React ref 渲染规则错误已修复。真机输入宽度、键盘/失焦/关窗体验及 APK 构建未执行。
+
+---
+
+## 2026-09-30 21:47:17 | 修复问题：暂存列表拖拽松手只回位一次
+
+- 变更概述：按用户反馈减少暂存条目松手后的反复回弹，改为一次 180ms 平滑回位。
+- 修改文件：src/features/excerpts/components/ExcerptStashPanel.tsx；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-single-settle.md；CHANGELOG.md。
+- 具体内容：位移回位从欠阻尼 withSpring 改为 withTiming，到落点停止；保留抬起/缩放、排序事务、编辑及失败回滚链路。
+- 验证：修改前 npm run typecheck 通过；暂存组件回归 7/7 通过；修改后获准环境 npm run check 通过（709 项，707 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。真机动画验收及 APK 构建未执行。
+
+---
+
+## 2026-09-30 21:26:18 | 修复问题：暂存区图标取消常驻高亮，列表上移并支持行内编辑
+
+- 变更概述：按确认方案修正暂存区入口选中态，列表参考草稿箱统一容器，粘贴按钮移至列表下方，单击条目使用公共多行 Input 行内编辑。
+- 修改文件：src/features/excerpts/components/ExcerptToolbar.tsx、ExcerptStashPanel.tsx，screens/ExcerptsScreen.tsx；tests/excerpts/excerpt-stash-panel.test.cjs；docs/UI/IRisNote视觉设计规范.md；docs/logs/2026-09-30-excerpt-stash-inline-edit.md；CHANGELOG.md。
+- 具体内容：取消因条数而高亮的 Inbox；统一浅灰圆角滚动容器，无草稿箱选中态；行内显式保存/取消，失败保留输入，编辑期间暂停拖拽及列表修改；复用本机仓储更新，无表结构/API/原生改动。
+- 验证：修改前后 npm run typecheck 通过；组件交互 7/7、仓储测试 9/9 通过；获准环境 npm run check 通过（709 项，707 通过、2 跳过、0 失败；仅既有设置页 lint 警告）。沙箱 4 个测试文件受本地监听/子进程 EPERM 限制，已在获准环境复核。真机键盘、滚动、拖拽、视觉验收与 APK 构建未执行。
+
+---
+
+## 2026-10-01 04:41:49 | 优化代码：快速摘录反馈胶囊改锚状态栏下方 30dp
+
+- 变更概述：捕获窗反馈胶囊从透明窗口正中央改为顶部对齐、状态栏下方 30dp，水平仍居中，贴近通知来源的视线位置。
+- 修改文件：src/features/excerpts/components/ExcerptCaptureFeedback.tsx；CHANGELOG.md；docs/logs/2026-10-01-capture-feedback-top-anchor.md（新增）。
+- 具体内容：外层容器 `justifyContent` center → flex-start，新增 `paddingTop=(StatusBar.currentHeight ?? 0)+30`（主应用为 edge-to-edge，该值即顶部 inset，取法与 use-keyboard-overlap 一致）；`padding: 24` 保留提供水平与底部边距；成功/失败/加载反馈与淡出动画不变，无行为/数据变化。
+- 验证：npm run typecheck 0 错误；node --test tests/excerpts/excerpt-capture-screen.test.cjs 4/4 通过；全量 npm run check 未跑（单文件纯视觉改动）；真机 adb 布局核对未做。
+
+---
+
+## 2026-10-01 04:18:15 | 优化代码：合并 origin/master（15eca56，开发者模式）进入 kroos_todo
+
+- 变更概述：merge-base 5864c31，净带入 2 个提交：aaf2f37（feat(settings): 开发者模式——连点版本号开启，集中运行环境、诊断日志与通知测试）与 15eca56（PR #133 合并提交）。双方 CHANGELOG 条目自动交织，master 的开发者模式条目完整保留。
+- 修改文件：src/features/settings/data/system-preferences.repository.ts（冲突解决）；CHANGELOG.md（本合并记录）；其余文件（docs、src/app、src/core/diagnostics、src/features/settings 的 hooks/screens 等）由 Git 自动合并。
+- 具体内容：冲突 1 处——system-preferences.repository.ts 双方同区改动：保留 kroos_todo 侧「剪贴板已处理标记」键与方法的删除（剪贴板退役链路，本分支特性），保留 master 侧 developer_mode_enabled 键与 developerModeEnabled/setDeveloperModeEnabled 方法新增。无默认值/开关反转。
+- 验证：npm run typecheck 通过；npm run check 全过（node --test 702/702，typecheck/lint/theme:check 通过）；冲突标记扫描通过（src 无遗留）。master 未触及 Kotlin，合并后 Kotlin 内容与 kroos_todo 侧一致，未重复编译（4732f3f 条目已注明本机缺 JAVA_HOME 编译未完成）；APK/真机验证未做。
+
+---
+
+## 2026-09-30 20:06:08 | 优化代码：通知一键摘录与应用内暂存区入口迁移
+
+- 变更概述：通知捕获改为一次读取直接保存本机摘录，透明动画短反馈后返回原应用；暂存区统一移到摘录页右上角。
+- 修改文件：src/features/excerpts/components/ExcerptCaptureFeedback.tsx、ExcerptToolbar.tsx、ExcerptStashPanel.tsx、ExcerptSessionDialog.tsx、ExcerptFormDialog.tsx；screens/ExcerptCaptureScreen.tsx、ExcerptsScreen.tsx；services/excerpt-capture-controller.ts、excerpt-service.ts、excerpt-stash-service.ts、excerpt-session-notifications.ts；domain/excerpt-capture-feedback.ts；data/excerpt-stash.repository.ts；hooks/useExcerptStash.ts；modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt；tests/excerpts/excerpt-capture.test.cjs、excerpt-capture-screen.test.cjs、excerpt-stash.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、业务模块与运行逻辑.md、docs/logs/2026-09-30-excerpt-direct-capture.md；CHANGELOG.md。
+- 具体内容：移除捕获确认、暂存和表单，仅显示处理中/成功/重复/失败；直接保存来源为粘贴，成功约 1 秒、失败/超限约 2 秒后淡出。工具栏顺序暂存区/快速摘录/粘贴/搜索；暂存区增加粘贴入口与空态，保留拖拽和默认换行开关。合并冻结快照，成功后仅清理未修改条目，清理失败准确提示已保存。Effect 重挂防重复读取、退出后已受理写入保持资源租约；本机保存，没有新增权限、后端或上传链路。
+- 验证：修改前后 typecheck 通过；最终获准环境 npm run check 通过（693 项，691 通过、2 跳过、0 失败；仅既有设置页 lint 警告）；沙箱内四项测试受本地监听/子进程 EPERM 限制，已在获准环境复核。Kotlin 编译已尝试但环境缺 JAVA_HOME/java，未完成；APK 构建、透明焦点/返回/动画/拖拽和 UI dp 真机验收未做。
+
+---
+
+## 2026-09-30 04:17:18 | 优化代码：快速摘录暂存留窗、拖拽排序与合并换行开关
+
+- 变更概述：透明捕获窗暂存成功后就地切为无新内容并显示 2 秒提示；暂存区改为限高滚动列表、整行编辑、垃圾桶删除与长按拖拽；合并表单使用默认开启的「条目间换行」系统开关。
+- 修改文件：src/features/excerpts/components/ExcerptFormDialog.tsx、ExcerptStashPanel.tsx，data/excerpt-stash.repository.ts，domain/excerpt-stash-drag.ts、excerpt-stash-merge.ts，screens/ExcerptCaptureScreen.tsx、ExcerptsScreen.tsx，services/excerpt-capture-controller.ts；tests/excerpts/excerpt-capture.test.cjs、excerpt-stash.test.cjs，tests/releases/source.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/业务模块与运行逻辑.md、docs/logs/2026-09-30-clipboard-stash-merge-2.md；CHANGELOG.md。
+- 具体内容：移除暂存后的 650ms 自动关窗和暂存区左上返回箭头；长按 250ms 进入拖拽、越过半高即时换位，松手一次 SQLite 事务重写当前账号顺序，失败恢复显示；合并开为单换行、关为直接拼接，切换重生成正文。同步修正发布归档测试超长中文文件名；没有改发布或待办业务逻辑。
+- 验证：修改前后 `npm run typecheck` 通过；摘录定向测试通过；获准环境运行 `npm run check` 通过（682 通过、2 跳过、0 失败；Lint 有既有设置页未使用变量警告）。沙箱内测试因本地监听/子进程 EPERM 无法全过，已在获准环境复核。真机拖拽手感与透明窗口暂存留窗未执行。
+
+---
+
+## 2026-09-30 03:13:47 | 新增功能：剪贴板摘录支持编辑保存与暂存合并
+
+- 变更概述：通知快速摘录和应用内检测卡改为预填表单后保存；新增按账号隔离的本机暂存区，可排序、编辑、删除、清空并合并为一条摘录。关闭未保存提示不再写已处理标记。
+- 修改文件：src/core/database/migrations/0020-create-excerpt-stash.ts、index.ts；src/features/excerpts/ 的 data、domain、services、hooks、state、components、screens 相关文件；src/features/settings/data/system-preferences.repository.ts；tests/excerpts/、tests/todos/todo-local.test.cjs（数据库版本断言 19→20）；docs/架构指南/业务模块与运行逻辑.md、系统通知模块负责说明.md；docs/logs/2026-09-30-clipboard-stash-merge.md；CHANGELOG.md。
+- 具体内容：暂存哈希阻止重复提示，合并默认空行分隔且切换重生成正文；预填超限禁用保存，重复摘录在表单内提示并保留暂存。摘录仅写本机 SQLite，不触发云上传；无原生模块改动。
+- 验证：服务器端（Codex 沙箱）npm run typecheck 0 错误、摘录测试 7/7 文件通过、npm run check 类型/lint/theme 通过、全仓测试 55/60 文件（四项失败为沙箱 EPERM/ENAMETOOLONG 环境限制）；本地复核：npm run typecheck 0 错误，npm run check 全过（node --test 680/680，typecheck/lint/theme:check 通过）。Android 包与真机验证未做。
+
+---
+
+## 2026-09-30 03:01:52 | 修复问题：摘录卡宿主守卫补 Class.forName 加载校验，防「声明在、dex 缺类」点按钮崩溃
+
+- 变更概述：真机实测（2026-09-30）发现此前宿主守卫挡不住"清单在、dex 缺类"的安装包：捕获宿主 `ExcerptCaptureHostActivity` 的声明写在模块 Manifest、无条件合并进每个包，`getActivityInfo` 只能证明"声明过"，漏跑 prebuild 的包编译正常但 dex 缺类，点「保存剪贴板」按钮仍 `ClassNotFoundException` 崩进程。现 `captureHostResolvable` 在清单校验通过后追加 `Class.forName(CAPTURE_HOST_CLASS, false, context.classLoader)` 用宿主 ClassLoader 实际加载宿主类（initialize=false 不触发静态初始化），任一失败即降级为主应用启动入口、不提供捕获按钮；停止按钮与倒计时不受影响。无默认值变化、无开关反转。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt；tests/excerpts/excerpt-capture.test.cjs；docs/架构指南/系统通知模块负责说明.md；docs/logs/2026-09-30-host-guard-class-forname.md（新增）；CHANGELOG.md。
+- 具体内容：`captureHostResolvable` 两段校验（清单可解析 + 类可加载）共用原 catch 返回 false；正常安装包两条均通过、行为不变，差异仅出现在"声明已合并、类不在 dex"环境——由"点按钮崩进程"变为与宿主整体缺失一致的降级。测试在会话卡用例新增断言锁定 `Class.forName` 调用必须存在，防止回退成只查清单；负责说明「原生展示」段同步改写，写明漏洞机理、实测日期与不变的降级行为。
+- 验证：node --test tests/excerpts/excerpt-capture.test.cjs 8/8 通过；npm run typecheck 0 错误；npm run check 全过（node --test 684/684，typecheck/lint/theme:check 通过）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 6s，UP-TO-DATE——当前源码与上次成功编译产物一致）；真机复现"漏 prebuild 包点按钮降级不崩"未做。
+
+---
+
+## 2026-09-30 00:24:07 | 修复问题：摘录卡通知 ID 迁移 7004 消除停机占位冲突，捕获宿主缺失时降级不再崩溃
+
+- 变更概述：按两次独立代码审查的确认项修复。①摘录会话卡通知 ID 7003 → 7004：原与前台服务停机占位（LiveTodoForegroundService）双占，停机瞬间占位会把摘录卡顶掉并连带移除，用户丢失「点通知确认保存」入口；现停机占位独占 7003，摘录卡用 7004，发卡时清理旧 7003 残留。②捕获宿主 `ExcerptCaptureHostActivity` 由 prebuild 生成、漏跑 prebuild 的安装包点通知会 ClassNotFoundException 崩溃：发卡前校验宿主可解析，缺失时卡主体降级为主应用入口、不提供「保存剪贴板」按钮，停止与倒计时不受影响。附带 4 项审查 Minor：注释补齐（40_002 魔数、entryVersion/120min 耦合、保留段路由、停机占位勿复用 7004）与被推翻日志的推翻指引。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt、ExcerptCaptureActivity.kt、live/LiveTodoForegroundService.kt、IrisNoteSystemModule.kt；src/core/system-notifications/system-notification.types.ts；tests/excerpts/excerpt-capture.test.cjs、tests/todos/system-notifications.test.cjs；docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-30-review-fixes-notification-id-host-guard.md（新增）、docs/logs/2026-09-29-note-status-write-coalescing.md（加推翻指引）、CHANGELOG.md。
+- 具体内容：保留段定为 7001 演示/7002 聚合卡/7003 停机占位/7004 摘录卡（待办动态卡 ≥10000 无交集）；`captureHostResolvable` 以 `getActivityInfo(ComponentName, 0)` 校验，captureReady=true 路径与改前逐字节等价，降级仅在宿主缺失环境生效；无默认值/开关反转。审查一（合并 378052c）结论 Yes 无 Critical/Important；审查二（合并 7285493）两条 Important 均为存量问题、本次一并修复，其余 Minor 中 TOCTOU（自愈型）、分屏边缘（真机项）、CHANGELOG 既有乱序（继承）按审查意见不修。
+- 验证：目标测试 node --test 三文件 35/35；`npm run typecheck` 0 错误；`npm run check` 全过（node --test 684/684，typecheck/lint/theme:check 通过）；`:irisnote-system:compileReleaseKotlin` BUILD SUCCESSFUL（1m 15s，2 个既有风格弃用警告）。审查建议的两项真机复现（漏 prebuild 构建点通知表现、会话期间停机占位不再顶卡）与完整 APK 构建未做，需 staging 包验收。
+
+---
+
+## 2026-09-30 00:13:05 | 新增功能：摘录会话卡新增「保存剪贴板」按钮进入透明确认窗口
+
+- 变更概述：按用户确认的方案，在摘录会话状态卡（ID 7003）上增加「保存剪贴板」动作按钮：与点卡片主体进入同一 B 档透明捕获窗口（独立请求码 Activity PendingIntent，附 `captureEntry=card_button` 入口标记），取焦检测、确认保存后返回原应用；「随时可存」按「卡在即可存」落地，保存不依赖应用内检测器状态；不新增权限、表、后端接口，不改停止/划除/到期语义。
+- 修改文件：modules/irisnote-system/…/excerpt/ExcerptSessionNotifications.kt、ExcerptCaptureActivity.kt；src/features/excerpts/screens/ExcerptCaptureScreen.tsx；tests/excerpts/excerpt-capture.test.cjs；docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-30-excerpt-card-save-button.md（新增）、docs/logs/2026-09-29-merge-codex-a-be7d88c-into-kroos-todo.md（修正宿主类措辞）、CHANGELOG.md。
+- 具体内容：原生侧第二.addAction「保存剪贴板」（请求码 ID+1 防 PendingIntent 合并，IMMUTABLE），窗口透传 captureEntry 给 JS，屏幕挂载记录 `excerpt_capture/window_opened` 诊断事件（仅入口枚举，不含正文/账号/令牌）；评估否决「无会话可存」——需重写捕获身份校验模型且无常驻通知面承载，已在日志留档。无默认值/开关反转，postProgressNotification 签名零变化。
+- 验证：修改前 typecheck 基线 0 错误；新增源码契约用例首轮 CRLF 断言失败、修正正则后通过；npm run check 全过（node --test 684/684，typecheck/lint/theme:check 通过）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 08s）。staging 包真机验证（按钮渲染、点按到保存 E2E）与完整 APK 构建未做，需重新 prebuild 构建原生包验收。
+
+---
+
+## 2026-09-29 23:42:29 | 优化代码：合并 codex-a（be7d88c，摘录通知透明确认保存 B 档）进入 kroos_todo
+
+- 变更概述：按用户指令把 origin/kroos_vps/codex-a 合并进 kroos_todo。merge-base ffe8828，净带入 1 个提交 be7d88c（26 文件 +1146/−17）：快速摘录通知透明确认保存（二期 B 档）——通知主体打开独立透明捕获窗口，取焦检测、确认保存后返回原应用。冲突 2 处已解决：CHANGELOG.md 双方条目按时间倒序交织；IrisNoteSystemModule.kt import 区保留双方（LiveTodoActionStore + Queues），双方其余代码自动合并、使用点实测均在。
+- 修改文件：带入 26 文件逐文件清单与链路见 docs/logs/2026-09-29-merge-codex-a-be7d88c-into-kroos-todo.md（新增，含冲突解决细节）；B 档功能全链路见随合并带入的 docs/logs/2026-09-29-excerpt-capture.md；本分支侧另新增合并日志与本条目。
+- 具体内容：① B 档捕获链路：非导出 ExcerptCaptureActivity（独立任务、原生严格校验焦点）+ with-excerpt-capture config plugin 自动生成 Expo 宿主 + JS 侧 capture-entry/ExcerptCaptureScreen/excerpt-capture-controller/excerpt-capture 复用既有 detectClipboard/saveDetectedOffer 与本机 SQLite，失败保留候选、重复保存去重；主应用检测器在窗口存在时让出检测权；不新增权限、表、后端接口。② 待办动态卡动作按钮链路（本地侧）与摘录捕获链路在 IrisNoteSystemModule.kt 中共存，互不改写对方路径；无默认值或开关反转。
+- 验证：合并前基线为上次合并记录的 npm run check 全过（675/675）且工作区干净；试合并 git merge-tree 预判冲突与实际一致；解决后 git diff --check 通过、冲突标记扫描仅命中合并前已存在的教程示例与二进制误报；合并后 npm run check 全过（node --test 683/683，typecheck/lint/theme:check 均通过；codex 侧报告的 1 个发布归档 ENAMETOOLONG 失败本机未复现）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（1m 20s，仅 2 个既有风格弃用警告）。完整 APK 构建与真机验证未做（B 档冷/热启动、返回原应用、双 Surface 需 staging 包实测）；合并结果未推送。
+
+---
+
+## 2026-09-29 22:12:44 | 优化代码：合并 codex-a 分支（快速摘录限时会话等）进入 kroos_todo
+
+- 变更概述：按用户指令先快进本地 codex-a（83a114f→ffe8828，54 个提交、216 文件 +17039/−911，纯快进），再合入 kroos_todo（db054be）。merge-base 18fde51，自动合并去重后净带入 37 个文件（+2434/−181）：快速摘录限时会话与 Android 通知入口、剪贴板回流检测重构、笔记星标/置顶写入合并与尾部防抖、4 篇功能线全链路日志与架构/UI 文档同步。冲突 2 处已解决：CHANGELOG.md 按时间倒序交织双方条目；modules/irisnote-system/index.ts 的 NativeProgressNotification 类型并存双方身份字段（待办 ownerKey/clientId + 摘录 excerptSessionId/expiresAt）。
+- 修改文件：净带入 37 文件逐文件清单与链路见 docs/logs/2026-09-29-merge-codex-a-into-kroos-todo.md（新增）；本分支侧另新增该日志与本条目。
+- 具体内容：① 摘录会话（一期 A 档）：工具栏 Timer 开启 15/30/60/120 分钟会话，原生独立 HIGH 静默状态卡倒计时、到期撤卡、ExcerptSessionActionReceiver 停止标记跨进程回流，剪贴板检测改为焦点/前后台事件驱动加串行锁，偏好默认关闭不改变既有默认行为；② note-sync-coordinator 融合星标/置顶连续切换合并为一次请求与写入后 1.5 秒尾部防抖；③ 冲突解决保持 kroos_todo 侧待办动作按钮与 422 回环修复逻辑不变（LiveTodoNotifier.kt 仅一行适配）。未改动任何既有开关默认值，未推送远端。
+- 验证：合并前基线 npm run typecheck 0 错误；git diff --cached --check 通过，源码树冲突标记扫描无残留；合并后 npm run check 全过（typecheck 0 错误、lint 0 错误 1 既有警告 liveUpdateCapable、theme:check 通过、node --test 675/675）；:irisnote-system:compileReleaseKotlin BUILD SUCCESSFUL（2 个既有风格弃用警告）。真机验证与完整 APK 构建未做，合并提交 378052c 未推送。
+
+---
+
+## 2026-09-29 19:21:29 | 修复问题：快速切换完成状态回环不再触发云端 422 校验失败
+
+- 变更概述：已完成的待办在一秒内被快速点击（完成→取消→完成、最终仍为已完成）后，同步只发出含 `completed_at` 的 patch，被服务端以 422 INVALID_COMPLETED_AT（"完成时间必须和完成状态一起提交"）拒绝并常驻失败横幅。修复为：完成时间差异缺少完成状态翻转伴随时视为切换回环噪声，按基线对齐、不发请求。
+- 修改文件：src/features/todos/data/todo-sync.repository.ts、tests/todos/todo-sync.test.cjs、docs/logs/2026-09-29-todo-completed-at-patch-422.md（新增）、CHANGELOG.md。
+- 具体内容：`prepareOperations` 构造 patch 时，若 diff 出 `completed_at` 而 `is_completed` 无差异，丢弃该字段并走既有空 diff no-op publish（记录直接与云端基线对齐，零网络请求）；`is_completed: true` 强制携带完成时间的既有仲裁契约原样保留。诊断依据：服务端 patchInput 成对校验规则 + 线上 nginx 日志 2026-09-29 复现时段 17 次 422 实证；本地 `completedAt` 唯一写入方是 `complete()`（必伴随完成态翻转），孤立时间戳差异只可能来自回环，无用户意图丢失。
+- 验证：修改前 `npm run typecheck` 基线 0 错误；`node --test tests/todos/todo-sync.test.cjs` 28/28（含新增用例：回环不出请求且记录对齐基线、真实翻转仍成对携带字段）；`npm run check` 全过（typecheck、lint、theme:check、node --test 661/661）。真机端到端复现验证未执行，需 staging 包重装后快速点击验收。
+
+---
+
+## 2026-09-29 17:52:40 | 优化代码：合并 origin/master 主线（0.7.0 发布、本地云解耦与公共 Markdown 组件进入 kroos_todo）
+
+- 变更概述：按用户指令把 origin/master 合并进 kroos_todo 动态卡功能线，带入 0.7.0 发布内容、笔记/分类本机云解耦（v19 迁移）与公共 Markdown 组件；仅 CHANGELOG.md 一处冲突，按时间倒序解决，功能线自有提交不变。
+- 修改文件：全部来自 master 侧带入（45 个文件，+2537/−437），详见 docs/logs/2026-09-29-merge-master-local-cloud-markdown.md 与合并自带的三篇全链路日志；本分支侧仅解决 CHANGELOG.md 冲突并新增本条与合并日志。
+- 具体内容：① 4432edc（PR #130）：迁移 0019 新增本地分类表、笔记本机标志、垃圾桶意图；本机分类仓储与云/本地 ID 映射；note-flags.service 标星/置顶无需正文即可同步；回收站支持恢复已淘汰正文的笔记；本机操作只查账号会话、云请求守原授权门控；上传队列修复重复上传并支持取消。② b566523（PR #131）：新增 src/shared/utils/markdown 公共组件，更新弹窗改用其排版。③ 38e307d：0.7.0 版本更新说明（releases/notes-0.7.0.txt）。
+- 验证：合并前基线 npm run typecheck 0 错误；git diff --check 通过、无遗留冲突标记；合并后 npm run check 退出码 0（typecheck、lint、theme:check 通过，测试 660/660，含带入 local-only 17 项与 markdown 用例）。Android 原生构建与真机验证未执行（合并未触碰 modules/ 原生代码；迁移 0019 待真机首启验证）。未推送，待用户授权。
+
+---
+
+## 2026-09-29 14:54:26 | 新增功能：快速摘录通知透明确认保存（二期 B 档）
+
+- 变更概述：快速摘录通知主体打开独立透明捕获窗口，取得焦点后检测并由用户确认保存，关闭后返回原应用；应用内检测继续保留。
+- 修改文件：package.json、index.js、app.json；src/features/excerpts/excerpt-capture-entry.ts、screens/ExcerptCaptureScreen.tsx、services/excerpt-capture-controller.ts、services/excerpt-capture.ts、services/excerpt-session-notifications.ts、hooks/useClipboardDetection.ts、components/ExcerptSessionDialog.tsx；modules/irisnote-system/index.ts、android/build.gradle、android/src/main/AndroidManifest.xml、java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、excerpt/ExcerptSessionNotifications.kt、excerpt/ExcerptCaptureActivity.kt、res/values/excerpt-capture-styles.xml；plugins/with-excerpt-capture.js、plugins/android/ExcerptCaptureHostActivity.kt；tests/excerpts/excerpt-capture.test.cjs、excerpt-capture-build.test.cjs；docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、docs/构建发布/本地测试包构建.md、docs/logs/2026-09-29-excerpt-capture.md、CHANGELOG.md。完整路径与各层职责见全链路日志。
+- 具体内容：通知 Activity PendingIntent 直接进入非导出独立任务；sessionId/ownerKey/捕获窗口 captureId 共同隔离，原生读取严格要求焦点。冷启动复用数据库租约和本机账号核验，保存复用 detectClipboard/saveDetectedOffer/本机 SQLite，失败保留原候选、重复保存去重；主应用检测器让出捕获窗口检测权。确认卡复用公共弹窗和主题 Token；保存/忽略关闭，返回仅取消；停止、到期、Home 与启动超时退出。config plugin 自动生成 Expo 宿主，避免原生模块反向依赖 Expo。不新增权限、表、后端接口或摘录上传；既有 A 档通知保持到会话结束，新会话用 B 档。
+- 验证：修改前 typecheck 通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误/1 个既有警告；667 项测试 664 通过、2 跳过、1 个既有发布归档 ENAMETOOLONG 失败，新增 8 项均通过。最终 Android JS export 成功；模块 XML/权限清单、差异空白与冲突标记检查通过。Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动，未生成 APK；真机冷/热启动、返回原应用、双 Surface 和 dp 实测未做。需要重新 prebuild 并构建原生安装包，JS 打包通过不等同原生可发布。
+
+---
+
+## 2026-09-29 14:39:55 | 新增功能：待办动态卡片增加「取消通知/+30分钟/完成」操作按钮
+
+- 变更概述：逐条待办动态卡（进行中进度卡）新增三个不打开应用即可用的按钮，顺序为[取消通知][+30分钟][完成]：取消通知把该待办的本周期卡片永久取消（不改待办数据，完成/删除前不再出现）；+30分钟真实把待办结束时间后移 30 分钟（开始时间不动；+30 分钟将跨过午夜时按无效废弃，数据模型要求同日结束≥开始；随现有更新链路同步服务端；无结束时间的卡不下发该按钮）；完成标记待办完成（聚合卡计数由原生即时重算自愈）。动作由新增的 `LiveTodoActionReceiver` 处理，进程被杀也会被系统拉起：原生先即时改时间线快照并撤卡（可见反馈不依赖 JS），再写操作标记（SharedPreferences），JS 消费例程（原生事件/前台刷新/退后台移交前三处触发）读标记落库或记录抑制，成功才清标记，保证最终一致、不静默丢失。修订：2026-09-29 按用户确认将原「延迟30分钟」（开始/结束整体后移+跨午夜滚日期）改为「+30分钟」（仅结束时间后移、跨午夜废弃）。
+- 修改文件：modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoTimeline.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoActionReceiver.kt（新增）、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoActionStore.kt（新增）、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_cancel.xml（新增）、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_snooze.xml（新增）、modules/irisnote-system/android/src/main/res/drawable/ic_action_todo_complete.xml（新增）、modules/irisnote-system/index.ts、src/features/todos/services/todo-live-update.service.ts、src/features/todos/services/todo-aggregate-live.service.ts、src/features/todos/services/todo-card-action.service.ts（新增）、src/features/todos/state/todo-live-update-coordinator.ts、src/core/system-notifications/system-notification-native-provider.tsx、tests/todos/todo-card-actions.test.cjs（新增）、tests/todos/todo-live-update.test.cjs、docs/架构指南/系统通知模块负责说明.md、docs/logs/2026-09-28-todo-live-card-actions.md（新增）、CHANGELOG.md。
+- 具体内容：
+    - ① 时间线快照（逐条卡与聚合 item）新增 `ownerKey`/`clientId` 身份字段并随 JSON 序列化；旧快照缺字段时不下发按钮，下次移交自动补齐，无迁移。
+    - ② `LiveTodoNotifier` 构建逐条卡时按身份字段附加三个单色图标按钮（PendingIntent 指向广播接收器，请求码混入通知 ID 与动作名防覆盖）；聚合卡与演示卡无身份不下发。
+    - ③ 接收器三分支：取消/完成从快照移除逐条卡，完成另将聚合 item 置 completed（`LiveTodoSummary` 纯原生重算计数）；+30分钟只把逐条卡与聚合 item 的 endAt 后移 30 分钟（开始不动，无结束不产生变更）；统一撤卡、续排闹钟链。
+    - ④ 操作标记存储（同 action+owner+todo 去重覆盖）与 `onDynamicCardAction` 事件桥：模块存活（前台/后台）即时推给 JS，进程死亡静默、标记由下次前台消费兜底。
+    - ⑤ JS 消费例程 `todo-card-action.service.ts`：取消写抑制表（AsyncStorage 持久，协调器构建逐条卡期望集时永久排除，聚合统计不过滤）；+30分钟经 `todoRepository.update` 仅改 `endTime`（`postponeTodoEndTime`：复用表单保存链路，冲突重读一次再试，再冲突按"意图已被并发编辑取代"废弃；无结束/跨午夜等无效时刻废弃不重试）；完成经 `todoRepository.complete`（同冲突策略；已删丢弃；账号不匹配保留标记）。成功（含废弃）才按 id 清标记，意外失败留存重试。
+    - ⑥ 协调器新增可选 `isSuppressed` 过滤（仅逐条卡前台差量与移交快照），移交快照身份字段随 JSON 写入原生；Provider 订阅 `onDynamicCardAction`、refresh 消费前置、退后台先消费再移交。
+- 验证：
+    - `npm run typecheck` 0 个错误（修改前基线亦为 0）。
+    - `:irisnote-system:compileReleaseKotlin` 构建成功（仅 `addAction(int,...)` 弃用警告，与模块既有风格一致）。
+    - `npm run check` 全过：lint 0 错误 1 既有警告（`PermissionSettingsScreen` 的 `liveUpdateCapable`，非本次文件）、theme:check 通过、node --test 637/637（含新增 todo-card-actions 15/15、既有 todo-live-update 34/34）。
+    - 真机验证未做：需 staging 包验收按钮渲染、被杀进程点按钮、无结束卡不下发 +30分钟、提升式岛上按钮样式（文档已列入验收项）。
+
+---
+
+## 2026-09-29 13:30:20 | 新增功能：快速摘录限时会话与 Android 通知入口（一期 A 档）
+
+- 变更概述：摘录工具栏新增 Timer，会话支持 15/30/60/120 分钟；应用内任意页面回流检测剪贴板，摘录页内嵌卡、其他页横幅跳转，由用户确认保存。
+- 修改文件：src/features/excerpts/domain/excerpt-session.ts、src/features/excerpts/data/excerpt-session.repository.ts、src/features/excerpts/services/excerpt-session-coordinator.ts、src/features/excerpts/services/excerpt-session-notifications.ts、src/features/excerpts/services/excerpt-service.ts、src/features/excerpts/state/clipboard-offer-store.ts、src/features/excerpts/state/excerpt-session-store.ts、src/features/excerpts/hooks/useExcerptSession.ts、src/features/excerpts/hooks/useClipboardDetection.ts、src/features/excerpts/components/ExcerptSessionDialog.tsx、src/features/excerpts/components/ExcerptToolbar.tsx、src/features/excerpts/screens/ExcerptsScreen.tsx、src/app/_layout.tsx、src/core/system-notifications/system-notification.types.ts、src/core/system-notifications/system-notification.service.ts、modules/irisnote-system/index.ts、modules/irisnote-system/android/src/main/AndroidManifest.xml、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/IrisNoteSystemModule.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/live/LiveTodoNotifier.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionNotifications.kt、modules/irisnote-system/android/src/main/java/expo/modules/irisnotesystem/excerpt/ExcerptSessionActionReceiver.kt、modules/irisnote-system/android/src/main/res/drawable/ic_excerpt_session.xml、tests/excerpts/excerpt-session.test.cjs、tests/excerpts/excerpt-local.test.cjs、tests/todos/system-notifications.test.cjs、docs/UI/IRisNote视觉设计规范.md、docs/架构指南/系统通知模块负责说明.md、CHANGELOG.md、docs/logs/2026-09-29-excerpt-session.md。
+- 具体内容：会话复用 system_preferences，记忆上次时长并绑定账号/随机 sessionId；根布局统一检测入口与共享候选保存服务；独立 HIGH 静默通知 ID 7003、promoted 请求、系统倒计时/超时撤卡、摘录深链和原生停止标记。通知权限拒绝或发卡失败降级为应用内；旧动作/旧异步返回隔离；UI 按公共组件与视觉文档实现。未新增表、API 或权限，当前摘录保存仍为本机 SQLite。
+- 验证：修改前类型检查通过；最终 npm run check 的 TypeScript、主题检查通过，Lint 0 错误、1 个既有警告；659 项测试 656 通过、2 跳过、1 既有发布归档 ENAMETOOLONG 失败，新增 13 项均通过。差异空白/冲突标记检查通过；模块 XML/权限清单静态检查通过。Android Kotlin/合并 Manifest 任务因无 Java/JAVA_HOME 未能启动；原生打包和真机 UI/通知实测未做，不宣称可发布。
+
+---
+
+## 2026-09-29 12:49:26 | 优化代码：合并 origin/master（5864c31）到本地开发分支
+
+- 变更概述：按用户要求拉取主分支并合入 kroos_vps/codex-a；合并前 HEAD 557ee29，merge-base 9cfe27c，带入远端 8 个提交，自动合并无冲突。
+- 修改文件：上游带入 51 个文件（逐文件清单见 docs/logs/2026-09-29-merge-master-5864c31.md）；本次自身追加 CHANGELOG.md 与该全链路日志。
+- 具体内容：本地分类、笔记标记与回收站操作独立于云授权；迁移 0019；写入后同步 1.5 秒尾部防抖；公共 Markdown 更新说明及 0.7.0 说明文本。保留双方 CHANGELOG 历史条目；未另行修改业务实现，未构建或发布。
+- 验证：合并前 typecheck 因本机缺少 expo-crypto / expo-secure-store 出现 4 个既有 TS2307；npm ci 按锁文件补齐依赖后，最终 npm run check 的 TypeScript 与主题检查通过，Lint 0 错误、1 个既有警告；测试 646 项，643 通过、2 跳过、1 失败（既有发布归档测试创建超长中文文件名触发 ENAMETOOLONG，相关代码本次未改）。差异空白检查通过，无源码冲突标记。真机验证、后端联调及打包未做。
+
 ---
 
 ## 2026-09-29 04:36:41 | 优化代码：合并 origin/Timmi（b566523），星标/置顶采用本地优先方案并保留写入后同步防抖
@@ -443,6 +649,33 @@
 - 修改文件：`docs/待办/待办聚合动态通知设计（Android 16）.md`（新增）、`CHANGELOG.md`。
 - 具体内容：记录聚合卡与逐条卡的提升策略、四场景状态机、独立渠道与通知 ID、前后台更新节拍、原生图标、架构分层、诊断隐私、降级矩阵及实施顺序；现状说明暂不改写。
 - 验证：已核对文档章节与原始设计内容，`git diff --check` 通过；仅文档变更，未运行应用测试或真机验收。
+
+---
+
+## 2026-09-24 11:15:40 | 新增功能：修改密码与已登录重设密码（B3b 客户端）
+
+- 变更概述：用户确认 B3b 计划与 P06 文字预览。个人资料“修改密码”开放，新增修改密码页（当前密码 / 邮箱验证码重设两种模式同页切换）；注册页改用新密码规则。依赖后端迁移 013 与新接口。
+- 修改文件：src/shared/utils/password-policy.ts（新增）、src/features/profile/api/account-security.api.ts（新增）、src/features/profile/utils/password-errors.ts（新增）、src/features/profile/hooks/usePasswordChange.ts（新增）、src/features/profile/components/VerificationCodeField.tsx（新增）、src/features/profile/screens/ChangePasswordScreen.tsx（新增）、src/app/pages/user/profile/password.tsx（新增）、src/app/_layout.tsx、src/features/profile/screens/PersonalInfoScreen.tsx、src/features/profile/utils/profile-validation.ts、src/features/profile/hooks/useUnsavedLeaveGuard.ts、src/features/auth/screens/RegisterScreen.tsx、src/shared/http/client.ts、tests/profile/password-change.test.cjs（新增）、docs/UI/IRisNote视觉设计规范.md、docs/进度与验证/个人资料页面规划与实施计划.md、CHANGELOG.md。
+- 具体内容：① 新密码规则 6–64 个字符、UTF-8 ≤72 字节（手动按码点计字节，不依赖 TextEncoder），放在 `shared/utils` 供注册与资料共用（计划原写 profile/utils，为避免 auth 依赖 profile 调整位置）；注册页提示改为“6–64 个字符”；② 三个接口调用（15 秒超时，保持云授权受控），重设接口附加设备标识；③ 错误分类：云存储未开启且未发出 → 提示开启；已发出或无响应 → “修改结果未确认”；锁定/限流按服务端等待时间提示（分钟/秒，不重复拼接）；④ 成功以 `applyToken` 换新令牌；新令牌未能保存时主动退出并提示用新密码登录；⑤ P06 按预览实现，云存储关闭时 InlineHint 提示并禁用按钮（文案指向「同步与备份」，比预览中的「设置」更准确）；有输入离开弹出「放弃修改？」；离开保护新增 `allowLeave`；⑥ `maskEmail` 从个人资料页移至 `profile-validation.ts` 共用；个人资料“修改密码”行可点击。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 506 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关），新增 7 项通过。后端迁移 013 未执行、未部署；未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 08:17:18 | 新增功能：登录失效统一处理与会话令牌替换（B3a 客户端）
+
+- 变更概述：用户确认 B3 执行计划（每次请求按主键查令牌版本、安全接口保持云授权受控、分 B3a/B3b/B3c 推进、注册同步新密码规则）并确认 B3a。服务端将在迁移 013 后按令牌版本拒绝已撤销的会话；客户端新增全局 401 处理，并为 B3b 修改密码后原地换新令牌提供 `applyToken`。
+- 修改文件：src/shared/http/session-events.ts（新增）、src/shared/http/client.ts、src/features/auth/auth.types.ts、src/features/auth/providers/AuthProvider.tsx、tests/auth/session-rejected.test.cjs（新增）、CHANGELOG.md。
+- 具体内容：① 响应拦截器在 401 且请求带 Bearer 令牌时发布“会话被拒”事件，携带该请求实际使用的令牌；`/auth/*`（登录、注册等凭据错误）与未带令牌的请求不发布；② AuthProvider 订阅该事件，仅当被拒令牌与本机当前保存的令牌相同时退出登录（旧账号或换令牌前发出的迟到请求不影响当前会话），并发多个 401 只处理一次；退出只清除登录态，不清理本地笔记、草稿与同步队列；随后显示横幅「登录已失效 / 请重新登录，本机数据不受影响」并回到欢迎页；③ 新增 `applyToken(token, user)`：核对本机账号后先落盘令牌、再写资料缓存并更新界面，账号已变化返回 false。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；新增测试 4/4；`npm run check` 类型检查、Lint、主题检查通过，测试 499 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。后端迁移 013 未执行、未部署；测试环境开启 DEV_AUTH_BYPASS 不会返回 401，未做真机验收，未提交 Git。
+
+---
+
+## 2026-09-24 07:28:03 | 修复问题：头像预览弹窗中的头像不是正圆
+
+- 变更概述：用户确认问题分析与修复方案。预览容器宽度为 `100%`（上限 280），圆角却固定为 140。手机上内容区只有约 264dp，半径超过半边长，Android 上背景与裁剪路径处理不一致；「百分比宽度 + maxWidth + aspectRatio」组合也可能让容器不是正方形，两者都会导致头像不是正圆。
+- 修改文件：src/features/profile/components/AvatarPreviewDialog.tsx、CHANGELOG.md。
+- 具体内容：用 `useWindowDimensions` 计算数值边长 `size = min(280, 392, 屏宽 − 96)`，容器改为 `width/height = size`、`borderRadius = size / 2`，去掉百分比宽度和 aspectRatio；内部 `Image` 也设置同样的圆角，与页面小头像的双层圆角写法一致。弹窗布局、间距与按钮不变。
+- 验证：修改前后 `npm run typecheck` 均 0 错误；`npm run check` 类型检查、Lint、主题检查通过，测试 495 通过、2 跳过、1 失败（发布归档 ENAMETOOLONG，既有失败，与本次无关）；`git diff --check` 通过。未做真机验收，未提交 Git。
 
 ---
 

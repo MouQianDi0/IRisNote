@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Clipboard } from "lucide-react-native";
+import { Clipboard, X } from "lucide-react-native";
 import { ActivityIndicator, FlatList, Text, View } from "react-native";
 import { banner } from "@/core/notifications";
+import { excerptSessionSupported } from "../services/excerpt-session-notifications";
 import { semanticColors } from "@/shared/theme";
-import { Input } from "@/shared/ui";
+import { IconButton, Input } from "@/shared/ui";
 import DeleteConfirmDialog from "@/shared/ui/Dialog/DeleteConfirmDialog";
 import { ExcerptActionDialog } from "../components/ExcerptActionDialog";
 import { ExcerptCard } from "../components/ExcerptCard";
@@ -12,7 +13,15 @@ import { ClipboardDetectConfirmDialog } from "../components/ClipboardDetectConfi
 import { ClipboardDetectedCard } from "../components/ClipboardDetectedCard";
 import { ClipboardHintBar } from "../components/ClipboardHintBar";
 import { ExcerptFormDialog } from "../components/ExcerptFormDialog";
+import { ExcerptStashPanel, type ExcerptStashPanelHandle } from "../components/ExcerptStashPanel";
+import { DraftDialog } from "@/shared/ui/Dialog/dialog";
+import type { ExcerptStashItem } from "../data/excerpt-stash.repository";
+import { mergeStashContents } from "../domain/excerpt-stash-merge";
+import { useClipboardOfferStore, type ClipboardOffer } from "../state/clipboard-offer-store";
+import { useExcerptStash } from "../hooks/useExcerptStash";
+import { pasteClipboardToStash, saveMergedStash } from "../services/excerpt-stash-service";
 import { ExcerptToolbar } from "../components/ExcerptToolbar";
+import { ExcerptSessionDialog } from "../components/ExcerptSessionDialog";
 import { filterExcerpts } from "../domain/excerpt-validation";
 import { useClipboardDetection } from "../hooks/useClipboardDetection";
 import { useClipboardPreferences } from "../hooks/useClipboardPreferences";
@@ -20,9 +29,11 @@ import { useExcerptScope } from "../hooks/useExcerptScope";
 import { clipboardService } from "../services/clipboard.service";
 import {
     copyExcerptText,
+    saveDetectedOffer,
     pasteClipboardAsExcerpt,
 } from "../services/excerpt-service";
 import { excerptRepository } from "../state/excerpt-store";
+import { useExcerptSessionStore } from "../state/excerpt-session-store";
 import { ExcerptError, type ExcerptEntity } from "../excerpts.types";
 
 const NO_EXCERPTS: readonly ExcerptEntity[] = [];
@@ -78,7 +89,30 @@ export default function ExcerptsScreen() {
     const [deleting, setDeleting] = useState<ExcerptEntity | null>(null);
     const [now, setNow] = useState(() => new Date());
     const [confirmingDetect, setConfirmingDetect] = useState(false);
+    const [stashPanel, setStashPanel] = useState(false);
+    const [stashInlineEditing, setStashInlineEditing] = useState(false);
+    const stashPanelRef = useRef<ExcerptStashPanelHandle>(null);
+    const [stashBusy, setStashBusy] = useState(false);
+    const [stashError, setStashError] = useState("");
+    const [stashNotice, setStashNotice] = useState("");
+    const stashBusyRef = useRef(false);
+    const mergeCleanupFailed = useRef(false);
+    useEffect(() => {
+        if (!stashNotice) return;
+        const timer = setTimeout(() => setStashNotice(""), 2000);
+        return () => clearTimeout(timer);
+    }, [stashNotice]);
+    const [stashForm, setStashForm] = useState<{ kind: "offer"; offer: ClipboardOffer } | { kind: "merge"; items: readonly ExcerptStashItem[] } | null>(null);
+    const [separator, setSeparator] = useState(true);
+    const [stashScope, setStashScope] = useState({ ownerKey, generation });
+    // 账号/仓库换代时同步重置弹窗，避免先提交一次旧账号界面再由 Effect 清理。
+    if (stashScope.ownerKey !== ownerKey || stashScope.generation !== generation) {
+        setStashScope({ ownerKey, generation });
+        setStashPanel(false); setStashInlineEditing(false); setStashForm(null); setStashError(""); setStashNotice("");
+    }
     const clipboardPreferences = useClipboardPreferences();
+    const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+    const sessionState = useExcerptSessionStore();
 
     // 回到页面时刷新「今天/昨天」的判断基准。
     useFocusEffect(useCallback(() => setNow(new Date()), []));
@@ -88,17 +122,61 @@ export default function ExcerptsScreen() {
         () => filterExcerpts(entities, keyword),
         [entities, keyword],
     );
-    const detection = useClipboardDetection({
-        enabled: clipboardPreferences.autoDetectEnabled,
-        ready,
-        ownerKey,
-        generation,
-        entities,
+    const detection = useClipboardDetection();
+    const stash = useExcerptStash(ownerKey, ready);
+    useEffect(() => {
+        const offer = useClipboardOfferStore.getState().offer;
+        if (offer?.ownerKey === ownerKey && stash.items.some((item) => item.contentHash === offer.hash))
+            useClipboardOfferStore.setState({ offer: null });
+    }, [ownerKey, stash.items]);
+    const runStashAction = async <T,>(action: () => Promise<T>): Promise<T> => {
+        if (stashBusyRef.current || !ready) throw new Error("暂存区正在处理，请稍后再试");
+        excerptRepository.assertSession(ownerKey, generation);
+        stashBusyRef.current = true;
+        setStashBusy(true); setStashError(""); setStashNotice("");
+        try {
+            const result = await action();
+            excerptRepository.assertSession(ownerKey, generation);
+            try { await stash.refresh(); }
+            catch { setStashError("操作已完成，但暂存列表刷新失败，请重新打开暂存区"); }
+            return result;
+        }
+        finally { stashBusyRef.current = false; setStashBusy(false); }
+    };
+    const stashAction = async (action: () => Promise<void>) => {
+        if (stashBusyRef.current || !ready) return false;
+        try { await runStashAction(action); return true; }
+        catch (cause) { setStashError(errorMessage(cause)); return false; }
+    };
+    const pasteToStash = () => void stashAction(async () => {
+        const result = await pasteClipboardToStash(stash.repository, excerptRepository, clipboardService.readText, ownerKey, generation);
+        excerptRepository.assertSession(ownerKey, generation);
+        setStashNotice(result === "duplicate" ? "已在暂存中" : "已暂存");
     });
+    const closeStash = () => {
+        void stashPanelRef.current?.leave(() => {
+            if (stashBusyRef.current) return;
+            try { excerptRepository.assertSession(ownerKey, generation); }
+            catch { return; }
+            setStashPanel(false);
+        });
+    };
+    const openStashMerge = async () => {
+        await stashAction(async () => {
+            // 离开编辑后重新读 SQLite，不能使用保存前闭包里的暂存快照。
+            const items = await stash.repository.list(ownerKey);
+            excerptRepository.assertSession(ownerKey, generation);
+            if (!items.length) return;
+            mergeCleanupFailed.current = false;
+            setSeparator(true);
+            setStashForm({ kind: "merge", items });
+        });
+    };
     const showHint =
         clipboardPreferences.ready &&
         !clipboardPreferences.autoDetectEnabled &&
-        !clipboardPreferences.hintDismissed;
+        !clipboardPreferences.hintDismissed &&
+        !sessionState.session;
 
     const enableDetection = async () => {
         try {
@@ -207,9 +285,22 @@ export default function ExcerptsScreen() {
                 <View style={{ flex: 1, padding: 16, paddingBottom: 24 }}>
                     <ExcerptToolbar
                         count={entities.length}
+                        stashCount={ready ? stash.items.length : 0}
+                        onStash={() => { setStashError(""); setStashNotice(""); setStashPanel(true); void stash.refresh().catch(() => setStashError("暂存区加载失败，请重新打开")); }}
                         searchOpen={searchOpen}
                         pasting={pasting}
                         disabled={!ready}
+                        sessionSupported={excerptSessionSupported()}
+                        sessionActive={
+                            !!sessionState.session &&
+                            sessionState.session.ownerKey === ownerKey
+                        }
+                        sessionDisabled={
+                            !ready ||
+                            !sessionState.ready ||
+                            sessionState.pending
+                        }
+                        onSession={() => setSessionDialogOpen(true)}
                         onSearch={() => {
                             setSearchOpen(!searchOpen);
                             setKeyword("");
@@ -229,13 +320,15 @@ export default function ExcerptsScreen() {
                             />
                         </View>
                     )}
-                    {detection.offer ? (
+                    {detection.offer &&
+                    ready &&
+                    detection.offer.ownerKey === ownerKey &&
+                    detection.offer.generation === generation ? (
                         <View style={{ marginTop: 12 }}>
                             <ClipboardDetectedCard
                                 content={detection.offer.content}
-                                saving={detection.saving}
-                                onIgnore={detection.ignore}
-                                onSave={() => void detection.save()}
+                                onDismiss={() => useClipboardOfferStore.setState({ offer: null })}
+                                onSave={() => { if (detection.offer) setStashForm({ kind: "offer", offer: detection.offer }); }}
                             />
                         </View>
                     ) : (
@@ -312,12 +405,43 @@ export default function ExcerptsScreen() {
                     onClose={() => setEditing(null)}
                 />
             )}
+            {stashPanel && !stashForm && <DraftDialog visible title={`暂存区（${stash.items.length} 条）`} onClose={closeStash} closeOnScrimTap={!stashBusy || stashInlineEditing} headerExtra={<IconButton icon={X} accessibilityLabel="关闭暂存区" size="compact" iconSize={20} disabled={stashBusy && !stashInlineEditing} onPress={closeStash} />}>
+                {!!stashNotice && <Text accessibilityRole="alert" style={{ marginBottom: 8, fontSize: 14, color: semanticColors.brandPrimary }}>{stashNotice}</Text>}
+                <ExcerptStashPanel ref={stashPanelRef} items={stash.items} busy={stashBusy} onEditingChange={setStashInlineEditing} onPaste={pasteToStash} onReorder={(ids) => stashAction(() => stash.repository.reorder(ownerKey, ids))} onUpdate={(id, text) => runStashAction(() => stash.repository.update(ownerKey, id, text))} onRemove={(id) => void stashAction(() => stash.repository.remove(ownerKey, id))} onClear={() => void stashAction(() => stash.repository.clear(ownerKey))} onMerge={openStashMerge} />
+                {stashError && <Text accessibilityRole="alert" style={{ color: semanticColors.destructive }}>{stashError}</Text>}
+            </DraftDialog>}
+            {stashForm && ready && <ExcerptFormDialog key={stashForm.kind} ownerKey={ownerKey} generation={generation} initialText={stashForm.kind === "offer" ? stashForm.offer.content : mergeStashContents(stashForm.items, separator)} mergeSeparator={stashForm.kind === "merge" ? { enabled: separator, onChange: setSeparator, regenerate: (enabled) => mergeStashContents(stashForm.items, enabled) } : undefined} onClose={() => setStashForm(null)} onSaved={() => {
+                if (stashForm.kind === "offer" && useClipboardOfferStore.getState().offer === stashForm.offer) useClipboardOfferStore.setState({ offer: null });
+                else void stash.refresh().catch(() => setStashError("暂存列表刷新失败，请重新打开"));
+                setStashForm(null);
+                if (stashForm.kind === "merge") {
+                    if (mergeCleanupFailed.current) {
+                        setStashPanel(true);
+                        setStashError("已保存，暂存区清理失败；请检查暂存条目");
+                    } else setStashPanel(false);
+                }
+            }} submitText={async (text) => {
+                if (stashForm.kind === "merge") {
+                    const result = await saveMergedStash(excerptRepository, stash.repository, stashForm.items, ownerKey, generation, text);
+                    if (result.kind === "duplicate") return "duplicate";
+                    mergeCleanupFailed.current = result.cleanupFailed;
+                    return "saved";
+                }
+                const receipt = await saveDetectedOffer(excerptRepository, stashForm.offer, text);
+                return receipt.duplicated ? "duplicate" : "saved";
+            }} />}
             <ClipboardDetectConfirmDialog
                 visible={confirmingDetect}
                 pending={clipboardPreferences.pending}
                 onCancel={() => setConfirmingDetect(false)}
                 onConfirm={() => void enableDetection()}
             />
+            {excerptSessionSupported() && sessionDialogOpen && (
+                <ExcerptSessionDialog
+                    visible
+                    onClose={() => setSessionDialogOpen(false)}
+                />
+            )}
             <DeleteConfirmDialog
                 visible={!!deleting}
                 description={"删除后无法找回\n该摘录将被永久删除"}
