@@ -1,3 +1,12 @@
+## 2026-10-01 00:09:00 | 新增功能：完成笔记编辑器 3B 历史版本气泡与安全恢复
+
+- 变更概述：详情页新增历史入口，复用公共气泡完成版本列表、全文查看/当前未提交编辑对比和恢复确认；恢复不会丢失当前有变化的输入。
+- 修改文件：src/features/notes/components/viewer/NoteViewer.tsx、NoteViewerHeader.tsx、note-history-popover.tsx；hooks/use-note-history.ts；services/note-history.service.ts；data/note-local.repository.ts、note-revision.repository.ts；tests/editor/history.test.cjs、history-ui.test.cjs；docs/进度与验证/项目编辑器进度.md、IRisNote编辑器阶段3保存版本边界验证清单.md、IRisNote编辑器核心架构与实施计划.md；docs/logs/2026-10-01-note-history-3b.md；CHANGELOG.md。
+- 具体内容：列表只取摘要、选中才读全文；恢复复用草稿保存锁，在同一事务校验账号/当前版本/草稿会话与序号/基础版本，先为有变化的输入创建 local-save，再创建 restore、条件清理旧草稿并替换持久上传任务，成功后重建会话。保护被选中版本不被裁剪，旧分类失效回退默认，保留星标/置顶/排序/server_id、云端删除与 unknown 新建防重复保护；拒绝同步中/正文淘汰/垃圾桶等危险状态。新增关闭冷却、迟到读取失效和恢复去重；提交后订阅异常不冒充事务失败。无新页面、依赖、迁移、原生或 API 改动。详细日志将易出 bug 的边界置于顶部。
+- 验证：修改前 typecheck 通过；新增 SQLite/服务回归 24/24、组件/Hook 回归 9/9 通过；最终获准环境 npm run check 通过（748 项，746 通过、2 跳过、0 失败；类型/主题通过，Lint 仅既有设置页 1 个警告），git diff --check 通过。本次引入的类型引用和测试夹具问题已修复后重跑。Web 包按用户要求未做；Android JS export 仅较早源码快照成功，最终源码未重导出；APK/iOS 构建、真机视觉/手势/键盘/冷启动和真实服务器恢复同步未执行。阶段 4 未开始。
+
+---
+
 ## 2026-09-30 22:10:55 | 优化代码：暂存多行输入保留单个保存按钮
 
 - 变更概述：按用户补充要求，在暂存条目的多行 Input 右侧保留一个 Save 图标按钮，同时继续离开自动保存。

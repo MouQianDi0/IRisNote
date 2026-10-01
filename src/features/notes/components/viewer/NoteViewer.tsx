@@ -2,6 +2,7 @@ import NoteViewerContent from "./NoteViewerContent";
 import NoteViewerHeader from "./NoteViewerHeader";
 import NoteViewerMeta from "./NoteViewerMeta";
 import NoteViewerTitle from "./NoteViewerTitle";
+import NoteHistoryPopover from "./note-history-popover";
 import type { Note } from "@/features/notes/notes.types";
 import {
     AccessibilityInfo,
@@ -53,6 +54,7 @@ import {
 } from "../../data/note-draft.repository";
 import { stageEditedNoteForSync } from "../../services/note-save.service";
 import { enqueueNoteExitSync } from "../../services/note-exit-sync-coordinator";
+import { restoreNoteFromHistory } from "../../services/note-history.service";
 import {
     clamp,
     readingPercent,
@@ -391,6 +393,29 @@ function NoteViewerSession({
         }
     }, [draft]);
 
+    const database = useApplicationDatabase();
+    const restoreHistory = async (
+        revisionId: string,
+        expectedRevisionId: string | null,
+    ) => {
+        const snapshot = await draft.beginSave();
+        try {
+            await restoreNoteFromHistory(
+                database,
+                ownerId,
+                note.id,
+                revisionId,
+                expectedRevisionId,
+                snapshot.commit,
+            );
+            // 事务已清理旧草稿；停止旧会话，再从恢复后的 SQLite 内容建立新会话。
+            draft.endSave(true);
+        } catch (cause) {
+            draft.endSave(false);
+            throw cause;
+        }
+    };
+
     const scroll = useRef(resetToolbarScroll());
     const toolbarRestoreTimer = useRef<ReturnType<typeof setTimeout> | null>(
         null,
@@ -695,7 +720,29 @@ function NoteViewerSession({
                     bottom: keyboardOverlap,
                 }}
             >
-                <NoteViewerHeader onBack={handleBack} />
+                <NoteViewerHeader
+                    onBack={handleBack}
+                    actions={
+                        <NoteHistoryPopover
+                            owner={ownerId}
+                            noteId={note.id}
+                            currentValue={value}
+                            disabled={draft.saving}
+                            restoreBlockedReason={
+                                draft.resource?.conflict
+                                    ? "请先处理本地草稿冲突，再恢复历史版本"
+                                    : undefined
+                            }
+                            onOpen={() => {
+                                titleInput.current?.blur();
+                                contentInput.current?.blur();
+                                Keyboard.dismiss();
+                                draft.requestFlush();
+                            }}
+                            onRestore={restoreHistory}
+                        />
+                    }
+                />
 
                 {(draft.resource?.conflict || statusMessage) && (
                     <View className="mx-5 mt-2 flex-row items-center gap-2 rounded-2xl bg-red-50 px-3 py-2">

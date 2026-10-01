@@ -1,4 +1,8 @@
-import { localCategoryMap } from "../categories/data/category-local.repository";
+import {
+    hasLocalCategories,
+    localCategoryMap,
+    readLocalCategory,
+} from "../categories/data/category-local.repository";
 import type {
     ApplicationDatabase,
     ApplicationDatabaseTransaction,
@@ -14,6 +18,7 @@ import type {
 import {
     assertDraftCommit,
     linkCommittedDraft,
+    readNoteDraft,
     type DraftCommit,
 } from "./note-draft.repository";
 import {
@@ -172,7 +177,7 @@ export async function recoverInterruptedNoteSyncs(
 }
 
 export function getLocalNoteByClientId(
-    database: ApplicationDatabase,
+    database: ApplicationDatabaseTransaction,
     ownerUserId: number,
     clientId: number,
 ) {
@@ -917,17 +922,29 @@ export async function reconcileServerNotes(
  * 从旧版本内容创建新的当前版本；旧节点保持不变（origin=restore）。
  * 内容写回 local_notes 并置 pending 等待云端同步。
  */
+export type NoteRevisionRestoreOptions = {
+    expectedRevisionId: string | null;
+    draft: DraftCommit;
+    checkAccess: () => void;
+};
+
 export async function restoreLocalNoteToRevision(
     database: ApplicationDatabase,
     ownerUserId: number,
     clientId: number,
     revisionId: string,
+    options?: NoteRevisionRestoreOptions,
 ) {
     return database.transaction(async (tx) => {
+        options?.checkAccess();
+        if (await isRemovedLocalNote(tx, ownerUserId, clientId))
+            throw new Error("笔记已移入垃圾桶，不能恢复历史版本");
         const revision = await getNoteRevisionById(tx, ownerUserId, revisionId);
         if (!revision || revision.client_id !== clientId) {
             throw new Error("[Note revision] 目标版本不存在或不属于这篇笔记");
         }
+        if (revision.schema_version !== 1)
+            throw new Error("此历史版本需要更新应用后才能恢复");
         const existing = await readNoteByClientId(tx, ownerUserId, clientId);
         if (!existing) {
             throw new Error("[Note revision] 笔记不存在，无法恢复版本");
@@ -937,16 +954,63 @@ export async function restoreLocalNoteToRevision(
             throw new Error("[Note revision] 该版本已是当前内容");
         }
 
+        let parentId = current?.revision_id ?? null;
+        let categoryId = revision.category_id;
+        if (options) {
+            if (parentId !== options.expectedRevisionId)
+                throw new Error("当前版本已变化，请刷新历史列表后重试");
+            if (existing.sync_status === "syncing")
+                throw new Error("笔记正在同步，请稍后再恢复历史版本");
+            if (existing.body_state === "evicted")
+                throw new Error("当前正文尚未下载，请先联网打开笔记");
+            await assertDraftCommit(tx, ownerUserId, options.draft, existing);
+            const draft = await readNoteDraft(
+                tx,
+                ownerUserId,
+                options.draft.key,
+            );
+            if (
+                draft?.note_id !== clientId ||
+                options.draft.key !== `note:${clientId}`
+            )
+                throw new Error("草稿不属于这篇笔记，恢复已停止");
+            const value = {
+                title: draft.title.trim(),
+                content: draft.content.trim(),
+                categoryId: draft.category_id,
+            };
+            if (!value.title)
+                throw new Error("请先填写当前笔记标题，再恢复历史版本");
+            // 不覆盖尚未正式保存的输入：同一事务内先保存成历史节点。
+            if (!current || !revisionContentEquals(value, current)) {
+                parentId = await insertNoteRevision(tx, ownerUserId, clientId, {
+                    parentId,
+                    ...value,
+                    origin: "local-save",
+                    keepRevisionIds: [revisionId],
+                });
+            }
+            if (categoryId !== null && (await hasLocalCategories(tx))) {
+                const category = await readLocalCategory(
+                    tx,
+                    ownerUserId,
+                    categoryId,
+                );
+                if (!category || category.deleted) categoryId = null;
+            }
+        }
+
         const nextRevisionId = await insertNoteRevision(
             tx,
             ownerUserId,
             clientId,
             {
-                parentId: current?.revision_id ?? null,
+                parentId,
                 title: revision.title,
                 content: revision.content,
-                categoryId: revision.category_id,
+                categoryId,
                 origin: "restore",
+                keepRevisionIds: [revisionId],
             },
         );
         const operation: NoteSyncOperation =
@@ -959,15 +1023,18 @@ export async function restoreLocalNoteToRevision(
                  content = $content,
                  category_id = $categoryId,
                  current_revision_id = $revisionId,
-                 sync_status = 'pending',
+                 sync_status = CASE WHEN server_id IS NULL AND sync_status = 'unknown'
+                     THEN 'unknown' ELSE 'pending' END,
                  sync_operation = $syncOperation,
-                 last_sync_error = NULL,
+                 last_sync_error = CASE WHEN last_sync_error LIKE '云端笔记已删除%'
+                     OR (server_id IS NULL AND sync_status = 'unknown')
+                     THEN last_sync_error ELSE NULL END,
                  local_updated_at = $localUpdatedAt
              WHERE owner_user_id = $ownerUserId AND client_id = $clientId`,
             {
                 $title: revision.title,
                 $content: revision.content,
-                $categoryId: revision.category_id,
+                $categoryId: categoryId,
                 $revisionId: nextRevisionId,
                 $syncOperation: operation,
                 $localUpdatedAt:
@@ -985,6 +1052,23 @@ export async function restoreLocalNoteToRevision(
         const note = await readNoteByClientId(tx, ownerUserId, clientId);
         if (!note) {
             throw new Error("[Note revision] 恢复后无法重新读取笔记");
+        }
+        if (options) {
+            const removed = await tx.run(
+                `DELETE FROM note_drafts WHERE owner_user_id=? AND draft_key=?
+                 AND session_id=? AND sequence=?`,
+                [
+                    ownerUserId,
+                    options.draft.key,
+                    options.draft.sessionId,
+                    options.draft.sequence,
+                ],
+            );
+            if (removed.changes !== 1)
+                throw new Error("草稿会话已变化，恢复已停止，当前输入已保留");
+            // 版本、旧会话清理和上传任务原子提交；离线也可完成本地恢复。
+            await enqueueNoteUpload(tx, ownerUserId, note);
+            options.checkAccess();
         }
         return note;
     });
