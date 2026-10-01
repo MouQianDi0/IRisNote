@@ -1,3 +1,12 @@
+## 2026-10-01 13:26:41 | 优化代码：todo 快进同步到 codex 并固定后续工作分支
+
+- 变更概述：按用户要求将 `origin/kroos_todo` 合入 `kroos_vps/codex-a`，恢复并提交历史 diff/加载工作；后续 Codex 默认在 codex 分支开发。
+- 修改文件：快进范围为 `be7d88c..25c98c9` 的 113 文件（见 docs/logs/2026-10-01-sync-todo-into-codex.md）；当前功能提交 c9dfe2a 的 12 文件见上一条；本轮记录与持久约定为 AGENTS.md、CHANGELOG.md、docs/logs/2026-10-01-sync-todo-into-codex.md。
+- 具体内容：codex 无冲突快进 26 个既有提交，保留 todo 现有指针；stash 包含新增文件并保留备份，12 文件 SHA-256 恢复一致；c9dfe2a 只提交本次功能。AGENTS 第 20 节规定后续默认在 `kroos_vps/codex-a` 工作，不增加未来任务的自动提交/推送授权。外部目标为 `origin/kroos_vps/codex-a`，正常快进推送并独立核对 SHA。
+- 验证：同步前 typecheck 通过；同步后重新执行获准环境 npm run check 通过（765 项：763 通过、2 跳过、0 失败；类型/主题通过，Lint 仅既有设置页 1 个警告）；SHA-256、暂存范围、diff 检查与冲突标记检查通过。Kotlin 编译尝试因缺少 Java/JDK 未完成；原生/前端包与真机验收未执行。
+
+---
+
 ## 2026-10-01 12:54:29 | 新增功能：笔记历史默认行级对比与加载反馈
 
 - 变更概述：历史详情默认对比实时草稿，保留历史全文；增加正文行数统计、标题/分类变化、未改动上下文展开与读取/计算/恢复加载动画。
