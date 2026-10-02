@@ -74,3 +74,6 @@ modules/*/android/build/
 # DSH 运行时插件与远程任务脚本（本机工具，不入库）
 dsh-webhook-remote/
 scripts/Send-DshTask.ps1
+
+# 本机软件著作权申请材料
+/docs/软件著作权/0.7.1/
