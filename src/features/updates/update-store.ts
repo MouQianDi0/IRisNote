@@ -194,7 +194,9 @@ export async function checkForUpdate(manual = false) {
             buildCode: String(installed.buildCode),
             sha256: installed.sha256,
             deltaSupported: String(installed.deltaSupported),
+            // Old servers ignore the capability flag and still return policy 3.
             updatePolicy: "3",
+            deltaWindowPolicy: "4",
         });
         const response = await fetch(
             `${endpoint.replace(/\/$/, "")}/latest?${query}`,

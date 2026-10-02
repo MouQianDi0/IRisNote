@@ -1,3 +1,22 @@
+## 2026-10-02 11:56:01 | 新增功能：差量更新支持服务端环境变量配置历史版本数量
+
+- 变更概述：与 irisapi 同步增加 `IRIS_RELEASE_DELTA_WINDOW`，默认覆盖 3 个历史版本；客户端支持策略 4，发布工具处理服务端选定的全部基础包。
+- 修改文件：src/features/updates/release.ts、src/features/updates/update-store.ts、scripts/release/cli.mjs、tests/releases/releases.test.cjs、docs/构建发布/android-releases.md、docs/构建发布/更新说明编写规范.md、docs/logs/2026-10-02-configurable-delta-window.md（新增 64 行）、CHANGELOG.md；服务端文件见对应仓库日志。
+- 具体内容：客户端校验 `deltaWindow` 并兼容策略 2/3；通过 `updatePolicy=3&deltaWindowPolicy=4` 单次协商新策略；CLI 去除固定三版上限并验证基础列表数组。差量范围与落后 3 版强制更新独立，屏障及摘要校验保留。数量在服务端配置并重启生效，扩大不自动补齐已发布版本的历史补丁，需配合新草稿发布。执行前两仓库干净，无已有改动可提交；实施过程中保留其他任务追加的发布日志。
+- 验证：修改前 `npm run typecheck` 通过；修改后 `npm run check` 通过（TypeScript、Lint 0 错误/1 条既有警告、theme:check、718/718 测试）。服务端构建、发布测试 28/28、下载入口测试 4/4 和测试文件严格类型检查通过；未做真实 PostgreSQL、真实差量生成、Android 打包、真机更新、部署或发布。
+
+---
+
+## 2026-10-02 11:52:03 | 优化代码：GitHub 按版本顺序补发 IRisNote 0.7.0
+
+- 变更概述：按用户“接着目前有的 Release 的下一个版本”授权，核对 GitHub 当前最高已发布为 0.6.0，补发已在应用内正式发布的 0.7.0 / 构建 22。
+- 修改文件：CHANGELOG.md（本发布记录）。使用已有 releases/notes-0.7.0.txt、dist/releases/0.7.0/IRisNote-0.7.0-22.apk 及旁侧元数据，未修改应用代码或更新说明。
+- 具体内容：标题 IRisNote v0.7.0，标签 v0.7.0_IRisNote 绑定正式安装包实际构建提交 38e307d19806ab41190cd21352f58c7cc8e1d125；GitHub 发布前确认无同名 Release 或标签，先创建草稿、上传 APK、核对附件 uploaded 状态/大小/服务端摘要后正式发布。实际 GitHub 发布时间 2026-10-02 11:50:51（Asia/Shanghai）；发布后公开正文与说明逐字一致，标签提交正确，附件和下载链接可用。GitHub 无较新发布版本，本次成为 Latest。Release：https://github.com/MouQianDi0/IRisNote/releases/tag/v0.7.0_IRisNote。
+- 产物：IRisNote-0.7.0-22.apk；127680046 字节；SHA-256 2f6af0f5cdf839f43210d37d7bf9e04113a97faf1a08c9ef98751a80b2b80b45；正式证书 SHA-256 7319b25667535231abaed933fbccea285df134d1cb29c81e33df57adc3ec0f86。GitHub 附件 ID 604745891，服务端 digest 与本地实测一致，公开 HEAD 200 且 Content-Length 正确。
+- 验证：本地 APK 实测大小/摘要、aapt 版本包名、apksigner 正式签名、旁侧 .apk.json、应用内构建 22 记录及说明一致；GitHub 对应构建提交存在；发布前后 Release/标签/附件/正文/Latest 复核均通过。日志修改前 npm run typecheck 通过；仅补发既有产物，不执行 npm run check、重新构建、真机验证或应用内发布。保留其他任务未提交文件，不执行工作区提交或 Git push。证据保存于 .expo/github-release-0.7.0-{apk-audit,draft,asset,published,final-audit}.json 及上传日志。
+
+---
+
 ## 2026-10-02 04:45:50 | 修复问题：清理发布核验发现的历史日志冲突标记
 
 - 变更概述：0.8.0 发布后最终扫描发现 CHANGELOG 的历史记录存在两行合并格式残留，修正文档以完成发布记录核验。
