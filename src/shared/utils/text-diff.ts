@@ -8,22 +8,18 @@ export type TextDiffChunk = {
     /** 变更段内的字符投影；未改变的字符仍为 equal。 */
     spans?: TextDiffSpan[];
 };
-export type TextDiffResult =
-    | {
-          status: "complete";
-          chunks: TextDiffChunk[];
-          added: number;
-          removed: number;
-      }
-    | { status: "too-large" };
-export type CharacterTextDiffResult =
-    | (Extract<TextDiffResult, { status: "complete" }> & {
-          /** 原始顺序的全文片段；共有文字只保留一份，可分别投影还原两侧。 */
-          spans: TextDiffSpan[];
-          /** 连续增删为一处，相邻删除/新增的替换合并计数。 */
-          changes: number;
-      })
-    | { status: "too-large" };
+export type TextDiffResult = {
+    status: "complete";
+    chunks: TextDiffChunk[];
+    added: number;
+    removed: number;
+};
+export type CharacterTextDiffResult = TextDiffResult & {
+    /** 原始顺序的全文片段；共有文字只保留一份，可分别投影还原两侧。 */
+    spans: TextDiffSpan[];
+    /** 连续增删为一处，相邻删除/新增的替换合并计数。 */
+    changes: number;
+};
 export type TextDiffSection =
     | TextDiffChunk
     | {
@@ -31,199 +27,290 @@ export type TextDiffSection =
           id: number;
           lines: string[];
       };
-type Options = { maxWork?: number; batchSize?: number };
-const TOO_LARGE: Extract<TextDiffResult, { status: "too-large" }> = {
-    status: "too-large",
-};
-type Work = { used: number; limit: number; batch: number };
-const createWork = ({
-    maxWork = 200_000,
-    batchSize = 2_048,
-}: Options): Work => ({
+type Options = { batchSize?: number };
+type Work = { used: number; batch: number };
+const createWork = ({ batchSize = 2_048 }: Options): Work => ({
     used: 0,
-    limit: Math.max(1, Math.min(200_000, maxWork || 1)),
-    batch: Math.max(1, Math.min(2_048, batchSize || 1)),
+    batch: Number.isFinite(batchSize)
+        ? Math.max(1, Math.min(2_048, Math.floor(batchSize)))
+        : 2_048,
 });
+const pause = (work: Work) => ++work.used % work.batch === 0;
 
 /** 空正文为零行；保留空格、空行与末尾换行，仅统一 CRLF/LF。 */
 const splitLines = (text: string | null) =>
     !text ? [] : text.replace(/\r\n/g, "\n").split("\n");
 
-/** 同一个 Myers 搜索用于行和 Unicode 码点，所有阶段共享工作预算。 */
-function* diffSequence(
-    oldLines: string[],
-    newLines: string[],
-    work: Work,
-): Generator<void, TextDiffResult, void> {
-    let prefix = 0;
-    let suffix = 0;
-    while (
-        prefix < oldLines.length &&
-        prefix < newLines.length &&
-        oldLines[prefix] === newLines[prefix]
-    ) {
-        prefix++;
-        if (++work.used > work.limit) return TOO_LARGE;
-        if (work.used % work.batch === 0) yield;
-    }
-    while (
-        suffix < oldLines.length - prefix &&
-        suffix < newLines.length - prefix &&
-        oldLines[oldLines.length - 1 - suffix] ===
-            newLines[newLines.length - 1 - suffix]
-    ) {
-        suffix++;
-        if (++work.used > work.limit) return TOO_LARGE;
-        if (work.used % work.batch === 0) yield;
-    }
-    const oldMiddle = oldLines.slice(prefix, oldLines.length - suffix);
-    const newMiddle = newLines.slice(prefix, newLines.length - suffix);
-    const chunks: TextDiffChunk[] = [];
-    const append = (type: TextDiffChunk["type"], lines: string[]) => {
-        if (!lines.length) return;
-        const last = chunks[chunks.length - 1];
-        if (last?.type === type) last.lines.push(...lines);
-        else chunks.push({ type, lines });
-    };
-    append("equal", oldLines.slice(0, prefix));
+type Range = {
+    oldStart: number;
+    oldEnd: number;
+    newStart: number;
+    newEnd: number;
+};
+type SequenceTask =
+    | ({ kind: "compare" } & Range)
+    | { kind: "equal"; start: number; end: number };
 
-    // 没有共享单元时直接展示整段，避免无意义的二次方搜索。
-    const oldSet = new Set<string>();
-    for (const line of oldMiddle) {
-        oldSet.add(line);
-        if (++work.used > work.limit) return TOO_LARGE;
-        if (work.used % work.batch === 0) yield;
-    }
-    let shared = false;
-    for (const line of newMiddle) {
-        if (oldSet.has(line)) {
-            shared = true;
-            break;
-        }
-        if (++work.used > work.limit) return TOO_LARGE;
-        if (work.used % work.batch === 0) yield;
-    }
-    if (!shared) {
-        append("delete", oldMiddle);
-        append("insert", newMiddle);
-    } else {
-        const frontier = new Map<number, number>([[1, 0]]);
-        const trace: Map<number, number>[] = [];
-        search: for (
-            let distance = 0;
-            distance <= oldMiddle.length + newMiddle.length;
-            distance++
+/** 双向 Myers 寻找最短编辑路径的交点；不保留逐层回溯表。 */
+function* middleSplit(
+    before: string[],
+    after: string[],
+    range: Range,
+    work: Work,
+): Generator<void, { old: number; next: number }, void> {
+    const n = range.oldEnd - range.oldStart;
+    const m = range.newEnd - range.newStart;
+    const delta = n - m;
+    const odd = delta % 2 !== 0;
+    const distanceLimit = Math.ceil((n + m) / 2);
+    const offset = distanceLimit + 1;
+    const forward = new Int32Array(2 * distanceLimit + 3).fill(-1);
+    const backward = new Int32Array(forward.length).fill(-1);
+    forward[offset + 1] = backward[offset + 1] = 0;
+    let forwardStart = 0,
+        forwardEnd = 0,
+        backwardStart = 0,
+        backwardEnd = 0;
+
+    for (let distance = 0; distance <= distanceLimit; distance++) {
+        for (
+            let diagonal = -distance + forwardStart;
+            diagonal <= distance - forwardEnd;
+            diagonal += 2
         ) {
-            trace.push(new Map(frontier));
-            for (
-                let diagonal = -distance;
-                diagonal <= distance;
-                diagonal += 2
-            ) {
-                if (++work.used > work.limit) return TOO_LARGE;
-                if (work.used % work.batch === 0) yield;
-                let x =
-                    diagonal === -distance ||
-                    (diagonal !== distance &&
-                        (frontier.get(diagonal - 1) ?? -Infinity) <
-                            (frontier.get(diagonal + 1) ?? -Infinity))
-                        ? (frontier.get(diagonal + 1) ?? 0)
-                        : (frontier.get(diagonal - 1) ?? 0) + 1;
-                let y = x - diagonal;
-                while (
-                    x < oldMiddle.length &&
-                    y < newMiddle.length &&
-                    oldMiddle[x] === newMiddle[y]
-                ) {
-                    x++;
-                    y++;
-                    if (++work.used > work.limit) return TOO_LARGE;
-                    if (work.used % work.batch === 0) yield;
-                }
-                frontier.set(diagonal, x);
-                if (x >= oldMiddle.length && y >= newMiddle.length)
-                    break search;
-            }
-        }
-        const reversed: { type: TextDiffChunk["type"]; line: string }[] = [];
-        let x = oldMiddle.length;
-        let y = newMiddle.length;
-        for (let distance = trace.length - 1; distance >= 0; distance--) {
-            const previous = trace[distance];
-            const diagonal = x - y;
-            const previousDiagonal =
+            const index = offset + diagonal;
+            let x =
                 diagonal === -distance ||
                 (diagonal !== distance &&
-                    (previous.get(diagonal - 1) ?? -Infinity) <
-                        (previous.get(diagonal + 1) ?? -Infinity))
-                    ? diagonal + 1
-                    : diagonal - 1;
-            const previousX = previous.get(previousDiagonal) ?? 0;
-            const previousY = previousX - previousDiagonal;
-            while (x > previousX && y > previousY) {
-                reversed.push({ type: "equal", line: oldMiddle[--x] });
-                y--;
-                if (++work.used > work.limit) return TOO_LARGE;
-                if (work.used % work.batch === 0) yield;
+                    forward[index - 1] < forward[index + 1])
+                    ? forward[index + 1]
+                    : forward[index - 1] + 1;
+            let y = x - diagonal;
+            while (
+                x < n &&
+                y < m &&
+                before[range.oldStart + x] === after[range.newStart + y]
+            ) {
+                x++;
+                y++;
+                if (pause(work)) yield;
             }
-            if (distance === 0) break;
-            reversed.push(
-                x === previousX
-                    ? { type: "insert", line: newMiddle[--y] }
-                    : { type: "delete", line: oldMiddle[--x] },
-            );
-            if (++work.used > work.limit) return TOO_LARGE;
-            if (work.used % work.batch === 0) yield;
+            forward[index] = x;
+            if (x > n) forwardEnd += 2;
+            else if (y > m) forwardStart += 2;
+            else if (odd) {
+                const reverseDiagonal = delta - diagonal;
+                if (
+                    Math.abs(reverseDiagonal) <= distance - 1 &&
+                    backward[offset + reverseDiagonal] >= 0 &&
+                    x + backward[offset + reverseDiagonal] >= n
+                )
+                    return {
+                        old: range.oldStart + x,
+                        next: range.newStart + y,
+                    };
+            }
+            if (pause(work)) yield;
         }
-        for (let index = reversed.length - 1; index >= 0; index--) {
-            const { type, line } = reversed[index];
-            append(type, [line]);
-            if (chunks.length > 400) return TOO_LARGE;
-            if (++work.used > work.limit) return TOO_LARGE;
-            if (work.used % work.batch === 0) yield;
+        for (
+            let diagonal = -distance + backwardStart;
+            diagonal <= distance - backwardEnd;
+            diagonal += 2
+        ) {
+            const index = offset + diagonal;
+            let x =
+                diagonal === -distance ||
+                (diagonal !== distance &&
+                    backward[index - 1] < backward[index + 1])
+                    ? backward[index + 1]
+                    : backward[index - 1] + 1;
+            let y = x - diagonal;
+            while (
+                x < n &&
+                y < m &&
+                before[range.oldEnd - x - 1] === after[range.newEnd - y - 1]
+            ) {
+                x++;
+                y++;
+                if (pause(work)) yield;
+            }
+            backward[index] = x;
+            if (x > n) backwardEnd += 2;
+            else if (y > m) backwardStart += 2;
+            else if (!odd) {
+                const forwardDiagonal = delta - diagonal;
+                const front = forward[offset + forwardDiagonal];
+                if (
+                    Math.abs(forwardDiagonal) <= distance &&
+                    front >= 0 &&
+                    front + x >= n
+                )
+                    return {
+                        old: range.oldStart + front,
+                        next: range.newStart + front - forwardDiagonal,
+                    };
+            }
+            if (pause(work)) yield;
         }
     }
-    append("equal", oldLines.slice(oldLines.length - suffix));
-    return {
-        status: "complete",
-        chunks,
-        added: chunks.reduce(
-            (count, chunk) =>
-                count + (chunk.type === "insert" ? chunk.lines.length : 0),
-            0,
-        ),
-        removed: chunks.reduce(
-            (count, chunk) =>
-                count + (chunk.type === "delete" ? chunk.lines.length : 0),
-            0,
-        ),
-    };
+    throw new Error("无法定位正文差异，请重试");
 }
 
-/** 历史 → 当前的行级差异，保留原有行数语义。 */
+/** 范围索引和显式栈分治，避免切片复制、递归栈及大数组展开参数。 */
+function* diffSequence(
+    before: string[],
+    after: string[],
+    work: Work,
+): Generator<void, TextDiffResult, void> {
+    const chunks: TextDiffChunk[] = [];
+    let added = 0,
+        removed = 0;
+    const append = function* (
+        type: TextDiffChunk["type"],
+        source: string[],
+        start: number,
+        end: number,
+    ) {
+        if (start === end) return;
+        let target = chunks[chunks.length - 1];
+        if (target?.type !== type) {
+            target = { type, lines: [] };
+            chunks.push(target);
+        }
+        for (let index = start; index < end; index++) {
+            target.lines.push(source[index]);
+            if (type === "insert") added++;
+            else if (type === "delete") removed++;
+            if (pause(work)) yield;
+        }
+    };
+    const tasks: SequenceTask[] = [
+        {
+            kind: "compare",
+            oldStart: 0,
+            oldEnd: before.length,
+            newStart: 0,
+            newEnd: after.length,
+        },
+    ];
+    while (tasks.length) {
+        const task = tasks.pop()!;
+        if (task.kind === "equal") {
+            yield* append("equal", before, task.start, task.end);
+            continue;
+        }
+        let { oldStart, oldEnd, newStart, newEnd } = task;
+        const prefix = oldStart;
+        while (
+            oldStart < oldEnd &&
+            newStart < newEnd &&
+            before[oldStart] === after[newStart]
+        ) {
+            oldStart++;
+            newStart++;
+            if (pause(work)) yield;
+        }
+        yield* append("equal", before, prefix, oldStart);
+        const suffixEnd = oldEnd;
+        while (
+            oldStart < oldEnd &&
+            newStart < newEnd &&
+            before[oldEnd - 1] === after[newEnd - 1]
+        ) {
+            oldEnd--;
+            newEnd--;
+            if (pause(work)) yield;
+        }
+        if (oldEnd < suffixEnd)
+            tasks.push({ kind: "equal", start: oldEnd, end: suffixEnd });
+        if (oldStart === oldEnd) {
+            yield* append("insert", after, newStart, newEnd);
+            continue;
+        }
+        if (newStart === newEnd) {
+            yield* append("delete", before, oldStart, oldEnd);
+            continue;
+        }
+        // 没有共有单元时直接输出完整增删，完全重写无需做二次方搜索。
+        const oldIsShorter = oldEnd - oldStart <= newEnd - newStart;
+        const short = oldIsShorter ? before : after;
+        const long = oldIsShorter ? after : before;
+        const shortStart = oldIsShorter ? oldStart : newStart;
+        const shortEnd = oldIsShorter ? oldEnd : newEnd;
+        const longStart = oldIsShorter ? newStart : oldStart;
+        const longEnd = oldIsShorter ? newEnd : oldEnd;
+        const units = new Set<string>();
+        for (let index = shortStart; index < shortEnd; index++) {
+            units.add(short[index]);
+            if (pause(work)) yield;
+        }
+        let shared = false;
+        for (let index = longStart; index < longEnd; index++) {
+            if (units.has(long[index])) {
+                shared = true;
+                break;
+            }
+            if (pause(work)) yield;
+        }
+        units.clear();
+        if (!shared) {
+            yield* append("delete", before, oldStart, oldEnd);
+            yield* append("insert", after, newStart, newEnd);
+            continue;
+        }
+        const split = yield* middleSplit(
+            before,
+            after,
+            { oldStart, oldEnd, newStart, newEnd },
+            work,
+        );
+        if (
+            (split.old === oldStart && split.next === newStart) ||
+            (split.old === oldEnd && split.next === newEnd)
+        )
+            throw new Error("正文差异分段未取得进展，请重试");
+        tasks.push(
+            {
+                kind: "compare",
+                oldStart: split.old,
+                oldEnd,
+                newStart: split.next,
+                newEnd,
+            },
+            {
+                kind: "compare",
+                oldStart,
+                oldEnd: split.old,
+                newStart,
+                newEnd: split.next,
+            },
+        );
+    }
+    return { status: "complete", chunks, added, removed };
+}
+
+/** 历史 → 当前的行级差异，完整比较；任务可在批次间以 return(undefined) 取消。 */
 export function* diffTextLines(
     before: string | null,
     after: string | null,
     options: Options = {},
-): Generator<void, TextDiffResult, void> {
-    if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
-        return TOO_LARGE;
-    const oldLines = splitLines(before);
-    const newLines = splitLines(after);
-    if (oldLines.length + newLines.length > 12_000) return TOO_LARGE;
-    return yield* diffSequence(oldLines, newLines, createWork(options));
+): Generator<void, TextDiffResult | undefined, void> {
+    return yield* diffSequence(
+        splitLines(before),
+        splitLines(after),
+        createWork(options),
+    );
 }
 
 function* characters(
     text: string,
     work: Work,
-): Generator<void, string[] | null, void> {
+): Generator<void, string[], void> {
     const units: string[] = [];
-    // 字符串迭代按 Unicode 码点，不拆开 emoji/增补汉字的 UTF-16 代理对。
+    // Unicode 码点，不拆开 emoji/增补汉字的 UTF-16 代理对。
     for (const unit of text) {
         units.push(unit);
-        if (++work.used > work.limit) return null;
-        if (work.used % work.batch === 0) yield;
+        if (pause(work)) yield;
     }
     return units;
 }
@@ -236,15 +323,11 @@ export function* diffTextWithCharacters(
     before: string | null,
     after: string | null,
     options: Options = {},
-): Generator<void, CharacterTextDiffResult, void> {
-    if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
-        return TOO_LARGE;
+): Generator<void, CharacterTextDiffResult | undefined, void> {
     const oldLines = splitLines(before);
     const newLines = splitLines(after);
-    if (oldLines.length + newLines.length > 12_000) return TOO_LARGE;
     const work = createWork(options);
     const located = yield* diffSequence(oldLines, newLines, work);
-    if (located.status !== "complete") return TOO_LARGE;
     const chunks: TextDiffChunk[] = [];
     const spans: TextDiffSpan[] = [];
     const lastContextIndex = located.chunks.reduce(
@@ -259,7 +342,6 @@ export function* diffTextWithCharacters(
     };
     let added = 0;
     let removed = 0;
-    let spansCount = 0;
     for (let index = 0; index < located.chunks.length;) {
         const chunk = located.chunks[index];
         if (chunk.type === "equal") {
@@ -278,7 +360,11 @@ export function* diffTextWithCharacters(
             located.chunks[index].type !== "equal"
         ) {
             const next = located.chunks[index++];
-            (next.type === "delete" ? deleted : inserted).push(...next.lines);
+            const target = next.type === "delete" ? deleted : inserted;
+            for (const line of next.lines) {
+                target.push(line);
+                if (pause(work)) yield;
+            }
         }
         // 分隔符归入变更段：有后文时带尾换行，只有前文时带首换行。
         // 空行/末尾换行的增删因此不会误判成零字符变化。
@@ -289,15 +375,10 @@ export function* diffTextWithCharacters(
                 ? ""
                 : `${leading ? "\n" : ""}${lines.join("\n")}${trailing ? "\n" : ""}`;
         const oldUnits = yield* characters(text(deleted), work);
-        if (!oldUnits) return TOO_LARGE;
         const newUnits = yield* characters(text(inserted), work);
-        if (!newUnits) return TOO_LARGE;
         const refined = yield* diffSequence(oldUnits, newUnits, work);
-        if (refined.status !== "complete") return TOO_LARGE;
         added += refined.added;
         removed += refined.removed;
-        spansCount += refined.chunks.length;
-        if (spansCount > 1_200) return TOO_LARGE;
         for (const part of refined.chunks)
             appendSpan(part.type, part.lines.join(""));
         for (const type of ["delete", "insert"] as const) {
@@ -324,8 +405,7 @@ export function* diffTextWithCharacters(
                 spans: spans.filter((part) => part.text.length > 0),
             });
         }
-        if (++work.used > work.limit) return TOO_LARGE;
-        if (work.used % work.batch === 0) yield;
+        if (pause(work)) yield;
     }
     const changes = spans.reduce(
         (count, span, index) =>

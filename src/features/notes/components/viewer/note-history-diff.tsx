@@ -95,8 +95,8 @@ function useCharacterComparison(input: Input, retry: number) {
                     setCompletion({
                         input,
                         retry,
-                        result: step.value,
-                        error: false,
+                        result: step.value ?? null,
+                        error: !step.value,
                     });
                 else timer = setTimeout(advance, 0);
             } catch {
@@ -107,7 +107,7 @@ function useCharacterComparison(input: Input, retry: number) {
         return () => {
             cancelled = true;
             clearTimeout(timer);
-            task.return({ status: "too-large" });
+            task.return(undefined);
         };
     }, [input, retry]);
     return completion?.input === input && completion.retry === retry
@@ -218,16 +218,6 @@ export default function NoteHistoryDiff({
                         </Text>
                     </Pressable>
                 </>
-            )}
-            {result?.status === "too-large" && (
-                <Text className="text-sm text-text-secondary">
-                    正文差异较大，已显示历史全文，暂无法统计和标注
-                </Text>
-            )}
-            {titleReady?.result?.status === "too-large" && (
-                <Text className="text-sm text-text-secondary">
-                    标题差异较大，已显示原始标题
-                </Text>
             )}
             <AnnotatedText spans={titleSpans} />
             <Text className="text-xs text-text-secondary">
