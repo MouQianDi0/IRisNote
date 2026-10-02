@@ -720,29 +720,7 @@ function NoteViewerSession({
                     bottom: keyboardOverlap,
                 }}
             >
-                <NoteViewerHeader
-                    onBack={handleBack}
-                    actions={
-                        <NoteHistoryPopover
-                            owner={ownerId}
-                            noteId={note.id}
-                            currentValue={value}
-                            disabled={draft.saving}
-                            restoreBlockedReason={
-                                draft.resource?.conflict
-                                    ? "请先处理本地草稿冲突，再恢复历史版本"
-                                    : undefined
-                            }
-                            onOpen={() => {
-                                titleInput.current?.blur();
-                                contentInput.current?.blur();
-                                Keyboard.dismiss();
-                                draft.requestFlush();
-                            }}
-                            onRestore={restoreHistory}
-                        />
-                    }
-                />
+                <NoteViewerHeader onBack={handleBack} />
 
                 {(draft.resource?.conflict || statusMessage) && (
                     <View className="mx-5 mt-2 flex-row items-center gap-2 rounded-2xl bg-red-50 px-3 py-2">
@@ -836,7 +814,27 @@ function NoteViewerSession({
                                     noteId={note.id}
                                     content={value.content}
                                     categoryId={note.category_id}
-                                    createdAt={note.created_at}
+                                    historyEntry={
+                                        <NoteHistoryPopover
+                                            owner={ownerId}
+                                            noteId={note.id}
+                                            currentValue={value}
+                                            updatedAt={note.updated_at}
+                                            disabled={draft.saving}
+                                            restoreBlockedReason={
+                                                draft.resource?.conflict
+                                                    ? "请先处理本地草稿冲突，再恢复历史版本"
+                                                    : undefined
+                                            }
+                                            onOpen={() => {
+                                                titleInput.current?.blur();
+                                                contentInput.current?.blur();
+                                                Keyboard.dismiss();
+                                                draft.requestFlush();
+                                            }}
+                                            onRestore={restoreHistory}
+                                        />
+                                    }
                                     isTitleExpandable={
                                         titleControls.isTitleExpandable
                                     }
