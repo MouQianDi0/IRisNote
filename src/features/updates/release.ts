@@ -10,7 +10,7 @@ export type AppRelease = {
     updatePolicy?: UpdatePolicy;
     delivery: Delivery;
 };
-/** Version 3 adds developer-set full-package barriers; version 2 may still come from an older server. */
+/** Version 4 adds a server-configured delta window; retain policy 2/3 compatibility. */
 export type UpdatePolicy =
     | { version: 2; releasesBehind: number; mandatory: boolean }
     | {
@@ -18,6 +18,13 @@ export type UpdatePolicy =
           releasesBehind: number;
           mandatory: boolean;
           fullPackageRequired: boolean;
+      }
+    | {
+          version: 4;
+          releasesBehind: number;
+          mandatory: boolean;
+          fullPackageRequired: boolean;
+          deltaWindow: number;
       };
 export type InstalledVersion = {
     version: string;
@@ -79,17 +86,19 @@ export function parseRelease(
         const policy = v.updatePolicy;
         if (
             !policy ||
-            (policy.version !== 2 && policy.version !== 3) ||
-            (policy.version === 3 &&
+            (policy.version !== 2 && policy.version !== 3 && policy.version !== 4) ||
+            ((policy.version === 3 || policy.version === 4) &&
                 typeof policy.fullPackageRequired !== "boolean") ||
+            (policy.version === 4 &&
+                (!Number.isSafeInteger(policy.deltaWindow) || policy.deltaWindow < 1)) ||
             !Number.isSafeInteger(policy.releasesBehind) ||
             policy.releasesBehind < 1 ||
             policy.mandatory !== policy.releasesBehind >= 3
         )
             throw new Error("无效更新策略");
         if (
-            policy.releasesBehind > 3 ||
-            (policy.version === 3 && policy.fullPackageRequired)
+            policy.releasesBehind > (policy.version === 4 ? policy.deltaWindow : 3) ||
+            ((policy.version === 3 || policy.version === 4) && policy.fullPackageRequired)
         )
             expectedMode = "full";
     }
@@ -136,7 +145,7 @@ export function isRequiredUpdate(release: AppRelease | null) {
 
 export function isFullPackageRequired(release: AppRelease | null) {
     const policy = release?.updatePolicy;
-    return policy?.version === 3 && policy.fullPackageRequired;
+    return (policy?.version === 3 || policy?.version === 4) && policy.fullPackageRequired;
 }
 
 export function isNewerRelease(

@@ -410,10 +410,8 @@ async function preparePatches(release, apk) {
         return;
     }
     const bases = await api(`/${release.build_code}/bases`);
-    if (bases.length > 3)
-        throw new Error(
-            "发布服务尚未启用最近三版差分策略，请先部署对应服务端版本后重试。",
-        );
+    if (!Array.isArray(bases))
+        throw new Error("发布服务返回的差量基础版本列表无效");
     if (!bases.length) {
         console.log("此主版本没有历史已发布包，无需差量包。");
         return;

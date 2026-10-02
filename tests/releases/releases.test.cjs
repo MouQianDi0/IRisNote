@@ -20,6 +20,51 @@ const payload = Buffer.from('APK test bytes');
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const installed = { version: '0.9.0', buildCode: 27, sha256: 'b'.repeat(64), deltaSupported: true };
 const release = { packageName: policy.ANDROID_PACKAGE, version: '1.1.0', buildCode: 28, notes: '新增测试功能', sha256: hash(payload), size: payload.length, publishedAt: new Date().toISOString(), delivery: { mode: 'full', size: payload.length, sha256: hash(payload), downloadUrl: 'https://example.com/28.apk' } };
+
+test('policy 4 validates configurable delta boundaries and preserves mandatory and barrier rules', () => {
+  const current = { ...installed, version: '1.0.0' };
+  const delta = { mode: 'delta', algorithm: 'hdiffpatch-zlib-v1', baseBuildCode: current.buildCode, baseSha256: current.sha256, size: 10, sha256: 'c'.repeat(64), downloadUrl: 'https://example.com/patch' };
+  for (const deltaWindow of [1, 2, 3, 5])
+  for (const releasesBehind of [1, 2, 3, 4, 5, 6])
+  for (const fullPackageRequired of [false, true]) {
+    const updatePolicy = { version: 4, deltaWindow, releasesBehind, mandatory: releasesBehind >= 3, fullPackageRequired };
+    const full = releasesBehind > deltaWindow || fullPackageRequired;
+    const parsed = policy.parseRelease({ ...release, updatePolicy, delivery: full ? release.delivery : delta }, release.packageName, current);
+    assert.equal(policy.isRequiredUpdate(parsed), releasesBehind >= 3);
+    assert.equal(policy.isFullPackageRequired(parsed), fullPackageRequired);
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy, delivery: full ? delta : release.delivery }, release.packageName, current), /不符合版本规则/);
+    // Major-version transitions always require a full APK, even inside the configured window.
+    policy.parseRelease({ ...release, version: '2.0.0', updatePolicy }, release.packageName, current);
+  }
+  const valid = { version: 4, deltaWindow: 5, releasesBehind: 4, mandatory: true, fullPackageRequired: false };
+  for (const deltaWindow of [undefined, null, '5', 0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy: { ...valid, deltaWindow }, delivery: delta }, release.packageName, current), /无效更新策略/);
+  for (const patch of [{ mandatory: false }, { fullPackageRequired: undefined }, { version: 5 }])
+    assert.throws(() => policy.parseRelease({ ...release, updatePolicy: { ...valid, ...patch }, delivery: delta }, release.packageName, current), /无效更新策略/);
+  assert.throws(() => policy.parseRelease({ ...release, updatePolicy: valid, delivery: { ...delta, baseSha256: 'd'.repeat(64) } }, release.packageName, current), /不匹配/);
+});
+
+test('release CLI accepts all server-selected bases above three and skips completed patches', async () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../scripts/release/cli.mjs'), 'utf8');
+  const start = source.indexOf('async function preparePatches(');
+  const end = source.indexOf('\nasync function ', start + 1);
+  assert.ok(start >= 0 && end > start);
+  const messages = [];
+  let bases = Array.from({ length: 5 }, (_, i) => ({ build_code: i + 1, patch_ready: true }));
+  let requests = 0;
+  const context = { api: async () => { requests++; return bases; }, console: { log: text => messages.push(text) }, deltaTools() {}, mkdir: async () => {}, path, root: 'test-only' };
+  vm.createContext(context);
+  vm.runInContext(source.slice(start, end), context);
+  await context.preparePatches({ build_code: 20, version: '1.0.0' }, 'test.apk');
+  assert.equal(messages.filter(text => text.includes('跳过')).length, 5);
+  bases = [];
+  await context.preparePatches({ build_code: 20, version: '1.0.0' }, 'test.apk');
+  assert.ok(messages.some(text => text.includes('没有历史')));
+  await context.preparePatches({ full_package_required: true }, 'test.apk');
+  assert.equal(requests, 2);
+  bases = {};
+  await assert.rejects(context.preparePatches({ build_code: 20 }, 'test.apk'), /列表无效/);
+});
 const patchBytes = Buffer.from('HDIFF test patch');
 const deltaDelivery = { mode: 'delta', algorithm: 'hdiffpatch-zlib-v1', baseBuildCode: 27, baseSha256: installed.sha256, sha256: hash(patchBytes), size: patchBytes.length, downloadUrl: 'https://example.com/28.hdiff' };
 
@@ -123,6 +168,10 @@ async function sandbox(options = {}) {
   if (options.behind) servedRelease.updatePolicy = options.fullPackage
     ? { version: 3, releasesBehind: options.behind, mandatory: options.behind >= 3, fullPackageRequired: true }
     : { version: 2, releasesBehind: options.behind, mandatory: options.behind >= 3 };
+  if (options.deltaWindow !== undefined) servedRelease.updatePolicy = {
+    version: 4, deltaWindow: options.deltaWindow, releasesBehind: options.behind,
+    mandatory: options.behind >= 3, fullPackageRequired: !!options.fullPackage,
+  };
   const installedVersion = options.delta || options.sameMajor ? '1.0.0' : '0.9.0';
   if (options.unavailable) servedRelease.delivery = { mode: 'unavailable', reason: '缺少匹配的差量包' };
   const downloaded = options.delta ? patchBytes : payload;
@@ -246,14 +295,35 @@ test('cleanup failures preserve startup, continue other files and retry after re
   }
 });
 
-test('startup queries policy v3 despite a recent check in an earlier session', async () => {
+test('startup negotiates policy v4 with a v3 server fallback despite a recent check in an earlier session', async () => {
   const storage = new Map([['irisnote.release.last-check', String(Date.now())]]);
   const s = await sandbox({ storage, behind: 4 });
   await s.store.checkForUpdate();
   assert.equal(new URL(s.queries[0]).searchParams.get('updatePolicy'), '3');
+  assert.equal(new URL(s.queries[0]).searchParams.get('deltaWindowPolicy'), '4');
   assert.equal(s.store.useUpdateStore.getState().visible, true);
   await s.store.checkForUpdate();
   assert.equal(s.queries.length, 1);
+});
+
+test('policy 4 checks download the configured format and retain mandatory state offline', async () => {
+  for (const [deltaWindow, behind, delta] of [[5, 4, true], [1, 2, false]]) {
+    const s = await sandbox({ deltaWindow, behind, delta, sameMajor: true });
+    await s.store.checkForUpdate();
+    assert.equal(s.store.useUpdateStore.getState().phase, 'available');
+    assert.equal(s.queries.length, 1);
+    assert.equal(s.store.useUpdateStore.getState().release.delivery.mode, delta ? 'delta' : 'full');
+    await s.store.downloadUpdate();
+    assert.deepEqual(s.scans, delta ? ['base', 'patch', 'target', 'install'] : ['target', 'install']);
+    assert.equal(s.calls.length, 1);
+    assert.equal(s.calls[0][0], behind >= 3 ? 'android.intent.action.INSTALL_PACKAGE' : 'android.intent.action.VIEW');
+    if (behind >= 3) {
+      const restart = await sandbox({ storage: s.storage, offline: true, sameMajor: true });
+      await restart.store.checkForUpdate();
+      assert.equal(restart.store.useUpdateStore.getState().release.updatePolicy.deltaWindow, deltaWindow);
+      assert.equal(policy.isRequiredUpdate(restart.store.useUpdateStore.getState().release), true);
+    }
+  }
 });
 
 test('mandatory updates survive an offline restart, but not installation of another build', async () => {
