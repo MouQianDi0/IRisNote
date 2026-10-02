@@ -16,6 +16,14 @@ export type TextDiffResult =
           removed: number;
       }
     | { status: "too-large" };
+export type CharacterTextDiffResult =
+    | (Extract<TextDiffResult, { status: "complete" }> & {
+          /** 原始顺序的全文片段；共有文字只保留一份，可分别投影还原两侧。 */
+          spans: TextDiffSpan[];
+          /** 连续增删为一处，相邻删除/新增的替换合并计数。 */
+          changes: number;
+      })
+    | { status: "too-large" };
 export type TextDiffSection =
     | TextDiffChunk
     | {
@@ -24,7 +32,9 @@ export type TextDiffSection =
           lines: string[];
       };
 type Options = { maxWork?: number; batchSize?: number };
-const TOO_LARGE: TextDiffResult = { status: "too-large" };
+const TOO_LARGE: Extract<TextDiffResult, { status: "too-large" }> = {
+    status: "too-large",
+};
 type Work = { used: number; limit: number; batch: number };
 const createWork = ({
     maxWork = 200_000,
@@ -226,7 +236,7 @@ export function* diffTextWithCharacters(
     before: string | null,
     after: string | null,
     options: Options = {},
-): Generator<void, TextDiffResult, void> {
+): Generator<void, CharacterTextDiffResult, void> {
     if ((before?.length ?? 0) + (after?.length ?? 0) > 400_000)
         return TOO_LARGE;
     const oldLines = splitLines(before);
@@ -236,6 +246,17 @@ export function* diffTextWithCharacters(
     const located = yield* diffSequence(oldLines, newLines, work);
     if (located.status !== "complete") return TOO_LARGE;
     const chunks: TextDiffChunk[] = [];
+    const spans: TextDiffSpan[] = [];
+    const lastContextIndex = located.chunks.reduce(
+        (last, part, index) => (part.type === "equal" ? index : last),
+        -1,
+    );
+    const appendSpan = (type: TextDiffSpan["type"], text: string) => {
+        if (!text) return;
+        const last = spans[spans.length - 1];
+        if (last?.type === type) last.text += text;
+        else spans.push({ type, text });
+    };
     let added = 0;
     let removed = 0;
     let spansCount = 0;
@@ -243,6 +264,9 @@ export function* diffTextWithCharacters(
         const chunk = located.chunks[index];
         if (chunk.type === "equal") {
             chunks.push(chunk);
+            appendSpan("equal", chunk.lines.join("\n"));
+            // 中间变更段归属尾换行，末尾变更段归属首换行，避免全文漏掉/重复分隔符。
+            if (index < lastContextIndex) appendSpan("equal", "\n");
             index++;
             continue;
         }
@@ -274,6 +298,8 @@ export function* diffTextWithCharacters(
         removed += refined.removed;
         spansCount += refined.chunks.length;
         if (spansCount > 1_200) return TOO_LARGE;
+        for (const part of refined.chunks)
+            appendSpan(part.type, part.lines.join(""));
         for (const type of ["delete", "insert"] as const) {
             const lines = type === "delete" ? deleted : inserted;
             if (!lines.length) continue;
@@ -301,7 +327,16 @@ export function* diffTextWithCharacters(
         if (++work.used > work.limit) return TOO_LARGE;
         if (work.used % work.batch === 0) yield;
     }
-    return { status: "complete", chunks, added, removed };
+    const changes = spans.reduce(
+        (count, span, index) =>
+            count +
+            (span.type !== "equal" &&
+            (index === 0 || spans[index - 1].type === "equal")
+                ? 1
+                : 0),
+        0,
+    );
+    return { status: "complete", chunks, spans, added, removed, changes };
 }
 
 /** 差异前后各保留两行；相邻差异的上下文合并，长段可展开。 */

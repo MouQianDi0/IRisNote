@@ -3,7 +3,13 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
 /** 延迟出现转圈，快速读取不闪烁；任务改变或卸载时清理计时器。 */
-export default function NoteHistoryLoading({ label }: { label: string }) {
+export default function NoteHistoryLoading({
+    label,
+    compact = false,
+}: {
+    label: string;
+    compact?: boolean;
+}) {
     const [shown, setShown] = useState(false);
     useEffect(() => {
         let cancelled = false;
@@ -19,8 +25,12 @@ export default function NoteHistoryLoading({ label }: { label: string }) {
         <View
             accessibilityState={{ busy: true }}
             accessibilityLabel={label}
-            style={{ minHeight: 160 }}
-            className="items-center justify-center gap-2"
+            style={{ minHeight: compact ? 32 : 160 }}
+            className={
+                compact
+                    ? "flex-row items-center gap-2"
+                    : "items-center justify-center gap-2"
+            }
         >
             {shown && (
                 <>

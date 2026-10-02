@@ -303,6 +303,38 @@ test("精化字符与行定位共用预算，超限不返回统计，字符阶�
     assert.equal(task.next().done, true);
 });
 
+test("改动处数按连续增删计数，替换计一处，共有字符分隔两处", () => {
+    for (const [before, after, changes] of [
+        [null, "", 0],
+        ["相同", "相同", 0],
+        ["", "甲乙", 1],
+        ["甲乙", "", 1],
+        ["上午", "下午", 1],
+        ["甲乙", "丙丁", 1],
+        ["明天上午去北京", "明天下午去上海", 2],
+        ["甲\n乙", "甲乙", 1],
+        ["甲\n", "甲\n\n", 1],
+        ["首\n甲\n中\n乙\n尾", "首\n丙\n中\n丁\n尾", 2],
+        ["甲\r\n乙", "甲\n乙", 0],
+        ["🙂甲中乙", "👀甲中丙", 2],
+    ]) {
+        const result = characterDiff(before, after);
+        assert.equal(result.status, "complete");
+        assert.equal(result.changes, changes, JSON.stringify([before, after]));
+        for (const [type, source] of [
+            ["insert", before],
+            ["delete", after],
+        ])
+            assert.equal(
+                result.spans
+                    .filter((span) => span.type !== type)
+                    .map((span) => span.text)
+                    .join(""),
+                (source ?? "").replace(/\r\n/g, "\n"),
+            );
+    }
+});
+
 function contents(node) {
     if (typeof node === "string") return node;
     if (Array.isArray(node)) return node.map(contents).join("");
@@ -321,6 +353,7 @@ function nodes(node, predicate) {
 }
 
 const native = {
+    Switch: "Switch",
     FlatList: "FlatList",
     Pressable: "Pressable",
     Text: "Text",
@@ -376,34 +409,82 @@ function component(diffOverride) {
         );
     return { h, props, render, finish, text };
 }
-test("标题和分类单独变化不计正文字数，全部一致与正文一致分别提示", () => {
-    const { h, props, render, finish, text } = component();
-    assert.equal(render().type, "HistoryLoading");
+function bodyText(view) {
+    return view.props.data
+        .map((row) => row.spans.map((span) => span.text).join(""))
+        .join("");
+}
+function annotated(view, predicate = () => true) {
+    const element = find(
+        view,
+        (node) =>
+            typeof node.type === "function" &&
+            node.props.spans &&
+            predicate(node.props.spans),
+    );
+    assert.ok(element, "应存在全文内的标注组件");
+    return element.type(element.props);
+}
+test("标题和分类变化不计正文处数，标题和正文单独缓存", () => {
+    const calls = [];
+    const { h, props, render, finish, text } = component({
+        ...utility,
+        diffTextWithCharacters: function* (before, after) {
+            calls.push([before, after]);
+            return yield* utility.diffTextWithCharacters(before, after);
+        },
+    });
+    let view = render();
+    assert.equal(view.type, "FlatList");
+    assert.equal(bodyText(view), "正文");
+    assert.equal(
+        find(view, (node) => node.type === "HistoryLoading").props.compact,
+        true,
+    );
     assert.ok(text(finish(), "与当前内容一致"));
+    calls.length = 0;
     props.currentValue.title = "新标题";
     render();
-    let view = finish();
+    view = finish();
     assert.ok(text(view, "正文无变化"));
-    assert.ok(text(view, "标题"));
-    assert.ok(text(view, "正文变化：新增 0 字符，删除 0 字符"));
-    props.currentValue.title = "标题";
+    assert.ok(text(view, "正文变化：0 处，新增 0 字符，删除 0 字符"));
+    assert.deepEqual(calls, [["标题", "新标题"]]);
+    assert.equal(
+        contents(
+            annotated(view, (spans) =>
+                spans.some((span) => span.type === "insert"),
+            ),
+        ),
+        "新标题",
+    );
     props.currentValue.categoryId = 2;
-    render();
-    assert.ok(text(finish(), "分类"));
-    assert.equal(h.timers.size, 0, "仅元数据变化不重新计算正文");
+    view = render();
+    assert.ok(text(view, "分类：默认分类 → 分类2"));
+    assert.equal(h.timers.size, 0);
     h.cleanup();
 });
-test("输入更新即隐藏旧结果，分批计算期间关闭可取消、迟到批次不回写", () => {
+test("批次计算时显示历史全文，输入更新隐藏旧统计，卸载取消迟到批次", () => {
     const { h, props, render, finish } = component();
     render();
     finish();
     props.currentValue.content = Array.from(
-        { length: 3_000 },
-        (_, i) => `新${i}`,
+        { length: 3000 },
+        (_, i) => "新" + i,
     ).join("\n");
-    assert.equal(render().type, "HistoryLoading");
+    let view = render();
+    assert.equal(bodyText(view), "正文");
+    assert.ok(find(view, (node) => node.type === "HistoryLoading"));
+    assert.equal(
+        find(
+            view,
+            (node) =>
+                node.type === "Text" &&
+                String(node.props.children).startsWith("正文变化："),
+        ),
+        undefined,
+    );
     h.fire([...h.timers.keys()][0]);
-    assert.equal(render().type, "HistoryLoading");
+    assert.equal(bodyText(render()), "正文");
     const late = [...h.timers.values()][0].callback;
     h.cleanup();
     const writes = h.writes;
@@ -411,10 +492,11 @@ test("输入更新即隐藏旧结果，分批计算期间关闭可取消、迟�
     assert.equal(h.writes, writes);
     assert.equal(h.timers.size, 0);
 });
-test("快速切换版本只接受最新任务，结果缓存不会重复计算", () => {
+test("快速切换版本只接受最新任务，并将差异标注恢复为默认开启", () => {
     const { h, props, render, finish, text } = component();
     render();
     const oldBatch = [...h.timers.values()][0].callback;
+    byLabel(render(), "差异标注").props.onValueChange(false);
     props.selected = {
         ...props.selected,
         revision_id: "另一版",
@@ -422,7 +504,9 @@ test("快速切换版本只接受最新任务，结果缓存不会重复计算",
     };
     render();
     oldBatch();
-    assert.ok(text(finish(), "正文变化：新增 0 字符，删除 1 字符"));
+    const view = finish();
+    assert.equal(byLabel(view, "差异标注").props.value, true);
+    assert.ok(text(view, "正文变化：1 处，新增 0 字符，删除 1 字符"));
     const writes = h.writes;
     render();
     render();
@@ -430,113 +514,103 @@ test("快速切换版本只接受最新任务，结果缓存不会重复计算",
     assert.equal(h.timers.size, 0);
     h.cleanup();
 });
-test("折叠内容可展开收起，输入变化后不会沿用旧展开状态", () => {
+test("默认直接显示全部未变化正文，取消行号、历史当前标签和折叠入口", () => {
     const { h, props, render, finish } = component();
     props.selected.content = Array.from(
-        { length: 12 },
-        (_, i) => `行${i}`,
+        { length: 100 },
+        (_, i) => "行" + i,
     ).join("\n");
-    props.currentValue.content = `${props.selected.content}\n新增`;
+    props.currentValue.content = props.selected.content + "\n新增";
     render();
     const view = finish();
-    byLabel(view, "展开未改动 10 行").props.onPress();
+    assert.equal(view.props.data.length, 101);
+    assert.equal(bodyText(view), props.currentValue.content);
+    assert.equal(byLabel(view, "差异标注").props.value, true);
     assert.equal(
-        byLabel(render(), "收起未改动 10 行").props.accessibilityState.expanded,
-        true,
+        find(view, (node) =>
+            node.props?.accessibilityLabel?.includes("未改动"),
+        ),
+        undefined,
     );
-    byLabel(render(), "收起未改动 10 行").props.onPress();
-    assert.ok(byLabel(render(), "展开未改动 10 行"));
-    byLabel(render(), "展开未改动 10 行").props.onPress();
-    props.currentValue.content += "二";
-    render();
-    assert.ok(byLabel(finish(), "展开未改动 10 行"));
+    assert.equal(
+        find(
+            view,
+            (node) =>
+                node.props?.children === "历史" ||
+                node.props?.children === "当前",
+        ),
+        undefined,
+    );
+    assert.ok(
+        view.props.data.every(
+            (row) =>
+                !("oldLine" in row) && !("newLine" in row) && !("kind" in row),
+        ),
+    );
     h.cleanup();
 });
-test("折叠条从上下各展开20行，接近末尾只展开剩余行，全局可重新折叠", () => {
-    const { h, props, render, finish } = component();
-    props.selected.content = Array.from(
-        { length: 50 },
-        (_, i) => `行${i}`,
-    ).join("\n");
-    props.currentValue.content = `${props.selected.content}\n新增`;
+test("关闭标注立即显示原始历史全文，再开启复用结果并保留完整上下文", () => {
+    const { h, props, render, finish, text } = component();
+    props.selected.content = "明天上午去北京\n不变";
+    props.currentValue.content = "明天下午去上海\n不变";
     render();
     let view = finish();
-    const folded = () => render().props.data.find((row) => row.kind === "fold");
-    assert.equal(folded().hidden, 48);
-    byLabel(view, "从上方展开未改动行").props.onPress();
+    assert.ok(text(view, "正文变化：2 处，新增 3 字符，删除 3 字符"));
+    byLabel(view, "差异标注").props.onValueChange(false);
     view = render();
-    assert.equal(folded().hidden, 28);
-    assert.equal(folded().oldLine, 21);
-    byLabel(view, "从下方展开未改动行").props.onPress();
-    view = render();
-    assert.equal(folded().hidden, 8);
-    byLabel(view, "从上方展开未改动行").props.onPress();
-    view = render();
-    assert.equal(folded().hidden, 0);
-    assert.ok(byLabel(view, "收起未改动 48 行"));
-    byLabel(view, "重新折叠未改动行").props.onPress();
-    assert.equal(folded().hidden, 48);
-    assert.equal(
-        render().props.data.filter((row) => row.kind === "line").length,
-        3,
+    assert.equal(bodyText(view), props.selected.content);
+    assert.ok(
+        view.props.data.every((row) =>
+            row.spans.every((span) => span.type === "equal"),
+        ),
     );
+    assert.equal(h.timers.size, 0);
+    byLabel(view, "差异标注").props.onValueChange(true);
+    view = render();
+    assert.equal(bodyText(view), "明天上下午去北京上海\n不变");
+    assert.equal(h.timers.size, 0);
     h.cleanup();
 });
-
-test("长正文展开全部后使用虚拟列表行数据，两侧末行号保持准确", () => {
+test("长正文保持全部2000行数据并使用虚拟列表，修改段共有文字不复制", () => {
     const { h, props, render, finish } = component();
     props.selected.content = Array.from(
         { length: 2000 },
-        (_, i) => `旧${i}`,
+        (_, i) => "旧" + i,
     ).join("\n");
     props.currentValue.content = props.selected.content.replace(
         "旧1000",
         "新1000",
     );
     render();
-    let view = finish();
-    for (const fold of view.props.data.filter((row) => row.kind === "fold")) {
-        byLabel(render(), `展开未改动 ${fold.hidden} 行`).props.onPress();
-    }
-    view = render();
+    const view = finish();
     assert.equal(view.type, "FlatList");
+    assert.equal(view.props.data.length, 2000);
     assert.equal(
-        view.props.data.filter((row) => row.kind === "line").length,
-        2001,
-    );
-    assert.equal(
-        view.props.data
-            .filter((row) => row.kind === "line" && row.oldLine != null)
-            .at(-1).oldLine,
-        2000,
-    );
-    assert.equal(
-        view.props.data
-            .filter((row) => row.kind === "line" && row.newLine != null)
-            .at(-1).newLine,
-        2000,
+        bodyText(view),
+        props.selected.content.replace("旧1000", "旧新1000"),
     );
     assert.ok(view.props.initialNumToRender < view.props.data.length);
     h.cleanup();
 });
-
-test("超预算显示全文入口提示且无错误统计，计算失败可重试", () => {
+test("计算失败或超预算继续显示历史全文，不展示局部统计，并可重试", () => {
     let fail = true;
-    const override = {
+    const { h, render, finish, text } = component({
         ...utility,
         diffTextWithCharacters: function* () {
             if (fail) throw new Error("计算故障");
             return { status: "too-large" };
         },
-    };
-    const { h, render, finish, text } = component(override);
+    });
     render();
-    assert.ok(text(finish(), "生成对比失败，请重试或查看历史全文"));
+    let view = finish();
+    assert.equal(bodyText(view), "正文");
+    assert.ok(text(view, "生成对比失败，历史全文已保留，请重试"));
     fail = false;
-    byLabel(render(), "重新生成对比").props.onPress();
-    assert.equal(render().type, "HistoryLoading");
-    const view = finish();
-    assert.ok(text(view, "正文差异较大，请切换历史全文查看"));
+    byLabel(view, "重新生成对比").props.onPress();
+    assert.equal(bodyText(render()), "正文");
+    view = finish();
+    assert.ok(text(view, "正文差异较大，已显示历史全文，暂无法统计和标注"));
+    assert.equal(bodyText(view), "正文");
     assert.equal(
         find(
             view,
@@ -548,135 +622,105 @@ test("超预算显示全文入口提示且无错误统计，计算失败可重�
     );
     h.cleanup();
 });
-test("变化块朗读实际增删字符，换行有可选择的可见标记", () => {
+test("正文只标注变化的字，共有文字只出现一次，无增删前缀，全文可选择", () => {
     const { h, props, render, finish } = component();
-    props.currentValue.content = "\n";
-    render();
-    const view = finish();
-    const element = find(view, (node) => node.props?.type === "insert");
-    const rendered = element.type(element.props);
-    assert.equal(rendered.props.accessibilityLabel, "新增： 换行 ");
-    assert.equal(rendered.props.selectable, true);
-    assert.equal(contents(rendered), "+ ↵");
-    h.cleanup();
-});
-test("正文只高亮替换的字，未改字符保持普通样式，可选择完整上下文", () => {
-    const { h, props, render, finish, text } = component();
     props.selected.content = "明天上午开会";
     props.currentValue.content = "明天下午开会";
     render();
-    const view = finish();
-    assert.ok(text(view, "正文变化：新增 1 字符，删除 1 字符"));
-    for (const [type, changed, label] of [
-        ["delete", "上", "删除：上"],
-        ["insert", "下", "新增：下"],
-    ]) {
-        const row = find(view, (node) => node.props?.type === type);
-        const rendered = row.type(row.props);
-        assert.equal(rendered.props.selectable, true);
-        assert.equal(rendered.props.accessibilityLabel, label);
-        assert.equal(rendered.props.style.color, undefined);
-        assert.equal(rendered.props.style.backgroundColor, undefined);
-        const colored = nodes(
-            rendered,
-            (node) => node.props?.style?.backgroundColor,
-        );
-        assert.deepEqual(colored.map(contents), [changed]);
-        assert.ok(
-            contents(rendered).includes(
-                type === "delete" ? "明天上午开会" : "明天下午开会",
-            ),
-        );
-    }
+    const rendered = annotated(finish(), (spans) =>
+        spans.some((span) => span.text === "上"),
+    );
+    assert.equal(rendered.props.selectable, true);
+    assert.equal(contents(rendered), "明天上下午开会");
+    const colored = nodes(
+        rendered,
+        (node) => node.props?.style?.backgroundColor,
+    );
+    assert.deepEqual(colored.map(contents), ["上", "下"]);
+    assert.deepEqual(
+        colored.map((node) => node.props.accessibilityLabel),
+        ["删除：上", "新增：下"],
+    );
+    assert.deepEqual(
+        colored.map((node) => node.props.style.textDecorationLine),
+        ["line-through", "underline"],
+    );
+    assert.deepEqual(
+        colored.map((node) => node.props.style.color),
+        [theme.semanticColors.destructive, theme.semanticColors.success],
+    );
+    assert.equal(rendered.props.style.color, undefined);
     h.cleanup();
 });
-
-test("仅插入或仅删除字符时，共有一侧不显示增删颜色或空朗读标签", () => {
-    for (const [
-        before,
-        after,
-        plainType,
-        changedType,
-        plainLabel,
-        changedLabel,
-    ] of [
-        ["甲乙", "甲新乙", "delete", "insert", "历史：甲乙", "新增：新"],
-        ["甲旧乙", "甲乙", "insert", "delete", "当前：甲乙", "删除：旧"],
+test("仅新增或仅删除字符时，共有文字保持普通样式且不带历史当前标签", () => {
+    for (const [before, after, type, changed] of [
+        ["甲乙", "甲新乙", "insert", "新"],
+        ["甲旧乙", "甲乙", "delete", "旧"],
     ]) {
         const { h, props, render, finish } = component();
         props.selected.content = before;
         props.currentValue.content = after;
         render();
-        const view = finish();
-        const plain = find(view, (node) => node.props?.type === plainType);
-        const displayed = plain.type(plain.props);
-        assert.equal(displayed.props.style, undefined);
-        assert.equal(displayed.props.accessibilityLabel, plainLabel);
-        assert.equal(
-            nodes(displayed, (node) => node.props?.style?.backgroundColor)
-                .length,
-            0,
+        const displayed = annotated(finish(), (spans) =>
+            spans.some((span) => span.type === type),
         );
-        const changed = find(view, (node) => node.props?.type === changedType);
+        const colored = nodes(
+            displayed,
+            (node) => node.props?.style?.backgroundColor,
+        );
+        assert.deepEqual(colored.map(contents), [changed]);
         assert.equal(
-            changed.type(changed.props).props.accessibilityLabel,
-            changedLabel,
+            colored[0].props.accessibilityLabel,
+            (type === "insert" ? "新增" : "删除") + "：" + changed,
+        );
+        const common = nodes(
+            displayed,
+            (node) =>
+                node.type === "Text" &&
+                typeof node.props.children === "string" &&
+                !node.props.style,
+        );
+        assert.equal(common.map(contents).join(""), "甲乙");
+        assert.ok(
+            common.every((node) => node.props.accessibilityLabel === undefined),
         );
         h.cleanup();
     }
 });
-
-test("标题字符精化单独缓存，改标题不重算正文，分类变化不触发任务", () => {
-    const calls = [];
-    const { h, props, render, finish, text } = component({
-        ...utility,
-        diffTextWithCharacters: function* (before, after) {
-            calls.push([before, after]);
-            return yield* utility.diffTextWithCharacters(before, after);
-        },
-    });
-    props.selected.title = "工作记录";
-    props.currentValue.title = "工作记录";
-    render();
-    finish();
-    calls.length = 0;
-    props.currentValue.title = "工作笔录";
-    assert.equal(render().type, "HistoryLoading");
-    const view = finish();
-    assert.deepEqual(calls, [["工作记录", "工作笔录"]]);
-    assert.ok(text(view, "正文变化：新增 0 字符，删除 0 字符"));
-    const old = find(view, (node) => node.props?.type === "delete");
-    assert.equal(old.type(old.props).props.accessibilityLabel, "删除：记");
-    const next = find(view, (node) => node.props?.type === "insert");
-    assert.equal(next.type(next.props).props.accessibilityLabel, "新增：笔");
-    props.currentValue.categoryId = 2;
-    render();
-    assert.equal(h.timers.size, 0);
-    assert.equal(calls.length, 1);
-    h.cleanup();
-});
-
-test("空格和制表符增删有字符高亮和朗读说明", () => {
-    const { h, props, render, finish, text } = component();
-    props.selected.content = "a b";
-    props.currentValue.content = "a\tb";
-    render();
-    const view = finish();
-    assert.ok(text(view, "正文变化：新增 1 字符，删除 1 字符"));
-    for (const [type, marker, label] of [
-        ["delete", "·", "删除： 空格 "],
-        ["insert", "⇥", "新增： 制表符 "],
+test("空格、制表符和换行有精确的可见标记及朗读说明", () => {
+    for (const [before, after, marker, label] of [
+        ["ab", "a b", "·", "新增： 空格 "],
+        ["ab", "a\tb", "⇥", "新增： 制表符 "],
+        ["ab", "a\nb", "↵", "新增： 换行 "],
     ]) {
-        const row = find(view, (node) => node.props?.type === type);
-        const rendered = row.type(row.props);
-        assert.equal(rendered.props.accessibilityLabel, label);
-        assert.deepEqual(
-            nodes(rendered, (node) => node.props?.style?.backgroundColor).map(
-                contents,
-            ),
-            [marker],
+        const { h, props, render, finish } = component();
+        props.selected.content = before;
+        props.currentValue.content = after;
+        render();
+        const displayed = annotated(finish(), (spans) =>
+            spans.some((span) => span.type === "insert"),
         );
+        const inserted = nodes(
+            displayed,
+            (node) => node.props?.style?.backgroundColor,
+        );
+        assert.deepEqual(inserted.map(contents), [marker]);
+        assert.equal(inserted[0].props.accessibilityLabel, label);
+        h.cleanup();
     }
+});
+test("NULL历史正文显示空正文，默认标注可显示当前新增全文", () => {
+    const { h, props, render, finish, text } = component();
+    props.selected.content = null;
+    props.currentValue.content = "新增";
+    let view = render();
+    assert.ok(text(view, "（空正文）"));
+    view = finish();
+    assert.equal(bodyText(view), "新增");
+    byLabel(view, "差异标注").props.onValueChange(false);
+    view = render();
+    assert.ok(text(view, "（空正文）"));
+    assert.equal(view.props.data.length, 0);
     h.cleanup();
 });
 

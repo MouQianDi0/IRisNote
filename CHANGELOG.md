@@ -1,3 +1,13 @@
+## 2026-10-02 15:32:28 | 优化代码：历史版本直达全文标注详情并统计改动处数
+
+- 变更概述：历史列表点击版本直接进入详情，默认读全文并在正文中标注精确增删；移除双侧行号/历史当前标签/折叠，正文增加改动处数，恢复确认迁至详情页。
+- 修改文件：src/features/notes/components/viewer/note-history-popover.tsx；src/features/notes/components/viewer/note-history-diff.tsx；src/features/notes/components/viewer/note-history-loading.tsx；src/features/notes/screens/NoteHistoryComparisonScreen.tsx；src/features/notes/services/note-history-comparison-session.ts；src/features/notes/utils/note-history-diff-rows.ts；src/shared/utils/text-diff.ts；tests/editor/history-diff.test.cjs；tests/editor/history-ui.test.cjs；tests/editor/history-comparison.test.cjs；docs/进度与验证/项目编辑器进度.md；docs/进度与验证/IRisNote编辑器核心架构与实施计划.md；docs/进度与验证/IRisNote编辑器阶段3保存版本边界验证清单.md；docs/logs/2026-10-02-note-history-inline-full.md；CHANGELOG.md。
+- 具体内容：共有正文只显示一次，新增绿色下划线、删除红色删除线；差异标注默认开启，关闭即读历史原文，所有未变段落保留，FlatList按段落虚拟化。正文连续增删计一处，相邻替换合并，标题/分类不计正文；计算时和超限/错误时仍可读历史全文，延迟150ms的紧凑加载/取消/缓存/重试保留。详情页使用原编辑器恢复回调、版本指针与草稿锁/事务，二次确认关联快照，保护重复点击、关闭、系统返回、账号变化和卸载；成功返回，失败保留当前输入。无新依赖、迁移或网络接口。
+- 验证：改前/后typecheck通过；相关25+9+16+24+37=111项全部通过，196组跨行双向重建/增删统计、2000行完整显示、原行/字符各961组独立LCS核对通过。最终获准环境npm run check通过（789项：787通过、2跳过、0失败；类型/主题通过，Lint仅既有设置页1个警告）；git diff --check通过、无冲突标记。真机视觉/动画/导航/手势/大字模式/选择复制/朗读、Android/iOS/Web构建及真实云端恢复同步未执行。
+
+---
+
+
 ## 2026-10-02 08:52:14 | 新增功能：编辑时间历史入口与独立正文对比页
 
 - 变更概述：笔记详情显示最后编辑时间并作为历史入口，创建时间在历史面板查看；正文对比进入独立页面，增加源行号与 IDE 风格分段折叠。

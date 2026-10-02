@@ -9,6 +9,12 @@ type ComparisonInput = {
     createdAt: string;
     updatedAt: string | null;
     categories: readonly { id: number; name: string }[];
+    expectedRevisionId: string | null;
+    restoreBlockedReason?: string;
+    onRestore: (
+        revisionId: string,
+        expectedRevisionId: string | null,
+    ) => Promise<void>;
 };
 export type NoteHistoryComparisonSession = Readonly<ComparisonInput>;
 type Entry = { value: NoteHistoryComparisonSession; checkAccess: () => void };

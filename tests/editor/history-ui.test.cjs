@@ -144,25 +144,23 @@ test("历史气泡防重复打开、返回与外部关闭，关闭后等待动�
     h.cleanup();
 });
 
-test("详情保留可复制全文和恢复，正文对比关闭气泡并 push 草稿快照", () => {
-    let restores = 0;
-    const { h, props, pushes, render, openDetail } = popover(async () => {
-        restores++;
-    });
-    let view = openDetail();
-    assert.ok(
-        find(
-            view,
-            (node) =>
-                node.props?.children === "旧正文" && node.props.selectable,
-        ),
+const versionRow = (view) =>
+    find(
+        view,
+        (node) =>
+            node.type === "Pressable" &&
+            node.props.accessibilityLabel?.startsWith("旧标题，"),
     );
-    byLabel(view, "恢复此版本").props.onPress();
-    byLabel(render(), "取消").props.onPress();
-    assert.ok(byLabel(render(), "恢复此版本"));
-    const button = byLabel(render(), "查看正文对比");
-    button.props.onPress();
-    button.props.onPress();
+test("点击版本直接进入详情页，不读取中间详情，导航只携带短ID和实时草稿快照", () => {
+    const onRestore = async () => {};
+    const { h, history, props, pushes, render } = popover(onRestore);
+    history.select = () => {
+        throw new Error("不能经过旧的气泡详情");
+    };
+    trigger(render()).props.onPress();
+    const row = versionRow(render());
+    row.props.onPress();
+    row.props.onPress();
     assert.equal(pushes.length, 1);
     assert.equal(panel(render()).props.visible, false);
     assert.equal(pushes[0].pathname, "/pages/note/history/[id]");
@@ -179,9 +177,12 @@ test("详情保留可复制全文和恢复，正文对比关闭气泡并 push �
     );
     assert.equal(snapshot.currentValue.content, "未保存正文");
     assert.equal(snapshot.updatedAt, props.updatedAt);
+    assert.equal(snapshot.expectedRevisionId, "当前版本");
+    assert.equal(snapshot.onRestore, onRestore);
     props.currentValue.content = "返回后继续输入";
     assert.equal(snapshot.currentValue.content, "未保存正文");
-    assert.equal(restores, 0);
+    assert.equal(byLabel(render(), "查看正文对比"), undefined);
+    assert.equal(byLabel(render(), "恢复此版本"), undefined);
     h.cleanup();
     assert.equal(
         comparison.readNoteHistoryComparison(
@@ -193,139 +194,65 @@ test("详情保留可复制全文和恢复，正文对比关闭气泡并 push �
         null,
     );
 });
-
-test("恢复进行中拒绝重复点击和关闭，失败后保留气泡并允许重试", async () => {
-    let restores = 0;
-    const pending = deferred();
-    const { h, render, openDetail } = popover(async (id, current) => {
-        restores++;
-        assert.equal(id, "旧版本");
-        assert.equal(current, "当前版本");
-        return pending.promise;
-    });
-    byLabel(openDetail(), "恢复此版本").props.onPress();
-    const button = byLabel(render(), "确认恢复");
-    button.props.onPress();
-    button.props.onPress();
-    assert.equal(restores, 1);
-    panel(render()).props.onClose();
-    assert.equal(panel(render()).props.visible, true);
-    assert.equal(byLabel(render(), "正在恢复").props.disabled, true);
-    assert.equal(byLabel(render(), "正在恢复").props.leading.type, "Spinner");
-    pending.reject(new Error("磁盘写入失败"));
-    await tick();
-    assert.equal(panel(render()).props.visible, true);
-    assert.ok(
-        find(render(), (node) => node.props?.children === "磁盘写入失败"),
-    );
-    assert.equal(byLabel(render(), "确认恢复").props.disabled, false);
-    assert.equal(byLabel(render(), "确认恢复").props.leading, undefined);
-    h.cleanup();
-});
-
-test("草稿冲突禁用恢复，当前版本也不能重复恢复", () => {
-    const { h, history, props, render, openDetail } = popover();
-    props.restoreBlockedReason = "请先处理草稿冲突";
-    assert.equal(byLabel(openDetail(), "恢复此版本").props.disabled, true);
-    props.restoreBlockedReason = undefined;
-    history.selected.revision_id = "当前版本";
-    assert.equal(byLabel(render(), "已是当前版本").props.disabled, true);
-    h.cleanup();
-});
-
-test("内容相同的旧版本仍可恢复，当前版本与未保存草稿有差异仍禁用恢复", () => {
-    const { h, history, props, render, openDetail } = popover();
-    openDetail();
-    props.currentValue = {
-        title: history.selected.title,
-        content: history.selected.content,
-        categoryId: history.selected.category_id,
-    };
-    assert.equal(byLabel(render(), "恢复此版本").props.disabled, false);
-    history.selected.revision_id = "当前版本";
-    props.currentValue.content = "尚未保存的新内容";
-    const view = render();
-    assert.equal(byLabel(view, "已是当前版本").props.disabled, true);
-    assert.equal(byLabel(view, "查看正文对比").props.disabled, false);
-    h.cleanup();
-});
-
-test("详情读取中禁用对比和恢复，读取失败结束加载并允许刷新", () => {
-    const { h, history, render, openDetail } = popover();
-    history.select = function () {
-        this.loading = true;
-        this.selected = null;
-        return Promise.resolve();
-    };
-    let view = openDetail();
-    assert.equal(byLabel(view, "查看正文对比").props.disabled, true);
-    byLabel(view, "查看正文对比").props.onPress();
-    assert.equal(
-        find(view, (node) => node.type === "HistoryLoading").props.label,
-        "正在读取版本内容…",
-    );
-    const restore = byLabel(view, "恢复此版本");
-    assert.equal(restore.props.disabled, true);
-    restore.props.onPress();
-    assert.ok(byLabel(render(), "返回上一级历史"));
-    assert.equal(byLabel(render(), "确认恢复"), undefined);
-    history.loading = false;
-    history.error = "读取失败";
-    view = render();
-    assert.equal(
-        find(view, (node) => node.type === "HistoryLoading"),
-        undefined,
-    );
-    assert.ok(byLabel(view, "刷新历史列表"));
-    panel(view).props.onClose();
-    assert.equal(panel(render()).props.visible, false);
-    h.cleanup();
-});
-
-test("对比导航失败保留全文和当前输入，允许重试", () => {
-    const { h, props, router, render, openDetail, pushes } = popover();
-    openDetail();
+test("详情导航失败保留版本列表和当前输入，点击原版本可重试", () => {
+    const { h, props, router, render, pushes } = popover();
+    trigger(render()).props.onPress();
     router.push = () => {
         throw new Error("路由失败");
     };
-    byLabel(render(), "查看正文对比").props.onPress();
+    versionRow(render()).props.onPress();
     assert.equal(panel(render()).props.visible, true);
     assert.ok(
         find(
             render(),
             (node) =>
-                node.props?.children === "打开对比失败，当前编辑已保留，请重试",
+                node.props?.children ===
+                "打开版本详情失败，当前编辑已保留，请重试",
         ),
     );
     assert.equal(props.currentValue.content, "未保存正文");
     router.push = (route) => pushes.push(route);
-    byLabel(render(), "查看正文对比").props.onPress();
+    versionRow(render()).props.onPress();
     assert.equal(pushes.length, 1);
-    h.cleanup();
-});
-
-test("恢复完成前卸载，迟到结果不写组件状态", async () => {
-    const pending = deferred();
-    const { h, render, openDetail } = popover(() => pending.promise);
-    byLabel(openDetail(), "恢复此版本").props.onPress();
-    byLabel(render(), "确认恢复").props.onPress();
-    h.cleanup();
-    const writes = h.writes;
-    pending.resolve();
-    await tick();
-    assert.equal(h.writes, writes);
-});
-
-test("恢复成功关闭气泡并失效旧读取，动画结束后入口可再次打开", async () => {
-    const { h, history, render, openDetail } = popover();
-    byLabel(openDetail(), "恢复此版本").props.onPress();
-    byLabel(render(), "确认恢复").props.onPress();
-    await tick();
     assert.equal(panel(render()).props.visible, false);
-    assert.equal(history.invalidations, 1);
-    [...h.timers.values()][0].callback();
+    h.cleanup();
+});
+test("保存或列表读取期间禁用导航，读取失败可刷新，关闭取消迟到读取", () => {
+    const { h, props, history, render, pushes } = popover();
+    props.disabled = true;
     trigger(render()).props.onPress();
-    assert.equal(panel(render()).props.visible, true);
+    assert.equal(history.refreshes, 0);
+    props.disabled = false;
+    trigger(render()).props.onPress();
+    history.loading = true;
+    assert.equal(versionRow(render()).props.disabled, true);
+    versionRow(render()).props.onPress();
+    assert.equal(pushes.length, 0);
+    assert.equal(
+        find(render(), (node) => node.type === "HistoryLoading").props.label,
+        "正在读取历史版本…",
+    );
+    history.loading = false;
+    history.error = "读取失败";
+    byLabel(render(), "刷新历史列表").props.onPress();
+    assert.equal(history.refreshes, 2);
+    panel(render()).props.onClose();
+    assert.equal(history.invalidations, 1);
+    assert.equal(panel(render()).props.visible, false);
+    h.cleanup();
+});
+test("恢复冲突原因随原编辑页回调传入详情，仍允许打开全文", () => {
+    const { h, props, render, pushes, openDetail } = popover();
+    props.restoreBlockedReason = "请先处理草稿冲突";
+    openDetail();
+    const snapshot = comparison.readNoteHistoryComparison(
+        pushes[0].params.token,
+        1,
+        11,
+        "旧版本",
+    );
+    assert.equal(snapshot.restoreBlockedReason, "请先处理草稿冲突");
+    assert.equal(panel(render()).props.visible, false);
     h.cleanup();
 });
 
