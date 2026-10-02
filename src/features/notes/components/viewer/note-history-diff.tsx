@@ -1,14 +1,18 @@
 import { semanticColors } from "@/shared/theme";
 import {
     diffTextWithCharacters,
-    textDiffSections,
     type TextDiffChunk,
     type TextDiffResult,
 } from "@/shared/utils/text-diff";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import type { NoteDraftValue } from "../../data/note-draft.repository";
 import type { NoteRevision } from "../../data/note-revision.repository";
+import {
+    historyDiffRows,
+    type HistoryDiffReveal,
+    type HistoryDiffRow,
+} from "../../utils/note-history-diff-rows";
 import NoteHistoryLoading from "./note-history-loading";
 
 type Props = {
@@ -24,7 +28,12 @@ type Completion = {
     error: boolean;
 };
 
-function DiffChunk({ type, lines, spans }: TextDiffChunk) {
+function DiffChunk({
+    type,
+    lines,
+    spans,
+    inlineNewlines = false,
+}: TextDiffChunk & { inlineNewlines?: boolean }) {
     const changed =
         type !== "equal" &&
         (!spans || spans.some((span) => span.type !== "equal"));
@@ -89,7 +98,7 @@ function DiffChunk({ type, lines, spans }: TextDiffChunk) {
                         >
                             {span.type === "equal"
                                 ? span.text
-                                : visibleCharacters(span.text)}
+                                : visibleCharacters(span.text, inlineNewlines)}
                         </Text>
                     ))}
                 </>
@@ -100,11 +109,11 @@ function DiffChunk({ type, lines, spans }: TextDiffChunk) {
     );
 }
 
-const visibleCharacters = (text: string) =>
+const visibleCharacters = (text: string, inlineNewlines: boolean) =>
     text
         .replace(/ /g, "·")
         .replace(/\t/g, "⇥")
-        .replace(/\n/g, "↵\n")
+        .replace(/\n/g, inlineNewlines ? "↵" : "↵\n")
         .replace(/\r/g, "␍");
 const describeCharacters = (text: string) =>
     text
@@ -173,24 +182,28 @@ export default function NoteHistoryDiff({
     const [retry, setRetry] = useState(0);
     const [expanded, setExpanded] = useState<{
         input: Input;
-        ids: number[];
+        reveals: Record<number, HistoryDiffReveal>;
     } | null>(null);
     const ready = useCharacterComparison(input, retry);
     const titleReady = useCharacterComparison(titleInput, retry);
     const result = ready?.result;
-    const sections = useMemo(
+    const rows = useMemo(
         () =>
-            result?.status === "complete"
-                ? textDiffSections(result.chunks)
+            result?.status === "complete" &&
+            (result.added > 0 || result.removed > 0)
+                ? historyDiffRows(
+                      result.chunks,
+                      expanded?.input === input ? expanded.reveals : {},
+                  )
                 : [],
-        [result],
+        [result, expanded, input],
     );
     const titleChanged = selected.title !== currentValue.title;
     const categoryChanged = selected.category_id !== currentValue.categoryId;
     if (!ready || !titleReady)
         return <NoteHistoryLoading key={retry} label="正在生成对比…" />;
-    return (
-        <View style={{ minHeight: 160 }} className="gap-3">
+    const header = (
+        <View style={{ minHeight: 160 }} className="gap-3 pb-4">
             <Text className="text-xs text-text-secondary">
                 对比当前编辑，包含未保存改动
             </Text>
@@ -258,65 +271,146 @@ export default function NoteHistoryDiff({
                     正文差异较大，请切换历史全文查看
                 </Text>
             )}
-            {result?.status === "complete" && (
-                <>
-                    {result.added === 0 && result.removed === 0 ? (
-                        <Text className="text-sm text-text-secondary">
-                            {titleChanged || categoryChanged
-                                ? "正文无变化"
-                                : "与当前内容一致"}
-                        </Text>
-                    ) : (
-                        sections.map((section, index) => {
-                            if (section.type !== "fold")
-                                return <DiffChunk key={index} {...section} />;
-                            const isExpanded =
-                                expanded?.input === input &&
-                                expanded.ids.includes(section.id);
-                            return (
-                                <View key={index} className="gap-1">
-                                    <Pressable
-                                        accessibilityRole="button"
-                                        accessibilityLabel={`${isExpanded ? "收起" : "展开"}未改动 ${section.lines.length} 行`}
-                                        accessibilityState={{
-                                            expanded: isExpanded,
-                                        }}
-                                        className="min-h-11 items-center justify-center rounded-control bg-surface-muted"
-                                        onPress={() =>
-                                            setExpanded((previous) => {
-                                                const ids =
-                                                    previous?.input === input
-                                                        ? previous.ids
-                                                        : [];
-                                                return {
-                                                    input,
-                                                    ids: ids.includes(
-                                                        section.id,
-                                                    )
-                                                        ? ids.filter(
-                                                              (id) =>
-                                                                  id !==
-                                                                  section.id,
-                                                          )
-                                                        : [...ids, section.id],
-                                                };
-                                            })
-                                        }
-                                    >
-                                        <Text className="text-xs text-text-secondary">{`${isExpanded ? "收起" : "展开"}未改动 ${section.lines.length} 行`}</Text>
-                                    </Pressable>
-                                    {isExpanded && (
-                                        <DiffChunk
-                                            type="equal"
-                                            lines={section.lines}
-                                        />
-                                    )}
-                                </View>
-                            );
-                        })
+            {result?.status === "complete" &&
+                result.added === 0 &&
+                result.removed === 0 && (
+                    <Text className="text-sm text-text-secondary">
+                        {titleChanged || categoryChanged
+                            ? "正文无变化"
+                            : "与当前内容一致"}
+                    </Text>
+                )}
+            {rows.length > 0 && (
+                <View className="flex-row items-center justify-between">
+                    <Text className="text-xs text-text-secondary">
+                        历史行 · 当前行
+                    </Text>
+                    {rows.some((row) => row.kind === "fold") && (
+                        <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="重新折叠未改动行"
+                            className="min-h-11 justify-center px-2"
+                            onPress={() => setExpanded({ input, reveals: {} })}
+                        >
+                            <Text className="text-xs text-primary">
+                                重新折叠
+                            </Text>
+                        </Pressable>
                     )}
-                </>
+                </View>
             )}
         </View>
+    );
+
+    const renderRow = ({ item }: { item: HistoryDiffRow }) => {
+        if (item.kind === "line")
+            return (
+                <View className="min-h-6 flex-row items-start py-0.5">
+                    <View
+                        accessible={false}
+                        importantForAccessibility="no"
+                        className="flex-row pr-2"
+                    >
+                        {[item.oldLine, item.newLine].map((line, index) => (
+                            <Text
+                                key={index}
+                                style={{ fontVariant: ["tabular-nums"] }}
+                                className="w-11 pr-1 text-right text-xs leading-6 text-text-secondary"
+                            >
+                                {line ?? ""}
+                            </Text>
+                        ))}
+                    </View>
+                    <View className="flex-1">
+                        <DiffChunk {...item.chunk} inlineNewlines />
+                    </View>
+                </View>
+            );
+        const reveal = (direction: "before" | "after" | "all" | "none") =>
+            setExpanded((previous) => {
+                const reveals =
+                    previous?.input === input ? previous.reveals : {};
+                const current = reveals[item.id] ?? { before: 0, after: 0 };
+                const remaining = Math.max(
+                    0,
+                    item.total - current.before - current.after,
+                );
+                const next =
+                    direction === "all"
+                        ? { before: item.total, after: 0 }
+                        : direction === "none"
+                          ? { before: 0, after: 0 }
+                          : {
+                                ...current,
+                                [direction]:
+                                    current[direction] +
+                                    Math.min(20, remaining),
+                            };
+                return { input, reveals: { ...reveals, [item.id]: next } };
+            });
+        return (
+            <View className="my-2 border-y border-gray-200 bg-surface-muted px-2">
+                <Text
+                    accessibilityLabel={`未改动 ${item.total} 行，收起 ${item.hidden} 行`}
+                    className="pt-2 text-center text-xs text-text-secondary"
+                >
+                    {item.hidden > 0
+                        ? `··· 未改动 ${item.hidden} 行 ···`
+                        : `已展开 ${item.total} 行未改动内容`}
+                </Text>
+                {item.hidden > 0 ? (
+                    <View className="flex-row">
+                        {(
+                            [
+                                ["before", "↑ 展开20行", "从上方展开未改动行"],
+                                [
+                                    "all",
+                                    "展开全部",
+                                    `展开未改动 ${item.hidden} 行`,
+                                ],
+                                ["after", "↓ 展开20行", "从下方展开未改动行"],
+                            ] as const
+                        ).map(([direction, label, accessibilityLabel]) => (
+                            <Pressable
+                                key={direction}
+                                accessibilityRole="button"
+                                accessibilityLabel={accessibilityLabel}
+                                className="min-h-11 flex-1 items-center justify-center"
+                                onPress={() => reveal(direction)}
+                            >
+                                <Text className="text-xs text-primary">
+                                    {label}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                ) : (
+                    <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`收起未改动 ${item.total} 行`}
+                        accessibilityState={{ expanded: true }}
+                        className="min-h-11 items-center justify-center"
+                        onPress={() => reveal("none")}
+                    >
+                        <Text className="text-xs text-primary">
+                            收起这段内容
+                        </Text>
+                    </Pressable>
+                )}
+            </View>
+        );
+    };
+    return (
+        <FlatList
+            data={rows}
+            keyExtractor={(item) => item.key}
+            renderItem={renderRow}
+            ListHeaderComponent={header}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+            initialNumToRender={24}
+            maxToRenderPerBatch={24}
+            windowSize={7}
+        />
     );
 }

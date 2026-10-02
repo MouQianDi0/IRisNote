@@ -7,7 +7,7 @@ import {
     isCloudStoragePermissionError,
 } from "@/core/cloud-storage/cloud-storage-policy";
 import { ChevronDown } from "lucide-react-native";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -19,34 +19,17 @@ type NoteViewerMetaProps = {
     noteId: number;
     content: string | null;
     categoryId: number | null;
-    createdAt: string;
+    historyEntry: ReactNode;
     isTitleExpandable: boolean;
     chevronAnimatedStyle: ComponentProps<typeof Animated.View>["style"];
     onToggleTitleExpanded: () => void;
-};
-
-const formatCreatedAt = (createdAt: string) => {
-    const date = new Date(createdAt);
-
-    if (Number.isNaN(date.getTime())) {
-        return createdAt;
-    }
-
-    return date.toLocaleString("zh-CN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-    });
 };
 
 export default function NoteViewerMeta({
     noteId,
     content,
     categoryId,
-    createdAt,
+    historyEntry,
     isTitleExpandable,
     chevronAnimatedStyle,
     onToggleTitleExpanded,
@@ -116,8 +99,11 @@ export default function NoteViewerMeta({
             : "加载中";
 
     return (
-        <View className="mt-3 flex-row items-center gap-2">
-            <View className="flex-1 flex-row flex-wrap items-center gap-2">
+        <View className="mt-3 flex-row flex-wrap items-center gap-2">
+            <View
+                style={{ minWidth: 96 }}
+                className="flex-1 flex-row flex-wrap items-center gap-2"
+            >
                 {categoryId !== ALL_CATEGORY.id && (
                     <View className="rounded-full bg-blue-50 px-3 py-1">
                         <Text className="text-xs text-blue-500">
@@ -129,9 +115,7 @@ export default function NoteViewerMeta({
                 )}
                 <NoteStatisticsPopover noteId={noteId} content={content} />
             </View>
-            <Text className="text-xs text-gray-400">
-                {formatCreatedAt(createdAt)}
-            </Text>
+            {historyEntry}
             {isTitleExpandable && (
                 <Pressable
                     onPress={onToggleTitleExpanded}

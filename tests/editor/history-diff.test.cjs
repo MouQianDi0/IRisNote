@@ -3,6 +3,9 @@ const assert = require("node:assert/strict");
 const { performance } = require("node:perf_hooks");
 const { load, host, find, byLabel } = require("./history-test-host.cjs");
 const utility = load("src/shared/utils/text-diff.ts");
+const rowUtility = load("src/features/notes/utils/note-history-diff-rows.ts", {
+    "@/shared/utils/text-diff": utility,
+});
 const { diffTextLines, diffTextWithCharacters, textDiffSections } = utility;
 function complete(task) {
     let step;
@@ -318,6 +321,7 @@ function nodes(node, predicate) {
 }
 
 const native = {
+    FlatList: "FlatList",
     Pressable: "Pressable",
     Text: "Text",
     View: "View",
@@ -347,10 +351,20 @@ function component(diffOverride) {
             "react-native": native,
             "@/shared/theme": theme,
             "@/shared/utils/text-diff": diffOverride ?? utility,
+            "../../utils/note-history-diff-rows": rowUtility,
             "./note-history-loading": { default: "HistoryLoading" },
         },
     );
-    const render = () => h.render((module) => module.default(props));
+    const render = () => {
+        const view = h.render((module) => module.default(props));
+        // 原生 FlatList 的按需渲染由宿主完成；测试只展开行数据以检查实际行组件。
+        if (view.type === "FlatList")
+            view.props.children = [
+                view.props.ListHeaderComponent,
+                view.props.data.map((item) => view.props.renderItem({ item })),
+            ];
+        return view;
+    };
     const finish = () => {
         h.flush();
         return render();
@@ -438,6 +452,74 @@ test("折叠内容可展开收起，输入变化后不会沿用旧展开状态",
     assert.ok(byLabel(finish(), "展开未改动 10 行"));
     h.cleanup();
 });
+test("折叠条从上下各展开20行，接近末尾只展开剩余行，全局可重新折叠", () => {
+    const { h, props, render, finish } = component();
+    props.selected.content = Array.from(
+        { length: 50 },
+        (_, i) => `行${i}`,
+    ).join("\n");
+    props.currentValue.content = `${props.selected.content}\n新增`;
+    render();
+    let view = finish();
+    const folded = () => render().props.data.find((row) => row.kind === "fold");
+    assert.equal(folded().hidden, 48);
+    byLabel(view, "从上方展开未改动行").props.onPress();
+    view = render();
+    assert.equal(folded().hidden, 28);
+    assert.equal(folded().oldLine, 21);
+    byLabel(view, "从下方展开未改动行").props.onPress();
+    view = render();
+    assert.equal(folded().hidden, 8);
+    byLabel(view, "从上方展开未改动行").props.onPress();
+    view = render();
+    assert.equal(folded().hidden, 0);
+    assert.ok(byLabel(view, "收起未改动 48 行"));
+    byLabel(view, "重新折叠未改动行").props.onPress();
+    assert.equal(folded().hidden, 48);
+    assert.equal(
+        render().props.data.filter((row) => row.kind === "line").length,
+        3,
+    );
+    h.cleanup();
+});
+
+test("长正文展开全部后使用虚拟列表行数据，两侧末行号保持准确", () => {
+    const { h, props, render, finish } = component();
+    props.selected.content = Array.from(
+        { length: 2000 },
+        (_, i) => `旧${i}`,
+    ).join("\n");
+    props.currentValue.content = props.selected.content.replace(
+        "旧1000",
+        "新1000",
+    );
+    render();
+    let view = finish();
+    for (const fold of view.props.data.filter((row) => row.kind === "fold")) {
+        byLabel(render(), `展开未改动 ${fold.hidden} 行`).props.onPress();
+    }
+    view = render();
+    assert.equal(view.type, "FlatList");
+    assert.equal(
+        view.props.data.filter((row) => row.kind === "line").length,
+        2001,
+    );
+    assert.equal(
+        view.props.data
+            .filter((row) => row.kind === "line" && row.oldLine != null)
+            .at(-1).oldLine,
+        2000,
+    );
+    assert.equal(
+        view.props.data
+            .filter((row) => row.kind === "line" && row.newLine != null)
+            .at(-1).newLine,
+        2000,
+    );
+    assert.ok(view.props.initialNumToRender < view.props.data.length);
+    h.cleanup();
+});
+
 test("超预算显示全文入口提示且无错误统计，计算失败可重试", () => {
     let fail = true;
     const override = {
@@ -475,7 +557,7 @@ test("变化块朗读实际增删字符，换行有可选择的可见标记", ()
     const rendered = element.type(element.props);
     assert.equal(rendered.props.accessibilityLabel, "新增： 换行 ");
     assert.equal(rendered.props.selectable, true);
-    assert.equal(contents(rendered), "+ ↵\n");
+    assert.equal(contents(rendered), "+ ↵");
     h.cleanup();
 });
 test("正文只高亮替换的字，未改字符保持普通样式，可选择完整上下文", () => {

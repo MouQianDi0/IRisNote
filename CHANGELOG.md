@@ -1,3 +1,12 @@
+## 2026-10-02 08:52:14 | 新增功能：编辑时间历史入口与独立正文对比页
+
+- 变更概述：笔记详情显示最后编辑时间并作为历史入口，创建时间在历史面板查看；正文对比进入独立页面，增加源行号与 IDE 风格分段折叠。
+- 修改文件：src/app/_layout.tsx；src/app/pages/note/history/[id].tsx；src/features/notes/components/viewer/NoteViewer.tsx；src/features/notes/components/viewer/NoteViewerMeta.tsx；src/features/notes/components/viewer/note-history-popover.tsx；src/features/notes/components/viewer/note-history-diff.tsx；src/features/notes/screens/NoteHistoryComparisonScreen.tsx；src/features/notes/services/note-history-comparison-session.ts；src/features/notes/utils/note-history-time.ts；src/features/notes/utils/note-history-diff-rows.ts；tests/editor/history-diff.test.cjs；tests/editor/history-ui.test.cjs；tests/editor/history-comparison.test.cjs；docs/进度与验证/项目编辑器进度.md；docs/进度与验证/IRisNote编辑器核心架构与实施计划.md；docs/进度与验证/IRisNote编辑器阶段3保存版本边界验证清单.md；docs/logs/2026-10-02-note-history-time-comparison-page.md；CHANGELOG.md。
+- 具体内容：复用已持久化 updated_at/created_at，未知编辑时间不回退成创建时间；各版本保存时间不变。独立路由仅携带短 ID，当前侧使用打开时的未保存草稿副本，账号会话/笔记/版本隔离，编辑页留在栈内；对比页只读本机历史，失败可重试或切换全文。字符高亮/统计/加载/预算保留，正文 FlatList 按需渲染，未改动段可上下各展开20行、全部展开、收起和重新折叠。无新依赖、迁移或云端接口。
+- 验证：改前/后 typecheck 通过；相关25+13+8+24+37=107项回归全部通过；拆行/行号/突出字符数另核对121组输入组合，长正文覆盖2000行展开。最终获准环境 npm run check 通过（785项：783通过、2跳过、0失败；类型/主题通过，Lint仅既有设置页1个警告）；git diff --check 通过、无冲突标记。真机视觉/导航/手势/动画/选择/朗读、大字模式、Android/iOS/Web构建与真实云端恢复同步未执行。
+
+---
+
 ## 2026-10-01 14:57:29 | 优化代码：笔记历史对比精确到字符
 
 - 变更概述：历史正文和标题由整行标色改为只突出实际增删字符，同一行多个修改点分别高亮，统计改为字符数。

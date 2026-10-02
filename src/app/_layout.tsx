@@ -65,6 +65,10 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/note/history/[id]"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/settings"
                         options={{ headerShown: false }}
                     />

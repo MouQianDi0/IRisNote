@@ -11,7 +11,20 @@ const deferred = () => {
     return { promise, resolve, reject };
 };
 
-const { host, find, byLabel, panel } = require("./history-test-host.cjs");
+const { load, host, find, byLabel, panel } = require("./history-test-host.cjs");
+const time = load("src/features/notes/utils/note-history-time.ts");
+const comparison = load(
+    "src/features/notes/services/note-history-comparison-session.ts",
+    {
+        "@/core/cloud-storage/cloud-storage-policy": {
+            captureLocalStorageAccess: () => () => {},
+        },
+    },
+);
+const trigger = (view) =>
+    find(view, (node) =>
+        node.props?.accessibilityLabel?.endsWith("，查看历史版本"),
+    );
 
 function popover(onRestore = async () => {}) {
     const selected = {
@@ -24,7 +37,10 @@ function popover(onRestore = async () => {}) {
     };
     const history = {
         snapshot: {
-            note: { current_revision_id: "当前版本" },
+            note: {
+                current_revision_id: "当前版本",
+                created_at: "2026-08-29T00:00:00Z",
+            },
             revisions: [{ ...selected, content_length: 3 }],
             categories: [],
         },
@@ -45,6 +61,8 @@ function popover(onRestore = async () => {}) {
             this.invalidations++;
         },
     };
+    const pushes = [];
+    const router = { push: (route) => pushes.push(route) };
     const h = host(
         "src/features/notes/components/viewer/note-history-popover.tsx",
         {
@@ -63,7 +81,7 @@ function popover(onRestore = async () => {}) {
             "lucide-react-native": {
                 ChevronLeft: "ChevronLeft",
                 ChevronRight: "ChevronRight",
-                History: "History",
+                ChevronDown: "ChevronDown",
                 X: "X",
             },
             "react-native": {
@@ -74,13 +92,16 @@ function popover(onRestore = async () => {}) {
                 View: "View",
             },
             "../../hooks/use-note-history": { useNoteHistory: () => history },
-            "./note-history-diff": { default: "HistoryDiff" },
+            "expo-router": { router },
+            "../../services/note-history-comparison-session": comparison,
+            "../../utils/note-history-time": time,
             "./note-history-loading": { default: "HistoryLoading" },
         },
     );
     const props = {
         owner: 1,
         noteId: 11,
+        updatedAt: "2026-10-02T09:30:00Z",
         currentValue: {
             title: "当前标题",
             content: "未保存正文",
@@ -91,7 +112,7 @@ function popover(onRestore = async () => {}) {
     };
     const render = () => h.render((module) => module.default(props));
     const openDetail = () => {
-        byLabel(render(), "查看历史版本").props.onPress();
+        trigger(render()).props.onPress();
         const row = find(
             render(),
             (node) =>
@@ -101,57 +122,76 @@ function popover(onRestore = async () => {}) {
         row.props.onPress();
         return render();
     };
-    return { h, history, props, render, openDetail };
+    return { h, history, props, render, openDetail, pushes, router };
 }
 
 test("历史气泡防重复打开、返回与外部关闭，关闭后等待动画再开放入口", () => {
     const { h, history, render } = popover();
-    const trigger = byLabel(render(), "查看历史版本");
-    trigger.props.onPress();
-    trigger.props.onPress();
+    const button = trigger(render());
+    button.props.onPress();
+    button.props.onPress();
     assert.equal(history.refreshes, 1);
     assert.equal(panel(render()).props.visible, true);
     panel(render()).props.onClose();
     assert.equal(panel(render()).props.visible, false);
-    byLabel(render(), "查看历史版本").props.onPress();
+    trigger(render()).props.onPress();
     assert.equal(history.refreshes, 1);
     const timer = [...h.timers.values()][0];
     assert.equal(timer.duration, 300);
     timer.callback();
-    byLabel(render(), "查看历史版本").props.onPress();
+    trigger(render()).props.onPress();
     assert.equal(history.refreshes, 2);
     h.cleanup();
 });
 
-test("详情默认对比实时草稿，历史全文可复制，取消恢复只回详情", () => {
+test("详情保留可复制全文和恢复，正文对比关闭气泡并 push 草稿快照", () => {
     let restores = 0;
-    const { h, render, openDetail } = popover(async () => {
+    const { h, props, pushes, render, openDetail } = popover(async () => {
         restores++;
     });
     let view = openDetail();
-    assert.equal(
-        byLabel(view, "查看与当前对比").props.accessibilityState.selected,
-        true,
-    );
-    assert.equal(byLabel(view, "查看当前编辑内容"), undefined);
-    const diff = find(view, (node) => node.type === "HistoryDiff");
-    assert.equal(diff.props.currentValue.content, "未保存正文");
-    byLabel(view, "查看历史全文").props.onPress();
     assert.ok(
         find(
-            render(),
+            view,
             (node) =>
-                node.type === "Text" &&
-                node.props.children === "旧正文" &&
-                node.props.selectable,
+                node.props?.children === "旧正文" && node.props.selectable,
         ),
     );
-    byLabel(render(), "恢复此版本").props.onPress();
-    view = render();
-    byLabel(view, "取消").props.onPress();
+    byLabel(view, "恢复此版本").props.onPress();
+    byLabel(render(), "取消").props.onPress();
     assert.ok(byLabel(render(), "恢复此版本"));
+    const button = byLabel(render(), "查看正文对比");
+    button.props.onPress();
+    button.props.onPress();
+    assert.equal(pushes.length, 1);
+    assert.equal(panel(render()).props.visible, false);
+    assert.equal(pushes[0].pathname, "/pages/note/history/[id]");
+    assert.deepEqual(Object.keys(pushes[0].params).sort(), [
+        "id",
+        "revisionId",
+        "token",
+    ]);
+    const snapshot = comparison.readNoteHistoryComparison(
+        pushes[0].params.token,
+        1,
+        11,
+        "旧版本",
+    );
+    assert.equal(snapshot.currentValue.content, "未保存正文");
+    assert.equal(snapshot.updatedAt, props.updatedAt);
+    props.currentValue.content = "返回后继续输入";
+    assert.equal(snapshot.currentValue.content, "未保存正文");
     assert.equal(restores, 0);
     h.cleanup();
+    assert.equal(
+        comparison.readNoteHistoryComparison(
+            pushes[0].params.token,
+            1,
+            11,
+            "旧版本",
+        ),
+        null,
+    );
 });
 
 test("恢复进行中拒绝重复点击和关闭，失败后保留气泡并允许重试", async () => {
@@ -206,15 +246,11 @@ test("内容相同的旧版本仍可恢复，当前版本与未保存草稿有�
     props.currentValue.content = "尚未保存的新内容";
     const view = render();
     assert.equal(byLabel(view, "已是当前版本").props.disabled, true);
-    assert.equal(
-        find(view, (node) => node.type === "HistoryDiff").props.currentValue
-            .content,
-        "尚未保存的新内容",
-    );
+    assert.equal(byLabel(view, "查看正文对比").props.disabled, false);
     h.cleanup();
 });
 
-test("详情读取中保留两 Tab、禁用恢复，读取失败结束加载并允许刷新", () => {
+test("详情读取中禁用对比和恢复，读取失败结束加载并允许刷新", () => {
     const { h, history, render, openDetail } = popover();
     history.select = function () {
         this.loading = true;
@@ -222,8 +258,8 @@ test("详情读取中保留两 Tab、禁用恢复，读取失败结束加载并�
         return Promise.resolve();
     };
     let view = openDetail();
-    assert.ok(byLabel(view, "查看与当前对比"));
-    assert.ok(byLabel(view, "查看历史全文"));
+    assert.equal(byLabel(view, "查看正文对比").props.disabled, true);
+    byLabel(view, "查看正文对比").props.onPress();
     assert.equal(
         find(view, (node) => node.type === "HistoryLoading").props.label,
         "正在读取版本内容…",
@@ -246,38 +282,25 @@ test("详情读取中保留两 Tab、禁用恢复，读取失败结束加载并�
     h.cleanup();
 });
 
-test("全文切换保持对比组件，关闭或返回列表后移除计算组件，再选版本默认对比", () => {
-    const { h, render, openDetail } = popover();
-    let view = openDetail();
-    const diff = find(view, (node) => node.type === "HistoryDiff");
-    byLabel(view, "查看历史全文").props.onPress();
-    view = render();
-    assert.equal(
-        find(view, (node) => node.type === "HistoryDiff").key,
-        diff.key,
-    );
+test("对比导航失败保留全文和当前输入，允许重试", () => {
+    const { h, props, router, render, openDetail, pushes } = popover();
+    openDetail();
+    router.push = () => {
+        throw new Error("路由失败");
+    };
+    byLabel(render(), "查看正文对比").props.onPress();
+    assert.equal(panel(render()).props.visible, true);
     assert.ok(
         find(
-            view,
+            render(),
             (node) =>
-                node.props?.importantForAccessibility === "no-hide-descendants",
+                node.props?.children === "打开对比失败，当前编辑已保留，请重试",
         ),
     );
-    byLabel(view, "返回上一级历史").props.onPress();
-    assert.equal(
-        find(render(), (node) => node.type === "HistoryDiff"),
-        undefined,
-    );
-    view = openDetail();
-    assert.equal(
-        byLabel(view, "查看与当前对比").props.accessibilityState.selected,
-        true,
-    );
-    panel(view).props.onClose();
-    assert.equal(
-        find(render(), (node) => node.type === "HistoryDiff"),
-        undefined,
-    );
+    assert.equal(props.currentValue.content, "未保存正文");
+    router.push = (route) => pushes.push(route);
+    byLabel(render(), "查看正文对比").props.onPress();
+    assert.equal(pushes.length, 1);
     h.cleanup();
 });
 
@@ -301,7 +324,7 @@ test("恢复成功关闭气泡并失效旧读取，动画结束后入口可再�
     assert.equal(panel(render()).props.visible, false);
     assert.equal(history.invalidations, 1);
     [...h.timers.values()][0].callback();
-    byLabel(render(), "查看历史版本").props.onPress();
+    trigger(render()).props.onPress();
     assert.equal(panel(render()).props.visible, true);
     h.cleanup();
 });
@@ -368,4 +391,36 @@ test("历史 Hook 卸载后不发布迟到结果和错误", async () => {
     reads[0].reject(new Error("读取失败"));
     await pending;
     assert.equal(h.writes, writes);
+});
+
+test("历史入口显示最后编辑时间，创建时间单独放在历史列表，未知时间不回退", () => {
+    const { h, props, render } = popover();
+    assert.equal(
+        trigger(render()).props.accessibilityLabel,
+        `${time.noteEditTimeLabel(props.updatedAt)}，查看历史版本`,
+    );
+    trigger(render()).props.onPress();
+    assert.ok(
+        find(
+            render(),
+            (node) =>
+                node.type === "Text" &&
+                Array.isArray(node.props.children) &&
+                node.props.children[0] === "笔记创建于：" &&
+                node.props.children[1] ===
+                    time.formatNoteHistoryTime("2026-08-29T00:00:00Z"),
+        ),
+    );
+    props.updatedAt = null;
+    assert.equal(
+        trigger(render()).props.accessibilityLabel,
+        "编辑时间未知，查看历史版本",
+    );
+    props.updatedAt = "invalid";
+    assert.equal(
+        trigger(render()).props.accessibilityLabel,
+        "编辑时间未知，查看历史版本",
+    );
+    assert.equal(time.formatNoteHistoryTime(""), null);
+    h.cleanup();
 });
