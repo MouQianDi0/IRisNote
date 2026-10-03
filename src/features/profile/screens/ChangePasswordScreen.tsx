@@ -79,7 +79,11 @@ export default function ChangePasswordScreen() {
     const [submitError, setSubmitError] = useState<string | null>(null);
 
     const dirty = !!(currentPassword || code || newPassword || confirmPassword);
-    const guard = useUnsavedLeaveGuard(dirty, submitting);
+    const guard = useUnsavedLeaveGuard(
+        dirty,
+        submitting,
+        "/pages/user/privacy-security" as Href,
+    );
 
     const policyError = newPassword ? checkNewPassword(newPassword) : null;
     const sameAsCurrent =
@@ -182,7 +186,7 @@ export default function ChangePasswordScreen() {
                     <View className="w-full max-w-[560px] self-center px-4">
                         <PageHeader
                             title={mode === "current" ? "修改密码" : "重设密码"}
-                            backLabel="返回个人资料"
+                            backLabel="返回隐私与安全"
                             onBack={guard.goBack}
                         />
 

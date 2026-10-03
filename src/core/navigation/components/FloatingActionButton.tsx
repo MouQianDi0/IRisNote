@@ -1,10 +1,10 @@
-import { type Href, usePathname } from "expo-router";
+import { type Href } from "expo-router";
 import { ClipboardPenLine, PencilLine, Settings, SquareCheckBig } from "lucide";
 import { MorphIcon, type IconInput } from "morphicons/react-native";
 import { Pressable } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
-import { getActiveTabKey, getMainAction } from "../navigation.constants";
+import { getMainActionForTab } from "../navigation.constants";
 import type { TabKey } from "../navigation.types";
 import { useDebouncedNavigation } from "../hooks/useDebouncedNavigation";
 import { useLongPressNavigation } from "../hooks/useLongPressNavigation";
@@ -18,13 +18,12 @@ const ACTION_ICONS = {
     user: Settings,
 } satisfies Record<TabKey, IconInput>;
 
-export default function FloatingActionButton() {
-    const pathname = usePathname();
+export default function FloatingActionButton({ activeTab }: { activeTab: TabKey }) {
     const onNavigate = useDebouncedNavigation();
-    const action = getMainAction(pathname);
+    const action = getMainActionForTab(activeTab);
 
     const { label } = action;
-    const icon = ACTION_ICONS[getActiveTabKey(pathname)];
+    const icon = ACTION_ICONS[activeTab];
     const { gesture: longPress, animatedStyle } = useLongPressNavigation(
         action.route as Href,
     );

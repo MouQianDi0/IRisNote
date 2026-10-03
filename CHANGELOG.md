@@ -1,3 +1,30 @@
+## 2026-10-04 02:15:46 | 新增功能：隐私与安全页面及账户安全入口迁移（第一阶段）
+
+- 变更概述：启用设置中的隐私与安全页面，将修改密码、邮箱操作从个人资料迁入账户安全分组。
+- 修改文件：src/app/_layout.tsx；src/app/pages/user/privacy-security.tsx（新增）；src/features/settings/screens/PrivacySecurityScreen.tsx（新增）；src/features/settings/screens/SettingsScreen.tsx；src/features/profile/screens/PersonalInfoScreen.tsx；src/features/profile/screens/ChangePasswordScreen.tsx；src/features/profile/screens/ChangeEmailScreen.tsx；src/features/profile/hooks/useUnsavedLeaveGuard.ts；tests/profile/unsaved-leave-guard.test.cjs（新增）；docs/logs/2026-10-04-privacy-security-stage-one.md（新增）；CHANGELOG.md。
+- 具体内容：复用既有账户安全页面、验证流程及接口，保留旧路由；按钮返回与保存成功后回到隐私与安全，直接链接进入时替换到目标页。保留未保存确认、提交中拦截及其他资料页原返回逻辑；新增页面读取现有登录上下文并脱敏展示邮箱，不新增业务请求。后续阶段的应用锁、后台预览及通知隐私未实施。
+- 验证：修改前类型检查通过；返回保护专项测试 6/6 通过；完整 npm run check 退出码 0，类型及主题检查通过，815/815 测试通过，Lint 零错误、一条既有 liveUpdateCapable 未使用警告；git diff --check 通过，src、tests 及本轮日志无冲突标记。未做 Android 构建、模拟器/真机、视觉验收和真实账户修改；未提交、推送或发布。
+
+---
+
+## 2026-10-04 01:14:45 | 修复问题：变形图标结束后同步最终 SVG 路径，避免回跳旧图标
+
+- 变更概述：针对“切页时变形正常、结束后恢复笔记图标”，修复 morphicons React Native 适配层只更新原生路径而未提交 React 最终属性的问题，保留变形动画。
+- 修改文件：patches/morphicons+1.7.1.patch（新增）；tests/navigation/morph-icon-final-state.test.cjs（新增）；docs/logs/2026-10-04-morph-icon-final-state.md（新增）；CHANGELOG.md。本机 node_modules/morphicons/dist/react-native.js 同步应用补丁，不直接入库；保留上一轮业务组件修改。
+- 具体内容：使用终点提交版本触发 React 读取最新 SVG 路径，避免旧属性在后续重绘时恢复；版本递增覆盖动画中途切回起点的同值情况。中间帧沿用原生写入，不增加逐帧 React 更新，不移除变形、摇摆或减少动态效果支持。通过现有 postinstall 自动应用版本补丁，不改变依赖版本、业务数据或网络逻辑。
+- 验证：修改前类型检查通过；最终专项测试 12/12 通过，原始依赖下首版 6 项新测试有 5 项失败。最终补丁已在 SHA-512 验证通过的干净依赖包上成功应用，文件与测试版本逐字节一致。最终 npm run check 退出码 0，809/809 测试通过，类型及主题检查通过，Lint 零错误、一条既有 liveUpdateCapable 未使用警告。git diff --check 通过，本轮受影响文件冲突标记扫描无匹配。未做 Android 打包、模拟器和真机验证；未提交项目 Git、推送或发布。
+
+---
+
+## 2026-10-04 00:38:27 | 修复问题：底部蓝色按钮跟随当前 Tab 更新图标与操作
+
+- 变更概述：消除启动快速切页时蓝色操作按钮对全局路径同步时序的依赖，菜单与按钮共用导航器已提交的当前 Tab。
+- 修改文件：src/core/navigation/components/FloatingMenu.tsx；src/core/navigation/components/FloatingActionButton.tsx；src/core/navigation/navigation.constants.ts；tests/navigation/floating-action-button.test.cjs（新增）；docs/logs/2026-10-04-floating-action-tab-sync.md（新增）；CHANGELOG.md。
+- 具体内容：菜单向按钮传入类型明确的 activeTab，由同一 Tab 选择变形图标、无障碍名称、点击及长按目标；提取 getMainActionForTab，保留路径入口和原有四类操作配置。保留现有图标变形、摇摆、布局及导航防连点行为，不修改业务数据、API 或原生模块。新增 5 项回归测试覆盖路径滞后、连续切页、父组件传值、路径兼容及真实变形引擎最终状态。
+- 验证：修改前类型检查通过；专项测试 5/5 通过，内存载入旧组件源码时 3 项状态同步测试失败。修改后 npm run check 退出码 0，类型及主题检查通过，802/802 测试通过，Lint 零错误、一条既有 liveUpdateCapable 未使用警告。git diff --check 通过，受影响文件冲突标记扫描无匹配。未做 Android 打包、模拟器或真机验证；未执行 Git 提交、推送和发布。
+
+---
+
 ## 2026-10-04 00:22:46 | 优化代码：首次点击立即导航并保留防连点保护
 
 - 变更概述：按用户反馈取消公共导航 Hook 的 100ms 前置等待，首次点击立即发起跳转。

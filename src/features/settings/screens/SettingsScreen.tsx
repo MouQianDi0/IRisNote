@@ -44,6 +44,7 @@ const cloudStorageRoute = "/pages/user/cloud-storage" as Href;
 const aboutRoute = "/pages/user/about" as Href;
 const helpFeedbackRoute = "/pages/user/help-feedback" as Href;
 const personalInfoRoute = "/pages/user/profile" as Href;
+const privacySecurityRoute = "/pages/user/privacy-security" as Href;
 const developerRoute = "/pages/user/developer" as Href;
 
 function SettingsGroupTitle({ children }: { children: string }) {
@@ -329,9 +330,8 @@ export default function SettingsScreen() {
                             <ListRow
                                 icon={ShieldCheck}
                                 label="隐私与安全"
-                                value="规划中"
-                                description="应用锁与账户安全设置尚未接入"
-                                disabled
+                                description="管理登录密码与安全邮箱"
+                                onPress={() => navigate(privacySecurityRoute)}
                                 last
                             />
                         </Card>

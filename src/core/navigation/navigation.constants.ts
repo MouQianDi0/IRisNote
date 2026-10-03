@@ -73,7 +73,11 @@ export const getActiveTabKey = (path: string): TabKey => {
 };
 
 export const getMainAction = (path: string): MainAction => {
-    switch (getActiveTabKey(path)) {
+    return getMainActionForTab(getActiveTabKey(path));
+};
+
+export const getMainActionForTab = (tab: TabKey): MainAction => {
+    switch (tab) {
         case "note":
             return {
                 icon: PencilLine,

@@ -15,9 +15,7 @@ import {
     Copy,
     FileText,
     Hash,
-    KeyRound,
     Link2,
-    Mail,
     MapPin,
     UserRound,
     Users,
@@ -51,8 +49,6 @@ const linkedAccountsRoute = "/pages/user/profile/platforms" as Href;
 const nicknameRoute = "/pages/user/profile/nickname" as Href;
 const bioRoute = "/pages/user/profile/bio" as Href;
 const regionRoute = "/pages/user/profile/region" as Href;
-const passwordRoute = "/pages/user/profile/password" as Href;
-const emailRoute = "/pages/user/profile/email" as Href;
 
 /** 规划中的资料项在后端能力接入前统一显示此状态。 */
 
@@ -300,22 +296,11 @@ export default function PersonalInfoScreen() {
                     </View>
 
                     <View className="mt-5">
-                        <GroupTitle>账户与安全</GroupTitle>
+                        <GroupTitle>关联账户</GroupTitle>
                         <Card
                             className="overflow-hidden rounded-hyper-card"
                             style={cardStyle}
                         >
-                            <ListRow
-                                icon={Mail}
-                                label="邮箱"
-                                value={maskedEmail}
-                                onPress={() => navigate(emailRoute)}
-                            />
-                            <ListRow
-                                icon={KeyRound}
-                                label="修改密码"
-                                onPress={() => navigate(passwordRoute)}
-                            />
                             <ListRow
                                 icon={Link2}
                                 label="平台绑定"

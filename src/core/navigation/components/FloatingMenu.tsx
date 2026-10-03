@@ -233,7 +233,10 @@ export default function FloatingMenu({
     blurTarget,
     navigation,
 }: SwipeTabsBarProps) {
-    const activeTab = state.routes[state.index]?.name ?? "note";
+    // Share the committed tab with the action button; the global pathname can lag.
+    const activeTab =
+        TAB_MENU_ITEMS.find((item) => item.key === state.routes[state.index]?.name)
+            ?.key ?? "note";
     const activeTabIndex = getTabIndexByKey(activeTab);
     const hiddenOffsetY = useSharedValue(initialHiddenOffsetY);
     const menuWidth = useSharedValue(0);
@@ -498,7 +501,7 @@ export default function FloatingMenu({
                         ))}
                     </View>
                 </GestureDetector>
-                <FloatingActionButton />
+                <FloatingActionButton activeTab={activeTab} />
             </View>
         </Animated.View>
     );

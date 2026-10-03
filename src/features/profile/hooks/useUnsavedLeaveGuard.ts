@@ -13,8 +13,13 @@ type LeaveAction = Parameters<
 /**
  * 资料编辑页的离开保护：有未保存改动时拦截返回（按钮、系统返回、手势）并请求确认，
  * 保存中直接阻止离开；保存成功后调用 leaveAfterSave 放行。
+ * returnRoute 指定按钮返回和保存成功的目标；不传时沿用资料页的返回行为。
  */
-export function useUnsavedLeaveGuard(dirty: boolean, saving: boolean) {
+export function useUnsavedLeaveGuard(
+    dirty: boolean,
+    saving: boolean,
+    returnRoute?: Href,
+) {
     const navigation = useNavigation();
     const [pendingLeave, setPendingLeave] = useState<LeaveAction | null>(null);
     const allowLeaveRef = useRef(false);
@@ -30,6 +35,11 @@ export function useUnsavedLeaveGuard(dirty: boolean, saving: boolean) {
     });
 
     const goBack = () => {
+        if (returnRoute) {
+            // 目标在栈中时退回已有页面；深链接进入时替换当前页。
+            router.dismissTo(returnRoute);
+            return;
+        }
         if (router.canGoBack()) {
             router.back();
             return;

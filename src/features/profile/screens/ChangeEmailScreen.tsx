@@ -5,6 +5,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useEmailValidation } from "@/features/auth/hooks/useEmailValidation";
 import { colors } from "@/shared/theme";
 import { AppButton, Card, InlineHint, PageHeader, Screen } from "@/shared/ui";
+import type { Href } from "expo-router";
 import { CloudOff } from "lucide-react-native";
 import { useState } from "react";
 import {
@@ -76,7 +77,11 @@ export default function ChangeEmailScreen() {
     const step = flow.step;
     const dirty =
         step === 2 || !!(currentCode || password || newEmail || newCode);
-    const guard = useUnsavedLeaveGuard(dirty, flow.busy);
+    const guard = useUnsavedLeaveGuard(
+        dirty,
+        flow.busy,
+        "/pages/user/privacy-security" as Href,
+    );
 
     const canVerify =
         cloudEnabled &&
@@ -209,7 +214,7 @@ export default function ChangeEmailScreen() {
                     <View className="w-full max-w-[560px] self-center px-4">
                         <PageHeader
                             title="修改邮箱"
-                            backLabel="返回个人资料"
+                            backLabel="返回隐私与安全"
                             onBack={guard.goBack}
                         />
 

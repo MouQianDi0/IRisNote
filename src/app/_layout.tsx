@@ -69,6 +69,10 @@ export default function RootLayout() {
                         options={{ headerShown: false }}
                     />
                     <Stack.Screen
+                        name="pages/user/privacy-security"
+                        options={{ headerShown: false }}
+                    />
+                    <Stack.Screen
                         name="pages/user/permissions"
                         options={{ headerShown: false }}
                     />
