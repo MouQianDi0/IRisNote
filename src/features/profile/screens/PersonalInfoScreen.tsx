@@ -1,4 +1,5 @@
 import { banner } from "@/core/notifications";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useAvatar } from "@/features/profile/hooks/useAvatar";
 import { useAvatarUpdate } from "@/features/profile/hooks/useAvatarUpdate";
@@ -75,6 +76,7 @@ export function formatJoinedDate(
 }
 
 export default function PersonalInfoScreen() {
+    const navigate = useDebouncedNavigation();
     const { user, isLoggedIn, loading } = useAuth();
     const { avatarSource } = useAvatar();
     const avatarUpdate = useAvatarUpdate();
@@ -267,7 +269,7 @@ export default function PersonalInfoScreen() {
                                 icon={UserRound}
                                 label="用户名"
                                 value={displayName}
-                                onPress={() => router.push(nicknameRoute)}
+                                onPress={() => navigate(nicknameRoute)}
                             />
                             <ListRow
                                 icon={Users}
@@ -282,7 +284,7 @@ export default function PersonalInfoScreen() {
                                 icon={MapPin}
                                 label="地区"
                                 value={user.region_label?.trim() || "不设置"}
-                                onPress={() => router.push(regionRoute)}
+                                onPress={() => navigate(regionRoute)}
                             />
                             <ListRow
                                 icon={FileText}
@@ -291,7 +293,7 @@ export default function PersonalInfoScreen() {
                                     user.bio?.trim() || "介绍一下自己"
                                 }
                                 descriptionLines={2}
-                                onPress={() => router.push(bioRoute)}
+                                onPress={() => navigate(bioRoute)}
                                 last
                             />
                         </Card>
@@ -307,18 +309,18 @@ export default function PersonalInfoScreen() {
                                 icon={Mail}
                                 label="邮箱"
                                 value={maskedEmail}
-                                onPress={() => router.push(emailRoute)}
+                                onPress={() => navigate(emailRoute)}
                             />
                             <ListRow
                                 icon={KeyRound}
                                 label="修改密码"
-                                onPress={() => router.push(passwordRoute)}
+                                onPress={() => navigate(passwordRoute)}
                             />
                             <ListRow
                                 icon={Link2}
                                 label="平台绑定"
                                 value="敬请期待"
-                                onPress={() => router.push(linkedAccountsRoute)}
+                                onPress={() => navigate(linkedAccountsRoute)}
                                 last
                             />
                         </Card>

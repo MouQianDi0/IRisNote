@@ -1,4 +1,5 @@
 import { useApplicationDatabase } from "@/core/database";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import {
     captureCloudStorageAccess,
@@ -65,6 +66,7 @@ const networkLabel = (type: string, connected: boolean) => {
 };
 
 export default function SyncQueueScreen() {
+    const navigate = useDebouncedNavigation();
     const guardBack = useTransitionLock();
     const database = useApplicationDatabase();
     const { user } = useAuth();
@@ -401,7 +403,7 @@ export default function SyncQueueScreen() {
                             accessibilityRole="button"
                             accessibilityLabel="管理云存储授权"
                             onPress={() =>
-                                router.push("/pages/user/cloud-storage" as Href)
+                                navigate("/pages/user/cloud-storage" as Href)
                             }
                             style={{ minHeight: 44, justifyContent: "center" }}
                         >

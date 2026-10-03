@@ -1,4 +1,5 @@
 import { readDiagnosticEvents } from "@/core/diagnostics";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { banner } from "@/core/notifications";
 import { colors } from "@/shared/theme";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
@@ -46,6 +47,7 @@ function GroupTitle({ children }: { children: string }) {
 }
 
 export default function DeveloperOptionsScreen() {
+    const navigate = useDebouncedNavigation();
     const { database, ready, enabled } = useDeveloperModeGuard();
     const tools = useNotificationTestTools();
     const [environment, setEnvironment] = useState<EnvironmentState>({
@@ -226,7 +228,7 @@ export default function DeveloperOptionsScreen() {
                                         : `${logCount} 条`
                                 }
                                 description="查看最近 400 条诊断事件（已脱敏）"
-                                onPress={() => router.push(logsRoute)}
+                                onPress={() => navigate(logsRoute)}
                             />
                             <ListRow
                                 icon={TestTube2}

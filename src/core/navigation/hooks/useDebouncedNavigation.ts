@@ -13,22 +13,18 @@ const getRouteKey = (route: Href) => {
 };
 
 /**
- * 防抖导航 hook — 快速连点时只接受第一次点击，跳转期间加锁防止重复入栈
+ * 首次点击立即导航，跳转期间加锁防止快速连点重复入栈。
  * @returns onNavigate — 调用它来触发防抖导航
  */
 export function useDebouncedNavigation() {
     const router = useRouter();
     const pathname = usePathname();
-    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lockRef = useRef(false);
     const pendingRouteKeyRef = useRef<string | null>(null);
 
     useEffect(() => {
         return () => {
-            if (debounceTimer.current) {
-                clearTimeout(debounceTimer.current);
-            }
             if (unlockTimer.current) {
                 clearTimeout(unlockTimer.current);
             }
@@ -43,32 +39,25 @@ export function useDebouncedNavigation() {
                 return;
             }
 
+            const targetPathname =
+                typeof route === "string" ? route : route.pathname;
+            if (pathname === targetPathname) return;
+
             lockRef.current = true;
             pendingRouteKeyRef.current = routeKey;
-
-            if (debounceTimer.current) {
-                clearTimeout(debounceTimer.current);
+            try {
+                router.push(route);
+            } catch (error) {
+                lockRef.current = false;
+                pendingRouteKeyRef.current = null;
+                throw error;
             }
 
-            debounceTimer.current = setTimeout(() => {
-                debounceTimer.current = null;
-
-                const targetPathname =
-                    typeof route === "string" ? route : route.pathname;
-                if (pathname === targetPathname) {
-                    lockRef.current = false;
-                    pendingRouteKeyRef.current = null;
-                    return;
-                }
-
-                router.push(route);
-
-                unlockTimer.current = setTimeout(() => {
-                    lockRef.current = false;
-                    pendingRouteKeyRef.current = null;
-                    unlockTimer.current = null;
-                }, 500);
-            }, 100);
+            unlockTimer.current = setTimeout(() => {
+                lockRef.current = false;
+                pendingRouteKeyRef.current = null;
+                unlockTimer.current = null;
+            }, 500);
         },
         [pathname, router],
     );

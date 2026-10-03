@@ -1,3 +1,39 @@
+## 2026-10-04 00:22:46 | 优化代码：首次点击立即导航并保留防连点保护
+
+- 变更概述：按用户反馈取消公共导航 Hook 的 100ms 前置等待，首次点击立即发起跳转。
+- 修改文件：src/core/navigation/hooks/useDebouncedNavigation.ts；tests/navigation/debounced-navigation.test.cjs；docs/logs/2026-10-04-navigation-repeat-guard.md；CHANGELOG.md。
+- 具体内容：删除延迟导航计时器，先校验当前路径并同步加锁，再立即调用 router.push；保留跳转后 500ms 解锁与卸载清理，路由同步抛错时释放锁并重新抛出原错误。设置、资料等七个页面及原有笔记列表、草稿、分类栏和悬浮按钮的 Hook 使用方统一立即导航，目的路径、参数、业务数据和页面动画不变。七项行为测试更新为立即导航语义，增加同步失败可重试覆盖；全链路文档更新至最终行为，保留首轮验证记录。
+- 验证：本轮修改前 npm run typecheck 通过；node --test tests/navigation/debounced-navigation.test.cjs 7/7 通过；修改后 npm run check 退出码 0，类型及主题检查通过，797/797 测试通过；Lint 零错误、一条既有 liveUpdateCapable 未使用警告。git diff --check 通过，受影响文件冲突标记扫描无匹配。未做 Android 打包、模拟器或真机验证。保留上一轮与既有工作区改动，未提交 Git。
+
+---
+
+## 2026-10-04 00:15:09 | 修复问题：页面选项连点不再重复打开相同页面
+
+- 变更概述：设置、个人中心、个人资料及同步相关页面的选项跳转统一接入已有防重复导航 Hook。
+- 修改文件：src/features/settings/screens/SettingsScreen.tsx、CloudStorageSettingsScreen.tsx、PermissionSettingsScreen.tsx、DeveloperOptionsScreen.tsx；src/features/profile/screens/ProfileScreen.tsx、PersonalInfoScreen.tsx；src/features/sync/screens/SyncQueueScreen.tsx；tests/navigation/debounced-navigation.test.cjs（新增）；docs/logs/2026-10-04-navigation-repeat-guard.md（新增）；CHANGELOG.md。
+- 具体内容：将 7 个页面中的 21 处直接 router.push 调用替换为每页共享的 useDebouncedNavigation 返回函数；沿用同步加锁、100ms 延迟跳转与跳转后 500ms 解锁逻辑，同页连点或交替点击只接受首次选择。保留目的路由、参数、原有返回和账号门控，不改业务数据、接口、布局或动画。新增 7 项真实 Hook 行为测试，覆盖连续点击、不同选项、路由参数、重渲染与返回、当前路径去重及卸载清理。
+- 验证：修改前 npm run typecheck 通过；node --test tests/navigation/debounced-navigation.test.cjs 7/7 通过；修改后 npm run check 退出码 0（类型检查、主题检查通过，797/797 测试通过；Lint 零错误、一条既有 liveUpdateCapable 未使用警告，已核对基点存在）。git diff --check 通过，受影响文件冲突标记扫描无匹配。未做 Android 打包及真机验证；保留既有 AGENTS.md 和 CHANGELOG.md 改动，未提交 Git。
+
+---
+
+## 2026-10-04 00:06:19 | 优化代码：移除 Codex 默认工作分支约定
+
+- 变更概述：按用户明确指示删除 AGENTS.md 第 20 节“Codex 默认工作分支”。
+- 修改文件：AGENTS.md、CHANGELOG.md。
+- 具体内容：删除该节标题及三条分支约定，取消文档对 kroos_vps/codex-a 默认工作分支的指定；保留其余规则与已有日志。本次未切换、创建、提交或推送分支，当前仍为 Timmi。
+- 验证：修改前后 npm run typecheck 通过；核对文档差异，仅移除指定章节。纯文档变更，未做 npm run check、应用构建及真机验证，docs/logs 按规则豁免。
+
+---
+
+## 2026-10-03 20:02:31 | 优化代码：完成软著后续版本条款正式文件
+
+- 变更概述：按用户最新“确认”记录新版权属草稿独立门禁，正式协议正文同步合作期间共同开发后续版本适用条款；提交清单同步平台办理及按需附件，完成内部材料收尾。
+- 修改文件：docs/软件著作权/0.7.1/正式资料/IRisNote_合作开发及著作权归属协议.docx及IRisNote-v0.7.1_提交材料清单.docx、生成报告.md及核验记录.json；权属材料/草稿确认.json、事实及审阅状态.json、核验记录.json及审阅说明.md；后续版本条款修订记录.json、README.md、材料核验清单.md、内部收尾核查.json、阶段修订记录.json、排版与材料核验记录.md、文件摘要.json、IRisNote-v0.7.1-软著材料审阅包.zip及.sha256；_work/generate_ownership_future_scope_word.py、render_ownership_future_scope.py、finalize_ownership_future_scope.py及ownership-future-scope-formal-revision/基线、旧文件、逐页渲染及核验记录；CHANGELOG.md。
+- 具体内容：协议涵盖V0.7.1及双方合作存续期间共同开发的Android客户端、配套后端更新升级迭代成果；合作变化或终止另行书面约定，既有共同权属不自动改变，终止后的新增成果是否纳入另行约定。登记仍为V0.7.1，后续版本申请事项及代表另行确认，未增设持份或收益比例。两份确认Markdown原字节保留；清单的原草稿审阅/制作措辞在当前报告明确为已完成，不再列待办。线下填签及共同签署副本待办继续取消，平台实名、申请确认/签署及提交完成状态未擅自确认。最终Word全部由固定OfficeCLI 1.0.151重建；直接查询曾触发自动升级，门禁拦截后校验保留程序SHA-256、恢复固定版并禁用更新。旧文件及中间文件均保存在_work，不永久删除。
+- 验证：修改前后npm run typecheck退出码0；两份Word实测页数2及3，结构错误0、黑色文字、Title标题及六槽主题字体通过，全部段落/表格与确认稿逐项一致，原生和WPS页数一致，WPS只读导出及Poppler渲染共5页逐页原尺寸目检通过。通用documents渲染器缺少LibreOffice，已诊断并采用上述路径。102项受保护文件及技术草稿门禁不变，四份技术Word、TXT、源码、原图及运行构建证据保持摘要；当前ZIP共117项CRC、逐项大小及SHA-256通过，摘要65d56515620a34c1594e33b46619faea8d2e5a44ac070c3c7e105868c14a1280。纯材料修改未运行无关npm run check，docs/logs豁免；未构建或部署应用、提交登记或执行Git写操作，保留其他工作区修改和历史日志。
+
+---
+
 ## 2026-10-03 19:15:51 | 优化代码：按平台实名流程取消软著线下协议签署待办
 
 - 变更概述：依据用户“两位本人填写身份信息、签名和实际日期，保存共同签署协议。这个不用了，平台有实名”，将当前线下补填本人信息、签名、实际日期及保存共同签署协议的要求从待办中取消，改为按平台实际实名、申请确认/签署及附件要求办理。

@@ -1,4 +1,5 @@
 import { banner } from "@/core/notifications";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import {
@@ -162,6 +163,7 @@ async function openApplicationSettings() {
 }
 
 export default function PermissionSettingsScreen() {
+    const navigate = useDebouncedNavigation();
     const cloudStorage = useCloudStorage();
     const cloudStatus = cloudStorageStatusLabel(cloudStorage);
     const {
@@ -450,7 +452,7 @@ export default function PermissionSettingsScreen() {
                             value={cloudStatus}
                             description="统一管理笔记、待办等内容的云端同步"
                             onPress={() =>
-                                router.push("/pages/user/cloud-storage" as Href)
+                                navigate("/pages/user/cloud-storage" as Href)
                             }
                             last
                         />

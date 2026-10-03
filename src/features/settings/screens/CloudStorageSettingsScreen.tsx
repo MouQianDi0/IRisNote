@@ -1,4 +1,5 @@
 import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { colors } from "@/shared/theme";
 import { Card, ListRow, PageHeader, Screen } from "@/shared/ui";
@@ -17,6 +18,7 @@ import {
 const cardStyle = { borderCurve: "continuous" as const, borderRadius: 16 };
 
 export default function CloudStorageSettingsScreen() {
+    const navigate = useDebouncedNavigation();
     const cloudStorage = useCloudStorage();
     const [actionError, setActionError] = useState<{
         ownerUserId: number | null;
@@ -199,7 +201,7 @@ export default function CloudStorageSettingsScreen() {
                             label="同步队列"
                             description="查看保留在本机的待同步内容"
                             onPress={() =>
-                                router.push("/pages/user/sync-queue")
+                                navigate("/pages/user/sync-queue")
                             }
                             last
                         />

@@ -1,4 +1,5 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { useCloudStorage } from "@/core/cloud-storage/cloud-storage-provider";
 import { cloudStorageStatusLabel } from "@/core/cloud-storage/cloud-storage-policy";
 import { banner } from "@/core/notifications";
@@ -54,6 +55,7 @@ function SettingsGroupTitle({ children }: { children: string }) {
 }
 
 export default function SettingsScreen() {
+    const navigate = useDebouncedNavigation();
     const { isLoggedIn, loading, logout, user } = useAuth();
     const cloudStorage = useCloudStorage();
     const developerMode = useDeveloperMode();
@@ -237,7 +239,7 @@ export default function SettingsScreen() {
                                 icon={UserRound}
                                 label="个人资料"
                                 description="头像、用户名与账户信息"
-                                onPress={() => router.push(personalInfoRoute)}
+                                onPress={() => navigate(personalInfoRoute)}
                                 last
                             />
                         </Card>
@@ -305,21 +307,21 @@ export default function SettingsScreen() {
                                 icon={Smartphone}
                                 label="权限设置"
                                 description="管理云存储、通知、相机与更新安装授权"
-                                onPress={() => router.push(permissionsRoute)}
+                                onPress={() => navigate(permissionsRoute)}
                             />
                             <ListRow
                                 icon={Cloud}
                                 label="同步与备份"
                                 value={cloudStatus}
                                 description="统一管理笔记、待办等内容的云存储授权"
-                                onPress={() => router.push(cloudStorageRoute)}
+                                onPress={() => navigate(cloudStorageRoute)}
                             />
                             <ListRow
                                 icon={Database}
                                 label="数据与存储"
                                 description="查看本地占用，选择清理缓存与临时文件"
                                 onPress={() =>
-                                    router.push(
+                                    navigate(
                                         "/pages/user/data-storage" as Href,
                                     )
                                 }
@@ -345,14 +347,14 @@ export default function SettingsScreen() {
                                 icon={CircleHelp}
                                 label="帮助与反馈"
                                 description="反馈邮箱、Discord 频道与使用帮助"
-                                onPress={() => router.push(helpFeedbackRoute)}
+                                onPress={() => navigate(helpFeedbackRoute)}
                             />
                             <ListRow
                                 icon={Info}
                                 label="关于 IRisNote"
                                 value={`v${version}`}
                                 description="查看当前版本与历史更新记录"
-                                onPress={() => router.push(aboutRoute)}
+                                onPress={() => navigate(aboutRoute)}
                             />
                             <ListRow
                                 icon={Cloud}
@@ -380,7 +382,7 @@ export default function SettingsScreen() {
                                     icon={SquareTerminal}
                                     label="开发者选项"
                                     description="运行环境、诊断日志与通知测试"
-                                    onPress={() => router.push(developerRoute)}
+                                    onPress={() => navigate(developerRoute)}
                                     last
                                 />
                             </Card>

@@ -1,4 +1,5 @@
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useDebouncedNavigation } from "@/core/navigation/hooks/useDebouncedNavigation";
 import { UserAvatarImage } from "@/features/profile/components/UserAvatarImage";
 import { useProfileOverview } from "@/features/profile/hooks/useProfileOverview";
 import { parseCreatedAt } from "@/features/profile/utils/profile-validation";
@@ -113,6 +114,7 @@ function ContentRow({
 }
 
 export default function ProfileScreen() {
+    const navigate = useDebouncedNavigation();
     const { user, isLoggedIn, loading: authLoading } = useAuth();
     const { overview, loading: overviewLoading } = useProfileOverview(user?.id);
 
@@ -187,7 +189,7 @@ export default function ProfileScreen() {
         ? `${createdAt.toLocaleDateString("zh-CN")} 加入`
         : "加入时间暂不可用";
     const openNotes = (view?: "starred", drafts?: boolean) => {
-        router.push(
+        navigate(
             drafts
                 ? "/pages/user/drafts"
                 : view === "starred"
@@ -212,7 +214,7 @@ export default function ProfileScreen() {
                             accessibilityLabel={`${displayName}，${user.email}，查看个人资料`}
                             accessibilityRole="button"
                             className="min-h-24 flex-row items-center rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
-                            onPress={() => router.push(personalInfoRoute)}
+                            onPress={() => navigate(personalInfoRoute)}
                             style={cardStyle}
                         >
                             <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-hyper-card-selected">
@@ -291,7 +293,7 @@ export default function ProfileScreen() {
                                 accessibilityRole="button"
                                 className="min-h-[120px] rounded-hyper-card bg-white p-4 active:opacity-[0.85]"
                                 onPress={() =>
-                                    router.push({
+                                    navigate({
                                         pathname: "/pages/note/[id]",
                                         params: {
                                             id: String(
@@ -403,7 +405,7 @@ export default function ProfileScreen() {
                                 icon={Trash2}
                                 label="垃圾桶"
                                 last
-                                onPress={() => router.push("/pages/user/trash")}
+                                onPress={() => navigate("/pages/user/trash")}
                             />
                         </Card>
                     </View>
