@@ -1,11 +1,16 @@
 import { BackButton } from "@/shared/ui";
+import type { ReactNode } from "react";
 import { View } from "react-native";
 
 type NoteViewerHeaderProps = {
     onBack: () => void;
+    actions?: ReactNode;
 };
 
-export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
+export default function NoteViewerHeader({
+    onBack,
+    actions,
+}: NoteViewerHeaderProps) {
     return (
         <View className="h-16 flex-row items-center justify-between">
             <BackButton onPress={onBack} accessibilityLabel="返回" />
@@ -21,6 +26,7 @@ export default function NoteViewerHeader({ onBack }: NoteViewerHeaderProps) {
       </View>
 
       <View pointerEvents="none" className="h-10 w-10" /> */}
+            {actions}
         </View>
     );
 }
