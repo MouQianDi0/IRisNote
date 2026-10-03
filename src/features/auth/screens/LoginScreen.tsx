@@ -1,4 +1,8 @@
-import { setCloudStorageSession } from "@/core/cloud-storage/cloud-storage-policy";
+import {
+    getCloudStorageSnapshot,
+    setCloudStorageSession,
+} from "@/core/cloud-storage/cloud-storage-policy";
+import { loginDataRestore } from "../services/login-data-restore";
 import { banner } from "@/core/notifications";
 import {
     loginWithPassword,
@@ -76,7 +80,10 @@ export default function LoginScreen() {
                 type: "login",
             });
             if (!mountedRef.current) return;
-            banner.show({ type: "success", title: "验证码已发送，请查收邮件" });
+            banner.show({
+                type: "success",
+                title: "验证码已发送，请查收邮件",
+            });
             setCountdown(60);
             countdownRef.current = setInterval(() => {
                 setCountdown((prev) => {
@@ -155,10 +162,15 @@ export default function LoginScreen() {
             await syncProfile();
             trace("profile_sync_completed");
 
+            if (getCloudStorageSnapshot().available) {
+                loginDataRestore.request(data.user.id, data.token);
+            }
+
             trace("navigation_requested_user");
             router.replace("/(tabs)/user");
             trace("navigation_dispatched_user");
-            banner.show({ type: "success", title: "登录成功" });
+            if (!getCloudStorageSnapshot().available)
+                banner.show({ type: "success", title: "登录成功" });
             trace("success_banner_requested");
         } catch (err: unknown) {
             // 只记录失败阶段，禁止把认证响应、凭据或错误正文写入诊断日志。

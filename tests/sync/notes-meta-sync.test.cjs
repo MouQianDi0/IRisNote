@@ -165,6 +165,18 @@ const local = (sql, id) => sql.prepare("SELECT * FROM local_notes WHERE owner_us
 const revisions = (sql, clientId) =>
     sql.prepare("SELECT count(*) AS count FROM note_revisions WHERE owner_user_id=1 AND client_id=?").get(clientId).count;
 
+test("login full-body recovery restores previously evicted notes without metadata eviction", async (t) => {
+    const { port, sql } = await database(t);
+    const cloud = server(Array.from({ length: 305 }, (_, i) => note(i + 1)));
+    await sync(port, cloud);
+    assert.ok(sql.prepare("SELECT count(*) n FROM local_notes WHERE body_state='evicted'").get().n > 0);
+    cloud.supports = false; // Login transport explicitly selects the full protocol.
+    await sync(port, cloud);
+    assert.equal(cloud.calls.snapshot.at(-1).fields, undefined);
+    assert.equal(sql.prepare("SELECT count(*) n FROM local_notes WHERE body_state='evicted'").get().n, 0);
+    assert.equal(sql.prepare("SELECT count(*) n FROM local_notes WHERE content IS NOT NULL").get().n, 305);
+});
+
 test("client content hashes match the server's raw UTF-8 SHA-256", () => {
     assert.equal(noteContentHash(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     const raw = "第一行😀\r\n第二行\r第三行\n";

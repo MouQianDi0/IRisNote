@@ -59,8 +59,10 @@ export function createTodoTransport(
     userId: number,
     token: string,
     signal: AbortSignal,
+    loginRestoreId?: number,
 ): TodoTransport {
     const config = {
+        ...(loginRestoreId === undefined ? {} : { loginRestoreId }),
         signal,
         timeout: 15000,
         headers: { Authorization: `Bearer ${token}` },
@@ -306,7 +308,10 @@ export function createTodoTransport(
                     },
                     {
                         ...config,
-                        headers: { ...config.headers, "Idempotency-Key": key },
+                        headers: {
+                            ...config.headers,
+                            "Idempotency-Key": key,
+                        },
                     },
                 ),
             );

@@ -27,6 +27,7 @@ export type TodoSyncSession = {
     ownerKey: string;
     transport: TodoTransport;
     isCurrent: () => boolean;
+    downloadOnly?: boolean;
 };
 export type TodoSyncResult = {
     pending: number;
@@ -34,7 +35,52 @@ export type TodoSyncResult = {
     downloaded: number;
     changed: number;
 };
-export async function syncTodos(
+
+const jobs = new WeakMap<
+    TodoLocalRepository,
+    Map<
+        string,
+        {
+            promise: Promise<TodoSyncResult>;
+            downloadOnly: boolean;
+            isCurrent: () => boolean;
+        }
+    >
+>();
+
+/** Normal sync and login recovery share the same per-owner download cursor. */
+export function syncTodos(session: TodoSyncSession): Promise<TodoSyncResult> {
+    if (!session.isCurrent())
+        return Promise.reject(new Error("待办同步会话已结束"));
+    let owners = jobs.get(session.repository);
+    if (!owners) {
+        owners = new Map();
+        jobs.set(session.repository, owners);
+    }
+    const existing = owners.get(session.ownerKey);
+    if (existing) {
+        if (
+            !existing.isCurrent() ||
+            (session.downloadOnly && !existing.downloadOnly)
+        )
+            return existing.promise
+                .catch(() => {})
+                .then(() => syncTodos(session));
+        return existing.promise;
+    }
+    const promise = runTodoSync(session).finally(() => {
+        if (owners.get(session.ownerKey)?.promise === promise)
+            owners.delete(session.ownerKey);
+    });
+    owners.set(session.ownerKey, {
+        promise,
+        downloadOnly: !!session.downloadOnly,
+        isCurrent: session.isCurrent,
+    });
+    return promise;
+}
+
+async function runTodoSync(
     session: TodoSyncSession,
 ): Promise<TodoSyncResult> {
     const { repository, ownerKey, transport } = session;
@@ -58,9 +104,12 @@ export async function syncTodos(
     await transaction(ownerKey, (tx) =>
         enlistExisting(tx, ownerKey, repository.list(ownerKey)),
     );
-    const ops = await transaction(ownerKey, (tx) =>
-        prepareOperations(tx, ownerKey, Date.now()),
-    );
+    // Keep pre-existing local edits enrolled for conflict protection, but do not prepare/send writes.
+    const ops = session.downloadOnly
+        ? []
+        : await transaction(ownerKey, (tx) =>
+              prepareOperations(tx, ownerKey, Date.now()),
+          );
     async function reportResult(): Promise<TodoSyncResult> {
         const records = await transaction(ownerKey, (tx) =>
             listTodoSyncRecords(tx, ownerKey),
@@ -175,7 +224,10 @@ export async function syncTodos(
                 Date.now() +
                     Math.max(
                         error.retryAfter,
-                        Math.min(300000, 1000 * 2 ** Math.min(op.attempts, 9)),
+                        Math.min(
+                            300000,
+                            1000 * 2 ** Math.min(op.attempts, 9),
+                        ),
                     ),
                 error.current,
                 isConflict,
@@ -254,22 +306,29 @@ export async function syncTodos(
                     visited.add(cursor);
                     const page = await transport.changes(cursor);
                     check();
-                    const applied = await transaction(ownerKey, async (tx) => {
-                        let changed = 0;
-                        for (const event of page.data)
-                            if (
-                                await applyRemote(
-                                    tx,
-                                    ownerKey,
-                                    event.operation === "upsert"
-                                        ? event.data
-                                        : event,
+                    const applied = await transaction(
+                        ownerKey,
+                        async (tx) => {
+                            let changed = 0;
+                            for (const event of page.data)
+                                if (
+                                    await applyRemote(
+                                        tx,
+                                        ownerKey,
+                                        event.operation === "upsert"
+                                            ? event.data
+                                            : event,
+                                    )
                                 )
-                            )
-                                changed++;
-                        await saveCursor(tx, ownerKey, page.page.next_cursor);
-                        return changed;
-                    });
+                                    changed++;
+                            await saveCursor(
+                                tx,
+                                ownerKey,
+                                page.page.next_cursor,
+                            );
+                            return changed;
+                        },
+                    );
                     downloaded += applied;
                     cursor = page.page.next_cursor;
                     if (!page.page.has_more) break;

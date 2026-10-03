@@ -530,6 +530,38 @@ const deferred = () => {
     return { promise, resolve };
 };
 
+test("login read publishes notes with consent off and survives screen coordinator teardown", async (t) => {
+    const { port } = await database(t);
+    cloudPolicy.setCloudStorageSession(1, true, false);
+    t.after(() => cloudPolicy.setCloudStorageSession(null, false, false));
+    const lease = cloudPolicy.createLoginRestoreAccess(1);
+    t.after(lease.release);
+    const started = deferred(), response = deferred();
+    const received = [];
+    const unsubscribe = events.onNotesChanged((event) => received.push(event));
+    t.after(unsubscribe);
+    const restore = {
+        transport: {
+            snapshot: async () => { started.resolve(); return response.promise; },
+            changes: async () => changePage(),
+        },
+        signal: lease.signal,
+        check: lease.assertCurrent,
+    };
+    const first = coordinator.syncNotes(port, 1, restore);
+    assert.strictEqual(coordinator.syncNotes(port, 1, restore), first);
+    await started.promise;
+    coordinator.setNoteSyncOwner(1);
+    const screen = coordinator.startNoteSyncCoordinator(port, 1);
+    screen.setActive(false);
+    screen.stop();
+    response.resolve(snapshot([cloud(1, 1, "恢复的正文")]));
+    const result = await first;
+    assert.equal(result.notes[0].content, "恢复的正文");
+    assert.ok(received.some((event) => event.type === "upsert" && event.note.content === "恢复的正文"));
+    assert.equal(cloudPolicy.getCloudStorageSnapshot().enabled, false);
+});
+
 test("concurrent consumers share one download; changed accounts reject even empty old responses", async (t) => {
     authorizeCloud(t);
     const { port } = await database(t);

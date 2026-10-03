@@ -165,11 +165,27 @@ SHA-256 → COS 上传及 CDN 回读校验 → 差量生成和上传。两端完
 草稿，人工核对后执行 `publish`。已有 APK 或 EAS 下载产物执行一次 `upload` 即可。
 
 默认桶 `irisnote-1334342309`、地域 `ap-guangzhou`、CDN 基础地址
-`https://download.tech-mou.top`，目录前缀为空。COS 对象名严格为
-`IRisNote-<version>-<buildCode>.apk`。配置键见 `release.env.example`；必须在
+`https://download.tech-mou.top/IRisNote_apk`，默认目录前缀为 `IRisNote_apk`（大小写敏感）。COS 对象键严格为
+`IRisNote_apk/IRisNote-<version>-<buildCode>.apk`。配置键见 `release.env.example`；必须在
 `.env.release.local` 或当前终端设置 `IRIS_COS_SECRET_ID`、`IRIS_COS_SECRET_KEY`，
 临时凭据还需 `IRIS_COS_SECURITY_TOKEN`。凭据不进入构建子进程或 EAS。
-本机上传配置不会自动修改线上 `RELEASE_CDN_BASE_URL`，后端应配置相同 CDN 基础地址。
+本机上传配置不会自动修改线上 `RELEASE_CDN_BASE_URL`，后端应配置相同 CDN 基础地址：
+
+```dotenv
+# 本机 .env.release.local / 发布 CI
+IRIS_COS_PREFIX=IRisNote_apk
+IRIS_COS_CDN_BASE_URL=https://download.tech-mou.top/IRisNote_apk
+# 线上发布服务，配置后按实际部署方式重新加载服务
+RELEASE_CDN_BASE_URL=https://download.tech-mou.top/IRisNote_apk
+```
+
+已有 `.env.release.local` 和终端/CI 变量需要同步调整；终端变量优先于本机配置文件。
+默认值仅在相应配置未提供时生效，显式空目录仍表示桶根目录，必须配套根目录 CDN 地址；
+目录与 CDN 路径不一致时工具会停止，不会自动猜测或修正。
+后端现有地址生成逻辑支持目录前缀；App 直接下载 API 返回的 `delivery.downloadUrl`，无需为目录切换重新安装 App。
+先确保新目录的对象通过 CDN 大小与 SHA-256 校验，再切换后端配置，并核对实际 API 返回的下载地址。
+保留根目录旧对象以兼容已经分发的链接；历史对象不会自动迁移。未复制到新目录的历史完整 APK
+会按下述可用性检测回退服务器，不能把本机配置成功视为线上已经切换或所有历史版本已迁移。
 
 凭据需要目标桶的 `cos:GetBucketVersioning` 及对应对象的 `cos:HeadObject`、
 `cos:GetObject`、`cos:PutObject` 权限。工具先检查版本控制，允许未开启或 Enabled；

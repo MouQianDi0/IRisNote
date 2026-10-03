@@ -4,6 +4,7 @@ import { NotificationProvider } from "@/core/notifications/notification-provider
 import { SystemNotificationProvider } from "@/core/system-notifications/system-notification-provider";
 import { TodoSyncProvider } from "@/features/todos/state/todo-sync-provider";
 import { AuthProvider } from "@/features/auth/providers/AuthProvider";
+import { LoginDataRestoreProvider } from "@/features/auth/providers/LoginDataRestoreProvider";
 import { UpdateDialog } from "@/features/updates/UpdateDialog";
 import type { PropsWithChildren } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -19,8 +20,10 @@ export function AppProviders({ children }: PropsWithChildren) {
                         <NotificationProvider>
                             <SystemNotificationProvider>
                                 <TodoSyncProvider>
-                                    {children}
-                                    <UpdateDialog />
+                                    <LoginDataRestoreProvider>
+                                        {children}
+                                        <UpdateDialog />
+                                    </LoginDataRestoreProvider>
                                 </TodoSyncProvider>
                             </SystemNotificationProvider>
                         </NotificationProvider>

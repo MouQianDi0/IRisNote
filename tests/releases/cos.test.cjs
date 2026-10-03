@@ -21,14 +21,15 @@ async function fixture(t, initial) {
     const state = { bytes: initial, puts: 0, gets: 0, status: undefined, versionId: undefined };
     const client = {
         async getBucketVersioning() { return { VersioningConfiguration: { Status: state.status } }; },
-        async headObject() {
+        async headObject(params) {
+            assert.equal(params.Key, 'IRisNote_apk/IRisNote-0.2.0-7.apk');
             if (!state.bytes) throw { statusCode: 404, code: 'NotFound' };
             return { headers: { 'content-length': String(state.bytes.length) }, ETag: 'object-etag', VersionId: state.versionId };
         },
         async getObject() { throw new Error('APK must not use the default COS GET endpoint'); },
         async putObject(params) {
             state.puts++;
-            assert.equal(params.Key, 'IRisNote-0.2.0-7.apk');
+            assert.equal(params.Key, 'IRisNote_apk/IRisNote-0.2.0-7.apk');
             assert.equal(params.Bucket, 'irisnote-1334342309');
             assert.equal(params.Region, 'ap-guangzhou');
             assert.equal(params.Headers['x-cos-forbid-overwrite'], 'true');
@@ -43,7 +44,7 @@ async function fixture(t, initial) {
     const transport = {
         async fetch(url, options) {
             state.gets++;
-            assert.equal(url, 'https://download.tech-mou.top/IRisNote-0.2.0-7.apk');
+            assert.equal(url, 'https://download.tech-mou.top/IRisNote_apk/IRisNote-0.2.0-7.apk');
             assert.equal(options.headers['If-Match'], 'object-etag');
             assert.equal(options.headers.Authorization, undefined);
             assert.equal(options.redirect, 'error');
@@ -53,11 +54,11 @@ async function fixture(t, initial) {
     return { apk, state, client, transport, uploader: createCosUploader(cosConfig(env), client, (...args) => transport.fetch(...args)) };
 }
 
-test('COS defaults match the confirmed root object and reject incomplete/unsafe configuration', async () => {
+test('COS defaults match the APK directory and reject incomplete/unsafe configuration', async () => {
     const { cosConfig, cosObjectKey, withoutCosCredentials } = await modulePromise;
     const config = cosConfig(env);
-    assert.equal(config.cdn, 'https://download.tech-mou.top');
-    assert.equal(cosObjectKey(config, release), 'IRisNote-0.2.0-7.apk');
+    assert.equal(config.cdn, 'https://download.tech-mou.top/IRisNote_apk');
+    assert.equal(cosObjectKey(config, release), 'IRisNote_apk/IRisNote-0.2.0-7.apk');
     const nested = cosConfig({ ...env, IRIS_COS_PREFIX: 'releases', IRIS_COS_CDN_BASE_URL: 'https://cdn.example/releases' });
     assert.equal(cosObjectKey(nested, release), 'releases/IRisNote-0.2.0-7.apk');
     assert.throws(() => cosConfig({}), /IRIS_COS_SECRET_ID/);
@@ -70,12 +71,37 @@ test('COS defaults match the confirmed root object and reject incomplete/unsafe 
     assert.equal(source.IRIS_COS_SECRET_KEY, 'test-secret');
 });
 
+test('COS directory settings normalize slashes and reject partially migrated configuration', async () => {
+    const { cosConfig, cosObjectKey } = await modulePromise;
+    const config = cosConfig({ ...env, IRIS_COS_PREFIX: ' /IRisNote_apk/ ', IRIS_COS_CDN_BASE_URL: ' https://download.tech-mou.top/IRisNote_apk/ ' });
+    assert.equal(config.cdn, 'https://download.tech-mou.top/IRisNote_apk');
+    assert.equal(cosObjectKey(config, release), 'IRisNote_apk/IRisNote-0.2.0-7.apk');
+    for (const overrides of [
+        { IRIS_COS_PREFIX: '' },
+        { IRIS_COS_CDN_BASE_URL: 'https://download.tech-mou.top' },
+        { IRIS_COS_PREFIX: 'irisnote_apk' },
+    ]) assert.throws(() => cosConfig({ ...env, ...overrides }), /目录必须/);
+    const legacy = cosConfig({ ...env, IRIS_COS_PREFIX: '', IRIS_COS_CDN_BASE_URL: 'https://download.tech-mou.top' });
+    assert.equal(cosObjectKey(legacy, release), 'IRisNote-0.2.0-7.apk');
+});
+
+test('COS verification of an existing APK uses the new directory without uploading', async t => {
+    const f = await fixture(t, bytes);
+    const result = await f.uploader.verifyExisting(release, info);
+    assert.deepEqual(result, {
+        key: 'IRisNote_apk/IRisNote-0.2.0-7.apk',
+        url: 'https://download.tech-mou.top/IRisNote_apk/IRisNote-0.2.0-7.apk',
+    });
+    assert.equal(f.state.puts, 0);
+    assert.equal(f.state.gets, 1);
+});
+
 test('COS uploads the original bytes, reads them back, and retries without another PUT', async t => {
     const f = await fixture(t);
     await f.uploader.preflight();
     const uploaded = await f.uploader.upload(f.apk, release, info);
     assert.equal(uploaded.skipped, false);
-    assert.equal(uploaded.url, 'https://download.tech-mou.top/IRisNote-0.2.0-7.apk');
+    assert.equal(uploaded.url, 'https://download.tech-mou.top/IRisNote_apk/IRisNote-0.2.0-7.apk');
     assert.deepEqual(f.state.bytes, bytes);
     assert.equal((await f.uploader.upload(f.apk, release, info)).skipped, true);
     assert.equal(f.state.puts, 1);
@@ -138,6 +164,9 @@ test('installed COS SDK sends forbid-overwrite and streams verified bytes over H
     let stored;
     let puts = 0;
     const server = createServer(async (req, res) => {
+        if (!req.url.includes('versioning') && req.url !== '/IRisNote_apk/IRisNote-0.2.0-7.apk') {
+            res.writeHead(404); res.end(); return;
+        }
         if (req.url.includes('versioning')) {
             res.setHeader('Content-Type', 'application/xml');
             res.end('<VersioningConfiguration/>');
@@ -163,7 +192,7 @@ test('installed COS SDK sends forbid-overwrite and streams verified bytes over H
     await once(server, 'listening');
     t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
     const client = new COS({ SecretId: 'fixture', SecretKey: 'fixture', Protocol: 'http:', Domain: `127.0.0.1:${server.address().port}`, Timeout: 2000 });
-    const uploader = createCosUploader(cosConfig(env), client, (_url, options) => fetch(`http://127.0.0.1:${server.address().port}/IRisNote-0.2.0-7.apk`, options));
+    const uploader = createCosUploader(cosConfig(env), client, (_url, options) => fetch(`http://127.0.0.1:${server.address().port}/IRisNote_apk/IRisNote-0.2.0-7.apk`, options));
     await uploader.preflight();
     await uploader.upload(f.apk, release, info);
     assert.equal((await uploader.upload(f.apk, release, info)).skipped, true);

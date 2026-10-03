@@ -170,6 +170,36 @@ function run(ctx, remote, isCurrent = () => true) {
   });
 }
 
+test("登录下载分页落库并发布列表，保留本地修改且不准备或发送写操作", async (t) => {
+  const c = await setup(t);
+  const base = await synced(c);
+  await c.repo.update(owner, c.repo.get(owner, id(1)), { body: "未上传的修改" }, now);
+  const local = await c.create(2, "仅本机");
+  const remote3 = dto({ ...local, clientId: id(3), body: "云端新增" }, 1, { id: 3 });
+  let pageCount = 0, broadcasts = 0;
+  const unsubscribe = c.repo.subscribe(() => { broadcasts++; });
+  t.after(unsubscribe);
+  const remote = transport({
+    snapshot: async (cursor) => {
+      pageCount++;
+      return cursor ? snapshot([remote3]) : snapshot([{ ...base, body: "云端改动", version: 2 }], "baseline", true, "p2");
+    },
+    write: async () => assert.fail("login must never upload"),
+    batch: async () => assert.fail("login must never batch upload"),
+  });
+  const session = { repository: c.repo, ownerKey: owner, transport: remote, isCurrent: () => true, downloadOnly: true };
+  const job = syncTodos(session);
+  assert.strictEqual(syncTodos(session), job);
+  const result = await job;
+  assert.equal(result.uploaded, 0);
+  assert.equal(pageCount, 2);
+  assert.equal(c.repo.get(owner, id(1)).body, "未上传的修改");
+  assert.equal(c.repo.get(owner, id(2)).body, "仅本机");
+  assert.equal(c.repo.get(owner, id(3)).body, "云端新增");
+  assert.ok(broadcasts > 0);
+  assert.equal(c.sqlite.prepare("SELECT count(*) n FROM todo_outbox").get().n, 0);
+});
+
 test("待办同步汇总只在上传后显示成功横幅，待处理状态优先", () => {
   const success = todoSyncBanner({ pending: 0, uploaded: 2 }, () => {});
   assert.equal(success.title, "待办已同步");

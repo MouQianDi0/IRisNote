@@ -5,6 +5,7 @@ import {
     importCachedCategories,
 } from "./category-local.repository";
 import type { ApplicationDatabase } from "@/core/database";
+import type { AxiosRequestConfig } from "axios";
 import {
     getCloudStorageSnapshot,
     captureLocalStorageAccess,
@@ -73,21 +74,28 @@ export async function writeCachedCategories(
 export async function loadCategories(
     database: ApplicationDatabase,
     ownerUserId: number,
+    restore?: { config: AxiosRequestConfig; check: () => void },
 ): Promise<{ categories: Category[]; stale: boolean }> {
     const local = await hasLocalCategories(database);
     const cloud = getCloudStorageSnapshot();
-    if (local && !cloud.enabled) {
+    if (local && !cloud.enabled && !restore) {
         const check = captureLocalStorageAccess(ownerUserId);
         const categories = await listLocalCategories(database, ownerUserId);
         check();
         return { categories, stale: true };
     }
-    const check = local ? captureCloudStorageAccess(ownerUserId) : () => {};
+    const check =
+        restore?.check ??
+        (local ? captureCloudStorageAccess(ownerUserId) : () => {});
+    check();
     if (local) await importCachedCategories(database, ownerUserId);
     const versions = local
         ? new Map(
               (
-                  await database.getAll<{ server_id: number; version: number }>(
+                  await database.getAll<{
+                      server_id: number;
+                      version: number;
+                  }>(
                       "SELECT server_id,version FROM local_categories WHERE owner_user_id=? AND server_id IS NOT NULL",
                       [ownerUserId],
                   )
@@ -95,8 +103,10 @@ export async function loadCategories(
           )
         : undefined;
     try {
-        const categories = await getCategories();
+        const categories = await getCategories(restore?.config);
         check();
+        if (restore && !categories.every(isCategory))
+            throw new Error("分类数据无效，本机内容已保留");
         if (local)
             await database.transaction(async (tx) => {
                 check();
@@ -108,11 +118,13 @@ export async function loadCategories(
                 );
                 check();
             });
+        check();
         try {
             await writeCachedCategories(database, ownerUserId, categories);
         } catch {
             // 副本写入失败只影响下次离线兜底，不影响本次展示。
         }
+        check();
         return {
             categories: local
                 ? await listLocalCategories(database, ownerUserId)
@@ -120,6 +132,7 @@ export async function loadCategories(
             stale: false,
         };
     } catch (error) {
+        if (restore) throw error;
         if (isCloudStoragePermissionError(error)) throw error;
         if (local) {
             captureLocalStorageAccess(ownerUserId)();
@@ -128,9 +141,10 @@ export async function loadCategories(
                 stale: true,
             };
         }
-        const cached = await readCachedCategories(database, ownerUserId).catch(
-            () => null,
-        );
+        const cached = await readCachedCategories(
+            database,
+            ownerUserId,
+        ).catch(() => null);
         if (!cached) throw error;
         return { categories: cached, stale: true };
     }

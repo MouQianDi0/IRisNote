@@ -214,7 +214,7 @@ export default function CloudStorageSettingsScreen() {
                                 lineHeight: 20,
                             }}
                         >
-                            授权仅对当前账号和本设备生效。关闭后暂停上传、下载和自动重试，不删除本机或已有云端数据。
+                            授权仅对当前账号和本设备生效。关闭后暂停持续同步和自动重试，不删除本机或已有云端数据。每次主动登录成功仍会读取一次云端数据，不会因此开启云同步。
                         </Text>
                         <Text
                             style={{
