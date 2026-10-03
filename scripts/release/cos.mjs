@@ -14,7 +14,7 @@ export function cosConfig(env = process.env) {
     };
     const bucket = env.IRIS_COS_BUCKET?.trim() || "irisnote-1334342309";
     const region = env.IRIS_COS_REGION?.trim() || "ap-guangzhou";
-    const prefix = (env.IRIS_COS_PREFIX ?? "").trim().replace(/^\/+|\/+$/g, "");
+    const prefix = (env.IRIS_COS_PREFIX ?? "IRisNote_apk").trim().replace(/^\/+|\/+$/g, "");
     if (
         !/^[a-z0-9][a-z0-9-]*-\d+$/.test(bucket) ||
         !/^[a-z]+-[a-z]+-?\d*$/.test(region)
@@ -28,7 +28,7 @@ export function cosConfig(env = process.env) {
             "COS 目录前缀仅支持英文、数字、下划线、连字符及目录分隔符",
         );
     const cdn = new URL(
-        env.IRIS_COS_CDN_BASE_URL?.trim() || "https://download.tech-mou.top",
+        env.IRIS_COS_CDN_BASE_URL?.trim() || "https://download.tech-mou.top/IRisNote_apk",
     );
     if (
         cdn.protocol !== "https:" ||

@@ -143,6 +143,73 @@ export function createCloudStorageRequest() {
     };
 }
 
+// Explicit login recovery gets a short-lived read lease, never device upload consent.
+// Use an opaque numeric handle because Axios clones plain config objects.
+let restoreSequence = 0;
+const restoreLeases = new Map<
+    number,
+    {
+        signal: AbortSignal;
+        assertCurrent: () => void;
+    }
+>();
+const loginReadRoutes = new Set([
+    "/categories",
+    "/notes/snapshot",
+    "/notes/changes",
+    "/notes/batch",
+    "/todos",
+    "/todos/changes",
+]);
+
+export function createLoginRestoreAccess(ownerUserId: number) {
+    const generation = snapshot.generation;
+    const controller = new AbortController();
+    const assertCurrent = () => {
+        if (
+            controller.signal.aborted ||
+            !snapshot.available ||
+            !snapshot.ready ||
+            snapshot.ownerUserId !== ownerUserId ||
+            snapshot.generation !== generation
+        )
+            throw new CloudStoragePermissionError("登录数据读取会话已结束");
+    };
+    assertCurrent();
+    const id = ++restoreSequence;
+    controllers.add(controller);
+    restoreLeases.set(id, { signal: controller.signal, assertCurrent });
+    return {
+        id,
+        signal: controller.signal,
+        assertCurrent,
+        release() {
+            restoreLeases.delete(id);
+            controllers.delete(controller);
+            controller.abort();
+        },
+    };
+}
+
+export function createLoginRestoreRequest(
+    id: number,
+    method: string | undefined,
+    url: string | undefined,
+) {
+    const lease = restoreLeases.get(id);
+    if (
+        !lease ||
+        (method ?? "get").toLowerCase() !== "get" ||
+        !loginReadRoutes.has(url ?? "")
+    ) {
+        throw new CloudStoragePermissionError(
+            "登录数据读取仅允许指定的只读接口",
+        );
+    }
+    lease.assertCurrent();
+    return { ...lease, release: () => {} };
+}
+
 /** Only essential account calls bypass consent. Unknown/future API routes are protected. */
 export function isEssentialAccountRequest(
     method: string | undefined,

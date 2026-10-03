@@ -9,6 +9,7 @@ import {
     onConnectionReset,
 } from "@/shared/http/connection-events";
 import { notesSyncTransport } from "../api/notes-sync.api";
+import type { NotesSyncTransport } from "../api/notes-sync.types";
 import { getLocalNotes } from "../data/note-local.repository";
 import { removeCachedNoteById, setCachedNote } from "../notes.cache";
 import {
@@ -23,7 +24,14 @@ import { syncLocalNoteFlags } from "./note-flags.service";
 type Result = Awaited<ReturnType<typeof runNoteSync>>;
 const jobs = new WeakMap<
     ApplicationDatabase,
-    Map<number, { controller: AbortController; promise: Promise<Result> }>
+    Map<
+        number,
+        {
+            controller: AbortController;
+            promise: Promise<Result>;
+            restore: boolean;
+        }
+    >
 >();
 const controllers = new Set<AbortController>();
 const cacheMaintenance = new WeakMap<ApplicationDatabase, Set<number>>();
@@ -70,13 +78,19 @@ export function setNoteSyncOwner(owner: number | null) {
 export function syncNotes(
     db: ApplicationDatabase,
     owner: number,
+    restore?: {
+        transport: NotesSyncTransport;
+        signal: AbortSignal;
+        check: () => void;
+    },
 ): Promise<Result> {
     if (cacheMaintenance.get(db)?.has(owner))
         return Promise.reject(new Error("笔记正文正在释放，请稍后同步"));
     // Return a rejected Promise (rather than throwing before callers attach .catch).
     let checkPermission: () => void;
     try {
-        checkPermission = captureCloudStorageAccess(owner);
+        checkPermission = restore?.check ?? captureCloudStorageAccess(owner);
+        checkPermission();
     } catch (error) {
         return Promise.reject(error);
     }
@@ -86,16 +100,30 @@ export function syncNotes(
         jobs.set(db, owners);
     }
     const existing = owners.get(owner);
-    if (existing && !existing.controller.signal.aborted)
+    if (existing) {
+        // Recovery must not inherit the upload steps of a normal sync. Drain it first.
+        if (
+            (restore && !existing.restore) ||
+            existing.controller.signal.aborted
+        ) {
+            existing.controller.abort();
+            return existing.promise
+                .catch(() => {})
+                .then(() => syncNotes(db, owner, restore));
+        }
         return existing.promise;
+    }
     const generation = session;
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    restore?.signal.addEventListener("abort", abort);
+    if (restore?.signal.aborted) abort();
     let stamp = noteCloudWriteStamp();
     const check = () => {
         checkPermission();
         if (
-            generation !== session ||
-            currentOwner !== owner ||
+            (!restore &&
+                (generation !== session || currentOwner !== owner)) ||
             controller.signal.aborted
         )
             throw new Error("笔记同步账号已变化");
@@ -103,19 +131,21 @@ export function syncNotes(
         if (stamp.busy || now.busy || stamp.version !== now.version)
             throw new Error("笔记正在写入，将在写入完成后继续同步");
     };
-    controllers.add(controller);
+    if (!restore) controllers.add(controller);
     const promise = (async () => {
         check();
         // Trash has its own durable receipts; an unavailable trash endpoint must not block normal sync.
-        await synchronizeNoteTrash(db, owner).catch(() => {});
-        await syncLocalNoteFlags(db, owner).catch(() => {});
+        if (!restore) {
+            await synchronizeNoteTrash(db, owner).catch(() => {});
+            await syncLocalNoteFlags(db, owner).catch(() => {});
+        }
         stamp = noteCloudWriteStamp();
         check();
         const before = await getLocalNotes(db, owner);
         const result = await runNoteSync(
             db,
             owner,
-            notesSyncTransport,
+            restore?.transport ?? notesSyncTransport,
             controller.signal,
             check,
         );
@@ -140,10 +170,11 @@ export function syncNotes(
         }
         return result;
     })().finally(() => {
+        restore?.signal.removeEventListener("abort", abort);
         controllers.delete(controller);
         if (owners.get(owner)?.controller === controller) owners.delete(owner);
     });
-    owners.set(owner, { controller, promise });
+    owners.set(owner, { controller, promise, restore: !!restore });
     return promise;
 }
 
@@ -155,6 +186,10 @@ export function startNoteSyncCoordinator(
     db: ApplicationDatabase,
     owner: number,
 ) {
+    const abortNormalJob = () => {
+        const job = jobs.get(db)?.get(owner);
+        if (job && !job.restore) job.controller.abort();
+    };
     let active = false,
         stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -196,7 +231,7 @@ export function startNoteSyncCoordinator(
         setActive(value: boolean) {
             active = value;
             if (value) request();
-            else jobs.get(db)?.get(owner)?.controller.abort();
+            else abortNormalJob();
         },
         stop() {
             stopped = true;
@@ -204,7 +239,7 @@ export function startNoteSyncCoordinator(
             unsubscribe();
             unsubscribeConnection();
             if (timer) clearTimeout(timer);
-            jobs.get(db)?.get(owner)?.controller.abort();
+            abortNormalJob();
         },
     };
 }

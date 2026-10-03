@@ -124,6 +124,204 @@ test("环境默认开放能力，只有 0 或非法配置关闭，均不隐式�
   }
 });
 
+test("登录只读租约不改变授权，只放行指定 GET，释放后不能再用", async () => {
+  policy.setCloudStorageSession(41, true, false);
+  const before = policy.getCloudStorageSnapshot();
+  const lease = policy.createLoginRestoreAccess(41);
+  const calls = [];
+  api.defaults.adapter = async (config) => { calls.push([config.method, config.url]); return response(config); };
+  for (const url of ["/categories", "/notes/snapshot", "/notes/changes", "/notes/batch", "/todos", "/todos/changes"]) {
+    await api.get(url, { loginRestoreId: lease.id });
+  }
+  assert.equal(calls.length, 6);
+  assert.strictEqual(policy.getCloudStorageSnapshot(), before);
+  await assert.rejects(api.get("/notes/snapshot"), isPermission(false));
+  for (const url of ["/user/profile", "/notes", "/unknown", "https://example.com/notes/snapshot"]) {
+    await assert.rejects(api.get(url, { loginRestoreId: lease.id }), isPermission(false));
+  }
+  for (const method of ["post", "put", "patch", "delete"]) {
+    await assert.rejects(api.request({ method, url: "/todos", loginRestoreId: lease.id }), isPermission(false));
+  }
+  lease.release();
+  await assert.rejects(api.get("/todos", { loginRestoreId: lease.id }), isPermission(false));
+  assert.equal(calls.length, 6);
+});
+
+test("登录租约仍遵守构建开关、账号就绪与会话失效", async () => {
+  const disabled = freshPolicy("0");
+  disabled.setCloudStorageSession(41, true, false);
+  assert.throws(() => disabled.createLoginRestoreAccess(41));
+  assert.throws(() => policy.createLoginRestoreAccess(41), isPermission(false));
+  policy.setCloudStorageSession(41, false, false);
+  assert.throws(() => policy.createLoginRestoreAccess(41), isPermission(false));
+  policy.setCloudStorageSession(41, true, false);
+  assert.throws(() => policy.createLoginRestoreAccess(42), isPermission(false));
+  const lease = policy.createLoginRestoreAccess(41);
+  const started = deferred();
+  const arrived = deferred();
+  api.defaults.adapter = async (config) => { started.resolve(); await arrived.promise; return response(config); };
+  const rejected = assert.rejects(api.get("/todos", { loginRestoreId: lease.id }), isPermission(true));
+  await started.promise;
+  policy.setCloudStorageSession(42, true, false);
+  policy.setCloudStorageSession(41, true, false);
+  arrived.resolve();
+  await rejected;
+  assert.equal(lease.signal.aborted, true);
+  assert.throws(lease.assertCurrent, isPermission(false));
+  lease.release();
+});
+
+test("已有授权的登录读取保持开启，授权变化仍取消只读租约", () => {
+  grant();
+  const lease = policy.createLoginRestoreAccess(41);
+  assert.equal(policy.getCloudStorageSnapshot().enabled, true);
+  policy.setCloudStorageSession(41, true, false);
+  assert.equal(lease.signal.aborted, true);
+  assert.throws(lease.assertCurrent, isPermission(false));
+  lease.release();
+});
+
+test("真实登录恢复 Provider 经 HTTP、SQLite 和 Store 渲染数据，冷启动不拉取且全程零上传", async (t) => {
+  const sql = new DatabaseSync(":memory:");
+  const migration = {
+    execAsync: async (source) => sql.exec(source),
+    runAsync: async (source, args = []) => sql.prepare(source).run(...args),
+    getAllAsync: async (source, args = []) => sql.prepare(source).all(...args),
+    getFirstAsync: async (source, args = []) => sql.prepare(source).get(...args) ?? null,
+  };
+  for (const item of databaseMigrations) await item.up(migration);
+  const bindings = (args) => Array.isArray(args) ? args : [args];
+  const tx = {
+    run: async (source, args = []) => {
+      const result = sql.prepare(source).run(...bindings(args));
+      return { changes: Number(result.changes), lastInsertRowId: Number(result.lastInsertRowid) };
+    },
+    getFirst: async (source, args = []) => sql.prepare(source).get(...bindings(args)) ?? null,
+    getAll: async (source, args = []) => sql.prepare(source).all(...bindings(args)),
+  };
+  let tail = Promise.resolve();
+  const enqueue = (task) => { const result = tail.then(task); tail = result.catch(() => {}); return result; };
+  const db = {
+    run: (...args) => enqueue(() => tx.run(...args)),
+    getFirst: (...args) => enqueue(() => tx.getFirst(...args)),
+    getAll: (...args) => enqueue(() => tx.getAll(...args)),
+    transaction: (task) => enqueue(async () => {
+      sql.exec("BEGIN IMMEDIATE");
+      try { const result = await task(tx); sql.exec("COMMIT"); return result; }
+      catch (error) { sql.exec("ROLLBACK"); throw error; }
+    }),
+  };
+  policy.setCloudStorageSession(41, true, false);
+  const { loginDataRestore } = require("@/features/auth/services/login-data-restore.ts");
+  const failures = [];
+  const start = loginDataRestore.start;
+  loginDataRestore.start = (id, tasks) => start(id, Object.fromEntries(Object.entries(tasks).map(([domain, task]) => [domain, async (...args) => {
+    try { return await task(...args); } catch (error) { failures.push(`${domain}: ${error.stack}`); throw error; }
+  }])));
+  t.after(() => { loginDataRestore.start = start; });
+  const { todoRepository, useTodoStore } = require("@/features/todos/state/todo-store.ts");
+  const { emptyTodoFields } = require("@/features/todos/services/todo-service.ts");
+  const { business } = require("@/features/todos/api/todo-wire.ts");
+  const { onNotesChanged } = require("@/features/notes/notes.events.ts");
+  const { onCategoriesChanged } = require("@/features/notes/categories/categories.events.ts");
+  await todoRepository.activate("user:41", db);
+  const local = await todoRepository.create("user:41", "00000000-0000-4000-8000-000000000001",
+    { ...emptyTodoFields("2026-10-02"), body: "本机待办" }, new Date("2026-10-02T00:00:00.000Z"));
+  const remote = {
+    ...business(local), body: "云端待办", id: 72, user_id: 41,
+    client_id: "00000000-0000-4000-8000-000000000072", version: 1, deleted_at: null,
+    created_at: local.createdAt, updated_at: local.updatedAt,
+  };
+  const note = {
+    id: 71, user_id: 41, client_id: "00000000-0000-4000-8000-000000000071", version: 1,
+    title: "云端笔记", content: "完整正文", category_id: 7, is_pinned: false, is_starred: false,
+    created_at: "2026-10-02T00:00:00.000Z", updated_at: "2026-10-02T00:00:00.000Z",
+    sync_updated_at: null, deleted_at: null,
+  };
+  const calls = [];
+  api.defaults.adapter = async (config) => {
+    calls.push([config.method, config.url]);
+    assert.equal(config.method, "get");
+    assert.equal(config.headers.get("Authorization"), "Bearer test-token");
+    let data;
+    if (config.url === "/categories") data = [{ id: 7, name: "分类", icon: "home", is_pinned: false, is_starred: false }];
+    else if (config.url === "/notes/snapshot" || config.url === "/todos") data = {
+      data: config.url === "/todos" ? [remote] : [note],
+      page: { next_cursor: null, has_more: false, snapshot_token: "snapshot" },
+      sync: { changes_cursor: "baseline" },
+    };
+    else if (config.url.endsWith("/changes")) data = { data: [], page: { next_cursor: "end", has_more: false } };
+    else assert.fail("unexpected route " + config.url);
+    return response(config, data);
+  };
+  const received = [];
+  let categoryEvents = 0;
+  const offNotes = onNotesChanged((event) => received.push(event));
+  const offCategories = onCategoriesChanged(() => { categoryEvents++; });
+  const cells = []; let cursor = 0, effects = [];
+  const effect = (task, deps) => {
+    const index = cursor++;
+    const cell = cells[index];
+    if (!cell || !deps.every((item, i) => Object.is(item, cell.deps[i]))) {
+      cells[index] = { deps };
+      effects.push(() => { cell?.cleanup?.(); cells[index].cleanup = task(); });
+    }
+  };
+  const react = {
+    useEffect: effect, useLayoutEffect: effect,
+    useRef: (value) => { const index = cursor++; return cells[index] ??= { current: value }; },
+    useSyncExternalStore: (_subscribe, snapshot) => snapshot(),
+  };
+  const filename = path.join(root, "src/features/auth/providers/LoginDataRestoreProvider.tsx");
+  const isolated = new Module(filename, module);
+  isolated.filename = filename;
+  isolated.paths = Module._nodeModulePaths(path.dirname(filename));
+  const actualRequire = isolated.require.bind(isolated);
+  isolated.require = (name) => {
+    if (name === "react") return react;
+    if (name === "@/core/database") return { useApplicationDatabase: () => db };
+    if (name.endsWith("/cloud-storage-provider")) return { useCloudStorage: policy.getCloudStorageSnapshot };
+    if (name.endsWith("/useTodoScope")) return { useTodoScope: () => ({ ready: true, ownerKey: "user:41" }) };
+    if (name === "../hooks/useAuth") return { useAuth: () => ({ user: { id: 41 }, token: "test-token", loading: false }) };
+    return actualRequire(name);
+  };
+  compile(isolated, filename);
+  const render = () => {
+    cursor = 0; effects = [];
+    isolated.exports.LoginDataRestoreProvider({ children: null });
+    for (const task of effects) task();
+  };
+  t.after(() => {
+    for (const cell of cells) cell?.cleanup?.();
+    offNotes(); offCategories(); todoRepository.deactivate(); sql.close();
+  });
+  render();
+  assert.equal(loginDataRestore.getState(), null);
+  assert.deepEqual(calls, []);
+  loginDataRestore.request(41, "test-token");
+  const complete = new Promise((resolve) => {
+    const off = loginDataRestore.subscribe(() => {
+      if (["done", "failed"].includes(loginDataRestore.getState()?.phase)) { off(); resolve(); }
+    });
+  });
+  render();
+  await complete;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loginDataRestore.getState().phase, "done", failures.join("\n"));
+  assert.equal(policy.getCloudStorageSnapshot().enabled, false);
+  assert.equal(sql.prepare("SELECT count(*) n FROM system_preferences WHERE key LIKE 'cloud_storage_consent:%'").get().n, 0);
+  assert.ok(useTodoStore.getState().entities.some((item) => item.body === "云端待办"));
+  assert.ok(useTodoStore.getState().entities.some((item) => item.body === "本机待办"));
+  assert.ok(received.some((event) => event.type === "upsert" && event.note.content === "完整正文"));
+  assert.equal(sql.prepare("SELECT category_id FROM local_notes WHERE server_id=71").get().category_id, 7);
+  assert.equal(categoryEvents, 1);
+  const count = calls.length;
+  render(); render();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, count, "rerender/focus must not repeat a completed login restore");
+  await assert.rejects(api.get("/todos"), isPermission(false));
+});
+
 test("旧待办开关不能授予权限或覆盖统一环境变量", () => {
   for (const legacy of ["0", "1"]) {
     const isolated = freshPolicy(undefined, legacy);

@@ -11,6 +11,7 @@ import {
 import {
     CloudStoragePermissionError,
     createCloudStorageRequest,
+    createLoginRestoreRequest,
     isCloudStoragePermissionError,
     isEssentialAccountRequest,
     assertCloudStorageAllowed,
@@ -28,6 +29,7 @@ import {
 declare module "axios" {
     interface AxiosRequestConfig {
         cloudStorageContext?: { ownerUserId: number; generation: number };
+        loginRestoreId?: number;
     }
 }
 
@@ -92,8 +94,17 @@ function stampCloudRequest(
         ...(url === undefined ? {} : { url }),
         ...(method === undefined ? {} : { method }),
     };
-    if (isEssentialAccountRequest(request.method, request.url)) return request;
-    assertCloudStorageAllowed();
+    if (request.loginRestoreId !== undefined) {
+        createLoginRestoreRequest(
+            request.loginRestoreId,
+            request.method,
+            request.url,
+        );
+    } else {
+        if (isEssentialAccountRequest(request.method, request.url))
+            return request;
+        assertCloudStorageAllowed();
+    }
     const state = getCloudStorageSnapshot();
     return {
         ...request,
@@ -126,7 +137,11 @@ function stampRequestArguments(args: unknown[]): unknown[] {
 const api = new Proxy(transport, {
     apply(target, thisArg, args) {
         try {
-            return Reflect.apply(target, thisArg, stampRequestArguments(args));
+            return Reflect.apply(
+                target,
+                thisArg,
+                stampRequestArguments(args),
+            );
         } catch (error) {
             return Promise.reject(error);
         }
@@ -221,7 +236,10 @@ const getDeviceId = async () => {
 // 请求拦截器：自动附加 token，并为验证码链路附加设备标识
 api.interceptors.request.use(async (config) => {
     try {
-        if (!isEssentialAccountRequest(config.method, config.url)) {
+        if (
+            config.loginRestoreId !== undefined ||
+            !isEssentialAccountRequest(config.method, config.url)
+        ) {
             const context = config.cloudStorageContext;
             const state = getCloudStorageSnapshot();
             if (
@@ -233,7 +251,14 @@ api.interceptors.request.use(async (config) => {
                     "云存储授权或账号已变化，请重新操作",
                 );
             }
-            const permission = createCloudStorageRequest();
+            const permission =
+                config.loginRestoreId === undefined
+                    ? createCloudStorageRequest()
+                    : createLoginRestoreRequest(
+                          config.loginRestoreId,
+                          config.method,
+                          config.url,
+                      );
             const controller = new AbortController();
             const originalSignal = config.signal;
             const abort = () => controller.abort();
@@ -267,7 +292,9 @@ api.interceptors.request.use(async (config) => {
         const cloudRequest = cloudRequests.get(config);
         if (cloudRequest) {
             cloudRequest.permission.assertCurrent();
-            const adapter = getAdapter(config.adapter ?? api.defaults.adapter);
+            const adapter = getAdapter(
+                config.adapter ?? api.defaults.adapter,
+            );
             config.adapter = async (requestConfig) => {
                 try {
                     cloudRequest.permission.assertCurrent();

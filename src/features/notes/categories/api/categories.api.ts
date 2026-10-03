@@ -1,4 +1,5 @@
 import api from "@/shared/http/client";
+import type { AxiosRequestConfig } from "axios";
 import type {
     Category,
     CreateCategoryPayload,
@@ -11,8 +12,12 @@ export type {
     UpdateCategoryPayload,
 } from "@/features/notes/categories/categories.types";
 
-export async function getCategories(): Promise<Category[]> {
-    const { data } = await api.get<Category[]>("/categories");
+export async function getCategories(
+    config?: AxiosRequestConfig,
+): Promise<Category[]> {
+    const { data } = await api.get<Category[]>("/categories", config);
+    if (config?.loginRestoreId !== undefined && !Array.isArray(data))
+        throw new Error("分类数据无效，本机内容已保留");
     return Array.isArray(data) ? data : [];
 }
 
